@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { CountBadge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { useApiKeys, useForms, useSites, useUsers, useWebhooks } from "@/lib/queries";
 import type { PermissionKey } from "@/lib/types";
@@ -83,9 +84,7 @@ export function ConfigLayout() {
                     }
                   >
                     <span className="min-w-0 flex-1 truncate">{it.label}</span>
-                    {it.key === "people" && waiting > 0 && (
-                      <span className="rounded-pill bg-status-amberBg px-1.5 py-0.5 text-micro font-bold text-status-amberText">{waiting}</span>
-                    )}
+                    {it.key === "people" && waiting > 0 && <CountBadge count={waiting} />}
                     {counts[it.key] !== undefined && <span className="tabular text-micro text-muted">{counts[it.key]}</span>}
                   </NavLink>
                 ))}

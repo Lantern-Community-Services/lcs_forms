@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/misc";
-import { DECK_CLASS, LEAN_MS, OUT_MS, RoundAction, SwipeCard, prefersReducedMotion, type ExitDir, type Pose } from "@/components/ui/swipe-card";
+import { DECK_CLASS, RoundAction, SwipeCard, SwipeNote, useDeckPose } from "@/components/ui/swipe-card";
+import { ResidentCardHeader } from "@/components/roster/ResidentCardHeader";
 import { cn, formatDate, tintFor } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 import { SignaturePanel } from "./SignaturePrompt";
@@ -30,7 +31,8 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
   const [search, setSearch] = useState("");
   const [promptId, setPromptId] = useState<string | null>(null);
   const [promptCreated, setPromptCreated] = useState(false);
-  const [pose, setPose] = useState<Pose | null>(null);
+  // Same motion as Review: a button press leans first, a swipe flies straight out.
+  const { pose, setPose, playOut } = useDeckPose();
   /** Bumped on every open so the pad starts blank, even for the same person twice. */
   const [promptSeq, setPromptSeq] = useState(0);
   const byId = useMemo(() => new Map(roster.map((tenant) => [tenant.id, tenant])), [roster]);
@@ -66,16 +68,6 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
 
   function remember(tenantId: string) {
     setHistory((items) => [...items, { tenantId, before: choices.get(tenantId), skippedBefore: skipped, jumpBefore: jumpId }]);
-  }
-  /** Same motion as Review: a button press leans first, a swipe flies straight out. */
-  function playOut(id: string, dir: ExitDir, swiped: boolean) {
-    const out = () => {
-      setPose({ id, dir, stage: "out" });
-      setTimeout(() => setPose(null), OUT_MS);
-    };
-    if (swiped || prefersReducedMotion()) return out();
-    setPose({ id, dir, stage: "lean" });
-    setTimeout(out, LEAN_MS);
   }
   /**
    * Here leans right with its stamp showing and, when collecting signatures, is
@@ -278,15 +270,8 @@ function AttendanceCardBody({ tenant, collectSignatures, choice, skipped, remain
         ? { tone: "bg-status-blueBg text-status-blueText", icon: <ChevronsDown className="h-4 w-4" />, title: "Skipped earlier", detail: "Back for another look" }
         : { tone: "bg-subtle2 text-ink", icon: <CircleDashed className="h-4 w-4" />, title: "Not marked yet", detail: "Swipe right if they're here" };
   return <>
-    <Avatar name={tenant.displayName} color={tintFor(tenant.id)} size={84} className="swipe-avatar" />
-    <h2 className="swipe-name mt-4 text-[24px] font-heading font-extrabold leading-tight text-ink">{tenant.displayName}</h2>
-    {tenant.preferredName && <p className="mt-0.5 text-[13px] text-muted">{tenant.firstName} {tenant.lastName}</p>}
-    <p className="mt-2 text-[15px] font-semibold text-ink">{tenant.unit ? `Unit ${tenant.unit}` : "No unit"}</p>
-
-    <div className={cn("swipe-note mt-5 w-full rounded-card px-4 py-3 text-left", note.tone)}>
-      <p className="flex items-center gap-2 text-[14px] font-bold">{note.icon} {note.title}</p>
-      <p className="mt-1 text-[12.5px] opacity-90">{note.detail}</p>
-    </div>
+    <ResidentCardHeader tenant={tenant} />
+    <SwipeNote tone={note.tone} icon={note.icon} title={note.title}>{note.detail}</SwipeNote>
 
     <span className="flex-1" />
     <p className="text-micro text-muted">{remaining} still to mark{tenant.moveInDate ? ` · moved in ${formatDate(tenant.moveInDate)}` : ""}</p>

@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { hotFoodsApi, useHotFoodItems, useHotFoodsMutation } from "@/lib/queries";
 import type { HotFoodItem } from "@/lib/types";
 import { slotColor } from "@/components/hotfoods/Charts";
-import { cn } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 /**
  * The meal types staff pick from — what WordPress kept in hotfood.csv. Hidden
@@ -43,7 +43,7 @@ export function MealTypesEditor() {
       await p;
       if (ok) toast(ok);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "That didn't save.", "error");
+      toast(errorMessage(e, "That didn't save."), "error");
     }
   };
 

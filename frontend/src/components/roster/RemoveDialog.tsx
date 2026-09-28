@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useArchiveReasons } from "@/lib/queries";
-import { useIsPhone } from "@/lib/useMediaQuery";
 import { cn } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
@@ -28,7 +26,6 @@ export function RemoveDialog({
   onConfirm: (reason: string, note: string) => void;
   busy?: boolean;
 }) {
-  const phone = useIsPhone();
   const { data: reasons } = useArchiveReasons();
   const [reason, setReason] = useState("Moved out");
   const [note, setNote] = useState("");
@@ -93,24 +90,9 @@ export function RemoveDialog({
     </>
   );
 
-  if (phone) {
-    return (
-      <Sheet open={Boolean(tenant)} onOpenChange={(o) => !o && onCancel()}>
-        <SheetContent aria-describedby={undefined}>
-          <SheetHeader title={title} />
-          <SheetBody>{body}</SheetBody>
-          <SheetFooter>{actions}</SheetFooter>
-        </SheetContent>
-      </Sheet>
-    );
-  }
   return (
-    <Dialog open={Boolean(tenant)} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent aria-describedby={undefined}>
-        <DialogHeader title={title} />
-        <DialogBody>{body}</DialogBody>
-        <DialogFooter>{actions}</DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog open={Boolean(tenant)} onOpenChange={(o) => !o && onCancel()} title={title} footer={actions}>
+      {body}
+    </ResponsiveDialog>
   );
 }

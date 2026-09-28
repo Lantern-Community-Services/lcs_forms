@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useSettings, useSites } from "@/lib/queries";
 import type { Site } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 /**
  * The review threshold and friends. The org-wide default is an Admin's
@@ -34,7 +35,7 @@ export function AdminSettings() {
       toast("Saved. The review queue now uses the new threshold.");
       await qc.invalidateQueries();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     }
   }
 
@@ -95,7 +96,7 @@ function SiteRuleRow({ site }: { site: Site }) {
       toast(hours ? `${site.name} now reviews after ${hours} hours.` : `${site.name} uses the default again.`);
       await qc.invalidateQueries();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     }
   }
 
@@ -124,7 +125,7 @@ export function AdminSignInAccess() {
       await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
       toast("Sign-in access updated.");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     }
   }
 
@@ -134,7 +135,7 @@ export function AdminSignInAccess() {
       await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
       toast(on ? "Lantern staff now get in on their first sign-in." : "New Lantern staff now need an admin's approval.");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     }
   }
 

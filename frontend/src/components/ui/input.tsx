@@ -1,4 +1,5 @@
 import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
@@ -31,3 +32,18 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   )
 );
 Textarea.displayName = "Textarea";
+
+/**
+ * A list's search box: magnifier inside, the phone keyboard's key reading
+ * "Search", and thumb height on a phone. `wrapperClassName` sizes the box in
+ * its row; `className` reaches the input itself.
+ */
+export const SearchInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { wrapperClassName?: string }>(
+  ({ className, wrapperClassName, ...props }, ref) => (
+    <div className={cn("relative", wrapperClassName)}>
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+      <Input ref={ref} type="search" enterKeyHint="search" className={cn("min-h-[44px] pl-9 md:min-h-9", className)} {...props} />
+    </div>
+  )
+);
+SearchInput.displayName = "SearchInput";

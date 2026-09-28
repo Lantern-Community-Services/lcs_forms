@@ -7,6 +7,7 @@ import { MobileTabBar } from "./MobileTabBar";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
 import { startHotFoodsSync } from "@/lib/hotFoodsQueue";
+import { cn } from "@/lib/utils";
 
 /**
  * Full-page shell.
@@ -58,13 +59,28 @@ export function Page({ children, className }: { children: React.ReactNode; class
  * Phone-only: on desktop the sidebar is permanently on screen, so the same link
  * would be a second, redundant route to a destination already one click away.
  */
-export function MobileBackLink({ to, label }: { to: string; label: string }) {
+export function MobileBackLink({ to, label, className }: { to: string; label: string; className?: string }) {
   return (
     <Link
       to={to}
-      className="-ml-2 inline-flex min-h-[44px] items-center gap-1.5 px-2 text-[13.5px] font-semibold text-accent dark:text-white md:hidden"
+      className={cn("-ml-2 inline-flex min-h-[44px] items-center gap-1.5 px-2 text-[13.5px] font-semibold text-accent dark:text-white md:hidden", className)}
     >
       <ChevronLeft className="h-[17px] w-[17px]" /> {label}
+    </Link>
+  );
+}
+
+/**
+ * The way back above a detail screen's content, desktop only — on a phone the
+ * screen's PhoneHeader carries it instead.
+ */
+export function DesktopBackLink({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) {
+  return (
+    <Link
+      to={to}
+      className={cn("-ml-2 mb-2 hidden min-h-[36px] items-center gap-1 px-2 text-[13px] font-semibold text-accent dark:text-white md:inline-flex", className)}
+    >
+      <ChevronLeft className="h-4 w-4" /> {children}
     </Link>
   );
 }

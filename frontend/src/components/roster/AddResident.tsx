@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
@@ -8,7 +7,7 @@ import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { useIsPhone } from "@/lib/useMediaQuery";
 import { rosterApi, useRosterMutation } from "@/lib/queries";
-import { formatDateInput } from "@/lib/utils";
+import { errorMessage, formatDateInput } from "@/lib/utils";
 import type { SiteRef } from "@/lib/types";
 
 const blank = () => ({ unit: "", firstName: "", lastName: "", preferredName: "", moveInDate: formatDateInput(new Date()) });
@@ -74,7 +73,7 @@ export function AddResident({ open, onOpenChange, sites }: {
         setTimeout(() => unitRef.current?.focus(), 0);
       } else onOpenChange(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add.");
+      setError(errorMessage(e, "Could not add."));
     }
   }
 
@@ -129,24 +128,9 @@ export function AddResident({ open, onOpenChange, sites }: {
     </>
   );
 
-  if (phone) {
-    return (
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent aria-describedby={undefined}>
-          <SheetHeader title={title} />
-          <SheetBody>{body}</SheetBody>
-          <SheetFooter>{actions}</SheetFooter>
-        </SheetContent>
-      </Sheet>
-    );
-  }
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined}>
-        <DialogHeader title={title} />
-        <DialogBody>{body}</DialogBody>
-        <DialogFooter>{actions}</DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange} title={title} footer={actions}>
+      {body}
+    </ResponsiveDialog>
   );
 }

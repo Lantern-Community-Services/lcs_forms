@@ -8,11 +8,13 @@ import { cn } from "@/lib/utils";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
 import { Avatar } from "@/components/ui/avatar";
+import { CountBadge } from "@/components/ui/badge";
 import { useForms, useSites } from "@/lib/queries";
 import { canOpenForm, formIcon, formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormCategory, FormLink } from "@/lib/types";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { readStorage, writeStorage } from "@/lib/storage";
 
 const EXPANDED_WIDTH = 240;
 const COLLAPSED_WIDTH = 64;
@@ -59,6 +61,11 @@ function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean 
   );
 }
 
+/** The amber dot on an icon with people waiting — the collapsed sidebar's stand-in for the count, which is clipped away. */
+function WaitingDot({ collapsed }: { collapsed: boolean }) {
+  return <span className={cn("absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-status-amberDot transition-opacity duration-200", collapsed ? "opacity-100" : "opacity-0")} />;
+}
+
 /*
  * Open, the highlight fills the row. Collapsed, the row runs on past the
  * sidebar's edge (see TAIL_W), so a row highlight would be cut off square on
@@ -98,17 +105,11 @@ function NavItem({ to, label, Icon, collapsed, alsoActiveFor, count, end }: {
       <>
       <span className={iconBox(isActive || alsoActive, collapsed)}>
         <Icon className="h-[18px] w-[18px]" />
-        {waiting && (
-          <span className={cn("absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-status-amberDot transition-opacity duration-200", collapsed ? "opacity-100" : "opacity-0")} />
-        )}
+        {waiting && <WaitingDot collapsed={collapsed} />}
       </span>
       <span className={cn("flex shrink-0 items-center", TAIL_W, fade(collapsed))}>
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        {waiting && (
-          <span className="mr-2 rounded-pill bg-status-amberBg px-1.5 py-0.5 text-micro font-bold tabular text-status-amberText">
-            {count! > 999 ? "999+" : count}
-          </span>
-        )}
+        {waiting && <CountBadge count={count!} max={999} className="mr-2" />}
       </span>
       </>
       )}
@@ -118,21 +119,8 @@ function NavItem({ to, label, Icon, collapsed, alsoActiveFor, count, end }: {
 
 /** Which form type the sidebar is drilled into, remembered per device. */
 function useDrill() {
-  const [drill, setDrill] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(DRILL_KEY) || null;
-    } catch {
-      return null;
-    }
-  });
-  useEffect(() => {
-    try {
-      if (drill) localStorage.setItem(DRILL_KEY, drill);
-      else localStorage.removeItem(DRILL_KEY);
-    } catch {
-      // Storage refused: the sidebar just starts at the top level next time.
-    }
-  }, [drill]);
+  const [drill, setDrill] = useState<string | null>(() => readStorage(DRILL_KEY) || null);
+  useEffect(() => writeStorage(DRILL_KEY, drill || null), [drill]);
   return [drill, setDrill] as const;
 }
 
@@ -232,15 +220,11 @@ function TypePane({ category, Icon, forms, reviewCount, collapsed, onBack, backR
                 >
                   <span className={iconBox(lit(f.url), collapsed)}>
                     <FormIcon className="h-[18px] w-[18px]" />
-                    {waiting && <span className={cn("absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-status-amberDot transition-opacity duration-200", collapsed ? "opacity-100" : "opacity-0")} />}
+                    {waiting && <WaitingDot collapsed={collapsed} />}
                   </span>
                   <span className={cn(label, "flex items-start gap-2", fade(collapsed))}>
                     <span className="min-w-0 flex-1">{f.title}</span>
-                    {waiting && (
-                      <span aria-label={`${reviewCount} to review`} className="shrink-0 rounded-pill bg-status-amberBg px-1.5 py-0.5 text-micro font-bold tabular text-status-amberText">
-                        {reviewCount > 999 ? "999+" : reviewCount}
-                      </span>
-                    )}
+                    {waiting && <CountBadge count={reviewCount} max={999} label={`${reviewCount} to review`} className="shrink-0" />}
                   </span>
                 </NavLink>
               ) : (

@@ -14,6 +14,8 @@ import { useHotFoodItems, useHotFoodToday, useSites, useTenants } from "@/lib/qu
 import { cn, initials, tintFor } from "@/lib/utils";
 import type { HotFoodItem, Site, Tenant } from "@/lib/types";
 import { ManageItemsDialog } from "./ManageItems";
+import { slotColor } from "@/components/hotfoods/Charts";
+import { readStorage, writeStorage } from "@/lib/storage";
 import { cooldownLeft, mealsWithQueued, minutes, ruleProblems, type Rules, type Served } from "@/lib/hotFoodRules";
 import { isLocating, LocationHint, PickerStatus, pickerHasIcon, siteOptions, useNearbySite } from "@/components/forms/SiteLocator";
 
@@ -41,23 +43,11 @@ import { isLocating, LocationHint, PickerStatus, pickerHasIcon, siteOptions, use
  * at one of their sites (see SiteLocator), else it's the last site they used.
  */
 
+// In private mode these just aren't remembered.
 const SITE_KEY = "ln.hotfoods.site";
 const MEAL_KEY = "ln.hotfoods.meal";
 const SORT_KEY = "ln.hotfoods.sort";
-const remembered = (key: string) => {
-  try {
-    return localStorage.getItem(key) ?? "";
-  } catch {
-    return "";
-  }
-};
-const remember = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Private mode — the picker just won't remember.
-  }
-};
+const remembered = (key: string) => readStorage(key) ?? "";
 
 /** The shift's meal, stored with the day it was picked so tomorrow starts at step 1. */
 function rememberedMeal(): { id: string; today: boolean } {
@@ -85,7 +75,6 @@ interface Recent {
 }
 
 const mealLabel = (lines: HotFoodItem[], cart: Cart) => lines.map((i) => `${cart[i.id]} ${i.name}`).join(", ");
-const vizColor = (slot: number | null | undefined) => (slot == null ? "var(--viz-other)" : `var(--viz-${slot + 1})`);
 
 export function HotFoodsRecordPage() {
   const { can, user } = useAuth();
@@ -133,7 +122,7 @@ export function HotFoodsRecordPage() {
   }, [nearby.here?.site.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (site) remember(SITE_KEY, site.code);
+    if (site) writeStorage(SITE_KEY, site.code);
   }, [site?.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each step starts at the top of the page.
@@ -150,7 +139,7 @@ export function HotFoodsRecordPage() {
 
   function chooseMeal(id: string) {
     setMealId(id);
-    remember(MEAL_KEY, `${id}|${new Date().toDateString()}`);
+    writeStorage(MEAL_KEY, `${id}|${new Date().toDateString()}`);
   }
 
   function startServing() {
@@ -450,7 +439,7 @@ function RecentList({ recent, queued, onUndo }: { recent: Recent[]; queued: Set<
         <ul className="mt-1.5">
           {recent.map((r) => (
             <li key={r.clientId} className="flex min-h-[44px] items-center gap-2.5">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: vizColor(r.slot) }} />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: slotColor(r.slot) }} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] font-bold text-ink">{r.name}</span>
                 <span className="block truncate text-[12.5px] text-muted">{r.detail}</span>
@@ -560,7 +549,7 @@ function ResidentStep({ roster, loading, counts, meals, regulars, regularsDays, 
   const toggleSort = () => {
     const next = sort === "regulars" ? "room" : "regulars";
     setSort(next);
-    remember(SORT_KEY, next);
+    writeStorage(SORT_KEY, next);
   };
   const sorted = useMemo(() => {
     const byRoom = (a: Tenant, b: Tenant) => (a.unit ?? "").localeCompare(b.unit ?? "", undefined, { numeric: true }) || a.displayName.localeCompare(b.displayName);

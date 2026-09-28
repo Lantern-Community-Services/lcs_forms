@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
-import { Page } from "@/components/shell/AppShell";
+import { useParams } from "react-router-dom";
+import { DesktopBackLink, Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { HotFoodEntryPrint } from "@/components/hotfoods/HotFoodsExport";
 import { hotFoodsApi, useHotFoodEntry, useHotFoodsMutation } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
-import { formatDateTime } from "@/lib/utils";
+import { errorMessage, formatDateTime } from "@/lib/utils";
 
 /** One Hot Foods entry: what was handed out, the signature, and — for managers — Void. */
 export function HotFoodsEntryDetailPage() {
@@ -26,9 +25,7 @@ export function HotFoodsEntryDetailPage() {
     <div className="flex min-h-full flex-col">
       <PhoneHeader title={e?.tenantName ?? "Entry"} subtitle={e ? `${e.site.name} · ${formatDateTime(e.occurredAt)}` : undefined} back={back} />
       <Page className="w-full max-w-[760px]">
-        <Link to={back.to} className="-ml-2 mb-3 hidden min-h-[36px] items-center gap-1 px-2 text-[13px] font-semibold text-accent dark:text-white md:inline-flex">
-          <ChevronLeft className="h-4 w-4" /> Entries
-        </Link>
+        <DesktopBackLink to={back.to} className="mb-3">{back.label}</DesktopBackLink>
         {isLoading ? (
           <LoadingState />
         ) : isError || !e ? (
@@ -115,7 +112,7 @@ function VoidDialog({ id, name, open, onOpenChange }: { id: string; name: string
                 toast("Entry voided.");
                 onOpenChange(false);
               } catch (e) {
-                toast(e instanceof Error ? e.message : "Could not void this entry.", "error");
+                toast(errorMessage(e, "Could not void this entry."), "error");
               }
             }}
           >

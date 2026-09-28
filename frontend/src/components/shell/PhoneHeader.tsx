@@ -1,5 +1,4 @@
-import { Link } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
+import { MobileBackLink } from "./AppShell";
 import { useInSectionTabs } from "./SectionTabs";
 
 /**
@@ -47,14 +46,7 @@ export function PhoneHeader({
 
   return (
     <div className="flex-none border-b border-hairline bg-sidebar px-4 pb-3 pt-safe-top md:hidden">
-      {back && (
-        <Link
-          to={back.to}
-          className="-ml-2 mb-0.5 inline-flex min-h-[44px] items-center gap-1.5 px-2 text-[13.5px] font-semibold text-accent dark:text-white"
-        >
-          <ChevronLeft className="h-[17px] w-[17px]" /> {back.label}
-        </Link>
-      )}
+      {back && <MobileBackLink to={back.to} label={back.label} className="mb-0.5" />}
       <div className="flex items-start gap-2.5">
         <div className="min-w-0 flex-1">
           <h1 className="text-[23px] font-heading font-extrabold text-ink">{title}</h1>

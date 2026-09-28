@@ -1,8 +1,27 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+// tailwind.config.ts adds two font sizes. Untold, tailwind-merge reads
+// `text-micro` as a colour and drops it whenever a text colour follows it.
+const twMerge = extendTailwindMerge({
+  extend: { classGroups: { "font-size": [{ text: ["micro", "meta"] }] } },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/** What to tell the person about a failure: the error's own message, or `fallback` for anything thrown that isn't an Error. */
+export function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+/** A copy of `set` with `value` flipped in or out — or put exactly where `on` says. */
+export function toggled<T>(set: Set<T>, value: T, on = !set.has(value)): Set<T> {
+  const next = new Set(set);
+  if (on) next.add(value);
+  else next.delete(value);
+  return next;
 }
 
 // Built once. `toLocaleDateString(…, options)` constructs a fresh formatter on

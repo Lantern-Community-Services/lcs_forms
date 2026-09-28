@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api";
 import { hotFoodsApi } from "./queries";
 import type { HotFoodToday } from "./types";
+import { errorMessage } from "@/lib/utils";
 
 /**
  * Hot Foods entries are saved on the device first and uploaded behind the
@@ -216,7 +217,7 @@ export async function kick() {
           setTimeout(kick, backoffUntil - Date.now() + 50);
           break;
         }
-        await put({ ...next, status: "failed", attempts: next.attempts + 1, error: e instanceof Error ? e.message : "The server refused this entry." });
+        await put({ ...next, status: "failed", attempts: next.attempts + 1, error: errorMessage(e, "The server refused this entry.") });
       }
     }
   } finally {

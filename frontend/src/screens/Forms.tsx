@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ExternalLink, Lock, Search, Star } from "lucide-react";
+import { ArrowRight, ExternalLink, Lock, Star } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
-import { Input } from "@/components/ui/input";
+import { Tag } from "@/components/ui/badge";
+import { Chip } from "@/components/ui/chip";
+import { SearchInput } from "@/components/ui/input";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { canOpenForm, formIcon, formLinkIcon, formNeeds, isInternalForm } from "@/lib/formIcons";
 import { formsApi, useForms } from "@/lib/queries";
 import type { FormCatalog, FormCategory, FormLink } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { useSearchParam } from "@/lib/useSearchParam";
+import { cn, errorMessage } from "@/lib/utils";
 
 /**
  * The home screen: every form Lantern staff fill out, grouped the way the
@@ -24,14 +27,7 @@ export function FormsPage() {
   const [q, setQ] = useState("");
   // In the URL (?category=…) so the collapsed sidebar's category icons can link
   // straight to one group.
-  const [params, setParams] = useSearchParams();
-  const asked = params.get("category");
-  const setOnly = (id: string | null) => {
-    const next = new URLSearchParams(params);
-    if (id) next.set("category", id);
-    else next.delete("category");
-    setParams(next, { replace: true });
-  };
+  const [asked, setOnly] = useSearchParam("category");
   const toggleFavorite = useFavoriteToggle();
   const searchRef = useRef<HTMLInputElement>(null);
   const first = user?.name.split(" ")[0];
@@ -61,21 +57,7 @@ export function FormsPage() {
   const searching = q.trim() !== "";
   const total = shown.reduce((n, c) => n + c.forms.length, 0);
 
-  const search = (
-    <div className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <Input
-        ref={searchRef}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search forms"
-        aria-label="Search forms"
-        className="min-h-[44px] pl-9 md:min-h-9"
-        type="search"
-        enterKeyHint="search"
-      />
-    </div>
-  );
+  const search = <SearchInput ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search forms" aria-label="Search forms" />;
 
   const chips = categories.length > 1 && (
     <div className="chiprow -mx-4 flex gap-1.5 px-4 md:mx-0 md:flex-wrap md:px-0">
@@ -195,7 +177,7 @@ function useFavoriteToggle() {
       await (isFavorite ? formsApi.unfavorite(form.id) : formsApi.favorite(form.id));
     } catch (e) {
       if (before) qc.setQueryData(key, before);
-      toast(e instanceof Error ? e.message : "Couldn't save that favorite.", "error");
+      toast(errorMessage(e, "Couldn't save that favorite."), "error");
     }
   };
 }
@@ -219,9 +201,7 @@ function FormCard({ form, category, favorite, onToggleFavorite }: {
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={cn("text-[14.5px] font-bold leading-snug", locked ? "text-muted" : "text-ink")}>{form.title}</span>
-          {form.badge && (
-            <span className="rounded-pill bg-status-amberBg px-2 py-px text-[10.5px] font-bold text-status-amberText">{form.badge}</span>
-          )}
+          {form.badge && <Tag>{form.badge}</Tag>}
         </span>
         {locked ? (
           <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">{formNeeds(form.url)?.hint}</span>
@@ -270,21 +250,5 @@ function Section({ title, icon: Icon, children }: { title: string; icon: typeof 
       </h2>
       <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">{children}</ul>
     </section>
-  );
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex min-h-[36px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border px-3 text-[12.5px] transition-colors md:min-h-[32px]",
-        active ? "border-navy bg-navsel font-bold text-accent dark:text-white" : "border-hairline bg-surface font-medium text-ink hover:bg-navsel/60"
-      )}
-    >
-      {children}
-    </button>
   );
 }

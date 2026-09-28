@@ -1,9 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, UtensilsCrossed, Webhook } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
+import { Tag } from "@/components/ui/badge";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { useSites, useUsers } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 
 /**
  * The phone's last tab: Admin and Profile, which the bottom bar has no room
@@ -75,7 +75,7 @@ function Row({ to, icon: Icon, label, meta, badge }: { to: string; icon: typeof 
       <Icon className="h-[18px] w-[18px] shrink-0 text-muted" />
       <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{label}</span>
       {meta !== undefined && <span className="shrink-0 text-[12px] tabular text-muted">{meta}</span>}
-      {badge && <span className={cn("shrink-0 rounded-pill bg-status-amberBg px-2 py-px text-[10.5px] font-bold text-status-amberText")}>{badge}</span>}
+      {badge && <Tag className="shrink-0">{badge}</Tag>}
       <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
     </NavLink>
   );

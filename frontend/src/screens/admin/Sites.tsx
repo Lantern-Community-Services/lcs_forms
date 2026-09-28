@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import { useSites } from "@/lib/queries";
 import { DEFAULT_GEOFENCE_METERS } from "@/lib/location";
 import type { Site } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 type Draft = {
   id?: string; name: string; code: string; entityName: string; siteType: string; address: string; attentionHours: string; active: boolean;
@@ -59,7 +60,7 @@ export function AdminSites() {
       setDraft(null);
       await qc.invalidateQueries({ queryKey: ["roster"] });
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     }
   }
 
@@ -167,7 +168,7 @@ function LocationFields({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft
       set(r.latitude, r.longitude);
       toast(`Found: ${r.label}`);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Couldn't look that address up.", "error");
+      toast(errorMessage(e, "Couldn't look that address up."), "error");
     } finally {
       setBusy(null);
     }

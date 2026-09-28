@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { Check } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useIsPhone } from "@/lib/useMediaQuery";
+import { readStorage, writeStorage } from "@/lib/storage";
 
 /**
  * Sign-in is Microsoft Entra ID only — one button, no form. The backend owns
@@ -58,12 +59,8 @@ export function SignInPage() {
   const [staySignedIn, setStaySignedIn] = useState(true);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STAY_SIGNED_IN_KEY);
-      if (stored !== null) setStaySignedIn(stored === "1");
-    } catch {
-      // A browser refusing storage is no reason to fail the front door.
-    }
+    const stored = readStorage(STAY_SIGNED_IN_KEY);
+    if (stored !== null) setStaySignedIn(stored === "1");
   }, []);
 
   // The backend bounces outcomes back here: ?error= for something that went
@@ -95,11 +92,7 @@ export function SignInPage() {
   function toggleStaySignedIn() {
     const next = !staySignedIn;
     setStaySignedIn(next);
-    try {
-      localStorage.setItem(STAY_SIGNED_IN_KEY, next ? "1" : "0");
-    } catch {
-      // See above.
-    }
+    writeStorage(STAY_SIGNED_IN_KEY, next ? "1" : "0");
   }
 
   function start(selectAccount = false) {

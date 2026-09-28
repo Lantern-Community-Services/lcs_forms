@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { hotFoodsApi, useHotFoodConfig } from "@/lib/queries";
 import type { HotFoodConfig } from "@/lib/types";
 import { MealTypesEditor } from "@/screens/hotfoods/ManageItems";
+import { errorMessage } from "@/lib/utils";
 
 /**
  * Admin → Hot Foods: the form's settings for every site at once — the meal
@@ -59,7 +60,7 @@ function Limits({ config }: { config: HotFoodConfig }) {
       await qc.invalidateQueries({ queryKey: ["hotfoods"] });
       toast("Saved. Record uses the new limits from the next resident.");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     } finally {
       setSaving(false);
     }

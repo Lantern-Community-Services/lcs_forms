@@ -1,45 +1,30 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ChevronLeft, PenLine } from "lucide-react";
-import { Page } from "@/components/shell/AppShell";
+import { useParams } from "react-router-dom";
+import { PenLine } from "lucide-react";
+import { DesktopBackLink, Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { AttendanceDetailExport } from "@/components/attendance/AttendanceExport";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogBody, DialogContent, DialogHeader } from "@/components/ui/dialog";
-import { Sheet, SheetBody, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useAttendanceDetail } from "@/lib/queries";
-import { useIsPhone } from "@/lib/useMediaQuery";
-import { formatDateTime } from "@/lib/utils";
+import { errorMessage, formatDateTime } from "@/lib/utils";
 import type { AttendanceEntry } from "@/lib/types";
 
 export function AttendanceDetailPage() {
   const { id } = useParams();
-  const phone = useIsPhone();
   const { data: e, isLoading, isError, error } = useAttendanceDetail(id);
   const [viewing, setViewing] = useState<AttendanceEntry | null>(null);
 
   if (isLoading) return <LoadingState />;
-  if (isError || !e) return <EmptyState title="Could not load attendance" hint={error instanceof Error ? error.message : "The entry may be unavailable."} />;
+  if (isError || !e) return <EmptyState title="Could not load attendance" hint={errorMessage(error, "The entry may be unavailable.")} />;
   const signedCount = e.entries.filter((en) => en.signature).length;
-
-  const body = viewing && (
-    <div className="flex flex-col items-center gap-2">
-      <img src={viewing.signature ?? undefined} alt={`${viewing.tenantName}'s signature`} className="w-full rounded-card border border-hairline bg-white" />
-      <p className="text-micro text-muted">Signed {formatDateTime(viewing.signedAt)}</p>
-    </div>
-  );
 
   return (
     <div className="flex min-h-full flex-col">
       <PhoneHeader title={e.title} subtitle={e.site.name} back={{ to: "/roster/attendance", label: "Attendance" }} />
       <Page className="w-full max-w-[720px]">
-        <Link
-          to="/roster/attendance"
-          className="-ml-2 mb-2 hidden min-h-[36px] items-center gap-1 px-2 text-[13px] font-semibold text-accent dark:text-white md:inline-flex"
-        >
-          <ChevronLeft className="h-4 w-4" /> Attendance
-        </Link>
+        <DesktopBackLink to="/roster/attendance">Attendance</DesktopBackLink>
 
         <Card className="mb-4 p-5">
           <h1 className="hidden text-[21px] font-heading font-extrabold text-ink md:block">{e.title}</h1>
@@ -83,21 +68,14 @@ export function AttendanceDetailPage() {
         </Card>
       </Page>
 
-      {phone ? (
-        <Sheet open={viewing !== null} onOpenChange={(o) => !o && setViewing(null)}>
-          <SheetContent aria-describedby={undefined}>
-            <SheetHeader title={viewing?.tenantName ?? ""} />
-            <SheetBody>{body}</SheetBody>
-          </SheetContent>
-        </Sheet>
-      ) : (
-        <Dialog open={viewing !== null} onOpenChange={(o) => !o && setViewing(null)}>
-          <DialogContent aria-describedby={undefined}>
-            <DialogHeader title={viewing?.tenantName ?? ""} />
-            <DialogBody>{body}</DialogBody>
-          </DialogContent>
-        </Dialog>
-      )}
+      <ResponsiveDialog open={viewing !== null} onOpenChange={(o) => !o && setViewing(null)} title={viewing?.tenantName ?? ""}>
+        {viewing && (
+          <div className="flex flex-col items-center gap-2">
+            <img src={viewing.signature ?? undefined} alt={`${viewing.tenantName}'s signature`} className="w-full rounded-card border border-hairline bg-white" />
+            <p className="text-micro text-muted">Signed {formatDateTime(viewing.signedAt)}</p>
+          </div>
+        )}
+      </ResponsiveDialog>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { API_BASE, ApiError } from "@/lib/api";
 import type { ImportSummary } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 async function upload(file: File, commit: boolean): Promise<ImportSummary> {
   const res = await fetch(`${API_BASE}/admin/import/tenants${commit ? "?commit=1" : ""}`, {
@@ -43,7 +44,7 @@ export function AdminImport() {
         await qc.invalidateQueries({ queryKey: ["roster"] });
       }
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Import failed.", "error");
+      toast(errorMessage(e, "Import failed."), "error");
     } finally {
       setBusy(false);
     }

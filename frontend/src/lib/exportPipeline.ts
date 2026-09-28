@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api";
+import { errorMessage } from "@/lib/utils";
 
 /**
  * Download/print plumbing shared by every "export what's on screen" feature
@@ -55,7 +56,7 @@ export function useFileExport(buildUrl: (format: ExportFormat, inline?: boolean)
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Export failed.", "error");
+      toast(errorMessage(e, "Export failed."), "error");
     } finally {
       setBusy(null);
     }
@@ -95,7 +96,7 @@ export function useFileExport(buildUrl: (format: ExportFormat, inline?: boolean)
       };
       document.body.appendChild(frame);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not prepare the printout.", "error");
+      toast(errorMessage(e, "Could not prepare the printout."), "error");
       setBusy(null);
     }
   }

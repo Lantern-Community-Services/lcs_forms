@@ -7,15 +7,16 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
-import { LEAN_MS, OUT_MS, DECK_CLASS, RoundAction, SwipeCard, prefersReducedMotion, type ExitDir, type Pose } from "@/components/ui/swipe-card";
+import { LEAN_MS, OUT_MS, DECK_CLASS, RoundAction, SwipeCard, SwipeNote, useDeckPose, type Pose } from "@/components/ui/swipe-card";
 import { RemoveDialog } from "@/components/roster/RemoveDialog";
+import { ResidentCardHeader } from "@/components/roster/ResidentCardHeader";
 import { useRosterActions } from "@/components/roster/useRosterActions";
 import { useQueryClient } from "@tanstack/react-query";
 import { rosterApi, useReviewQueue } from "@/lib/queries";
 import { useToast } from "@/components/ui/toast";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
-import { cn, formatDate, quietFor, relativeTime, tintFor } from "@/lib/utils";
+import { errorMessage, formatDate, quietFor, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
 /** One decision made in this session, newest last — what Undo walks back through. */
@@ -51,7 +52,7 @@ export function ReviewPage() {
 
   const [handled, setHandled] = useState<Set<string>>(new Set());
   const [skipped, setSkipped] = useState<string[]>([]);
-  const [pose, setPose] = useState<Pose | null>(null);
+  const { pose, setPose, playOut } = useDeckPose();
   const [confirming, setConfirming] = useState<Tenant | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0);
@@ -81,44 +82,13 @@ export function ReviewPage() {
   const canRemove = can("roster.archive");
   const hours = data?.attentionHours ?? 48;
 
-  const markHandled = (id: string, yes: boolean) =>
-    setHandled((h) => {
-      const next = new Set(h);
-      if (yes) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-  /**
-   * Play the top card off the screen, then run `after` (drop it from the queue,
-   * or send it to the back).
-   *
-   * A swipe arrives already past the threshold, so it flies straight out. A
-   * button or key press leans the card first — slide, tilt, stamp — so it reads
-   * exactly like the swipe it stands in for.
-   *
-   * The timers live here, not in the card: the refetch that follows a decision
-   * can drop the person from the data before the animation ends, unmounting
-   * the card — a timer inside it would be cancelled and leave the queue locked.
-   */
-  const playOut = (id: string, dir: ExitDir, after: () => void, swiped: boolean) => {
-    const out = () => {
-      setPose({ id, dir, stage: "out" });
-      setTimeout(() => {
-        after();
-        setPose(null);
-      }, OUT_MS);
-    };
-    if (swiped || prefersReducedMotion()) return out();
-    setPose({ id, dir, stage: "lean" });
-    setTimeout(out, LEAN_MS);
-  };
+  const markHandled = (id: string, yes: boolean) => setHandled((h) => toggled(h, id, yes));
 
   const doKeep = useCallback(
     async (t: Tenant, swiped = false) => {
       if (!canAct || pose) return;
       // Only the top card is on screen to animate; list rows just drop out.
-      if (t.id === queue[0]?.id) playOut(t.id, "right", () => markHandled(t.id, true), swiped);
+      if (t.id === queue[0]?.id) playOut(t.id, "right", swiped, () => markHandled(t.id, true));
       else markHandled(t.id, true);
       const decision: Decision = { id: ++decisionSeq, kind: "keep", tenant: t };
       const ok = await keep(t, { onUndo: () => void undoRef.current(decision) });
@@ -158,7 +128,7 @@ export function ReviewPage() {
     setBusy(true);
     setConfirming(null);
     // Already leaning — carry straight on out.
-    if (t.id === queue[0]?.id) playOut(t.id, "left", () => markHandled(t.id, true), true);
+    if (t.id === queue[0]?.id) playOut(t.id, "left", true, () => markHandled(t.id, true));
     else markHandled(t.id, true);
     const decision: Decision = { id: ++decisionSeq, kind: "remove", tenant: t };
     const ok = await remove(t, reason, note, { onUndo: () => void undoRef.current(decision) });
@@ -182,7 +152,7 @@ export function ReviewPage() {
       if (pinned === t.id) setPinned(null);
       const toBack = () => setSkipped((s) => [...s.filter((id) => id !== t.id), t.id]);
       if (t.id !== queue[0]?.id || queue.length === 1) return toBack();
-      playOut(t.id, "down", toBack, swiped);
+      playOut(t.id, "down", swiped, toBack);
     },
     [pose, queue, pinned]
   );
@@ -208,7 +178,7 @@ export function ReviewPage() {
       await qc.invalidateQueries({ queryKey: ["roster"] });
       toast(`Undid ${VERB[d.kind]} — ${d.tenant.displayName} is back.`, "info");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Couldn't undo that.", "error");
+      toast(errorMessage(e, "Couldn't undo that."), "error");
     } finally {
       setUndoing(false);
     }
@@ -425,26 +395,11 @@ function ReviewCard({
       onSwipeRight={onSwipeRight}
       onSwipeDown={onSwipeDown}
     >
-      <Avatar name={t.displayName} color={tintFor(t.id)} size={84} className="swipe-avatar" />
-      <h2 className="swipe-name mt-4 text-[24px] font-heading font-extrabold leading-tight text-ink">{t.displayName}</h2>
-      {t.preferredName && (
-        <p className="mt-0.5 text-[13px] text-muted">
-          {t.firstName} {t.lastName}
-        </p>
-      )}
-      <p className="mt-2 text-[15px] font-semibold text-ink">
-        {[t.unit ? `Unit ${t.unit}` : "No unit", showSite && t.site?.name].filter(Boolean).join(" · ")}
-      </p>
-
-      <div className="swipe-note mt-5 w-full rounded-card bg-status-amberBg px-4 py-3 text-left">
-        <p className="flex items-center gap-2 text-[14px] font-bold text-status-amberText">
-          <Clock3 className="h-4 w-4" /> Quiet for {quietFor(t.hoursQuiet)}
-        </p>
-        <p className="mt-1 text-[12.5px] text-status-amberText/90">
-          {lastSeen.label}
-          {lastSeen.detail ? ` · ${lastSeen.detail}` : ""}
-        </p>
-      </div>
+      <ResidentCardHeader tenant={t} showSite={showSite} />
+      <SwipeNote tone="bg-status-amberBg text-status-amberText" icon={<Clock3 className="h-4 w-4" />} title={`Quiet for ${quietFor(t.hoursQuiet)}`}>
+        {lastSeen.label}
+        {lastSeen.detail ? ` · ${lastSeen.detail}` : ""}
+      </SwipeNote>
 
       <span className="flex-1" />
       <Link

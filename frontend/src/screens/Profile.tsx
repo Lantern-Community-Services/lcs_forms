@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { usePrefs, type ThemeName } from "@/lib/prefs";
 import type { LandingPage } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 const AVATAR_COLORS = [
   "#1d4ed8", "#7c3aed", "#be123c", "#c2410c",
@@ -48,7 +49,7 @@ export function ProfilePage() {
       await refresh();
       toast("Profile color saved.");
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Could not save your profile color.", "error");
+      toast(errorMessage(error, "Could not save your profile color."), "error");
     }
   }
 
@@ -64,7 +65,7 @@ export function ProfilePage() {
     } catch (error) {
       rollback();
       setPreferenceStatus("error");
-      toast(error instanceof Error ? error.message : "Could not save preferences.", "error");
+      toast(errorMessage(error, "Could not save preferences."), "error");
     }
   }
 
@@ -74,6 +75,15 @@ export function ProfilePage() {
     setLanding(next);
     void savePreferences({ defaultLandingPage: next }, () => setLanding(previous));
   }
+
+  const lightSwatch = (option: (typeof THEMES)[number]) => (
+    <ThemeSwatch
+      key={option.id}
+      {...option}
+      selected={!dark && theme === option.id}
+      onSelect={() => { setTheme(option.id); setDark(false); }}
+    />
+  );
 
   const landingOptions = [
     { value: "/forms", label: "Forms" },
@@ -160,48 +170,9 @@ export function ProfilePage() {
         <p className="kicker">Appearance</p>
         <p className="mt-1 text-[13px] text-muted">Themes change the application chrome and accent colors only. Your profile color stays personal.</p>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {THEMES.slice(0, 1).map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => { setTheme(option.id); setDark(false); }}
-              className={`rounded-card border p-2.5 text-left transition hover:border-strongline ${!dark && theme === option.id ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
-              aria-pressed={!dark && theme === option.id}
-            >
-              <span className="mb-2 flex h-7 overflow-hidden rounded-input border border-black/5" style={{ backgroundColor: option.sidebar }}>
-                <span className="w-2/5" style={{ backgroundColor: option.color }} />
-                <span className="flex-1 bg-white" />
-              </span>
-              <span className="block text-[12.5px] font-semibold text-ink">{option.label}</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setDark(true)}
-            className={`rounded-card border p-2.5 text-left transition hover:border-strongline ${dark ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
-            aria-pressed={dark}
-          >
-            <span className="mb-2 flex h-7 overflow-hidden rounded-input border border-white/10" style={{ backgroundColor: DARK_THEME.sidebar }}>
-              <span className="w-2/5" style={{ backgroundColor: DARK_THEME.color }} />
-              <span className="flex-1 bg-[#0f0f0f]" />
-            </span>
-            <span className="block text-[12.5px] font-semibold text-ink">{DARK_THEME.label}</span>
-          </button>
-          {THEMES.slice(1).map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => { setTheme(option.id); setDark(false); }}
-              className={`rounded-card border p-2.5 text-left transition hover:border-strongline ${!dark && theme === option.id ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
-              aria-pressed={!dark && theme === option.id}
-            >
-              <span className="mb-2 flex h-7 overflow-hidden rounded-input border border-black/5" style={{ backgroundColor: option.sidebar }}>
-                <span className="w-2/5" style={{ backgroundColor: option.color }} />
-                <span className="flex-1 bg-white" />
-              </span>
-              <span className="block text-[12.5px] font-semibold text-ink">{option.label}</span>
-            </button>
-          ))}
+          {THEMES.slice(0, 1).map(lightSwatch)}
+          <ThemeSwatch {...DARK_THEME} dark selected={dark} onSelect={() => setDark(true)} />
+          {THEMES.slice(1).map(lightSwatch)}
         </div>
         <div
           className={`mt-3 flex items-center justify-between rounded-card border p-3 ${!dark && theme === "custom" ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
@@ -240,5 +211,31 @@ export function ProfilePage() {
       </div>
 
     </Page>
+  );
+}
+
+/** One theme to pick: a thumbnail of its sidebar, accent and page, and its name. */
+function ThemeSwatch({ label, color, sidebar, dark = false, selected, onSelect }: {
+  label: string;
+  color: string;
+  sidebar: string;
+  /** Drawn on a dark page with a light hairline, instead of a white page. */
+  dark?: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`rounded-card border p-2.5 text-left transition hover:border-strongline ${selected ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
+      aria-pressed={selected}
+    >
+      <span className={`mb-2 flex h-7 overflow-hidden rounded-input border ${dark ? "border-white/10" : "border-black/5"}`} style={{ backgroundColor: sidebar }}>
+        <span className="w-2/5" style={{ backgroundColor: color }} />
+        <span className={`flex-1 ${dark ? "bg-[#0f0f0f]" : "bg-white"}`} />
+      </span>
+      <span className="block text-[12.5px] font-semibold text-ink">{label}</span>
+    </button>
   );
 }

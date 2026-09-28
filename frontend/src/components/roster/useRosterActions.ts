@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { rosterApi } from "@/lib/queries";
 import { useToast } from "@/components/ui/toast";
 import type { Tenant } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 /**
  * Remove / keep / restore with the toasts that go with them, shared by the
@@ -18,7 +19,7 @@ export function useRosterActions() {
       await rosterApi.restore(t.id);
       if (!quiet) toast(`${t.displayName} is back on the roster.`);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not restore.", "error");
+      toast(errorMessage(e, "Could not restore."), "error");
     } finally {
       await refresh();
     }
@@ -33,7 +34,7 @@ export function useRosterActions() {
       });
       return true;
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not remove.", "error");
+      toast(errorMessage(e, "Could not remove."), "error");
       return false;
     } finally {
       await refresh();
@@ -46,7 +47,7 @@ export function useRosterActions() {
       toast(`Kept ${t.displayName}.`, "info", opts.onUndo ? { action: { label: "Undo", onClick: opts.onUndo }, duration: 5000 } : {});
       return true;
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not update.", "error");
+      toast(errorMessage(e, "Could not update."), "error");
       return false;
     } finally {
       await refresh();

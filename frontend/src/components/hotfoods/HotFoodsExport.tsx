@@ -1,7 +1,7 @@
-import { Download, FileSpreadsheet, FileText, Loader2, MoreHorizontal, Printer, Sheet as SheetIcon } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Loader2, Printer, Sheet as SheetIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useFileExport, type ExportFormat } from "@/lib/exportPipeline";
+import { ExportButtons, ExportMenu, type ExportOption } from "@/components/ui/export-menu";
+import { useFileExport } from "@/lib/exportPipeline";
 import { API_BASE } from "@/lib/api";
 import { hotFoodParams, type HotFoodView } from "@/lib/queries";
 
@@ -13,7 +13,7 @@ import { hotFoodParams, type HotFoodView } from "@/lib/queries";
 
 type Kind = "entries" | "report";
 
-const OPTIONS: Record<Kind, { format: ExportFormat; Icon: typeof FileText; label: string; hint: string }[]> = {
+const OPTIONS: Record<Kind, ExportOption[]> = {
   entries: [
     { format: "csv", Icon: SheetIcon, label: "CSV", hint: "Plain spreadsheet data" },
     { format: "xlsx", Icon: FileSpreadsheet, label: "Excel", hint: "Formatted table with filters" },
@@ -25,69 +25,22 @@ const OPTIONS: Record<Kind, { format: ExportFormat; Icon: typeof FileText; label
   ],
 };
 
+const LABEL: Record<Kind, string> = { entries: "Export what's shown", report: "Export this report" };
+
 function useHotFoodsExport(kind: Kind, view: HotFoodView) {
   return useFileExport((format, inline) => `${API_BASE}/hot-foods/${kind === "report" ? "report/export" : "export"}?${hotFoodParams(view, { format, ...(inline ? { inline: "1" } : {}) })}`);
 }
 
-function Items({ kind, download, busy }: { kind: Kind; download: (f: ExportFormat) => void; busy: string | null }) {
-  return (
-    <>
-      {OPTIONS[kind].map(({ format, Icon, label, hint }) => (
-        <DropdownMenuItem key={format} onSelect={() => download(format)} disabled={busy !== null} className="min-h-[44px] md:min-h-0">
-          {busy === format ? <Loader2 className="h-4 w-4 animate-spin text-muted" /> : <Icon className="h-4 w-4 text-muted" />}
-          <span className="flex-1">
-            <span className="block">{label}</span>
-            <span className="block text-micro text-muted">{hint}</span>
-          </span>
-        </DropdownMenuItem>
-      ))}
-    </>
-  );
-}
-
 /** Desktop: Print and an Export menu, side by side. */
 export function HotFoodsExportButtons({ kind, view, disabled }: { kind: Kind; view: HotFoodView; disabled?: boolean }) {
-  const { download, print, busy } = useHotFoodsExport(kind, view);
-  return (
-    <>
-      <Button variant="secondary" onClick={() => void print()} disabled={disabled || busy !== null}>
-        {busy === "print" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Print
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="secondary" disabled={disabled}>
-            {busy && busy !== "print" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[250px]">
-          <DropdownMenuLabel>{kind === "report" ? "Export this report" : "Export what's shown"}</DropdownMenuLabel>
-          <Items kind={kind} download={download} busy={busy} />
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
-  );
+  const exporter = useHotFoodsExport(kind, view);
+  return <ExportButtons exporter={exporter} label={LABEL[kind]} options={OPTIONS[kind]} disabled={disabled} menuClassName="w-[250px]" />;
 }
 
 /** Phone: one "…" button holding Print and the formats. */
 export function HotFoodsExportMenu({ kind, view, disabled }: { kind: Kind; view: HotFoodView; disabled?: boolean }) {
-  const { download, print, busy } = useHotFoodsExport(kind, view);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="secondary" disabled={disabled} className="min-h-[44px] w-11 px-0" aria-label="Print or export">
-          {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <MoreHorizontal className="h-5 w-5" />}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[250px]">
-        <DropdownMenuItem onSelect={() => void print()} disabled={busy !== null} className="min-h-[44px]">
-          <Printer className="h-4 w-4 text-muted" /> Print
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>{kind === "report" ? "Export this report" : "Export what's shown"}</DropdownMenuLabel>
-        <Items kind={kind} download={download} busy={busy} />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  const exporter = useHotFoodsExport(kind, view);
+  return <ExportMenu exporter={exporter} label={LABEL[kind]} options={OPTIONS[kind]} disabled={disabled} menuClassName="w-[250px]" />;
 }
 
 /** One entry's signed receipt. */

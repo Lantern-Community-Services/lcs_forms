@@ -29,6 +29,35 @@ export const prefersReducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /**
+ * The top card's pose, owned by the deck's parent, and `playOut` to send a
+ * card off the screen. A swipe arrives already past the threshold, so it flies
+ * straight out; a button or key press leans the card first — slide, tilt,
+ * stamp — so it reads exactly like the swipe it stands in for. `after` runs
+ * once the card is gone (drop it from the queue, send it to the back).
+ *
+ * The timers live here in the parent, not in the card: the refetch that
+ * follows a decision can drop the person from the data before the animation
+ * ends, unmounting the card — a timer inside it would be cancelled and leave
+ * the deck locked.
+ */
+export function useDeckPose() {
+  const [pose, setPose] = useState<Pose | null>(null);
+  function playOut(id: string, dir: ExitDir, swiped: boolean, after?: () => void) {
+    const out = () => {
+      setPose({ id, dir, stage: "out" });
+      setTimeout(() => {
+        after?.();
+        setPose(null);
+      }, OUT_MS);
+    };
+    if (swiped || prefersReducedMotion()) return out();
+    setPose({ id, dir, stage: "lean" });
+    setTimeout(out, LEAN_MS);
+  }
+  return { pose, setPose, playOut };
+}
+
+/**
  * The deck the cards stack in. 392px tall wherever there is room; a caller
  * that has to fit a short screen can let it shrink, and `swipe-deck` (a size
  * container, see index.css) tightens the card to match.
@@ -183,6 +212,16 @@ export function SwipeCard({
       >
         {children}
       </div>
+    </div>
+  );
+}
+
+/** The coloured box under the name on a card: where the person stands. `tone` gives its background and text colour. */
+export function SwipeNote({ tone, icon, title, children }: { tone: string; icon: React.ReactNode; title: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className={cn("swipe-note mt-5 w-full rounded-card px-4 py-3 text-left", tone)}>
+      <p className="flex items-center gap-2 text-[14px] font-bold">{icon} {title}</p>
+      <p className="mt-1 text-[12.5px] opacity-90">{children}</p>
     </div>
   );
 }

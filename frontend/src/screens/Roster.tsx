@@ -1,13 +1,13 @@
 import { Fragment, memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Search, Users } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Users } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
-import { TenantStatusBadge } from "@/components/ui/badge";
+import { CountBadge, TenantStatusBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/misc";
 import { AddResident } from "@/components/roster/AddResident";
 import { RosterExportButtons, RosterExportMenu } from "@/components/roster/RosterExport";
@@ -17,7 +17,9 @@ import { useRosterActions } from "@/components/roster/useRosterActions";
 import { useTenants } from "@/lib/queries";
 import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
-import { cn, formatDate, relativeTime, tintFor } from "@/lib/utils";
+import { readStoredJson, writeStorage } from "@/lib/storage";
+import { useSearchParam } from "@/lib/useSearchParam";
+import { cn, formatDate, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
 type Tab = "active" | "attention" | "archived";
@@ -102,30 +104,11 @@ function RosterSkeleton() {
 /** Which site groups are folded, remembered per device. */
 function useCollapsedSites() {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try {
-      const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
-      return new Set(Array.isArray(raw) ? raw : []);
-    } catch {
-      return new Set();
-    }
+    const raw = readStoredJson(COLLAPSED_KEY);
+    return new Set(Array.isArray(raw) ? raw : []);
   });
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
-    } catch {
-      // Not worth failing over.
-    }
-  }, [collapsed]);
-  const toggle = useCallback(
-    (siteId: string) =>
-      setCollapsed((c) => {
-        const next = new Set(c);
-        if (next.has(siteId)) next.delete(siteId);
-        else next.add(siteId);
-        return next;
-      }),
-    []
-  );
+  useEffect(() => writeStorage(COLLAPSED_KEY, JSON.stringify([...collapsed])), [collapsed]);
+  const toggle = useCallback((siteId: string) => setCollapsed((c) => toggled(c, siteId)), []);
   return { collapsed, setCollapsed, toggle };
 }
 
@@ -140,8 +123,8 @@ export function RosterPage() {
   const { can } = useAuth();
   const { codes, setCodes, selected, sites, param, isLoading: sitesLoading } = useSiteSelection();
   const multiSite = selected.length > 1;
-  const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as Tab) || "active";
+  const [tabParam, setTab] = useSearchParam("tab");
+  const tab = (tabParam as Tab) || "active";
   const [q, setQ] = useState("");
   const query = useDeferredValue(q.trim().toLowerCase());
   const [adding, setAdding] = useState(false);
@@ -209,12 +192,6 @@ export function RosterPage() {
   const onRoster = selected.reduce((n, s) => n + s.activeCount, 0);
   const attention = tab === "archived" ? selected.reduce((n, s) => n + s.attentionCount, 0) : all.filter((t) => t.needsAttention).length;
 
-  function setTab(next: Tab) {
-    const p = new URLSearchParams(params);
-    p.set("tab", next);
-    setParams(p, { replace: true });
-  }
-
   const canAdd = can("roster.edit") && selected.length > 0;
   // Exports and printouts are of exactly this: selection, tab and search.
   const exportView = { site: param, status: tab, q };
@@ -222,17 +199,7 @@ export function RosterPage() {
 
   const controls = (
     <>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name or unit"
-          className="min-h-[44px] pl-9 md:min-h-9"
-          type="search"
-          enterKeyHint="search"
-        />
-      </div>
+      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or unit" />
       <div className="grid grid-cols-3 rounded-input bg-navsel/60 p-0.5" role="tablist">
         {(
           [
@@ -454,9 +421,7 @@ const SiteHeading = memo(function SiteHeading({
       >
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", folded && "-rotate-90")} />
         <span className="min-w-0 flex-1 truncate text-[12px] font-bold uppercase tracking-[0.04em] text-muted">{name}</span>
-        {attention > 0 && (
-          <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 text-micro font-bold tabular text-status-amberText">{attention}</span>
-        )}
+        {attention > 0 && <CountBadge count={attention} className="shrink-0 py-0" />}
         <span className="shrink-0 text-micro tabular text-muted">{count}</span>
       </button>
     </li>

@@ -9,6 +9,7 @@ import { DateRangeBar, rangeLabel, useDateRange } from "@/components/hotfoods/Da
 import { HotFoodsExportButtons, HotFoodsExportMenu } from "@/components/hotfoods/HotFoodsExport";
 import { useHotFoodReport, type HotFoodView } from "@/lib/queries";
 import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
+import { errorMessage } from "@/lib/utils";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
@@ -49,7 +50,7 @@ export function HotFoodsReportsPage() {
         {sitesLoading || isLoading ? (
           <LoadingState label="Building the report…" />
         ) : isError ? (
-          <EmptyState title="Could not build the report" hint={error instanceof Error ? error.message : "Try again in a moment."} />
+          <EmptyState title="Could not build the report" hint={errorMessage(error, "Try again in a moment.")} />
         ) : selected.length === 0 ? (
           <EmptyState title="No sites assigned" hint="You aren't assigned to any sites yet." />
         ) : !r ? null : (

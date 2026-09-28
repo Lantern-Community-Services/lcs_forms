@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ClipboardList, History, RotateCcw } from "lucide-react";
-import { Page } from "@/components/shell/AppShell";
+import { useParams } from "react-router-dom";
+import { AlertTriangle, CheckCircle2, ClipboardList, History, RotateCcw } from "lucide-react";
+import { DesktopBackLink, Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { useRosterActions } from "@/components/roster/useRosterActions";
 import { rosterApi, useRosterMutation, useTenant } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
-import { formatDate, formatDateInput, formatDateTime, quietFor, relativeTime, tintFor } from "@/lib/utils";
+import { errorMessage, formatDate, formatDateInput, formatDateTime, quietFor, relativeTime, tintFor } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
 type FormState = { unit: string; firstName: string; lastName: string; preferredName: string; moveInDate: string; notes: string; externalId: string };
@@ -84,7 +84,7 @@ export function TenantDetailPage() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict((e.details as { current: Tenant }).current);
-      } else toast(e instanceof Error ? e.message : "Could not save.", "error");
+      } else toast(errorMessage(e, "Could not save."), "error");
     }
   }
 
@@ -94,12 +94,7 @@ export function TenantDetailPage() {
     <div className="flex min-h-full flex-col">
       <PhoneHeader title={t.displayName} subtitle={where} back={{ to: "/roster", label: "Roster" }} />
       <Page className="w-full max-w-[880px]">
-        <Link
-          to="/roster"
-          className="-ml-2 mb-2 hidden min-h-[36px] items-center gap-1 px-2 text-[13px] font-semibold text-accent dark:text-white md:inline-flex"
-        >
-          <ChevronLeft className="h-4 w-4" /> {t.site?.name ?? "Roster"}
-        </Link>
+        <DesktopBackLink to="/roster">{t.site?.name ?? "Roster"}</DesktopBackLink>
 
         <Card className="page-list-item-enter mb-4 p-5">
           <div className="flex flex-wrap items-center gap-4">

@@ -3,6 +3,7 @@ import { ArrowRight, Layers, UserMinus, UserPlus, Users } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
+import { CountBadge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/ui/misc";
 import { useDashboard } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
@@ -74,7 +75,7 @@ export function DashboardPage() {
                         <span className="text-right text-[13.5px] tabular text-ink">{s.activeCount}</span>
                         <span className="text-right">
                           {s.attentionCount > 0 ? (
-                            <span className="rounded-pill bg-status-amberBg px-2 py-0.5 text-micro font-bold tabular text-status-amberText">{s.attentionCount}</span>
+                            <CountBadge count={s.attentionCount} className="px-2" />
                           ) : (
                             <span className="text-[13px] text-muted">—</span>
                           )}

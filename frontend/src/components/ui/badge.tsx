@@ -46,3 +46,32 @@ export function TenantStatusBadge({ status, needsAttention }: { status: "active"
 export function RedBadge({ children }: { children: React.ReactNode }) {
   return <ToneBadge tone="red" dot={false}>{children}</ToneBadge>;
 }
+
+/**
+ * The amber count of things waiting on someone: people to review, access
+ * requests. Past `max` it reads "999+" so a runaway queue can't stretch a nav
+ * row. Compact rows pass `py-0`.
+ */
+export function CountBadge({ count, max, className, label }: { count: number; max?: number; className?: string; /** Spoken instead of the bare number. */ label?: string }) {
+  return (
+    <span aria-label={label} className={cn("rounded-pill bg-status-amberBg px-1.5 py-0.5 text-micro font-bold tabular text-status-amberText", className)}>
+      {max !== undefined && count > max ? `${max}+` : count}
+    </span>
+  );
+}
+
+const TAG_TONES = {
+  amber: "bg-status-amberBg text-status-amberText",
+  red: "bg-status-redBg text-status-redText",
+  neutral: "bg-subtle text-muted",
+  accent: "bg-navsel text-accent dark:text-white",
+} as const;
+
+/** A small label beside a title — "New", "Hidden", "Built in", "VOID". Smaller than ToneBadge, and no dot. */
+export function Tag({ tone = "amber", className, title, children }: { tone?: keyof typeof TAG_TONES; className?: string; title?: string; children: React.ReactNode }) {
+  return (
+    <span title={title} className={cn("inline-flex items-center gap-1 rounded-pill px-2 py-px text-[10.5px] font-bold", TAG_TONES[tone], className)}>
+      {children}
+    </span>
+  );
+}

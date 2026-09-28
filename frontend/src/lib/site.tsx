@@ -1,23 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, ChevronDown, MapPin, Search } from "lucide-react";
+import { Check, ChevronDown, MapPin } from "lucide-react";
 import { useSites } from "./queries";
+import { readStoredJson, writeStorage } from "./storage";
 import { useIsPhone } from "./useMediaQuery";
 import { cn } from "./utils";
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { CountBadge } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/input";
 import type { Site } from "./types";
 
 const KEY = "ln.sites";
 
 function remembered(): string[] | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : null;
-  } catch {
-    return null;
-  }
+  const parsed = readStoredJson(KEY);
+  return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : null;
 }
 
 /**
@@ -44,13 +42,9 @@ export function useSiteSelection() {
   if (sites.length && codes.length === sites.length) codes = [];
   const key = codes.join(",");
 
+  // If storage refuses, the URL still carries the choice.
   useEffect(() => {
-    if (!sites.length) return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(key ? key.split(",") : []));
-    } catch {
-      // Storage refused — the URL still carries the choice.
-    }
+    if (sites.length) writeStorage(KEY, JSON.stringify(key ? key.split(",") : []));
   }, [key, sites.length]);
 
   function setCodes(next: string[]) {
@@ -149,9 +143,7 @@ export function SitePicker({
     >
       <MapPin className="h-4 w-4 shrink-0 text-muted" />
       <span className="min-w-0 flex-1 truncate">{selectionLabel(codes, list)}</span>
-      {attention > 0 && (
-        <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 py-0.5 text-micro font-bold tabular text-status-amberText">{attention}</span>
-      )}
+      {attention > 0 && <CountBadge count={attention} className="shrink-0" />}
       <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
     </button>
   );
@@ -159,16 +151,15 @@ export function SitePicker({
   const body = (
     <>
       {list.length > 8 && (
-        <div className="relative mb-2">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Find a site"
-            autoFocus={!phone}
-            className="min-h-[40px] w-full rounded-input border border-hairline bg-surface pl-9 pr-3 text-[14px] text-ink placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy md:min-h-9"
-          />
-        </div>
+        <SearchInput
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Find a site"
+          aria-label="Find a site"
+          autoFocus={!phone}
+          wrapperClassName="mb-2"
+          className="min-h-[40px] md:min-h-9"
+        />
       )}
       <div role="listbox" aria-multiselectable="true" aria-label="Sites">
         {!q && (
@@ -249,9 +240,7 @@ function Row({
           {checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
         </span>
         <span className={cn("min-w-0 flex-1 truncate text-[13.5px] text-ink", strong && "font-bold")}>{label}</span>
-        {badge !== undefined && (
-          <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 text-micro font-bold tabular text-status-amberText">{badge}</span>
-        )}
+        {badge !== undefined && <CountBadge count={badge} className="shrink-0 py-0" />}
         {meta && <span className="shrink-0 text-micro tabular text-muted">{meta}</span>}
       </button>
     </div>

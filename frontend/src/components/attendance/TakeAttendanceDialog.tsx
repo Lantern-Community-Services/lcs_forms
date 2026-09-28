@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogBody, DialogContent, DialogHeader } from "@/components/ui/dialog";
-import { Sheet, SheetBody, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
@@ -11,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { useIsPhone } from "@/lib/useMediaQuery";
 import { attendanceApi, useAttendanceMutation, useSites, useTenants } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
+import { cn, errorMessage } from "@/lib/utils";
 import { RollCall, type PresentEntry } from "./RollCall";
 
 /**
@@ -87,7 +87,7 @@ export function TakeAttendanceDialog({
       onOpenChange(false);
       onSaved(event.id);
     } catch (failure) {
-      toast(failure instanceof Error ? failure.message : "Could not save attendance.", "error");
+      toast(errorMessage(failure, "Could not save attendance."), "error");
     }
   }
 
@@ -145,37 +145,29 @@ export function TakeAttendanceDialog({
         {isLoading || isPlaceholderData ? (
           <LoadingState label="Loading roster…" />
         ) : isError ? (
-          <EmptyState title="Could not load this roster" hint={error instanceof Error ? error.message : "Try again in a moment."} />
+          <EmptyState title="Could not load this roster" hint={errorMessage(error, "Try again in a moment.")} />
         ) : (
           <RollCall roster={roster} saving={create.isPending} collectSignatures={collectSignatures} onSave={save} />
         )}
       </>
     );
 
-  if (phone) {
-    return (
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        {/* Taller than the usual sheet, so the whole roll call fits without scrolling. */}
-        <SheetContent aria-describedby={undefined} className="max-h-[92dvh]">
-          <SheetHeader title="Take attendance" />
-          {/* Flex all the way down so the roll call can fill the sheet exactly;
-              the body only scrolls on a phone too short for the deck's floor. */}
-          <SheetBody className="flex flex-col">
-            {/* Clips a card flying off sideways so it never grows the scroll area (the roll call masks it vertically); bleeds over the body padding. */}
-            <div className="-mx-4 -my-3.5 flex min-h-0 flex-1 flex-col overflow-x-clip px-4 py-3.5">{body}</div>
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
-    );
-  }
+  // The phone's sheet is taller than usual, so the whole roll call fits without
+  // scrolling. Flex all the way down so the roll call can fill it exactly; the
+  // body only scrolls on a phone too short for the deck's floor.
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="flex max-h-[85vh] w-[min(640px,calc(100vw-2rem))] flex-col p-0">
-        <DialogHeader title="Take attendance" />
-        <DialogBody className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-thin">
-          <div className="-mx-6 -my-5 flex min-h-0 flex-1 flex-col overflow-x-clip px-6 py-5">{body}</div>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Take attendance"
+      sheetClassName="max-h-[92dvh]"
+      sheetBodyClassName="flex flex-col"
+      dialogClassName="flex max-h-[85vh] w-[min(640px,calc(100vw-2rem))] flex-col p-0"
+      dialogBodyClassName="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-thin"
+    >
+      {/* Clips a card flying off sideways so it never grows the scroll area (the
+          roll call masks it vertically); bleeds over the body padding. */}
+      <div className={cn("flex min-h-0 flex-1 flex-col overflow-x-clip", phone ? "-mx-4 -my-3.5 px-4 py-3.5" : "-mx-6 -my-5 px-6 py-5")}>{body}</div>
+    </ResponsiveDialog>
   );
 }

@@ -2,8 +2,10 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ExternalLink, EyeOff, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
+import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { CheckboxList } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
@@ -15,7 +17,7 @@ import { ApiError } from "@/lib/api";
 import { FORM_ICONS, formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
 import { formsApi, useForms, useRoles } from "@/lib/queries";
 import type { FormCategory, FormLink } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 type FormDraft = {
   id?: string;
@@ -170,17 +172,17 @@ export function AdminFormsCatalog() {
                     <div className="min-w-0 flex-1">
                       <p className={cn("flex flex-wrap items-center gap-x-2 text-[13.5px] font-semibold", f.active ? "text-ink" : "text-muted")}>
                         {f.title}
-                        {f.badge && <span className="rounded-pill bg-status-amberBg px-2 py-px text-[10.5px] font-bold text-status-amberText">{f.badge}</span>}
+                        {f.badge && <Tag>{f.badge}</Tag>}
                         {!f.active && (
-                          <span className="inline-flex items-center gap-1 rounded-pill bg-subtle px-2 py-px text-[10.5px] font-bold text-muted">
+                          <Tag tone="neutral">
                             <EyeOff className="h-3 w-3" /> Hidden
-                          </span>
+                          </Tag>
                         )}
-                        {isInternalForm(f.url) && <span className="rounded-pill bg-navsel px-2 py-px text-[10.5px] font-bold text-accent dark:text-white">Built in</span>}
+                        {isInternalForm(f.url) && <Tag tone="accent">Built in</Tag>}
                         {f.roles.length > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-pill bg-subtle px-2 py-px text-[10.5px] font-bold text-muted" title={`Only ${roleNames(f.roles)} (and Admins) can see this form`}>
+                          <Tag tone="neutral" title={`Only ${roleNames(f.roles)} (and Admins) can see this form`}>
                             <Lock className="h-3 w-3" /> {roleNames(f.roles)}
-                          </span>
+                          </Tag>
                         )}
                       </p>
                       <a href={isInternalForm(f.url) ? undefined : f.url} target="_blank" rel="noopener noreferrer" className="mt-0.5 flex items-center gap-1 truncate text-micro text-muted hover:text-ink">
@@ -268,18 +270,11 @@ export function AdminFormsCatalog() {
                     ? "Only these roles see the form, in the sidebar, on the Forms screen and in search. Admins always see every form."
                     : "Everyone. Tick roles to limit it to just those; Admins always see every form."}
                 >
-                  <div className="grid grid-cols-1 gap-1 rounded-input border border-hairline p-2 sm:grid-cols-2">
-                    {limitable.map((r) => (
-                      <label key={r.key} className="flex min-h-[32px] items-center gap-2 text-[13px] text-ink">
-                        <input
-                          type="checkbox"
-                          checked={form.roles.includes(r.key)}
-                          onChange={(e) => setForm({ ...form, roles: e.target.checked ? [...form.roles, r.key] : form.roles.filter((k) => k !== r.key) })}
-                        />
-                        {r.name}
-                      </label>
-                    ))}
-                  </div>
+                  <CheckboxList
+                    options={limitable.map((r) => ({ value: r.key, label: r.name }))}
+                    value={form.roles}
+                    onChange={(roles) => setForm({ ...form, roles })}
+                  />
                 </Field>
                 <label className="flex items-center gap-3 pt-1 text-[13.5px] text-ink">
                   <Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active })} />
@@ -351,7 +346,7 @@ function messageOf(e: unknown): string {
     const first = d?.formErrors?.[0] ?? Object.values(d?.fieldErrors ?? {}).flat()[0];
     if (first) return first;
   }
-  return e instanceof Error ? e.message : "Could not save.";
+  return errorMessage(e, "Could not save.");
 }
 
 function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {

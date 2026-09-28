@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { readStorage, writeStorage } from "./storage";
 
 export type ThemeName = "lantern" | "ocean" | "plum" | "forest" | "custom";
 
@@ -16,30 +17,18 @@ interface Prefs {
 const PrefsContext = createContext<Prefs | null>(null);
 
 function readBool(key: string, fallback: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
-  } catch {
-    return fallback;
-  }
+  const v = readStorage(key);
+  return v === null ? fallback : v === "1";
 }
 
 function readTheme(): ThemeName {
-  try {
-    const value = localStorage.getItem("ln.theme");
-    return value === "ocean" || value === "plum" || value === "forest" || value === "custom" ? value : "lantern";
-  } catch {
-    return "lantern";
-  }
+  const value = readStorage("ln.theme");
+  return value === "ocean" || value === "plum" || value === "forest" || value === "custom" ? value : "lantern";
 }
 
 function readColor(): string {
-  try {
-    const value = localStorage.getItem("ln.theme.custom") ?? "";
-    return /^#[0-9a-f]{6}$/i.test(value) ? value : "#2c3453";
-  } catch {
-    return "#2c3453";
-  }
+  const value = readStorage("ln.theme.custom") ?? "";
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : "#2c3453";
 }
 
 function rgb(hex: string): [number, number, number] {
@@ -60,13 +49,13 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    try { localStorage.setItem("ln.dark", dark ? "1" : "0"); } catch {}
+    writeStorage("ln.dark", dark ? "1" : "0");
   }, [dark]);
 
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
-    try { localStorage.setItem("ln.theme", theme); } catch {}
+    writeStorage("ln.theme", theme);
 
     if (theme !== "custom" || dark) {
       ["--c-brand", "--c-brand-600", "--c-brand-700", "--c-accent", "--c-sidebar", "--c-navsel", "--c-rowhover"].forEach((key) => root.style.removeProperty(key));
@@ -81,7 +70,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--c-sidebar", dark ? blend(color, [15, 19, 30], 0.20) : blend(color, [255, 255, 255], 0.08));
     root.style.setProperty("--c-navsel", dark ? blend(color, [15, 19, 30], 0.38) : blend(color, [255, 255, 255], 0.19));
     root.style.setProperty("--c-rowhover", dark ? blend(color, [23, 29, 43], 0.14) : blend(color, [255, 255, 255], 0.06));
-    try { localStorage.setItem("ln.theme.custom", customThemeColor); } catch {}
+    writeStorage("ln.theme.custom", customThemeColor);
   }, [theme, customThemeColor, dark]);
 
   // Browser chrome follows the app: Safari tints its status bar / toolbar and
@@ -102,7 +91,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   }, [dark, theme, customThemeColor]);
 
   useEffect(() => {
-    try { localStorage.setItem("ln.collapsed", collapsed ? "1" : "0"); } catch {}
+    writeStorage("ln.collapsed", collapsed ? "1" : "0");
   }, [collapsed]);
 
   return (

@@ -9,13 +9,15 @@ import { Field } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Avatar } from "@/components/ui/avatar";
 import { ToneBadge } from "@/components/ui/badge";
+import { CheckboxList } from "@/components/ui/checkbox";
+import { Chip } from "@/components/ui/chip";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRoles, useSites, useUsers } from "@/lib/queries";
-import { cn, relativeTime } from "@/lib/utils";
+import { errorMessage, relativeTime } from "@/lib/utils";
 import type { ManagedUser, UserStatus } from "@/lib/types";
 
 const STATUS_TONE: Record<UserStatus, "green" | "blue" | "amber" | "red" | "neutral"> = {
@@ -68,7 +70,7 @@ export function AdminPeople() {
       setDraft(null);
       await qc.invalidateQueries({ queryKey: ["admin", "users"] });
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save.", "error");
+      toast(errorMessage(e, "Could not save."), "error");
     }
   }
 
@@ -100,10 +102,9 @@ export function AdminPeople() {
       />
       <div className="mb-3 flex gap-2">
         {(["current", "all"] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={cn("rounded-pill border px-3 py-1 text-[12.5px] font-semibold", filter === f ? "border-navy bg-navsel text-accent dark:text-white" : "border-hairline text-muted")}>
+          <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>
             {f === "current" ? "Current" : "Including deactivated"}
-          </button>
+          </Chip>
         ))}
       </div>
       {isLoading ? <LoadingState /> : (
@@ -183,15 +184,12 @@ export function AdminPeople() {
                       No sites assigned — this person won't see any rosters.
                     </p>
                   )}
-                  <div className="grid max-h-[220px] grid-cols-1 gap-1 overflow-y-auto rounded-input border border-hairline p-2 sm:grid-cols-2">
-                    {(sites ?? []).map((s) => (
-                      <label key={s.id} className="flex min-h-[32px] items-center gap-2 text-[13px] text-ink">
-                        <input type="checkbox" checked={draft.siteIds.includes(s.id)}
-                          onChange={(e) => setDraft({ ...draft, siteIds: e.target.checked ? [...draft.siteIds, s.id] : draft.siteIds.filter((x) => x !== s.id) })} />
-                        {s.name}
-                      </label>
-                    ))}
-                  </div>
+                  <CheckboxList
+                    options={(sites ?? []).map((s) => ({ value: s.id, label: s.name }))}
+                    value={draft.siteIds}
+                    onChange={(siteIds) => setDraft({ ...draft, siteIds })}
+                    className="max-h-[220px] overflow-y-auto"
+                  />
                 </Field>
               )}
             </DialogBody>

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { CountBadge } from "@/components/ui/badge";
 
 /**
  * True inside a tabbed section (the Roster). The tab strip already names the
@@ -56,11 +57,7 @@ export function SectionTabsLayout({ title, tabs }: { title: string; tabs: Sectio
                 }
               >
                 {t.label}
-                {(t.count ?? 0) > 0 && (
-                  <span className="rounded-pill bg-status-amberBg px-1.5 py-0.5 text-micro font-bold tabular text-status-amberText">
-                    {t.count! > 999 ? "999+" : t.count}
-                  </span>
-                )}
+                {(t.count ?? 0) > 0 && <CountBadge count={t.count!} max={999} />}
               </NavLink>
             ))}
           </nav>

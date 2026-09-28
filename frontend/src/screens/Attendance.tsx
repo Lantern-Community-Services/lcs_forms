@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ClipboardCheck, Plus, Search } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight, ClipboardCheck, Plus } from "lucide-react";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { useInSectionTabs } from "@/components/shell/SectionTabs";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { EmptyState, LoadingState } from "@/components/ui/misc";
+import { EmptyState, LoadMore, LoadingState } from "@/components/ui/misc";
 import { AttendanceExportButtons, AttendanceExportMenu } from "@/components/attendance/AttendanceExport";
 import { TakeAttendanceDialog } from "@/components/attendance/TakeAttendanceDialog";
 import { useAttendanceList } from "@/lib/queries";
 import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
-import { relativeTime } from "@/lib/utils";
+import { useSearchParam } from "@/lib/useSearchParam";
+import { errorMessage, relativeTime, toggled } from "@/lib/utils";
 import type { AttendanceEvent } from "@/lib/types";
 
 type Tab = "record" | "past";
@@ -29,12 +30,12 @@ export function AttendancePage() {
   const { can } = useAuth();
   const navigate = useNavigate();
   const inTabs = useInSectionTabs();
-  const [params, setParams] = useSearchParams();
+  const [tabParam, setTab] = useSearchParam("tab");
   const { codes, setCodes, selected, param, isLoading: sitesLoading } = useSiteSelection();
   const [q, setQ] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [taking, setTaking] = useState(false);
-  const tab = (params.get("tab") as Tab) || "record";
+  const tab = (tabParam as Tab) || "record";
   const multiSite = selected.length > 1;
   const { data, isLoading, isError, error, hasNextPage, fetchNextPage, isFetchingNextPage } = useAttendanceList(
     param,
@@ -53,31 +54,15 @@ export function AttendancePage() {
   const exportView = { site: param, q: q.trim(), ids: hasSelection ? [...selectedIds] : undefined };
   const subtitle = selected.length ? selectionLabel(codes, selected) : undefined;
 
-  function setTab(next: Tab) {
-    const p = new URLSearchParams(params);
-    p.set("tab", next);
-    setParams(p, { replace: true });
-  }
-
   function toggleOne(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelectedIds((prev) => toggled(prev, id));
   }
 
   function toggleAll() {
     setSelectedIds((prev) => (prev.size === items.length && items.length > 0 ? new Set() : new Set(items.map((e) => e.id))));
   }
 
-  const search = (
-    <div className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or description" className="min-h-[44px] pl-9 md:min-h-9" type="search" enterKeyHint="search" />
-    </div>
-  );
+  const search = <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or description" />;
 
   const selectionBar = hasSelection && (
     <div className="flex items-center justify-between gap-3 rounded-input bg-navsel/60 px-3 py-2 text-[12.5px] font-semibold text-ink md:w-auto md:justify-start">
@@ -155,7 +140,7 @@ export function AttendancePage() {
         ) : sitesLoading || isLoading ? (
           <LoadingState />
         ) : isError ? (
-          <EmptyState title="Could not load attendance" hint={error instanceof Error ? error.message : "Try again in a moment."} />
+          <EmptyState title="Could not load attendance" hint={errorMessage(error, "Try again in a moment.")} />
         ) : selected.length === 0 ? (
           <EmptyState title="No sites assigned" hint="You aren't assigned to any sites yet." icon={<ClipboardCheck className="h-8 w-8" />} />
         ) : items.length === 0 ? (
@@ -177,13 +162,7 @@ export function AttendancePage() {
                 ))}
               </ul>
             </Card>
-            {hasNextPage && (
-              <div className="flex justify-center py-5">
-                <Button variant="secondary" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
-                  {isFetchingNextPage ? "Loading…" : "Load more"}
-                </Button>
-              </div>
-            )}
+            {hasNextPage && <LoadMore loading={isFetchingNextPage} onClick={() => void fetchNextPage()} />}
           </>
         )}
       </Page>

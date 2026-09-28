@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Search, UtensilsCrossed } from "lucide-react";
+import { ChevronRight, UtensilsCrossed } from "lucide-react";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Tag } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { EmptyState, LoadingState } from "@/components/ui/misc";
+import { EmptyState, LoadMore, LoadingState } from "@/components/ui/misc";
 import { DateRangeBar, rangeLabel, useDateRange } from "@/components/hotfoods/DateRange";
 import { HotFoodsExportButtons, HotFoodsExportMenu } from "@/components/hotfoods/HotFoodsExport";
 import { useHotFoodEntries, type HotFoodView } from "@/lib/queries";
 import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
-import { formatDateTime } from "@/lib/utils";
+import { errorMessage, formatDateTime } from "@/lib/utils";
 import type { HotFoodEntryRow } from "@/lib/types";
 
 type Status = "active" | "void" | "all";
@@ -31,12 +31,7 @@ export function HotFoodsEntriesPage() {
   const multiSite = selected.length > 1;
   const subtitle = `${selected.length ? selectionLabel(codes, selected) : ""} · ${rangeLabel(from, to)}`;
 
-  const search = (
-    <div className="relative min-w-0 flex-1">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, room, notes, staff" type="search" enterKeyHint="search" className="min-h-[44px] pl-9 md:min-h-9" />
-    </div>
-  );
+  const search = <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, room, notes, staff" wrapperClassName="min-w-0 flex-1" />;
   const statusSelect = (
     <Select
       value={status}
@@ -75,7 +70,7 @@ export function HotFoodsEntriesPage() {
         {sitesLoading || isLoading ? (
           <LoadingState />
         ) : isError ? (
-          <EmptyState title="Could not load entries" hint={error instanceof Error ? error.message : "Try again in a moment."} />
+          <EmptyState title="Could not load entries" hint={errorMessage(error, "Try again in a moment.")} />
         ) : selected.length === 0 ? (
           <EmptyState title="No sites assigned" hint="You aren't assigned to any sites yet." icon={<UtensilsCrossed className="h-8 w-8" />} />
         ) : items.length === 0 ? (
@@ -94,11 +89,9 @@ export function HotFoodsEntriesPage() {
               </ul>
             </Card>
             {hasNextPage && (
-              <div className="flex justify-center py-5">
-                <Button variant="secondary" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
-                  {isFetchingNextPage ? "Loading…" : `Load more (${(total - items.length).toLocaleString()} left)`}
-                </Button>
-              </div>
+              <LoadMore loading={isFetchingNextPage} onClick={() => void fetchNextPage()}>
+                Load more ({(total - items.length).toLocaleString()} left)
+              </LoadMore>
             )}
           </>
         )}
@@ -116,8 +109,8 @@ function EntryRow({ e, multiSite }: { e: HotFoodEntryRow; multiSite: boolean }) 
           <span className="flex items-center gap-2">
             <span className={`truncate text-[14.5px] font-semibold ${e.voidedAt ? "text-muted line-through" : "text-ink"}`}>{e.tenantName}</span>
             {e.unit && <span className="shrink-0 text-[12px] text-muted">Rm {e.unit}</span>}
-            {e.voidedAt && <span className="shrink-0 rounded-pill bg-status-redBg px-1.5 text-[10.5px] font-bold text-status-redText">VOID</span>}
-            {e.overrideReason && !e.voidedAt && <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 text-[10.5px] font-bold text-status-amberText">Override</span>}
+            {e.voidedAt && <Tag tone="red" className="shrink-0 px-1.5 py-0">VOID</Tag>}
+            {e.overrideReason && !e.voidedAt && <Tag className="shrink-0 px-1.5 py-0">Override</Tag>}
           </span>
           <span className="block truncate text-[12.5px] text-muted">{what}</span>
           <span className="block truncate text-micro text-muted">

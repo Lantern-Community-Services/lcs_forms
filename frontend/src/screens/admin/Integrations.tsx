@@ -14,7 +14,7 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useApiKeys, useSites, useWebhooks } from "@/lib/queries";
-import { formatDate, relativeTime } from "@/lib/utils";
+import { errorMessage, formatDate, relativeTime } from "@/lib/utils";
 
 function useCopy() {
   const toast = useToast();
@@ -62,7 +62,7 @@ export function AdminApiKeys() {
       setSecret(res.key);
       await refresh();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not create key.", "error");
+      toast(errorMessage(e, "Could not create key."), "error");
     }
   }
 
@@ -146,7 +146,7 @@ export function AdminWebhooks() {
       setSecret(res.secret);
       await refresh();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not add webhook.", "error");
+      toast(errorMessage(e, "Could not add webhook."), "error");
     }
   }
   async function test(id: string) {
