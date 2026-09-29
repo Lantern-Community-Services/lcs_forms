@@ -28,13 +28,18 @@ import {
   type Field, type FieldType, type FormDoc, type Values,
 } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 
 type Tab = "build" | "code" | "settings" | "preview" | "history";
 
 const DRAG_TYPE = "application/x-lcs-type";
 const DRAG_FIELD = "application/x-lcs-field";
 
-/** Admin → Form builder → one form: build, code, settings, preview, history. */
+/**
+ * Admin → Form builder → one form. Like the code form editor: the editor on
+ * the left (Build, Code, Settings, Versions), the live device preview on the
+ * right. Below lg, or with the preview hidden, Preview is a tab instead.
+ */
 export function FormEditorPage() {
   const { id = "" } = useParams();
   const { data, isLoading, error } = useBuiltForm(id);
@@ -56,6 +61,11 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
   const [saving, setSaving] = useState(false);
   const [serverProblems, setServerProblems] = useState<DocProblem[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
+  const wide = useMediaQuery("(min-width: 1024px)");
+  const split = wide && showPreview;
+  // The preview is its own half now; don't leave the left side on a hidden tab.
+  const view: Tab = split && tab === "preview" ? "build" : tab;
   const history = useRef<{ past: FormDoc[]; future: FormDoc[]; last: number }>({ past: [], future: [], last: 0 });
   const [, bump] = useState(0);
 
@@ -208,6 +218,9 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        <Button variant="secondary" size="sm" onClick={() => setShowPreview((v) => !v)} className="hidden lg:inline-flex">
+          {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {showPreview ? "Hide preview" : "Preview"}
+        </Button>
         <a href={formPath(form.slug, access)} target="_blank" rel="noreferrer"><Button variant="secondary" size="sm"><ExternalLink className="h-3.5 w-3.5" /> <span className="hidden md:inline">Open</span></Button></a>
         <Button variant="secondary" size="sm" onClick={() => void save().then((r) => r && toast("Saved."))} disabled={!dirty || saving}>
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} {dirty ? "Save" : "Saved"}
@@ -217,33 +230,46 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
         </Button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-none gap-1 overflow-x-auto border-b border-hairline bg-surface px-3 md:px-4">
-        {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["preview", "Preview", Eye], ["history", "Versions", History]] as const).map(([k, label, Icon]) => (
-          <button key={k} onClick={() => setTab(k)} className={cn("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold", tab === k ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
-            <Icon className="h-3.5 w-3.5" /> {label}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <span className="hidden items-center font-mono text-micro text-muted md:flex">{formPath(slug, access)}</span>
-      </div>
-
-      {serverProblems.length > 0 && (
-        <div className="flex-none px-4 pt-2">
-          <ProblemList problems={serverProblems} />
-        </div>
-      )}
-
-      <div className="min-h-0 flex-1">
-        {tab === "build" && <BuildTab doc={doc} commit={commit} selected={selected} setSelected={setSelected} />}
-        {tab === "code" && <CodeTab doc={doc} commit={commit} />}
-        {tab === "settings" && (
-          <div className="h-full overflow-y-auto scroll-thin">
-            <SettingsPanel doc={doc} onChange={commit} slug={slug} onSlug={setSlug} reference={reference} form={form} onCatalog={setCatalog} />
+      <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: split ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)" }}>
+        {/* Editor half */}
+        <section className="flex min-h-0 flex-col">
+          <div className="flex flex-none gap-1 overflow-x-auto border-b border-hairline bg-surface px-3 md:px-4">
+            {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
+              .filter(([k]) => !(split && k === "preview"))
+              .map(([k, label, Icon]) => (
+                <button key={k} onClick={() => setTab(k)} className={cn("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold", view === k ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
+                  <Icon className="h-3.5 w-3.5" /> {label}
+                </button>
+              ))}
+            <div className="flex-1" />
+            <span className={cn("hidden items-center truncate font-mono text-micro text-muted", split ? "2xl:flex" : "md:flex")}>{formPath(slug, access)}</span>
           </div>
+
+          {serverProblems.length > 0 && (
+            <div className="flex-none px-4 pt-2">
+              <ProblemList problems={serverProblems} />
+            </div>
+          )}
+
+          <div className="min-h-0 flex-1">
+            {view === "build" && <BuildTab doc={doc} commit={commit} selected={selected} setSelected={setSelected} compact={split} />}
+            {view === "code" && <CodeTab doc={doc} commit={commit} compact={split} />}
+            {view === "settings" && (
+              <div className="h-full overflow-y-auto scroll-thin">
+                <SettingsPanel doc={doc} onChange={commit} slug={slug} onSlug={setSlug} reference={reference} form={form} onCatalog={setCatalog} />
+              </div>
+            )}
+            {view === "preview" && <PreviewPane doc={doc} slug={form.slug} />}
+            {view === "history" && <VersionsTab form={form} dirty={dirty} onRestored={(row) => { adopt(row); setDoc(row.draft); }} />}
+          </div>
+        </section>
+
+        {/* Preview half: stays mounted across tabs so the frames don't reload. */}
+        {split && (
+          <section className="flex min-h-0 flex-col border-l border-hairline">
+            <PreviewPane doc={doc} slug={form.slug} side />
+          </section>
         )}
-        {tab === "preview" && <PreviewTab doc={doc} slug={form.slug} />}
-        {tab === "history" && <VersionsTab form={form} dirty={dirty} onRestored={(row) => { adopt(row); setDoc(row.draft); }} />}
       </div>
 
       <PublishDialog
@@ -260,7 +286,11 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
 
 // ─────────────────────────── Build ───────────────────────────
 
-function BuildTab({ doc, commit, selected, setSelected }: { doc: FormDoc; commit: (d: FormDoc | ((d: FormDoc) => FormDoc)) => void; selected: string | null; setSelected: (id: string | null) => void }) {
+/**
+ * Full width: palette | canvas | properties. Next to the preview (compact):
+ * canvas | one column showing the palette, or the selected field's properties.
+ */
+function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc: FormDoc; commit: (d: FormDoc | ((d: FormDoc) => FormDoc)) => void; selected: string | null; setSelected: (id: string | null) => void; compact?: boolean }) {
   const toast = useToast();
   const [drop, setDrop] = useState<number | null>(null);
   const field = doc.fields.find((f) => f.id === selected) ?? null;
@@ -306,36 +336,44 @@ function BuildTab({ doc, commit, selected, setSelected }: { doc: FormDoc; commit
     return [...g.entries()];
   }, []);
 
-  return (
-    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[200px_1fr] xl:grid-cols-[210px_1fr_360px]">
-      {/* Palette */}
-      <aside className="hidden min-h-0 overflow-y-auto border-r border-hairline bg-surface p-3 scroll-thin md:block">
-        {groups.map(([group, types]) => (
-          <div key={group} className="mb-4">
-            <p className="mb-1.5 px-1 text-micro font-bold uppercase tracking-[0.04em] text-muted">{group}</p>
-            <div className="grid grid-cols-1 gap-1">
-              {types.map((t) => (
-                <button
-                  key={t.type}
-                  draggable
-                  onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, t.type); e.dataTransfer.effectAllowed = "copy"; }}
-                  onClick={() => insertAt(t.type)}
-                  title={t.description}
-                  className="flex items-center gap-2 rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-ink hover:border-navy hover:bg-navsel/50 active:cursor-grabbing"
-                >
-                  <Plus className="h-3 w-3 text-muted" /> {t.label}
-                </button>
-              ))}
-            </div>
+  const palette = (
+    <>
+      {groups.map(([group, types]) => (
+        <div key={group} className="mb-4">
+          <p className="mb-1.5 px-1 text-micro font-bold uppercase tracking-[0.04em] text-muted">{group}</p>
+          <div className={cn("grid gap-1", compact ? "grid-cols-2" : "grid-cols-1")}>
+            {types.map((t) => (
+              <button
+                key={t.type}
+                draggable
+                onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, t.type); e.dataTransfer.effectAllowed = "copy"; }}
+                onClick={() => insertAt(t.type)}
+                title={t.description}
+                className="flex items-center gap-2 rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-ink hover:border-navy hover:bg-navsel/50 active:cursor-grabbing"
+              >
+                <Plus className="h-3 w-3 flex-none text-muted" /> <span className="truncate">{t.label}</span>
+              </button>
+            ))}
           </div>
-        ))}
-        <p className="px-1 text-micro text-muted">Click to add below the selected field, or drag onto the form.</p>
-      </aside>
+        </div>
+      ))}
+      <p className="px-1 text-micro text-muted">Click to add below the selected field, or drag onto the form.</p>
+    </>
+  );
+
+  return (
+    <div className={cn("grid h-full min-h-0", compact ? "grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : "grid-cols-1 md:grid-cols-[200px_1fr] xl:grid-cols-[210px_1fr_360px]")}>
+      {/* Palette */}
+      {!compact && (
+        <aside className="hidden min-h-0 overflow-y-auto border-r border-hairline bg-surface p-3 scroll-thin md:block">
+          {palette}
+        </aside>
+      )}
 
       {/* Canvas */}
       <div className="min-h-0 overflow-y-auto scroll-thin" onClick={() => setSelected(null)}>
-        <div className="mx-auto max-w-[760px] p-3 md:p-6">
-          <div className="mb-3 md:hidden">
+        <div className={cn("mx-auto max-w-[760px]", compact ? "p-3 xl:p-4" : "p-3 md:p-6")}>
+          <div className={cn("mb-3", compact ? "hidden" : "md:hidden")}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button className="w-full"><Plus className="h-4 w-4" /> Add field</Button></DropdownMenuTrigger>
               <DropdownMenuContent className="max-h-80 overflow-y-auto">
@@ -353,7 +391,7 @@ function BuildTab({ doc, commit, selected, setSelected }: { doc: FormDoc; commit
             >
               {!doc.fields.length && (
                 <div className={cn("rounded-card border-2 border-dashed p-10 text-center text-[13.5px] text-muted", drop === 0 ? "border-navy bg-navsel/40" : "border-hairline")}>
-                  Drag a field here, or click one on the left.
+                  Drag a field here, or click one on the {compact ? "right" : "left"}.
                 </div>
               )}
               {doc.fields.map((f, i) => (
@@ -391,10 +429,20 @@ function BuildTab({ doc, commit, selected, setSelected }: { doc: FormDoc; commit
       </div>
 
       {/* Properties */}
-      <aside className={cn("min-h-0 border-l border-hairline bg-surface", field ? "fixed inset-x-0 bottom-0 z-40 h-[70vh] rounded-t-card shadow-modal xl:static xl:h-auto xl:rounded-none xl:shadow-none" : "hidden xl:block")}>
+      <aside className={cn("min-h-0 border-l border-hairline bg-surface", compact ? "block" : field ? "fixed inset-x-0 bottom-0 z-40 h-[70vh] rounded-t-card shadow-modal xl:static xl:h-auto xl:rounded-none xl:shadow-none" : "hidden xl:block")}>
         {field ? (
           <div className="flex h-full flex-col">
-            <button onClick={() => setSelected(null)} className="flex-none border-b border-hairline py-1.5 text-center text-micro font-semibold text-muted xl:hidden">Done</button>
+            {compact ? (
+              <div className="flex flex-none items-center border-b border-hairline px-2 py-1">
+                <button onClick={() => setSelected(null)} className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-[12.5px] font-semibold text-accent hover:bg-subtle dark:text-white">
+                  <Plus className="h-3.5 w-3.5" /> Add field
+                </button>
+                <div className="flex-1" />
+                <button onClick={() => setSelected(null)} className="rounded-input px-1.5 py-1 text-micro font-semibold text-muted hover:bg-subtle hover:text-ink">Done</button>
+              </div>
+            ) : (
+              <button onClick={() => setSelected(null)} className="flex-none border-b border-hairline py-1.5 text-center text-micro font-semibold text-muted xl:hidden">Done</button>
+            )}
             <div className="min-h-0 flex-1">
               <FieldProperties
                 key={field.id}
@@ -409,6 +457,12 @@ function BuildTab({ doc, commit, selected, setSelected }: { doc: FormDoc; commit
                 }}
               />
             </div>
+          </div>
+        ) : compact ? (
+          <div className="h-full overflow-y-auto p-3 scroll-thin">
+            <p className="mb-2 px-1 font-heading text-[14px] font-extrabold text-ink">Add a field</p>
+            {palette}
+            <p className="mt-2 px-1 text-micro text-muted">Click a field on the form to edit it · Ctrl+S save · Ctrl+Z undo.</p>
           </div>
         ) : (
           <div className="p-5 text-[13px] text-muted">
@@ -496,7 +550,7 @@ function IconBtn({ label, onClick, disabled, children }: { label: string; onClic
 
 // ─────────────────────────── Code ───────────────────────────
 
-function CodeTab({ doc, commit }: { doc: FormDoc; commit: (d: FormDoc) => void }) {
+function CodeTab({ doc, commit, compact = false }: { doc: FormDoc; commit: (d: FormDoc) => void; compact?: boolean }) {
   const [text, setText] = useState(() => JSON.stringify(doc, null, 2));
   const [problems, setProblems] = useState<DocProblem[]>([]);
   const [state, setState] = useState<"synced" | "checking" | "invalid">("synced");
@@ -554,7 +608,7 @@ function CodeTab({ doc, commit }: { doc: FormDoc; commit: (d: FormDoc) => void }
   };
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_320px]">
+    <div className={cn("grid h-full min-h-0 grid-cols-1", !compact && "lg:grid-cols-[1fr_320px]")}>
       <div className="min-h-0 overflow-y-auto p-3 scroll-thin md:p-4">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className={cn("text-[12.5px] font-semibold", state === "synced" ? "text-status-greenText" : state === "checking" ? "text-muted" : "text-status-redText")}>
@@ -567,8 +621,13 @@ function CodeTab({ doc, commit }: { doc: FormDoc; commit: (d: FormDoc) => void }
         </div>
         <CodeEditor value={text} onChange={setText} minHeight={520} />
         {problems.length > 0 && state === "invalid" && <ProblemList problems={problems} />}
+        {compact && (
+          <p className="mt-3 text-micro text-muted">
+            The whole form as JSON; valid edits apply as you type. Field types and the full reference: <Link to="/admin/ai" className="font-semibold text-accent">Admin → AI form builder</Link> · <a className="font-semibold text-accent" href="/api/builder/json-schema" target="_blank" rel="noreferrer">JSON Schema</a>.
+          </p>
+        )}
       </div>
-      <aside className="hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 text-[12.5px] text-muted scroll-thin lg:block">
+      <aside className={cn("hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 text-[12.5px] text-muted scroll-thin", !compact && "lg:block")}>
         <p className="font-heading text-[14px] font-extrabold text-ink">Form as code</p>
         <p className="mt-1">This is the whole form — the builder, exports, the CLI and AI assistants all read and write exactly this. Valid edits apply to the builder as you type; Save when you're done.</p>
         <p className="mt-3 font-semibold text-ink">Field types</p>
@@ -589,7 +648,8 @@ function CodeTab({ doc, commit }: { doc: FormDoc; commit: (d: FormDoc) => void }
  * working document is posted into every frame on each change — unsaved edits
  * show at once.
  */
-function PreviewTab({ doc, slug }: { doc: FormDoc; slug: string }) {
+function PreviewPane({ doc, slug, side = false }: { doc: FormDoc; slug: string; side?: boolean }) {
+  const [showAnswers, setShowAnswers] = useState(false);
   const [result, setResult] = useState<{ values: Values; errors: Record<string, string> } | null>(null);
   const [live, setLive] = useState<Values>({});
   const frames = useRef(new Set<Window>());
@@ -627,24 +687,53 @@ function PreviewTab({ doc, slug }: { doc: FormDoc; slug: string }) {
     for (const w of frames.current) post(w, { lcsPreview: "doc", doc });
   }, [doc]);
 
+  const reset = () => {
+    for (const w of frames.current) post(w, { lcsPreview: "reset" });
+    setResult(null);
+    setLive({});
+  };
+
+  const answers = (
+    <>
+      <p className="font-heading text-[14px] font-extrabold text-ink">{result ? "What would be saved" : "Answers so far"}</p>
+      <p className="mb-2 text-micro text-muted">{result ? "Nothing is saved from Preview." : "Live, with calculations, from whichever device you're filling in. Hidden fields' answers are dropped on submit."}</p>
+      {result && Object.keys(result.errors).length > 0 && (
+        <p className="mb-2 rounded-input bg-status-amberBg px-2 py-1.5 text-micro text-status-amberText">{Object.keys(result.errors).length} answer(s) would be refused: {Object.keys(result.errors).join(", ")}</p>
+      )}
+      <pre className="whitespace-pre-wrap break-all rounded-input bg-subtle p-2 font-mono text-[11px] text-ink">{JSON.stringify(result ? result.values : live, null, 2)}</pre>
+    </>
+  );
+
+  const toolbar = (
+    <>
+      {side && (
+        <Button variant={showAnswers ? "secondary" : "ghost"} size="sm" onClick={() => setShowAnswers((v) => !v)} title="What's been filled in, and what would be saved">
+          <Braces className="h-3.5 w-3.5" /> Answers
+        </Button>
+      )}
+      <Button variant="ghost" size="sm" onClick={reset}>
+        <RotateCcw className="h-3.5 w-3.5" /> Start over
+      </Button>
+    </>
+  );
+
+  // Beside the editor: answers open in a drawer under the frames.
+  if (side) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">
+          <DevicePreview src={`/f/${slug}/preview`} toolbarExtra={toolbar} />
+        </div>
+        {showAnswers && <div className="h-[34%] min-h-[160px] flex-none overflow-y-auto border-t border-hairline bg-surface p-3 scroll-thin">{answers}</div>}
+        <p className="flex-none border-t border-hairline bg-surface px-3 py-1 text-micro text-muted">Live preview of your unsaved edits, in the app on each device. Nothing is submitted.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_300px]">
-      <DevicePreview
-        src={`/f/${slug}/preview`}
-        toolbarExtra={
-          <Button variant="ghost" size="sm" onClick={() => { for (const w of frames.current) post(w, { lcsPreview: "reset" }); setResult(null); setLive({}); }}>
-            <RotateCcw className="h-3.5 w-3.5" /> Start over
-          </Button>
-        }
-      />
-      <aside className="hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 scroll-thin lg:block">
-        <p className="font-heading text-[14px] font-extrabold text-ink">{result ? "What would be saved" : "Answers so far"}</p>
-        <p className="mb-2 text-micro text-muted">{result ? "Nothing is saved from Preview." : "Live, with calculations, from whichever device you're filling in. Hidden fields' answers are dropped on submit."}</p>
-        {result && Object.keys(result.errors).length > 0 && (
-          <p className="mb-2 rounded-input bg-status-amberBg px-2 py-1.5 text-micro text-status-amberText">{Object.keys(result.errors).length} answer(s) would be refused: {Object.keys(result.errors).join(", ")}</p>
-        )}
-        <pre className="whitespace-pre-wrap break-all rounded-input bg-subtle p-2 font-mono text-[11px] text-ink">{JSON.stringify(result ? result.values : live, null, 2)}</pre>
-      </aside>
+      <DevicePreview src={`/f/${slug}/preview`} toolbarExtra={toolbar} />
+      <aside className="hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 scroll-thin lg:block">{answers}</aside>
     </div>
   );
 }
