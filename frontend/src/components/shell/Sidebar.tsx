@@ -279,9 +279,37 @@ function useCollapsed() {
     : { collapsed: preferred, toggleCollapsed };
 }
 
+/**
+ * Swipe on the sidebar: left folds it to its icons, right opens it. Touch only
+ * (a mouse drag would fight text selection), and only a mostly-horizontal
+ * gesture, so scrolling the nav vertically is unaffected.
+ */
+function useSwipeToggle(collapsed: boolean, toggleCollapsed: () => void) {
+  const start = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      start.current = e.pointerType === "touch" ? { x: e.clientX, y: e.clientY } : null;
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const s = start.current;
+      start.current = null;
+      if (!s) return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (dx < 0 && !collapsed) toggleCollapsed();
+      else if (dx > 0 && collapsed) toggleCollapsed();
+    },
+    onPointerCancel: () => {
+      start.current = null;
+    },
+  };
+}
+
 export function Sidebar() {
   const { user, logout, can } = useAuth();
   const { collapsed, toggleCollapsed } = useCollapsed();
+  const swipe = useSwipeToggle(collapsed, toggleCollapsed);
   const reviewCount = useReviewCount();
   const { data: catalog } = useForms();
   const [drill, setDrill] = useDrill();
@@ -349,7 +377,8 @@ export function Sidebar() {
 
   return (
     <aside
-      style={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH }}
+      {...swipe}
+      style={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH, touchAction: "pan-y" }}
       // Hidden on a phone: most of a 402px viewport, and the bottom tab bar
       // covers the same destinations. `hidden md:flex` rather than a conditional
       // render so the collapse preference survives a rotation without the whole
