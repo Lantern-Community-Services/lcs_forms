@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, Copy, Download, ExternalLink, Eye, GripVertical, History, Loader2, Monitor,
-  Plus, Redo2, RotateCcw, Rocket, Save, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock,
+  Plus, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,9 @@ import { FieldProperties } from "./FieldProperties";
 import { SettingsPanel } from "./SettingsPanel";
 import { StatusBadge, ProblemList } from "./BuilderList";
 import { moveItem, referencesTo, renameFieldId } from "./docOps";
+import { FIELD_BLURBS, FieldThumb } from "./FieldThumb";
+import { EASE, prefersReducedMotion, useFieldDnd, useListMotion } from "./fieldDnd";
+import { readStorage, writeStorage } from "@/lib/storage";
 import {
   builderApi, builderKeys, docProblems, formPath, useBuilderReference, useBuiltForm, useFormVersions,
   type BuiltFormDetail, type DocProblem,
@@ -32,8 +35,11 @@ import { useMediaQuery } from "@/lib/useMediaQuery";
 
 type Tab = "build" | "code" | "settings" | "preview" | "history";
 
-const DRAG_TYPE = "application/x-lcs-type";
-const DRAG_FIELD = "application/x-lcs-field";
+/** The editor/preview split, as the editor's share of the width; kept per device. */
+const SPLIT_KEY = "ln.builder.split";
+const SPLIT_DEFAULT = 0.5;
+const MIN_EDITOR = 560;
+const MIN_PREVIEW = 360;
 
 /**
  * Admin → Form builder → one form. Like the code form editor: the editor on
@@ -64,6 +70,13 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
   const [showPreview, setShowPreview] = useState(true);
   const wide = useMediaQuery("(min-width: 1024px)");
   const split = wide && showPreview;
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [ratio, setRatio] = useState(() => {
+    const v = Number(readStorage(SPLIT_KEY));
+    return v >= 0.15 && v <= 0.85 ? v : SPLIT_DEFAULT;
+  });
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => { if (!resizing) writeStorage(SPLIT_KEY, ratio === SPLIT_DEFAULT ? null : String(ratio)); }, [ratio, resizing]);
   // The preview is its own half now; don't leave the left side on a hidden tab.
   const view: Tab = split && tab === "preview" ? "build" : tab;
   const history = useRef<{ past: FormDoc[]; future: FormDoc[]; last: number }>({ past: [], future: [], last: 0 });
@@ -230,9 +243,12 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
         </Button>
       </div>
 
-      <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: split ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)" }}>
+      <div ref={splitRef} className="flex min-h-0 flex-1">
         {/* Editor half */}
-        <section className="flex min-h-0 flex-col">
+        <section
+          className={cn("flex min-h-0 min-w-0 flex-col", split ? "flex-none" : "flex-1")}
+          style={split ? { width: `clamp(${MIN_EDITOR}px, ${ratio * 100}%, calc(100% - ${MIN_PREVIEW + 9}px))`, transition: resizing || prefersReducedMotion() ? undefined : `width 300ms ${EASE}` } : undefined}
+        >
           <div className="flex flex-none gap-1 overflow-x-auto border-b border-hairline bg-surface px-3 md:px-4">
             {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
               .filter(([k]) => !(split && k === "preview"))
@@ -265,8 +281,9 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
         </section>
 
         {/* Preview half: stays mounted across tabs so the frames don't reload. */}
+        {split && <SplitHandle containerRef={splitRef} ratio={ratio} onRatio={setRatio} onResizing={setResizing} />}
         {split && (
-          <section className="flex min-h-0 flex-col border-l border-hairline">
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col">
             <PreviewPane doc={doc} slug={form.slug} side />
           </section>
         )}
@@ -289,24 +306,49 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
 /**
  * Full width: palette | canvas | properties. Next to the preview (compact):
  * canvas | one column showing the palette, or the selected field's properties.
+ * Fields drag in from the palette and reorder on the canvas (fieldDnd.tsx).
  */
 function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc: FormDoc; commit: (d: FormDoc | ((d: FormDoc) => FormDoc)) => void; selected: string | null; setSelected: (id: string | null) => void; compact?: boolean }) {
   const toast = useToast();
-  const [drop, setDrop] = useState<number | null>(null);
   const field = doc.fields.find((f) => f.id === selected) ?? null;
+  const ids = useMemo(() => doc.fields.map((f) => f.id), [doc.fields]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const motion = useListMotion(listRef, ids);
 
   const insertAt = (type: FieldType, index?: number) => {
     const f = newField(type, doc.fields.map((x) => x.id));
     const at = index ?? (field ? doc.fields.indexOf(field) + 1 : doc.fields.length);
     commit((d) => ({ ...d, fields: [...d.fields.slice(0, at), f, ...d.fields.slice(at)] }));
     setSelected(f.id);
+    return f.id;
   };
+
+  const dnd = useFieldDnd({
+    listRef,
+    scrollRef,
+    ids,
+    onDrop: (src, index) => {
+      if (src.kind === "new") {
+        const f = newField(src.type, doc.fields.map((x) => x.id));
+        motion.dropped(f.id);
+        commit((d) => ({ ...d, fields: [...d.fields.slice(0, index), f, ...d.fields.slice(index)] }));
+        setSelected(f.id);
+        return;
+      }
+      const from = doc.fields.findIndex((f) => f.id === src.id);
+      if (from < 0 || from === index || from + 1 === index) return;
+      motion.dropped(src.id);
+      commit((d) => ({ ...d, fields: moveItem(d.fields, from, index) }));
+    },
+  });
 
   const updateField = (id: string, next: Field) => commit((d) => ({ ...d, fields: d.fields.map((f) => (f.id === id ? next : f)) }));
 
-  const remove = (f: Field) => {
+  const remove = async (f: Field) => {
     const refs = referencesTo(doc, f.id);
     if (refs.length && !confirm(`“${f.label || f.id}” is used by ${refs.join(", ")}. Delete it anyway? Those rules will stop working.`)) return;
+    await motion.collapse(f.id);
     commit((d) => ({ ...d, fields: d.fields.filter((x) => x.id !== f.id) }));
     if (selected === f.id) setSelected(null);
   };
@@ -318,60 +360,29 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
     setSelected(copy.id);
   };
 
-  const onDrop = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDrop(null);
-    const type = e.dataTransfer.getData(DRAG_TYPE) as FieldType;
-    const moving = e.dataTransfer.getData(DRAG_FIELD);
-    if (type) insertAt(type, index);
-    else if (moving) {
-      const from = doc.fields.findIndex((f) => f.id === moving);
-      if (from >= 0 && from !== index && from + 1 !== index) commit((d) => ({ ...d, fields: moveItem(d.fields, from, index) }));
-    }
-  };
-
-  const groups = useMemo(() => {
-    const g = new Map<string, typeof FIELD_TYPES>();
-    for (const t of FIELD_TYPES) g.set(t.group, [...(g.get(t.group) ?? []), t]);
-    return [...g.entries()];
-  }, []);
-
   const palette = (
-    <>
-      {groups.map(([group, types]) => (
-        <div key={group} className="mb-4">
-          <p className="mb-1.5 px-1 text-micro font-bold uppercase tracking-[0.04em] text-muted">{group}</p>
-          <div className={cn("grid gap-1", compact ? "grid-cols-2" : "grid-cols-1")}>
-            {types.map((t) => (
-              <button
-                key={t.type}
-                draggable
-                onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, t.type); e.dataTransfer.effectAllowed = "copy"; }}
-                onClick={() => insertAt(t.type)}
-                title={t.description}
-                className="flex items-center gap-2 rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-ink hover:border-navy hover:bg-navsel/50 active:cursor-grabbing"
-              >
-                <Plus className="h-3 w-3 flex-none text-muted" /> <span className="truncate">{t.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-      <p className="px-1 text-micro text-muted">Click to add below the selected field, or drag onto the form.</p>
-    </>
+    <Palette
+      compact={compact}
+      onAdd={(type) => { if (!dnd.consumeClick()) insertAt(type); }}
+      dragSource={(t) => dnd.start({ kind: "new", type: t.type, label: t.label })}
+    />
   );
 
   return (
-    <div className={cn("grid h-full min-h-0", compact ? "grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : "grid-cols-1 md:grid-cols-[200px_1fr] xl:grid-cols-[210px_1fr_360px]")}>
+    <div className={cn("grid h-full min-h-0", compact ? "grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : "grid-cols-1 md:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_360px]")}>
       {/* Palette */}
       {!compact && (
-        <aside className="hidden min-h-0 overflow-y-auto border-r border-hairline bg-surface p-3 scroll-thin md:block">
+        <aside className="hidden min-h-0 border-r border-hairline bg-surface md:flex md:flex-col">
           {palette}
         </aside>
       )}
 
       {/* Canvas */}
-      <div className="min-h-0 overflow-y-auto scroll-thin" onClick={() => setSelected(null)}>
+      <div
+        ref={scrollRef}
+        className={cn("min-h-0 overflow-y-auto transition-colors duration-150 scroll-thin", dnd.over && "bg-navsel/40")}
+        onClick={() => { if (!dnd.consumeClick()) setSelected(null); }}
+      >
         <div className={cn("mx-auto max-w-[760px]", compact ? "p-3 xl:p-4" : "p-3 md:p-6")}>
           <div className={cn("mb-3", compact ? "hidden" : "md:hidden")}>
             <DropdownMenu>
@@ -381,43 +392,46 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="rounded-card border border-hairline bg-surface p-4 shadow-sm md:p-6">
+          <div className={cn("rounded-card border bg-surface p-4 shadow-sm transition-[border-color,box-shadow] duration-150 md:p-6", dnd.over ? "border-navy/40 ring-4 ring-navy/10 dark:border-accent/50" : "border-hairline")}>
             <h2 className="font-heading text-[21px] font-extrabold text-ink">{doc.title || "Untitled form"}</h2>
             {doc.description && <div className="prose-form mt-1 text-[13.5px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
-            <div
-              className="mt-5"
-              onDragOver={(e) => { if (!doc.fields.length) { e.preventDefault(); setDrop(0); } }}
-              onDrop={(e) => !doc.fields.length && onDrop(e, 0)}
-            >
+            <div ref={listRef} className="relative mt-5" style={dnd.listStyle}>
               {!doc.fields.length && (
-                <div className={cn("rounded-card border-2 border-dashed p-10 text-center text-[13.5px] text-muted", drop === 0 ? "border-navy bg-navsel/40" : "border-hairline")}>
-                  Drag a field here, or click one on the {compact ? "right" : "left"}.
+                <div
+                  data-drop-empty
+                  className={cn(
+                    "rounded-card border-2 border-dashed p-10 text-center text-[13.5px] transition-colors duration-150",
+                    dnd.overNew ? "border-navy bg-navsel/40 font-semibold text-accent dark:border-accent" : "border-hairline text-muted"
+                  )}
+                >
+                  {dnd.overNew ? `Release to add ${dnd.overNew}` : `Drag a field here, or click one on the ${compact ? "right" : "left"}.`}
                 </div>
               )}
               {doc.fields.map((f, i) => (
-                <div key={f.id}>
-                  <DropLine active={drop === i} />
+                <div
+                  key={f.id}
+                  data-field-row={f.id}
+                  className="py-1"
+                  style={dnd.rowStyle(f.id)}
+                  onPointerDown={dnd.start({ kind: "move", id: f.id, label: f.label || typeInfo(f.type)?.label || f.id })}
+                >
                   <FieldCard
                     field={f}
                     doc={doc}
                     index={i}
                     count={doc.fields.length}
-                    selected={selected === f.id}
-                    onSelect={() => setSelected(f.id)}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      const r = e.currentTarget.getBoundingClientRect();
-                      setDrop(e.clientY < r.top + r.height / 2 ? i : i + 1);
-                    }}
-                    onDrop={(e) => onDrop(e, drop ?? i)}
-                    onDragEnd={() => setDrop(null)}
+                    selected={selected === f.id && !dnd.dragging}
+                    held={dnd.heldId === f.id}
+                    onSelect={() => { if (!dnd.consumeClick()) setSelected(f.id); }}
                     onMove={(d) => commit((x) => ({ ...x, fields: moveItem(x.fields, i, d < 0 ? i - 1 : i + 2) }))}
                     onDuplicate={() => duplicate(f)}
-                    onRemove={() => remove(f)}
+                    onRemove={() => void remove(f)}
                   />
                 </div>
               ))}
-              <DropLine active={drop === doc.fields.length && doc.fields.length > 0} />
+              {dnd.slotStyle && (
+                <div data-drop-slot aria-hidden className="lcs-slot pointer-events-none absolute inset-x-0 rounded-card border-[1.5px] border-dashed border-navy bg-navsel/50 dark:border-accent" style={dnd.slotStyle} />
+              )}
             </div>
             {doc.fields.length > 0 && (
               <div className="mt-6 border-t border-hairline pt-4">
@@ -459,11 +473,7 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
             </div>
           </div>
         ) : compact ? (
-          <div className="h-full overflow-y-auto p-3 scroll-thin">
-            <p className="mb-2 px-1 font-heading text-[14px] font-extrabold text-ink">Add a field</p>
-            {palette}
-            <p className="mt-2 px-1 text-micro text-muted">Click a field on the form to edit it · Ctrl+S save · Ctrl+Z undo.</p>
-          </div>
+          <div className="flex h-full min-h-0 flex-col">{palette}</div>
         ) : (
           <div className="p-5 text-[13px] text-muted">
             <p className="font-heading text-[15px] font-extrabold text-ink">Nothing selected</p>
@@ -472,26 +482,93 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
           </div>
         )}
       </aside>
+      {dnd.ghost}
     </div>
   );
 }
 
-function DropLine({ active }: { active: boolean }) {
-  return <div className={cn("mx-2 h-1 rounded-pill transition-colors", active ? "bg-navy" : "bg-transparent")} />;
+/** Add a field: a searchable grid of pictures of each field type, with a plain description of the one under the pointer. */
+function Palette({ compact, onAdd, dragSource }: {
+  compact: boolean;
+  onAdd: (type: FieldType) => void;
+  dragSource: (t: (typeof FIELD_TYPES)[number]) => (e: React.PointerEvent<HTMLElement>) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [hovered, setHovered] = useState<FieldType>("text");
+  const q = query.trim().toLowerCase();
+  const groups = useMemo(() => {
+    const g = new Map<string, typeof FIELD_TYPES>();
+    for (const t of FIELD_TYPES) {
+      if (q && !`${t.label} ${t.type} ${FIELD_BLURBS[t.type]}`.toLowerCase().includes(q)) continue;
+      g.set(t.group, [...(g.get(t.group) ?? []), t]);
+    }
+    return [...g.entries()];
+  }, [q]);
+  const info = typeInfo(hovered);
+
+  return (
+    <>
+      <div className="flex-none space-y-2 border-b border-hairline p-3 pb-2.5">
+        {compact && <p className="px-0.5 font-heading text-[14px] font-extrabold text-ink">Add a field</p>}
+        <label className="flex h-8 items-center gap-2 rounded-input border border-hairline bg-subtle px-2.5 focus-within:border-navy dark:focus-within:border-accent">
+          <Search className="h-3.5 w-3.5 flex-none text-muted" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search fields"
+            aria-label="Search fields"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-muted focus:outline-none"
+          />
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 scroll-thin">
+        {groups.map(([group, types]) => (
+          <div key={group}>
+            <p className="px-0.5 pb-1.5 pt-3 text-micro font-bold uppercase tracking-[0.04em] text-muted">{group}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {types.map((t) => (
+                <button
+                  key={t.type}
+                  type="button"
+                  onPointerDown={dragSource(t)}
+                  onClick={() => onAdd(t.type)}
+                  onMouseEnter={() => setHovered(t.type)}
+                  onFocus={() => setHovered(t.type)}
+                  title={FIELD_BLURBS[t.type]}
+                  className="lcs-tile group/tile flex min-w-0 cursor-grab select-none flex-col gap-1.5 rounded-card border border-hairline bg-surface p-1.5 pb-2 text-left transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:border-navy hover:shadow-card focus-visible:border-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/25 active:scale-[.98] dark:hover:border-accent dark:focus-visible:border-accent"
+                >
+                  <span className="block overflow-hidden rounded-input bg-subtle transition-colors group-hover/tile:bg-navsel/60">
+                    <FieldThumb type={t.type} />
+                  </span>
+                  <span className="truncate px-0.5 text-[12.5px] font-semibold text-ink">{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {!groups.length && <p className="px-1 py-6 text-center text-[13px] text-muted">No fields match “{query}”.</p>}
+      </div>
+      <div className="min-h-[76px] flex-none border-t border-hairline bg-subtle/60 px-3 py-2.5">
+        <p className="text-[13px] font-semibold text-ink">{info?.label}</p>
+        <p className="text-[12.5px] leading-snug text-muted">{FIELD_BLURBS[hovered]}</p>
+        <p className="mt-1 text-micro text-muted">Drag onto the form, or click to add below the selected field.</p>
+      </div>
+    </>
+  );
 }
 
 function FieldCard({
-  field: f, doc, index, count, selected, onSelect, onDragOver, onDrop, onDragEnd, onMove, onDuplicate, onRemove,
+  field: f, doc, index, count, selected, held, onSelect, onMove, onDuplicate, onRemove,
 }: {
   field: Field;
   doc: FormDoc;
   index: number;
   count: number;
   selected: boolean;
+  /** Being dragged: this card is the placeholder the rows slide around. */
+  held: boolean;
   onSelect: () => void;
-  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDrop: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
   onMove: (d: -1 | 1) => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -499,19 +576,22 @@ function FieldCard({
   const noop = () => undefined;
   return (
     <div
-      draggable
-      onDragStart={(e) => { e.dataTransfer.setData(DRAG_FIELD, f.id); e.dataTransfer.effectAllowed = "move"; }}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
       onClick={(e) => { e.stopPropagation(); onSelect(); }}
       className={cn(
-        "group relative my-1 cursor-pointer rounded-card border p-3 transition-colors",
-        selected ? "border-navy bg-navsel/30 ring-2 ring-navy/20" : "border-transparent hover:border-hairline hover:bg-subtle/40",
-        f.type === "page" && "border-dashed border-strongline bg-subtle/60"
+        "group relative cursor-pointer rounded-card border p-3 transition-[background-color,border-color,box-shadow] duration-150",
+        held
+          ? "border-dashed border-navy/50 bg-navsel/40 dark:border-accent/50 [&>*]:opacity-0"
+          : selected ? "border-navy bg-navsel/30 ring-2 ring-navy/20" : "border-transparent hover:border-hairline hover:bg-subtle/40",
+        !held && f.type === "page" && "border-dashed border-strongline bg-subtle/60"
       )}
     >
-      <div className="absolute -left-1 top-3 hidden cursor-grab text-strongline group-hover:block md:-left-5"><GripVertical className="h-4 w-4" /></div>
+      <div
+        data-drag-handle
+        title="Drag to move"
+        className={cn("absolute -left-1 top-2.5 cursor-grab touch-none rounded p-0.5 text-strongline hover:bg-subtle hover:text-muted md:-left-6", selected ? "block" : "hidden group-hover:block")}
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
         <span className="rounded bg-subtle2 px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.03em] text-muted">{typeInfo(f.type)?.label ?? f.type}</span>
         <code className="text-[11px] text-muted">{f.id}</code>
@@ -535,6 +615,92 @@ function FieldCard({
         <div className={cn("pointer-events-none select-none", f.width === "half" && "md:max-w-[50%]", f.width === "third" && "md:max-w-[33%]")} aria-hidden>
           <FieldView field={f} value={f.defaultValue} values={{}} errors={{}} onChange={noop} disabled user={null} formSite={null} doc={doc} />
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The divider between the editor and the preview. Drag it, nudge it with the
+ * arrow keys (Shift for bigger steps), double-click to put it back in the middle.
+ */
+function SplitHandle({ containerRef, ratio, onRatio, onResizing }: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  ratio: number;
+  onRatio: (r: number) => void;
+  onResizing: (on: boolean) => void;
+}) {
+  const start = useRef<{ x: number; ratio: number } | null>(null);
+  const [readout, setReadout] = useState<{ editor: number; preview: number } | null>(null);
+
+  const clampTo = (v: number) => {
+    const w = containerRef.current?.getBoundingClientRect().width ?? 0;
+    if (!w) return v;
+    const min = Math.min(0.5, MIN_EDITOR / w), max = Math.max(0.5, 1 - (MIN_PREVIEW + 9) / w);
+    return Math.min(max, Math.max(min, v));
+  };
+  const stop = () => {
+    start.current = null;
+    setReadout(null);
+    onResizing(false);
+    document.documentElement.classList.remove("lcs-resizing");
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the editor and preview"
+      aria-valuemin={15}
+      aria-valuemax={85}
+      aria-valuenow={Math.round(ratio * 100)}
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // Captured, so the pointer isn't lost to the preview's iframes.
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer */ }
+        start.current = { x: e.clientX, ratio };
+        onResizing(true);
+        document.documentElement.classList.add("lcs-resizing");
+      }}
+      onPointerMove={(e) => {
+        const s = start.current, w = containerRef.current?.getBoundingClientRect().width;
+        if (!s || !w) return;
+        const v = clampTo(s.ratio + (e.clientX - s.x) / w);
+        onRatio(v);
+        setReadout({ editor: Math.round(v * w), preview: Math.round(w - v * w - 9) });
+      }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onLostPointerCapture={() => start.current && stop()}
+      onDoubleClick={() => onRatio(SPLIT_DEFAULT)}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 0.1 : 0.02;
+        const next = e.key === "ArrowLeft" ? ratio - step : e.key === "ArrowRight" ? ratio + step : e.key === "Home" ? 0 : e.key === "End" ? 1 : null;
+        if (next === null) return;
+        e.preventDefault();
+        onRatio(clampTo(next));
+      }}
+      className="group relative flex w-[9px] flex-none cursor-col-resize touch-none justify-center outline-none"
+    >
+      <span className={cn(
+        "h-full w-px bg-hairline transition-[width,background-color] duration-150 group-hover:w-[3px] group-hover:bg-navy group-focus-visible:w-[3px] group-focus-visible:bg-navy dark:group-hover:bg-accent dark:group-focus-visible:bg-accent",
+        readout && "w-[3px] bg-navy dark:bg-accent"
+      )} />
+      <span className={cn(
+        "absolute left-1/2 top-1/2 flex h-11 w-3.5 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-[3px] rounded-pill border bg-surface shadow-card transition-colors duration-150 group-hover:border-navy group-focus-visible:border-navy dark:group-hover:border-accent",
+        readout ? "border-navy dark:border-accent" : "border-strongline"
+      )}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} className={cn("h-[3px] w-[3px] rounded-full transition-colors group-hover:bg-navy dark:group-hover:bg-accent", readout ? "bg-navy dark:bg-accent" : "bg-muted")} />
+        ))}
+      </span>
+      {readout && (
+        <span className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 whitespace-nowrap rounded-input bg-navy px-2 py-1 font-mono text-micro text-white shadow-modal">
+          {readout.editor} ⟷ {readout.preview}
+        </span>
       )}
     </div>
   );

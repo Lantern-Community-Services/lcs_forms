@@ -714,3 +714,22 @@ h6 {
 .prose-form img { max-width: 100%; height: auto; border-radius: 6px; }
 .prose-form table { border-collapse: collapse; }
 .prose-form td, .prose-form th { padding: 4px 8px; border-bottom: 1px solid rgb(var(--c-hairline)); text-align: left; }
+
+/* ── Form builder: drag and drop (screens/builder/fieldDnd.tsx) ── */
+html.lcs-dragging,
+html.lcs-dragging * { cursor: grabbing !important; user-select: none !important; }
+html.lcs-dragging iframe { pointer-events: none; }
+
+@keyframes lcs-ghost-in { from { opacity: 0; scale: 0.85; } }
+@keyframes lcs-slot-in { from { opacity: 0; scale: 0.98; } }
+@keyframes lcs-tile-in { from { opacity: 0; transform: scale(0.94); } }
+.lcs-ghost { animation: lcs-ghost-in 160ms cubic-bezier(.2,.8,.2,1) both; }
+.lcs-slot { animation: lcs-slot-in 200ms cubic-bezier(.2,.8,.2,1) both; }
+.lcs-tile { animation: lcs-tile-in 200ms ease-out backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lcs-ghost, .lcs-slot, .lcs-tile { animation: none; }
+}
+html.lcs-resizing,
+html.lcs-resizing * { cursor: col-resize !important; user-select: none !important; }
+html.lcs-resizing iframe { pointer-events: none; }
