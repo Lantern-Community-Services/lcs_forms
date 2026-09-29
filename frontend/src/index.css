@@ -701,3 +701,16 @@ h6 {
   --viz-seq-5: #5598e7; --viz-seq-6: #86b6ef; --viz-seq-7: #b7d3f6;
   --viz-seq-0: #1c1c1c;
 }
+
+/* Rich text inside built forms (descriptions, content blocks, confirmations). */
+.prose-form p { margin: 0 0 0.6em; }
+.prose-form p:last-child { margin-bottom: 0; }
+.prose-form a { color: rgb(var(--c-accent)); text-decoration: underline; text-underline-offset: 2px; }
+.prose-form ul { list-style: disc; padding-left: 1.3em; margin: 0 0 0.6em; }
+.prose-form ol { list-style: decimal; padding-left: 1.3em; margin: 0 0 0.6em; }
+.prose-form h1, .prose-form h2, .prose-form h3 { font-family: Archivo, system-ui, sans-serif; font-weight: 800; margin: 0.4em 0 0.3em; }
+.prose-form h2 { font-size: 1.15em; }
+.prose-form h3 { font-size: 1.05em; }
+.prose-form img { max-width: 100%; height: auto; border-radius: 6px; }
+.prose-form table { border-collapse: collapse; }
+.prose-form td, .prose-form th { padding: 4px 8px; border-bottom: 1px solid rgb(var(--c-hairline)); text-align: left; }

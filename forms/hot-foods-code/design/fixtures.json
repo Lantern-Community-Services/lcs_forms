@@ -1,0 +1,66 @@
+{
+  "roster.sites": [
+    { "id": "s1", "code": "maple-court", "name": "Maple Court", "siteType": "supportive", "latitude": null, "longitude": null, "geofenceMeters": null },
+    { "id": "s2", "code": "harbor-house", "name": "Harbor House", "siteType": "shelter", "latitude": null, "longitude": null, "geofenceMeters": null }
+  ],
+  "actions.call:mealTypes": [
+    { "id": "meal-1", "name": "Individual Meals", "imageUrl": "https://forms.lanterncommunity.org/wp-content/uploads/FoodItems/TogoContainer.webp", "active": true, "sortOrder": 0, "colorSlot": 0 },
+    { "id": "meal-2", "name": "Holiday Meals", "imageUrl": "https://forms.lanterncommunity.org/wp-content/uploads/FoodItems/HolidayItem.jpg", "active": true, "sortOrder": 1, "colorSlot": 3 },
+    { "id": "meal-3", "name": "Family Style Meal", "imageUrl": "https://forms.lanterncommunity.org/wp-content/uploads/FoodItems/FamilyDinner.webp", "active": true, "sortOrder": 2, "colorSlot": 1 },
+    { "id": "meal-4", "name": "Special Event Meal", "imageUrl": "https://forms.lanterncommunity.org/wp-content/uploads/FoodItems/Special.jpg", "active": true, "sortOrder": 3, "colorSlot": 2 },
+    { "id": "meal-5", "name": "Holiday Treats", "imageUrl": "https://forms.lanterncommunity.org/wp-content/uploads/FoodItems/cover-collection-holidays.png", "active": true, "sortOrder": 4, "colorSlot": 4 }
+  ],
+  "actions.call:today": {
+    "limit": 1,
+    "cooldownMinutes": 0,
+    "isShelter": false,
+    "counts": { "r2": 1, "r4": 1, "r7": 1 },
+    "meals": { "r2": { "meal-1": [1790690000000] }, "r4": { "meal-1": [1790691000000] }, "r7": { "meal-1": [1790692000000] } },
+    "regulars": { "r1": 14, "r2": 12, "r3": 9, "r4": 8, "r5": 6, "r6": 5, "r8": 3, "r9": 2 },
+    "regularsDays": 30
+  },
+  "actions.call:report": {
+    "from": "2026-09-01",
+    "to": "2026-09-07",
+    "sites": [{ "code": "maple-court", "name": "Maple Court", "siteType": "supportive" }, { "code": "harbor-house", "name": "Harbor House", "siteType": "shelter" }],
+    "totals": { "entries": 241, "meals": 262, "residents": 118, "overrides": 6, "voided": 2, "days": 7, "avgMealsPerDay": 37.4 },
+    "series": [{ "key": "meal-1", "name": "Individual Meals", "slot": 0 }, { "key": "meal-3", "name": "Family Style Meal", "slot": 1 }, { "key": "meal-2", "name": "Holiday Meals", "slot": 3 }],
+    "byDay": [
+      { "day": "2026-09-01", "entries": 36, "meals": 39, "parts": { "meal-1": 33, "meal-3": 6 } },
+      { "day": "2026-09-02", "entries": 38, "meals": 41, "parts": { "meal-1": 35, "meal-3": 6 } },
+      { "day": "2026-09-03", "entries": 34, "meals": 36, "parts": { "meal-1": 30, "meal-3": 6 } },
+      { "day": "2026-09-04", "entries": 40, "meals": 44, "parts": { "meal-1": 32, "meal-3": 4, "meal-2": 8 } },
+      { "day": "2026-09-05", "entries": 31, "meals": 33, "parts": { "meal-1": 29, "meal-3": 4 } },
+      { "day": "2026-09-06", "entries": 28, "meals": 30, "parts": { "meal-1": 26, "meal-3": 4 } },
+      { "day": "2026-09-07", "entries": 34, "meals": 39, "parts": { "meal-1": 31, "meal-3": 8 } }
+    ],
+    "bySite": [
+      { "code": "harbor-house", "name": "Harbor House", "siteType": "shelter", "entries": 150, "meals": 166, "residents": 71 },
+      { "code": "maple-court", "name": "Maple Court", "siteType": "supportive", "entries": 91, "meals": 96, "residents": 47 }
+    ],
+    "byItem": [
+      { "key": "meal-1", "name": "Individual Meals", "slot": 0, "quantity": 216 },
+      { "key": "meal-3", "name": "Family Style Meal", "slot": 1, "quantity": 38 },
+      { "key": "meal-2", "name": "Holiday Meals", "slot": 3, "quantity": 8 }
+    ],
+    "heat": [
+      [0,0,0,0,0,0,0,0,1,2,3,9,12,8,3,2,3,6,9,5,2,0,0,0],
+      [0,0,0,0,0,0,0,0,1,2,4,10,13,7,3,2,3,7,8,5,1,0,0,0],
+      [0,0,0,0,0,0,0,0,1,1,3,8,11,9,2,2,4,6,9,4,2,0,0,0],
+      [0,0,0,0,0,0,0,0,2,2,3,9,14,8,3,3,3,7,10,6,2,0,0,0],
+      [0,0,0,0,0,0,0,0,1,2,3,8,12,7,2,2,3,6,8,4,1,0,0,0],
+      [0,0,0,0,0,0,0,0,0,1,2,6,9,6,2,1,2,5,7,3,1,0,0,0],
+      [0,0,0,0,0,0,0,0,0,1,2,6,8,5,2,1,2,5,6,3,1,0,0,0]
+    ],
+    "byStaff": [{ "name": "Jordan Ruiz", "entries": 98 }, { "name": "Priya Shah", "entries": 81 }, { "name": "Leo Grant", "entries": 62 }]
+  },
+  "entries.list": {
+    "total": 3,
+    "items": [
+      { "id": "e1", "data": { "items": [{ "itemId": "meal-1", "itemName": "Individual Meals", "quantity": 1, "slot": 0 }], "mealCount": 1, "tenantName": "Marcus Bell", "unit": "2A" }, "site": { "id": "s1", "code": "maple-court", "name": "Maple Court" }, "tenantId": "r2", "occurredAt": "2026-09-29T16:05:00Z", "createdAt": "2026-09-29T16:05:02Z", "createdById": "demo", "createdByName": "Jordan Ruiz", "status": "active", "overrideReason": null, "voidReason": null, "voidedByName": null, "voidedAt": null, "source": "app", "clientId": "c1" },
+      { "id": "e2", "data": { "items": [{ "itemId": "meal-1", "itemName": "Individual Meals", "quantity": 2, "slot": 0 }], "mealCount": 2, "tenantName": "Tom Reyes", "unit": "3F" }, "site": { "id": "s1", "code": "maple-court", "name": "Maple Court" }, "tenantId": "r4", "occurredAt": "2026-09-29T16:12:00Z", "createdAt": "2026-09-29T16:12:03Z", "createdById": "demo", "createdByName": "Jordan Ruiz", "status": "active", "overrideReason": "Picking up for a household member", "voidReason": null, "voidedByName": null, "voidedAt": null, "source": "app", "clientId": "c2" },
+      { "id": "e3", "data": { "items": [{ "itemId": "meal-3", "itemName": "Family Style Meal", "quantity": 1, "slot": 1 }], "mealCount": 1, "tenantName": "Rosa Diaz", "unit": "6E" }, "site": { "id": "s2", "code": "harbor-house", "name": "Harbor House" }, "tenantId": "r7", "occurredAt": "2026-09-29T17:40:00Z", "createdAt": "2026-09-29T17:40:01Z", "createdById": "demo", "createdByName": "Priya Shah", "status": "active", "overrideReason": null, "voidReason": null, "voidedByName": null, "voidedAt": null, "source": "app", "clientId": "c3" }
+    ]
+  },
+  "collections.get:settings": { "id": "limits", "data": { "supportiveLimit": 1, "shelterLimit": 3, "cooldownMinutes": 60 }, "updatedAt": "2026-09-29T12:00:00Z", "updatedByName": "Demo" }
+}

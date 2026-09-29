@@ -7,6 +7,7 @@ import { MobileTabBar } from "./MobileTabBar";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
 import { startHotFoodsSync } from "@/lib/hotFoodsQueue";
+import { startAppQueue } from "@/apps/queue";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,7 +27,11 @@ export function AppShell() {
   const { user } = useAuth();
   useEffect(() => {
     startHotFoodsSync(qc, user?.id ?? null);
-    return () => startHotFoodsSync(qc, null);
+    startAppQueue(user?.id ?? null);
+    return () => {
+      startHotFoodsSync(qc, null);
+      startAppQueue(null);
+    };
   }, [qc, user?.id]);
 
   return (

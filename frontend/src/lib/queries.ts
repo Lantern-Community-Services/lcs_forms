@@ -113,6 +113,25 @@ export const formsApi = {
   reorderCategories: (ids: string[]) => api.post("/forms/categories/reorder", { ids }),
 };
 
+/** A form built in this app that a catalog card can open. */
+export interface BuiltFormOption {
+  id: string;
+  kind: "basic" | "code";
+  slug: string;
+  title: string;
+  status: string;
+  live: boolean;
+  catalogLinkId: string | null;
+  url: string;
+  icon: string | null;
+  roles: string[];
+  description: string | null;
+}
+
+export function useBuiltFormOptions(enabled = true) {
+  return useQuery({ queryKey: ["forms", "built"], queryFn: () => api.get<BuiltFormOption[]>("/forms/built"), enabled });
+}
+
 // ── Attendance ───────────────────────────────────────────────────────────
 
 /** `site`: comma list of site codes, or undefined for all of my sites. */

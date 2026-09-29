@@ -17,12 +17,22 @@ import { adminRouter } from "./routes/admin.js";
 import { publicApiRouter } from "./routes/publicApi.js";
 import { formsRouter } from "./routes/forms.js";
 import { hotFoodsRouter } from "./routes/hotFoods.js";
+import { builderRouter } from "./routes/builder.js";
+import { fillRouter } from "./routes/fill.js";
+import { handleMcp } from "./forms/mcp.js";
+import { appsRouter } from "./routes/apps.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false });
 
 /** Public API: bounds a misbehaving integration, not normal WordPress traffic. */
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 600, standardHeaders: "draft-7", legacyHeaders: false });
+
+/** Built-form submissions and uploads: generous for a busy site, a wall for a script hammering a public form. */
+const submitLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
+
+/** File uploads carry their own raw body (routes/fill.ts); the JSON parser must leave them alone. */
+const isUpload = (path: string) => /^\/api\/f\/[^/]+\/files$/.test(path);
 
 export function createApp() {
   const app = express();
@@ -39,7 +49,13 @@ export function createApp() {
   app.post("/api/attendance", requireAuth, express.json({ limit: "20mb" }));
   // One Hot Foods entry carries one signature PNG (capped at 400 KB in the route).
   app.post("/api/hot-foods", requireAuth, express.json({ limit: "2mb" }));
-  app.use(express.json({ limit: "1mb" }));
+  // A built form's entry can hold signatures and custom-code data; the MCP
+  // server receives whole form documents.
+  app.post("/api/f/:slug/submit", submitLimiter, express.json({ limit: "5mb" }));
+  app.post("/api/f/:slug/files", submitLimiter);
+  app.use(["/api/builder", "/mcp", "/api/mcp", "/api/apps"], express.json({ limit: "5mb" }));
+  const json = express.json({ limit: "1mb" });
+  app.use((req, res, next) => (isUpload(req.path) ? next() : json(req, res, next)));
 
   app.get("/api/health", async (_req, res) => {
     try {
@@ -61,6 +77,13 @@ export function createApp() {
   app.use("/api/users", usersRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/v1", apiLimiter, publicApiRouter);
+  app.use("/api/builder", builderRouter);
+  app.use("/api/f", fillRouter);
+  app.use("/api/apps", appsRouter);
+  // MCP server for building forms with an LLM (API key, scope forms:build).
+  app.all(["/mcp", "/api/mcp"], apiLimiter, (req, res, next) => {
+    handleMcp(req, res).catch(next);
+  });
 
   app.use(errorHandler);
   return app;

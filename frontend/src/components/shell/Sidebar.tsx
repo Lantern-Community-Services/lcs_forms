@@ -14,6 +14,8 @@ import { canOpenForm, formIcon, formLinkIcon, isInternalForm } from "@/lib/formI
 import type { FormCategory, FormLink } from "@/lib/types";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { useNavMode } from "@/lib/shellNav";
+import { forcedDevice } from "@/lib/device";
 import { readStorage, writeStorage } from "@/lib/storage";
 
 const EXPANDED_WIDTH = 240;
@@ -245,8 +247,9 @@ function TypePane({ category, Icon, forms, reviewCount, collapsed, onBack, backR
 }
 
 const isRosterPath = (pathname: string) => pathname.startsWith("/roster") || pathname.startsWith("/tenants");
-/** Inside a form rather than on the catalog or an admin screen. The Roster is one of the forms. */
-const isFormPath = (pathname: string) => pathname.startsWith("/forms/") || isRosterPath(pathname);
+/** Inside a form rather than on the catalog or an admin screen: built-in forms, the Roster, built forms and code forms. */
+const isFormPath = (pathname: string) =>
+  pathname.startsWith("/forms/") || pathname.startsWith("/f/") || pathname.startsWith("/apps/") || isRosterPath(pathname);
 
 /**
  * The sidebar's collapsed state.
@@ -261,7 +264,14 @@ function useCollapsed() {
   const { collapsed: preferred, toggleCollapsed } = usePrefs();
   const { pathname } = useLocation();
   const portraitTablet = useMediaQuery("(min-width: 768px) and (orientation: portrait)");
-  const auto = portraitTablet && isFormPath(pathname);
+  const wide = useMediaQuery("(min-width: 768px)");
+  // A tablet: a coarse pointer, or a device preview frame standing in for an iPad.
+  const tablet = useMediaQuery("(min-width: 768px) and (pointer: coarse)") || (forcedDevice() === "tablet" && wide);
+  // A code form's page can ask for more (or less) folding than the default.
+  const mode = useNavMode() ?? "auto";
+  const auto =
+    isFormPath(pathname) &&
+    (mode === "always" ? wide : mode === "tablet" ? tablet || portraitTablet : mode === "never" ? false : portraitTablet);
   const [peek, setPeek] = useState(false);
   useEffect(() => setPeek(false), [pathname, auto]);
   return auto

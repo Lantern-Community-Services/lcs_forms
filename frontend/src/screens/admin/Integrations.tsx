@@ -44,10 +44,20 @@ function OnceSecret({ label, value, onDone }: { label: string; value: string; on
   );
 }
 
+/** Must match API_SCOPES in backend/src/services/apiKeys.ts. */
+export const API_SCOPE_OPTIONS = [
+  { scope: "roster:read", label: "Read rosters" },
+  { scope: "activity:write", label: "Report form activity" },
+  { scope: "forms:build", label: "Build basic forms (AI form builder / MCP)" },
+  { scope: "apps:build", label: "Build code forms: files, server code, publish (AI / MCP)" },
+  { scope: "entries:read", label: "Read built forms' entries" },
+  { scope: "entries:write", label: "Submit entries to built forms" },
+];
+
 export function AdminApiKeys() {
   const { data: keys, isLoading } = useApiKeys();
   const { data: sites } = useSites(true);
-  const [creating, setCreating] = useState<{ name: string; read: boolean; write: boolean; siteId: string } | null>(null);
+  const [creating, setCreating] = useState<{ name: string; scopes: string[]; siteId: string } | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
@@ -55,7 +65,7 @@ export function AdminApiKeys() {
 
   async function create() {
     if (!creating) return;
-    const scopes = [creating.read && "roster:read", creating.write && "activity:write"].filter(Boolean);
+    const scopes = creating.scopes;
     try {
       const res = await api.post<{ key: string }>("/admin/api-keys", { name: creating.name, scopes, siteId: creating.siteId || null });
       setCreating(null);
@@ -78,7 +88,7 @@ export function AdminApiKeys() {
       <PageHeader
         title="API keys"
         subtitle="For WordPress, Power Automate and anything else that reads rosters or reports form activity."
-        actions={<Button onClick={() => setCreating({ name: "", read: true, write: true, siteId: "" })}><Plus className="h-4 w-4" /> New key</Button>}
+        actions={<Button onClick={() => setCreating({ name: "", scopes: ["roster:read", "activity:write"], siteId: "" })}><Plus className="h-4 w-4" /> New key</Button>}
       />
       {isLoading ? <LoadingState /> : !keys?.length ? (
         <Card><EmptyState title="No API keys yet" hint="Create one for the WordPress connector." /></Card>
@@ -90,7 +100,7 @@ export function AdminApiKeys() {
                 <div className="min-w-0 flex-1">
                   <p className="text-[13.5px] font-semibold text-ink">{k.name}</p>
                   <p className="text-micro text-muted">
-                    <code>{k.prefix}…</code> · {k.scopes.replace(",", ", ")} · {k.site?.name ?? "all sites"} · created {formatDate(k.createdAt)} ·{" "}
+                    <code>{k.prefix}…</code> · {k.scopes.split(",").join(", ")} · {k.site?.name ?? "all sites"} · created {formatDate(k.createdAt)} ·{" "}
                     {k.lastUsedAt ? `used ${relativeTime(k.lastUsedAt)}` : "never used"}
                   </p>
                 </div>
@@ -110,8 +120,12 @@ export function AdminApiKeys() {
             <DialogBody className="grid gap-3">
               <Field label="Name"><Input value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="forms.lanterncommunity.org" /></Field>
               <Field label="Can">
-                <label className="flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked={creating.read} onChange={(e) => setCreating({ ...creating, read: e.target.checked })} /> Read rosters (<code>roster:read</code>)</label>
-                <label className="mt-1 flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked={creating.write} onChange={(e) => setCreating({ ...creating, write: e.target.checked })} /> Report form activity (<code>activity:write</code>)</label>
+                {API_SCOPE_OPTIONS.map((o) => (
+                  <label key={o.scope} className="mt-1 flex items-start gap-2 text-[13.5px] text-ink first:mt-0">
+                    <input type="checkbox" className="mt-1" checked={creating.scopes.includes(o.scope)} onChange={(e) => setCreating({ ...creating, scopes: e.target.checked ? [...creating.scopes, o.scope] : creating.scopes.filter((x) => x !== o.scope) })} />
+                    <span>{o.label} (<code>{o.scope}</code>)</span>
+                  </label>
+                ))}
               </Field>
               <Field label="Limit to site" hint="Optional. A site-limited key can't see other sites at all.">
                 <Select value={creating.siteId} onChange={(e) => setCreating({ ...creating, siteId: e.target.value })}
@@ -121,7 +135,7 @@ export function AdminApiKeys() {
           )}
           <DialogFooter>
             <Button variant="secondary" onClick={() => setCreating(null)}>Cancel</Button>
-            <Button onClick={create} disabled={!creating?.name || (!creating.read && !creating.write)}>Create key</Button>
+            <Button onClick={create} disabled={!creating?.name || !creating.scopes.length}>Create key</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

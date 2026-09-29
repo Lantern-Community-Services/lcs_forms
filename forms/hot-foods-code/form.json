@@ -1,0 +1,22 @@
+{
+  "title": "Hot Foods (code form)",
+  "description": "Record hot meals handed out at a site, with per-meal-type daily limits, offline recording, entries and reports.",
+  "icon": "soup",
+  "pages": [
+    { "id": "record", "label": "Record", "file": "pages/record.tsx", "fullHeight": true, "nav": "tablet", "roles": ["admin", "developer", "site_admin", "site_manager", "site_staff"] },
+    { "id": "entries", "label": "Entries", "file": "pages/entries.tsx", "roles": ["main_office", "site_admin", "site_manager", "developer"] },
+    { "id": "reports", "label": "Reports", "file": "pages/reports.tsx", "roles": ["main_office", "site_admin", "site_manager", "developer"] },
+    { "id": "settings", "label": "Settings", "file": "pages/settings.tsx", "roles": ["admin"] }
+  ],
+  "entries": {
+    "read": ["main_office", "site_admin", "site_manager", "developer"],
+    "create": ["admin", "developer", "site_admin", "site_manager", "site_staff"],
+    "void": ["site_admin", "site_manager"],
+    "undoMinutes": 15,
+    "rosterActivity": true
+  },
+  "collections": {
+    "mealTypes": { "read": ["*"], "write": ["admin"] },
+    "settings": { "read": ["*"], "write": ["admin"] }
+  }
+}

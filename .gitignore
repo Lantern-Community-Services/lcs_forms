@@ -16,3 +16,10 @@ data/
 *.pdf
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Code-form runtime (built by frontend/scripts/build-app-runtime.mjs)
+frontend/public/app-runtime/runtime.js
+frontend/public/app-runtime/runtime.css
+
+# Copied in by `npm run forms -- app:pull` for local type-checking
+forms/*/lcs-sdk.d.ts

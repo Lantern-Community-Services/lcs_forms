@@ -5,6 +5,7 @@ import { asyncHandler, badRequest, notFound } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { isRoleKey } from "../services/permissions.js";
+import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
 
 export const formsRouter = Router();
 formsRouter.use(requireAuth);
@@ -128,6 +129,13 @@ formsRouter.get(
   })
 );
 
+/** Forms built in this app (Form builder and Code forms) that a catalog card can open. */
+formsRouter.get(
+  "/built",
+  requirePermission("forms.manage"),
+  asyncHandler(async (_req, res) => res.json(await builtFormsForCatalog()))
+);
+
 // ── Favourites ───────────────────────────────────────────────────────────
 
 formsRouter.put(
@@ -213,6 +221,7 @@ formsRouter.post(
     if (!(await prisma.formCategory.findUnique({ where: { id: body.categoryId } }))) throw badRequest("Pick a category.");
     const last = await prisma.formLink.aggregate({ where: { categoryId: body.categoryId }, _max: { sortOrder: true } });
     const row = await prisma.formLink.create({ data: { ...body, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
+    await linkCatalogCard(row.id, row.url);
     await audit({ actor: actorOf(req), action: "forms.created", summary: `Added form “${row.title}”`, changes: { url: row.url, roles: row.roles } });
     res.status(201).json(toClient(row));
   })
@@ -248,6 +257,7 @@ formsRouter.patch(
       sortOrder = (last._max.sortOrder ?? -1) + 1;
     }
     const row = await prisma.formLink.update({ where: { id: before.id }, data: { ...body, ...(sortOrder !== undefined ? { sortOrder } : {}) } });
+    if (body.url !== undefined) await linkCatalogCard(row.id, row.url);
     const changed = (Object.keys(body) as (keyof typeof body)[]).filter((k) => body[k] !== undefined && body[k] !== before[k]);
     await audit({
       actor: actorOf(req),
@@ -265,7 +275,8 @@ formsRouter.delete(
   asyncHandler(async (req, res) => {
     const form = await prisma.formLink.findUnique({ where: { id: req.params.id } });
     if (!form) throw notFound();
-    // Favourites go with it (cascade); nothing else references a catalog entry.
+    // Favourites go with it (cascade); a built form it opened just loses its card.
+    await unlinkCatalogCard(form.id);
     await prisma.formLink.delete({ where: { id: form.id } });
     await audit({ actor: actorOf(req), action: "forms.deleted", summary: `Deleted form “${form.title}”`, changes: { url: form.url } });
     res.json({ ok: true });

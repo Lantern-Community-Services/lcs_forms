@@ -25,6 +25,8 @@ export const PERMISSIONS = [
   "integrations.manage",
   "settings.manage",
   "forms.manage",
+  /** Build code forms: their files, server logic and data (Admin and Developer). */
+  "apps.develop",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number];
@@ -48,6 +50,15 @@ export const ROLES: RoleDef[] = [
     description: "Full control on every site — the forms catalog, people, sites, integrations and settings.",
     permissions: [...PERMISSIONS],
     allSites: true,
+  },
+  {
+    // Builds code forms. Can't change people, sites or settings, and sees
+    // rosters only at sites they're assigned (for testing with real data).
+    key: "developer",
+    name: "Developer",
+    description: "Builds code forms — pages, server logic, dashboards — and can read entries. Sees rosters only at assigned sites.",
+    permissions: ["apps.develop", "roster.view", "entries.view"],
+    allSites: false,
   },
   {
     key: "main_office",

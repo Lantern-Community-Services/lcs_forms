@@ -83,6 +83,151 @@ Replaces the WordPress **Hot Foods Form** (Gravity Forms form 21). One sidebar e
 
 ---
 
+## Form builder
+
+Admins build forms inside the app, so a new form no longer needs WordPress or a plugin. Everything
+lives under **Admin → Form builder** (`/admin/builder`); only the Admin role (`forms.manage`) can
+create or change forms.
+
+**A form is one JSON document** (the `lcs-form` format). The builder, the Code tab, export files,
+the CLI and the AI form builder all read and write exactly that document, and every path into the
+database goes through the same checks (`backend/src/forms/schema.ts` for the shape, `lintForm` in
+the engine for the meaning: duplicate ids, rules pointing at missing fields, bad formulas).
+
+| | |
+|---|---|
+| **Field types** | Single line, paragraph, number, email, phone, website, date, time, hidden · dropdown, multi-select, multiple choice, checkboxes, consent, likert/matrix · name, address, file upload, signature, rating, slider, repeater, calculation · **site** and **resident** (Lantern roster lookups; a resident logs roster activity) · section, content block, page break · **custom code** |
+| **Logic** | Show/hide rules on any field, section or page (all/any, 12 operators), rules on notifications, multi-page forms with a progress bar |
+| **Calculations** | A small expression language (`{qty} * {price}`, `if()`, `sum()`, `round()`, `age()`, `days_between()`…). Parsed, never `eval`'d, and recomputed on the server, so a submitted total can't be forged |
+| **Merge tags** | `{field_id}`, `{all_fields}`, `{user:name}`, `{entry:url}`, `{date:today}`… in defaults, content, confirmations and notifications |
+| **Custom code** | A Custom code field holds your own HTML/CSS/JS, run in a sandboxed iframe (no access to the app, cookies or network). It talks to the form through `lcs.setValue()`, `lcs.values`, `lcs.onChange()`, `lcs.setValid()`. The form's own CSS goes in Settings → Custom CSS, scoped to that form |
+| **Settings** | Who can fill it in (anyone signed in, some roles, or **public** at `/p/<slug>` with a spam trap and rate limit), who can read entries, ask-for-a-site (entries limited to that site's staff), total and per-person limits, open/close dates, confirmation message or redirect, email and webhook notifications, drafts kept on the device |
+| **Versions** | The builder edits a draft; **Publish** makes it live as a numbered version. Each entry keeps the version it was filled against, and old versions can be viewed or restored. Two admins (or an admin and an AI) can't overwrite each other: saves carry a revision number |
+| **Entries** | `/f/<slug>/entries`: search, dates, starred, voided; CSV and Excel export; each entry has notes (notifications write their outcome there), star, print, void with a reason, and admin edit (logged) or delete |
+| **Forms screen** | Settings → Forms screen lists the form under a category (card, sidebar, favourites), following its access setting |
+
+The engine (`backend/src/forms/engine.ts`) runs on both sides. `frontend/src/lib/formEngine.ts` is
+a generated copy: edit the backend file, then `npm run sync:engine` (backend); `npm run
+check:engine` fails if they differ.
+
+### Import and export
+
+- **Export** one or several forms (the list's checkboxes, or a row's menu) as a `.lcsform.json`
+  bundle, optionally with their entries.
+- **Import** a Lantern form or bundle, or a **Gravity Forms export** (Forms → Import/Export → Export
+  Forms). GF field numbers become readable ids and every reference is rewritten: conditional logic,
+  merge tags, calculation formulas, notifications (routing rules become one rule-based notification
+  per recipient), limits and schedules. Lantern's own GF add-on fields become Site and Resident
+  fields. Anything with no equivalent is listed as a warning, never dropped silently. Tested against
+  eight live forms (up to 110 fields); all converted.
+
+### Forms as code
+
+Keep forms in the repo as JSON (`forms/*.json`) and push them:
+
+```
+npm run forms -- push ../forms/intake.json --publish --note "first version"
+npm run forms -- pull intake            # writes ../forms/intake.json
+npm run forms -- validate ../forms/intake.json
+npm run forms -- import gravityforms-export.json
+npm run forms -- export intake --entries > intake.lcsform.json
+```
+
+Add `"$schema": "http://localhost:4200/api/builder/json-schema"` to a file for autocomplete and
+checking in VS Code. The builder's **Code** tab edits the same document live.
+
+### AI form builder (MCP)
+
+`/api/mcp` is an MCP server (Streamable HTTP, stateless) so Claude or any MCP client can build
+forms. **Admin → AI form builder** makes the API key (scope `forms:build`; add `entries:read` /
+`entries:write` to let it read or submit entries) and shows the Claude Code, Claude Desktop and VS
+Code setup. Tools: `get_reference` (the full format guide), `create_form`, `patch_form`
+(add/update/move/remove fields and settings in one atomic call), `update_form`, `validate_form`,
+`publish_form`, `import_forms`, `export_forms`, `list_entries`, `submit_entry` and more
+(`backend/src/forms/mcp.ts`). The assistant acts as its key, and its changes are drafts until
+someone publishes.
+
+### Email
+
+Notifications send through Microsoft Graph as the mailbox in `MAIL_FROM`, which needs the
+**Mail.Send** application permission on the Entra app (ideally fenced to that mailbox with an
+Exchange application access policy). Until it's set, each email is noted on the entry as "not
+sent"; webhooks work regardless.
+
+## Code forms
+
+When a form needs more than fields and rules (custom screens, server-side logic, offline recording,
+dashboards), build it as a **code form**: a small project of its own, like working in this codebase
+but scoped to one form. **Admin → Code forms** (`/admin/apps`), for Admins and the **Developer** role
+(`apps.develop`). A code form opens at `/apps/<slug>` with one tab per page.
+
+```
+form.json          title, icon, pages (tabs) and who sees each, who reads / voids entries, collections
+pages/*.tsx        React pages. Import react, @lcs/sdk, @lcs/ui, @lcs/charts, lucide-react, and your own files
+server/index.ts    export default defineServer({ beforeCreate, afterCreate, actions })
+lib/…  styles.css  anything else; Tailwind classes with the app's tokens work everywhere
+```
+
+- **Pages run sandboxed.** Each page runs in an iframe with an opaque origin and no network access,
+  so a bug or a bad AI edit can't touch the rest of the site or anyone's session. The page talks to the
+  host through `@lcs/sdk` (`frontend/app-runtime/sdk.ts` ↔ `frontend/src/apps/AppFrame.tsx`), and the
+  host makes every request as the signed-in person with the normal permission checks. The UI kit is
+  the app's own components, so a code form looks exactly like the rest of the site and follows dark
+  mode and themes.
+- **Server code runs in a sandbox too.** Each call gets a fresh QuickJS interpreter in a worker
+  thread (`backend/src/apps/sandbox.ts`): no Node, files or network, a 3-second limit and 64 MB.
+  `ctx.db` (the form's entries and collections), `ctx.roster` and `ctx.time` are the only way out.
+  Cross-form reads have to be listed in `form.json` "reads" and still require the person to be allowed
+  to read that form.
+- **Data:** entries (free-form JSON plus site, resident, when, who; void and undo built in) and
+  **collections** (the form's own lists and settings). `beforeCreate` can refuse an entry, ask for an
+  override reason, or rewrite it. **Offline:** `entries.create(entry, { offline: true })` queues on the
+  device (`frontend/src/apps/queue.ts`) and uploads in the background, like Hot Foods.
+- **Building:** the in-app editor has a file tree, a code editor, a live preview of the draft, a
+  console (page and server logs), problems with file:line, versions, and the SDK reference. Drafts
+  can be previewed; entries made in preview are marked `preview` and hidden from the live form.
+  Publish makes a version; each version is kept and can be restored.
+- **From your own editor:** `npm run forms -- app:pull <slug>` writes the project plus
+  `lcs-sdk.d.ts` and a `tsconfig.json`, so VS Code and `tsc` type-check it; `app:build <dir>` compiles
+  locally; `app:push <dir> [--publish]` sends it back.
+- **With AI:** the MCP server has code tools (scope `apps:build`): `get_code_reference`,
+  `create_code_form`, `list_files`, `read_files`, `write_files`, `edit_file` (each returns the build
+  result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, collection read/write.
+- **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).
+- **Phones, iPads, desktops:** inside a page, Tailwind's `sm:` `md:` `lg:` `xl:` and `portrait:` /
+  `landscape:` follow the device's window (not the frame), so markup from the app's own screens lays
+  out the same; `phone:` `tablet:` `desktop:` variants and `useDevice()` are there for device-specific
+  touches, and a page can have a separate file per device (`"views": { "tablet": "pages/record.ipad.tsx" }`
+  in form.json). Pages are transparent, so they sit on the app's own background.
+- **Sidebar:** a page's `"nav"` in form.json decides how the app's sidebar behaves while it's open —
+  `auto` (folds to icons on a portrait iPad, like every form), `tablet` (folds on any tablet), `always`,
+  `never`. Built forms (`/f/…`) and code forms fold like the built-in forms by default.
+
+### Claude Design
+
+- **Design kit** (Admin → Code forms → *Design kit*, or Admin → AI form builder): one HTML file with
+  the app's real components, charts, colors and type in light and dark, plus the design brief. Add it
+  to Claude Design as the design system to design with.
+- **Design handoff** (a code form's editor → *Export for Claude Design*): one HTML file with every page
+  of that form, clickable, on phone / iPad portrait / iPad landscape / desktop, running the form's real
+  code on sample data only — `design/fixtures.json` in the project (method → answer, e.g.
+  `"actions.call:today"`), or made-up defaults. Never real residents. It includes the brief and the source.
+- **Back into code:** Claude Design's hand-off to Claude Code, with the MCP server connected
+  (`apps:build`), goes straight into the form's pages as a draft. The MCP tool `get_design_kit` (and
+  `/api/apps/design-brief`) gives the assistant the tokens, components and layout rules
+  (`backend/src/apps/designBrief.ts`).
+- **Shared files:** `npm run sync:engine` (backend) copies the Tailwind theme to the server (code forms'
+  CSS is compiled with the app's tokens) and the SDK types to where the editor, the CLI and the AI
+  read them. The runtime bundle (`public/app-runtime/`) is built by `npm run build:runtime` (frontend),
+  which also runs before `dev` and `build`.
+
+**Hot Foods, as a code form:** `forms/hot-foods-code/` is Hot Foods rebuilt this way, at
+`/apps/hot-foods-code`, beside the real one. It has the same guided Meal → Resident → Sign screen for
+iPad, the same per-meal-type limits and shelter cooldown with override reasons (one `lib/rules.ts`
+shared by the page and the server), offline recording, site-from-location, most-frequent-first
+sorting, Entries, Reports and an admin Settings tab. Locally it holds a copy of the Hot Foods demo
+entries (`source = "demo"`) so Reports has data. The real Hot Foods is untouched.
+
 ## Quick start (local prototype)
 
 Needs Node 20+. No database server: the prototype runs on SQLite.

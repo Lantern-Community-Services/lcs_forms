@@ -29,6 +29,16 @@ import { HotFoodsRecordPage } from "./screens/hotfoods/Record";
 import { HotFoodsEntriesPage } from "./screens/hotfoods/Entries";
 import { HotFoodsEntryDetailPage } from "./screens/hotfoods/EntryDetail";
 import { HotFoodsReportsPage } from "./screens/hotfoods/Reports";
+import { AdminBuilderList } from "./screens/builder/BuilderList";
+import { FormEditorPage } from "./screens/builder/Editor";
+import { AdminAiBuilder } from "./screens/builder/AiBuilder";
+import { FillPage } from "./screens/builtforms/FillPage";
+import { BuiltFormEntriesPage } from "./screens/builtforms/Entries";
+import { BuiltFormEntryPage } from "./screens/builtforms/EntryDetail";
+import { BuiltFormPreviewPage } from "./screens/builtforms/PreviewPage";
+import { AppHostPage } from "./apps/AppHostPage";
+import { CodeFormsList } from "./apps/CodeFormsList";
+import { AppEditorPage } from "./apps/AppEditor";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -117,6 +127,7 @@ function MovedAttendanceEntry() {
 function AdminHome() {
   const { can } = useAuth();
   if (can("forms.manage")) return <Navigate to="/admin/forms" replace />;
+  if (can("apps.develop")) return <Navigate to="/admin/apps" replace />;
   if (can("sites.manage")) return <Navigate to="/admin/sites" replace />;
   if (can("users.manage") || can("users.manageSite")) return <Navigate to="/admin/people" replace />;
   if (can("integrations.manage")) return <Navigate to="/admin/api-keys" replace />;
@@ -129,10 +140,21 @@ export function App() {
   return (
     <Routes>
       <Route path="/signin" element={user && !loading ? <HomeRedirect /> : <SignInPage />} />
+      {/* Public built forms: no sign-in, no app chrome. */}
+      <Route path="/p/:slug" element={<FillPage publicView />} />
 
       <Route element={<Protected><AppShell /></Protected>}>
         <Route index element={<HomeRedirect />} />
         <Route path="/forms" element={<FormsPage />} />
+        {/* Built forms. Each screen checks access itself (the form's own settings decide). */}
+        <Route path="/f/:slug" element={<FillPage />} />
+        <Route path="/f/:slug/entries" element={<BuiltFormEntriesPage />} />
+        <Route path="/f/:slug/entries/:id" element={<BuiltFormEntryPage />} />
+        <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
+          <Route path="/f/:slug/preview" element={<BuiltFormPreviewPage />} />
+        </Route>
+        {/* Code forms: access comes from each form's own form.json. */}
+        <Route path="/apps/:slug/:page?" element={<AppHostPage />} />
         <Route element={<RequirePermission anyOf={["roster.edit", "entries.view"]} />}>
           <Route element={<HotFoodsSection />}>
             <Route path="/forms/hot-foods" element={<HotFoodsHome />} />
@@ -168,10 +190,22 @@ export function App() {
 
         <Route element={<RequirePermission anyOf={ADMIN_AREA} />}>
           <Route path="/admin" element={<AdminHome />} />
+          {/* The editor takes the whole screen, outside the admin rail. */}
+          <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
+            <Route path="/admin/builder/:id" element={<FormEditorPage />} />
+          </Route>
+          <Route element={<RequirePermission anyOf={["apps.develop", "forms.manage"]} />}>
+            <Route path="/admin/apps/:id" element={<AppEditorPage />} />
+          </Route>
           <Route element={<ConfigLayout />}>
             <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
               <Route path="/admin/hot-foods" element={<AdminHotFoods />} />
+              <Route path="/admin/builder" element={<AdminBuilderList />} />
+              <Route path="/admin/ai" element={<AdminAiBuilder />} />
+            </Route>
+            <Route element={<RequirePermission anyOf={["apps.develop", "forms.manage"]} />}>
+              <Route path="/admin/apps" element={<CodeFormsList />} />
             </Route>
             <Route element={<RequirePermission anyOf={["sites.manage"]} />}>
               <Route path="/admin/sites" element={<AdminSites />} />

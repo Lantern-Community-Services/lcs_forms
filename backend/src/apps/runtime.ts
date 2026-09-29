@@ -1,0 +1,502 @@
+import crypto from "node:crypto";
+import type { BuiltForm, FormEntry, Prisma, Site, Tenant } from "@prisma/client";
+import { prisma } from "../prisma.js";
+import { HttpError, badRequest, forbidden, notFound } from "../http.js";
+import type { CurrentUser } from "../auth/middleware.js";
+import { displayName, recordActivity } from "../services/roster.js";
+import { canReadEntries as canReadBasicEntries } from "../forms/entries.js";
+import { readDoc } from "../forms/service.js";
+import { buildProject, type Build } from "./compile.js";
+import { runInSandbox, type SandboxResult } from "./sandbox.js";
+import { DEFAULT_ENTRY_READERS, readManifest, roleAllowed, type Files, type Manifest } from "./project.js";
+import * as time from "./time.js";
+
+/**
+ * A code form at runtime: who can do what (from form.json), entries,
+ * collections and server actions. The REST routes (routes/apps.ts) and the MCP
+ * server call these; pages reach them through the SDK in the browser.
+ */
+
+export interface LoadedApp {
+  form: BuiltForm;
+  files: Files;
+  manifest: Manifest;
+  build: Build;
+  draft: boolean;
+}
+
+export class BuildError extends HttpError {
+  constructor(problems: unknown) {
+    super(422, "The code form doesn't build — fix the errors and try again.", { problems });
+  }
+}
+
+export const isDeveloper = (u: CurrentUser | undefined) => Boolean(u && (u.permissions.includes("apps.develop") || u.permissions.includes("forms.manage")));
+
+export async function findCodeForm(slugOrId: string): Promise<BuiltForm> {
+  const form = await prisma.builtForm.findFirst({ where: { kind: "code", OR: [{ slug: slugOrId }, { id: slugOrId }] } });
+  if (!form) throw notFound("No such code form.");
+  return form;
+}
+
+/** The draft (developers, built on demand) or the published version. */
+export async function loadApp(form: BuiltForm, draft: boolean): Promise<LoadedApp> {
+  if (draft || !form.liveSchema) {
+    if (!draft) throw notFound("This form hasn't been published yet.");
+    const files = (JSON.parse(form.draftSchema) as { files: Files }).files;
+    const res = await buildProject(files);
+    if (!res.ok) throw new BuildError(res.problems);
+    return { form, files, manifest: readManifest(files).manifest!, build: res.build, draft: true };
+  }
+  const live = JSON.parse(form.liveSchema) as { files: Files; build: Build };
+  return { form, files: live.files, manifest: readManifest(live.files).manifest!, build: live.build, draft: false };
+}
+
+// ── Access ───────────────────────────────────────────────────────────────
+
+export function access(app: LoadedApp, user: CurrentUser) {
+  const m = app.manifest;
+  const dev = isDeveloper(user);
+  const role = user.roleKey;
+  const e = m.entries ?? {};
+  const canOpen = (app.form.status !== "archived" || dev) && (app.form.status !== "closed" || true) && roleAllowed(m.access?.roles, role, dev);
+  return {
+    canOpen,
+    pages: m.pages.filter((p) => roleAllowed(p.roles, role, dev)),
+    readAll: roleAllowed(e.read ?? DEFAULT_ENTRY_READERS, role, dev),
+    create: app.form.status !== "closed" && roleAllowed(e.create, role, dev),
+    voidAny: e.void ? roleAllowed(e.void, role, dev) : dev || user.permissions.includes("entries.void"),
+    undoMinutes: e.undoMinutes ?? 10,
+    collection(name: string, mode: "read" | "write") {
+      const rule = m.collections?.[name];
+      if (mode === "read") return roleAllowed(rule?.read ?? ["*"], role, dev);
+      return rule?.write ? roleAllowed(rule.write, role, dev) : dev || user.permissions.includes("forms.manage");
+    },
+  };
+}
+
+export function requireOpen(app: LoadedApp, user: CurrentUser) {
+  const a = access(app, user);
+  if (!a.canOpen) throw forbidden("This form is limited to other roles.");
+  return a;
+}
+
+// ── Entries ──────────────────────────────────────────────────────────────
+
+type Sites = Map<string, Pick<Site, "id" | "code" | "name">>;
+
+async function siteMap(): Promise<Sites> {
+  return new Map((await prisma.site.findMany({ select: { id: true, code: true, name: true } })).map((s) => [s.id, s]));
+}
+
+export function entryOut(e: FormEntry, sites: Sites, fields?: string[]) {
+  return {
+    id: e.id,
+    data: pick(JSON.parse(e.data), fields),
+    site: e.siteId ? sites.get(e.siteId) ?? null : null,
+    siteId: e.siteId,
+    tenantId: e.tenantId,
+    occurredAt: e.occurredAt.toISOString(),
+    createdAt: e.createdAt.toISOString(),
+    createdById: e.createdById,
+    createdByName: e.createdByName,
+    status: e.status,
+    overrideReason: e.overrideReason,
+    voidReason: e.voidReason,
+    voidedByName: e.voidedByName,
+    voidedAt: e.voidedAt?.toISOString() ?? null,
+    source: e.source,
+    clientId: e.clientId,
+  };
+}
+
+function dateWhere(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
+  if (!from && !to) return undefined;
+  const w: Prisma.DateTimeFilter = {};
+  try {
+    if (from) w.gte = time.lowerBound(from);
+    if (to) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(to)) w.lt = time.upperBound(to);
+      else w.lte = new Date(to);
+    }
+  } catch (e) {
+    throw badRequest(e instanceof Error ? e.message : "Bad date.");
+  }
+  return w;
+}
+
+export interface ClientEntryQuery {
+  site?: string | string[];
+  tenantId?: string;
+  from?: string;
+  to?: string;
+  status?: "active" | "voided" | "all";
+  search?: string;
+  mine?: boolean;
+  fields?: string[];
+  order?: "newest" | "oldest";
+  limit?: number;
+  offset?: number;
+}
+
+/** Entries as a page sees them: limited by role (everyone's, or only mine) and by the person's sites. */
+export async function listEntries(app: LoadedApp, user: CurrentUser, q: ClientEntryQuery) {
+  const a = requireOpen(app, user);
+  if (!a.readAll && !q.mine) throw forbidden("You can only see your own entries on this form (pass mine: true).");
+  const and: Prisma.FormEntryWhereInput[] = [{ formId: app.form.id }];
+  if (!app.draft) and.push({ source: { not: "preview" } });
+  if (q.mine) and.push({ createdById: user.userId });
+  if (user.siteIds) and.push({ OR: [{ siteId: null }, { siteId: { in: user.siteIds } }] });
+  if (q.site) {
+    const codes = Array.isArray(q.site) ? q.site : String(q.site).split(",");
+    const sites = await prisma.site.findMany({ where: { code: { in: codes } }, select: { id: true } });
+    and.push({ siteId: { in: sites.map((s) => s.id) } });
+  }
+  if (q.tenantId) and.push({ tenantId: q.tenantId });
+  const occurred = dateWhere(q.from, q.to);
+  if (occurred) and.push({ occurredAt: occurred });
+  if (q.status !== "all") and.push({ status: q.status ?? "active" });
+  if (q.search?.trim()) and.push({ OR: [{ data: { contains: q.search.trim() } }, { createdByName: { contains: q.search.trim() } }] });
+  const where = { AND: and };
+  const take = Math.min(2000, Math.max(1, Number(q.limit) || 100));
+  const [rows, total, sites] = await Promise.all([
+    prisma.formEntry.findMany({ where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" }, take, skip: Math.max(0, Number(q.offset) || 0) }),
+    prisma.formEntry.count({ where }),
+    siteMap(),
+  ]);
+  return { items: rows.map((e) => entryOut(e, sites, q.fields)), total };
+}
+
+export async function getEntry(app: LoadedApp, user: CurrentUser, id: string) {
+  const a = requireOpen(app, user);
+  const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
+  if (!e) throw notFound("No such entry.");
+  if (!a.readAll && e.createdById !== user.userId) throw forbidden("You can't see this entry.");
+  if (user.siteIds && e.siteId && !user.siteIds.includes(e.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
+  return entryOut(e, await siteMap());
+}
+
+export interface NewEntryInput {
+  data: unknown;
+  site?: string | null;
+  tenantId?: string | null;
+  occurredAt?: string | null;
+  clientId?: string | null;
+  override?: string | null;
+}
+
+const siteAllowed = (user: CurrentUser | null, siteId: string, machineSiteId?: string | null) =>
+  user ? user.siteIds === null || user.siteIds.includes(siteId) : !machineSiteId || machineSiteId === siteId;
+
+export type CreateOutcome =
+  | { status: "saved"; entry: ReturnType<typeof entryOut>; logs: string[] }
+  | { status: "needs_override"; problems: string[]; logs: string[] }
+  | { status: "invalid"; errors: Record<string, string>; message: string; logs: string[] };
+
+/**
+ * Save an entry, after the form's own server rules (beforeCreate) have their say.
+ * `user` null = an API key / the MCP server.
+ */
+export async function createEntry(app: LoadedApp, user: CurrentUser | null, input: NewEntryInput, opts: { actorName?: string; machineSiteId?: string | null; source?: string } = {}): Promise<CreateOutcome> {
+  if (user) {
+    const a = requireOpen(app, user);
+    if (!a.create) throw forbidden(app.form.status === "closed" ? "This form isn't taking entries right now." : "You can't add entries to this form.");
+  }
+  if (input.clientId) {
+    const dup = await prisma.formEntry.findFirst({ where: { formId: app.form.id, clientId: input.clientId } });
+    if (dup) return { status: "saved", entry: entryOut(dup, await siteMap()), logs: [] };
+  }
+  if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) throw badRequest("data must be an object.");
+  const dataJson = JSON.stringify(input.data);
+  if (dataJson.length > 1_000_000) throw new HttpError(413, "That entry is too big (1 MB max).");
+
+  let site: Site | null = null;
+  let tenant: Tenant | null = null;
+  if (input.site) {
+    site = await prisma.site.findFirst({ where: { OR: [{ code: input.site }, { id: input.site }] } });
+    if (!site || !site.active) throw badRequest("That site doesn't exist.");
+    if (!siteAllowed(user, site.id, opts.machineSiteId)) throw forbidden("You aren't assigned to that site.");
+  }
+  if (input.tenantId) {
+    tenant = await prisma.tenant.findUnique({ where: { id: input.tenantId } });
+    if (!tenant) throw badRequest("That resident isn't on the roster.");
+    if (!siteAllowed(user, tenant.siteId, opts.machineSiteId)) throw forbidden("That resident is at a site you aren't assigned to.");
+    if (site && tenant.siteId !== site.id) throw badRequest("That resident isn't at that site.");
+    site ??= await prisma.site.findUnique({ where: { id: tenant.siteId } });
+  }
+  let occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date();
+  if (Number.isNaN(occurredAt.getTime())) throw badRequest("occurredAt isn't a time.");
+  if (occurredAt.getTime() > Date.now()) occurredAt = new Date();
+  if (occurredAt.getTime() < Date.now() - 14 * 86_400_000) throw badRequest("That entry is more than 14 days old.");
+
+  let data = input.data as Record<string, unknown>;
+  let logs: string[] = [];
+  if (app.build.server) {
+    const incoming = {
+      data,
+      site: site && { id: site.id, code: site.code, name: site.name, siteType: site.siteType },
+      resident: tenant && { id: tenant.id, siteId: tenant.siteId, name: displayName(tenant), unit: tenant.unit, status: tenant.status },
+      occurredAt: occurredAt.toISOString(),
+      clientId: input.clientId ?? null,
+      override: input.override?.trim() || null,
+    };
+    const r = await runHook(app, user, "beforeCreate", incoming);
+    logs = r.logs;
+    if (!r.ok) {
+      if (r.userError) return { status: "invalid", errors: {}, message: r.error ?? "Refused.", logs };
+      throw new HttpError(500, `The form's server code failed: ${r.error}`, { logs, stack: app.draft ? r.stack : undefined });
+    }
+    const res = (r.value ?? {}) as { errors?: Record<string, string>; needsOverride?: string[]; data?: Record<string, unknown> };
+    if (res.errors && Object.keys(res.errors).length) return { status: "invalid", errors: res.errors, message: Object.values(res.errors)[0], logs };
+    if (res.needsOverride?.length && !input.override?.trim()) return { status: "needs_override", problems: res.needsOverride, logs };
+    if (res.data && typeof res.data === "object") data = res.data;
+  }
+
+  const entry = await prisma.formEntry.create({
+    data: {
+      formId: app.form.id,
+      formVersion: app.draft ? 0 : app.form.liveVersion,
+      data: JSON.stringify(data),
+      siteId: site?.id ?? null,
+      tenantId: tenant?.id ?? null,
+      occurredAt,
+      source: app.draft ? "preview" : opts.source ?? "app",
+      clientId: input.clientId ?? crypto.randomUUID(),
+      overrideReason: input.override?.trim().slice(0, 500) || null,
+      createdById: user?.userId ?? null,
+      createdByName: user?.name ?? opts.actorName ?? "System",
+    },
+  });
+  if (tenant && app.manifest.entries?.rosterActivity !== false && !app.draft) {
+    await recordActivity({ tenantId: tenant.id, source: "form", label: app.form.title, externalRef: entry.id, occurredAt, recordedBy: entry.createdByName }).catch((err) =>
+      console.error(`[apps] roster activity for ${entry.id} failed:`, err)
+    );
+  }
+  const out = entryOut(entry, await siteMap());
+  if (app.build.server) {
+    void runHook(app, user, "afterCreate", out).then((r) => {
+      if (!r.ok) console.error(`[apps] ${app.form.slug} afterCreate failed:`, r.error);
+    });
+  }
+  return { status: "saved", entry: out, logs };
+}
+
+export async function voidEntry(app: LoadedApp, user: CurrentUser, id: string, reason: string) {
+  const a = requireOpen(app, user);
+  const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
+  if (!e) throw notFound("No such entry.");
+  const ownUndo = e.createdById === user.userId && Date.now() - e.createdAt.getTime() < a.undoMinutes * 60_000;
+  if (!a.voidAny && !ownUndo) throw forbidden("You can't void this entry.");
+  if (user.siteIds && e.siteId && !user.siteIds.includes(e.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
+  if (!reason.trim()) throw badRequest("Say why.");
+  await prisma.formEntry.update({ where: { id: e.id }, data: { status: "voided", voidedAt: new Date(), voidedByName: user.name, voidReason: reason.trim().slice(0, 500) } });
+}
+
+export async function restoreEntry(app: LoadedApp, user: CurrentUser, id: string) {
+  const a = requireOpen(app, user);
+  if (!a.voidAny) throw forbidden("You can't restore entries.");
+  const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
+  if (!e) throw notFound("No such entry.");
+  await prisma.formEntry.update({ where: { id: e.id }, data: { status: "active", voidedAt: null, voidedByName: null, voidReason: null } });
+}
+
+// ── Collections ──────────────────────────────────────────────────────────
+
+const COLLECTION_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+
+const docOut = (r: { docId: string; data: string; updatedAt: Date; updatedByName: string | null }) => ({ id: r.docId, data: JSON.parse(r.data), updatedAt: r.updatedAt.toISOString(), updatedByName: r.updatedByName });
+
+function checkName(name: string) {
+  if (!COLLECTION_RE.test(name)) throw badRequest("Collection names start with a letter and use letters, digits, - and _.");
+}
+
+export async function collectionList(formId: string, name: string) {
+  checkName(name);
+  const rows = await prisma.formRecord.findMany({ where: { formId, collection: name }, orderBy: { createdAt: "asc" }, take: 5000 });
+  return rows.map(docOut);
+}
+
+export async function collectionGet(formId: string, name: string, id: string) {
+  checkName(name);
+  const r = await prisma.formRecord.findUnique({ where: { formId_collection_docId: { formId, collection: name, docId: id } } });
+  return r ? docOut(r) : null;
+}
+
+export async function collectionPut(formId: string, name: string, id: string | null, data: unknown, byName: string) {
+  checkName(name);
+  const json = JSON.stringify(data ?? null);
+  if (json.length > 256_000) throw new HttpError(413, "That document is too big (256 KB max).");
+  const docId = id?.trim() || crypto.randomUUID().slice(0, 12);
+  if (docId.length > 100) throw badRequest("Document ids are at most 100 characters.");
+  const r = await prisma.formRecord.upsert({
+    where: { formId_collection_docId: { formId, collection: name, docId } },
+    create: { formId, collection: name, docId, data: json, updatedByName: byName },
+    update: { data: json, updatedByName: byName },
+  });
+  return docOut(r);
+}
+
+export async function collectionRemove(formId: string, name: string, id: string) {
+  checkName(name);
+  await prisma.formRecord.deleteMany({ where: { formId, collection: name, docId: id } });
+}
+
+// ── Server code ──────────────────────────────────────────────────────────
+
+interface ServerQuery {
+  siteId?: string;
+  tenantId?: string;
+  from?: string;
+  to?: string;
+  status?: "active" | "voided" | "all";
+  where?: Record<string, unknown>;
+  fields?: string[];
+  order?: "newest" | "oldest";
+  limit?: number;
+}
+
+function pick(data: Record<string, unknown>, fields?: string[]) {
+  if (!fields?.length) return data;
+  return Object.fromEntries(fields.filter((f) => f in data).map((f) => [f, data[f]]));
+}
+
+function serverEntry(e: FormEntry, fields?: string[]) {
+  return {
+    id: e.id,
+    data: pick(JSON.parse(e.data), fields),
+    siteId: e.siteId,
+    tenantId: e.tenantId,
+    occurredAt: e.occurredAt.toISOString(),
+    createdAt: e.createdAt.toISOString(),
+    createdById: e.createdById,
+    createdByName: e.createdByName,
+    status: e.status,
+    overrideReason: e.overrideReason,
+  };
+}
+
+async function queryForServer(formId: string, q: ServerQuery, includePreview: boolean, mode: "find" | "count") {
+  const where: Prisma.FormEntryWhereInput = { formId };
+  if (!includePreview) where.source = { not: "preview" };
+  if (q.siteId) where.siteId = q.siteId;
+  if (q.tenantId) where.tenantId = q.tenantId;
+  const occurred = dateWhere(q.from, q.to);
+  if (occurred) where.occurredAt = occurred;
+  if (q.status !== "all") where.status = q.status ?? "active";
+  const filters = Object.entries(q.where ?? {});
+  const matches = (e: FormEntry) => {
+    if (!filters.length) return true;
+    const d = JSON.parse(e.data) as Record<string, unknown>;
+    return filters.every(([k, v]) => d[k] === v);
+  };
+  if (mode === "count" && !filters.length) return prisma.formEntry.count({ where });
+  // Up to 20,000 when the caller asks only for some fields (the reply stays small); 5,000 otherwise.
+  const limit = Math.min(q.fields ? 20_000 : 5000, Math.max(1, Number(q.limit) || 500));
+  const rows = await prisma.formEntry.findMany({ where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" }, take: filters.length ? 20_000 : limit });
+  const hits = rows.filter(matches);
+  return mode === "count" ? hits.length : hits.slice(0, limit).map((e) => serverEntry(e, q.fields));
+}
+
+/** Answers the server code's ctx.* calls, on behalf of `user` (null = an API key / MCP). */
+function hostFor(app: LoadedApp, user: CurrentUser | null) {
+  const canSite = (siteId: string) => !user || user.siteIds === null || user.siteIds.includes(siteId);
+  const siteOut = (s: Site) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType });
+  const residentOut = (t: Tenant) => ({ id: t.id, siteId: t.siteId, name: displayName(t), unit: t.unit, status: t.status });
+
+  async function otherForm(slug: string) {
+    if (!(app.manifest.reads ?? []).includes(slug)) throw new Error(`Add "${slug}" to "reads" in form.json to read its entries.`);
+    if (!user) throw new Error("Reading other forms needs a signed-in person.");
+    const other = await prisma.builtForm.findUnique({ where: { slug } });
+    if (!other) throw new Error(`No form "${slug}".`);
+    let allowed = false;
+    if (other.kind === "code") {
+      const loaded = await loadApp(other, false).catch(() => null);
+      allowed = Boolean(loaded && access(loaded, user).readAll);
+    } else allowed = canReadBasicEntries(readDoc(other.liveSchema ?? other.draftSchema), user);
+    if (!allowed) throw new Error(`${user.name} can't read the entries of "${slug}".`);
+    return other.id;
+  }
+
+  return async (name: string, args: any): Promise<unknown> => {
+    switch (name) {
+      case "entries.find":
+      case "entries.count": {
+        const formId = args.form ? await otherForm(args.form) : app.form.id;
+        return queryForServer(formId, args.q ?? {}, app.draft, name === "entries.count" ? "count" : "find");
+      }
+      case "entries.get": {
+        const formId = args.form ? await otherForm(args.form) : app.form.id;
+        const e = await prisma.formEntry.findFirst({ where: { id: String(args.id), formId } });
+        return e ? serverEntry(e) : null;
+      }
+      case "collections.list":
+        return (await collectionList(app.form.id, args.name)).map((d) => ({ id: d.id, data: d.data }));
+      case "collections.get": {
+        const d = await collectionGet(app.form.id, args.name, args.id);
+        return d && { id: d.id, data: d.data };
+      }
+      case "collections.put": {
+        const d = await collectionPut(app.form.id, args.name, args.id, args.data, user?.name ?? "Server code");
+        return { id: d.id, data: d.data };
+      }
+      case "collections.remove":
+        await collectionRemove(app.form.id, args.name, args.id);
+        return null;
+      case "roster.site": {
+        const s = await prisma.site.findFirst({ where: { OR: [{ id: String(args.x) }, { code: String(args.x) }] } });
+        return s && canSite(s.id) ? siteOut(s) : null;
+      }
+      case "roster.sites": {
+        const rows = await prisma.site.findMany({ where: { active: true, ...(user?.siteIds ? { id: { in: user.siteIds } } : {}) }, orderBy: { name: "asc" } });
+        return rows.map(siteOut);
+      }
+      case "roster.resident": {
+        const t = await prisma.tenant.findUnique({ where: { id: String(args.id) } });
+        return t && canSite(t.siteId) ? residentOut(t) : null;
+      }
+      case "roster.residents": {
+        const s = await prisma.site.findFirst({ where: { OR: [{ id: String(args.x) }, { code: String(args.x) }] } });
+        if (!s || !canSite(s.id)) return [];
+        return (await prisma.tenant.findMany({ where: { siteId: s.id, status: "active" } })).map(residentOut);
+      }
+      case "time.dayOf":
+        return time.dayOf(String(args.iso));
+      case "time.startOfDay":
+        return time.startOfDay(String(args.day)).toISOString();
+      case "time.partsOf":
+        return time.partsOf(String(args.iso));
+      case "time.addDays":
+        return time.addDays(String(args.day), Number(args.n));
+      default:
+        throw new Error(`Unknown call ${name}.`);
+    }
+  };
+}
+
+function baseCtx(app: LoadedApp, user: CurrentUser | null) {
+  return {
+    user: user && { id: user.userId, name: user.name, email: user.email, roleKey: user.roleKey, permissions: user.permissions, siteIds: user.siteIds },
+    now: new Date().toISOString(),
+    today: time.today(),
+    draft: app.draft,
+  };
+}
+
+function friendly(r: SandboxResult): SandboxResult {
+  if (!r.ok && r.error && /^interrupted$/i.test(r.error)) return { ...r, error: "The server code ran too long (3 s) and was stopped." };
+  return r;
+}
+
+async function runHook(app: LoadedApp, user: CurrentUser | null, hook: "beforeCreate" | "afterCreate", arg: unknown) {
+  const call = `__settle((async () => { const d = globalThis.__serverDef; if (!d || typeof d.${hook} !== "function") return null; return d.${hook}(${JSON.stringify(arg)}, __makeCtx(${JSON.stringify(baseCtx(app, user))})); })())`;
+  return friendly(await runInSandbox({ bundle: app.build.server!, call, onHost: hostFor(app, user) }));
+}
+
+/** Run a server action for a page (or the MCP server). */
+export async function runAction(app: LoadedApp, user: CurrentUser | null, name: string, args: unknown) {
+  if (user) requireOpen(app, user);
+  if (!app.build.server) throw notFound("This form has no server code.");
+  if (!/^[A-Za-z_$][\w$]{0,63}$/.test(name)) throw badRequest("Bad action name.");
+  const call = `__settle((async () => { const d = globalThis.__serverDef; const a = d && d.actions && d.actions[${JSON.stringify(name)}]; if (typeof a !== "function") throw new Error("No action named ${name}."); return a(${JSON.stringify(args ?? null)}, __makeCtx(${JSON.stringify(baseCtx(app, user))})); })())`;
+  return friendly(await runInSandbox({ bundle: app.build.server, call, onHost: hostFor(app, user) }));
+}

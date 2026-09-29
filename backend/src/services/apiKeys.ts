@@ -10,7 +10,18 @@ import { prisma } from "../prisma.js";
  */
 export const KEY_PREFIX = "lrk_";
 
-export const API_SCOPES = ["roster:read", "activity:write"] as const;
+export const API_SCOPES = [
+  "roster:read",
+  "activity:write",
+  /** Build forms: create, edit, publish, import and export (the MCP server's main scope). */
+  "forms:build",
+  /** Build code forms: files, server code, publish (the MCP server's code tools). */
+  "apps:build",
+  /** Read built forms' entries. */
+  "entries:read",
+  /** Submit entries to built forms. */
+  "entries:write",
+] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export function looksLikeApiKey(value: unknown): value is string {

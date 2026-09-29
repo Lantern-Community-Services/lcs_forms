@@ -12,7 +12,8 @@ export type PermissionKey =
   | "users.manageSite"
   | "integrations.manage"
   | "settings.manage"
-  | "forms.manage";
+  | "forms.manage"
+  | "apps.develop";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";

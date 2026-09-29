@@ -34,6 +34,13 @@ export const env = {
   appBaseUrl: (process.env.APP_BASE_URL ?? "").replace(/\/$/, ""),
 
   /**
+   * Mailbox form notifications are sent from (Graph sendMail, app-only). Empty
+   * = email notifications are recorded on the entry but not sent. See
+   * services/mailer.ts for the Entra permission it needs.
+   */
+  mailFrom: process.env.MAIL_FROM ?? "",
+
+  /**
    * Email domains always allowed to sign in. Admins add partner / Google
    * Workspace domains at runtime in Admin → Sign-in access; those are unioned
    * with this list. Empty = any account the tenant admits.

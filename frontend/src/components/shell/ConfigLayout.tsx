@@ -14,6 +14,9 @@ const GROUPS: { group: string; items: { to: string; label: string; key: string; 
     group: "Forms",
     items: [
       { to: "/admin/forms", label: "Forms catalog", key: "forms", needs: ["forms.manage"] },
+      { to: "/admin/builder", label: "Form builder", key: "builder", needs: ["forms.manage"] },
+      { to: "/admin/apps", label: "Code forms", key: "apps", needs: ["apps.develop", "forms.manage"] },
+      { to: "/admin/ai", label: "AI form builder", key: "ai", needs: ["forms.manage"] },
       { to: "/admin/hot-foods", label: "Hot Foods", key: "hotFoods", needs: ["forms.manage"] },
     ],
   },

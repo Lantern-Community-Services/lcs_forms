@@ -15,12 +15,14 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api";
 import { FORM_ICONS, formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
-import { formsApi, useForms, useRoles } from "@/lib/queries";
+import { formsApi, useBuiltFormOptions, useForms, useRoles, type BuiltFormOption } from "@/lib/queries";
 import type { FormCategory, FormLink } from "@/lib/types";
 import { cn, errorMessage } from "@/lib/utils";
 
 type FormDraft = {
   id?: string;
+  /** "built": opens a form made in Form builder / Code forms; "link": any URL or app path. */
+  source: "built" | "link";
   categoryId: string;
   title: string;
   description: string;
@@ -43,6 +45,8 @@ type Pending = { kind: "form"; form: FormLink } | { kind: "category"; category: 
 export function AdminFormsCatalog() {
   const { data, isLoading } = useForms(true);
   const { data: allRoles } = useRoles();
+  const { data: built } = useBuiltFormOptions();
+  const builtByUrl = new Map((built ?? []).map((b) => [b.url, b]));
   // Admins see every form regardless, so they aren't offered as a choice.
   const limitable = (allRoles ?? []).filter((r) => r.key !== "admin");
   const roleNames = (keys: string[]) => keys.map((k) => allRoles?.find((r) => r.key === k)?.name ?? k).join(", ");
@@ -59,6 +63,8 @@ export function AdminFormsCatalog() {
     try {
       await fn();
       await qc.invalidateQueries({ queryKey: ["forms"] });
+      await qc.invalidateQueries({ queryKey: ["builder"] });
+      await qc.invalidateQueries({ queryKey: ["apps"] });
       if (done) toast(done);
       return true;
     } catch (e) {
@@ -121,7 +127,30 @@ export function AdminFormsCatalog() {
   }
 
   const newForm = (categoryId: string) =>
-    setForm({ categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [] });
+    setForm({ source: "link", categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [] });
+
+  /** Fill a card from a built form: its address, title, icon, blurb and who can open it. */
+  function pickBuilt(f: FormDraft, b: BuiltFormOption): FormDraft {
+    const previous = built?.find((x) => x.url === f.url);
+    const keepTitle = f.title.trim() && f.title !== previous?.title;
+    const keepDescription = f.description.trim() && f.description !== (previous?.description ?? "");
+    return {
+      ...f,
+      url: b.url,
+      title: keepTitle ? f.title : b.title,
+      description: keepDescription ? f.description : b.description ?? "",
+      icon: b.icon && b.icon in FORM_ICONS ? (b.icon as FormIconKey) : f.icon,
+      roles: b.roles,
+    };
+  }
+
+  /** The hint under the built-form picker. */
+  function builtHint(url: string) {
+    const b = builtByUrl.get(url);
+    if (!b) return "Forms made in Admin → Form builder and Admin → Code forms. The card stays tied to the form, so a new URL name or an archive carries through.";
+    if (!b.live) return "This form hasn't been published yet. Staff who click the card are told it isn't available until it is.";
+    return `Opens ${b.url}. Who sees the card was filled in from the form's own access settings; change it below if you like.`;
+  }
 
   if (isLoading) return <LoadingState />;
 
@@ -178,7 +207,12 @@ export function AdminFormsCatalog() {
                             <EyeOff className="h-3 w-3" /> Hidden
                           </Tag>
                         )}
-                        {isInternalForm(f.url) && <Tag tone="accent">Built in</Tag>}
+                        {builtByUrl.has(f.url) ? (
+                          <Tag tone="accent">{builtByUrl.get(f.url)!.kind === "code" ? "Code form" : "Form builder"}</Tag>
+                        ) : (
+                          isInternalForm(f.url) && <Tag tone="accent">Built in</Tag>
+                        )}
+                        {builtByUrl.has(f.url) && !builtByUrl.get(f.url)!.live && <Tag tone="amber" title="Staff can't open it until it's published">Not published</Tag>}
                         {f.roles.length > 0 && (
                           <Tag tone="neutral" title={`Only ${roleNames(f.roles)} (and Admins) can see this form`}>
                             <Lock className="h-3 w-3" /> {roleNames(f.roles)}
@@ -204,6 +238,7 @@ export function AdminFormsCatalog() {
                       onClick={() =>
                         setForm({
                           id: f.id,
+                          source: builtByUrl.has(f.url) ? "built" : "link",
                           categoryId: f.categoryId,
                           title: f.title,
                           description: f.description ?? "",
@@ -235,16 +270,57 @@ export function AdminFormsCatalog() {
       {/* ── Form editor ─────────────────────────────────────────── */}
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent>
-          <DialogHeader title={form?.id ? "Edit form" : "Add a form"} subtitle="Link to a form on WordPress, or to a screen in this app." />
+          <DialogHeader title={form?.id ? "Edit form" : "Add a form"} subtitle="A form built here, a form on WordPress, or any screen in this app." />
           {form && (
             <form onSubmit={(e) => { e.preventDefault(); void saveForm(); }}>
               <DialogBody className="max-h-[65vh] space-y-3.5 overflow-y-auto scroll-thin">
                 <Field label="Title">
                   <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={120} required autoFocus />
                 </Field>
-                <Field label="Link" hint="A full address such as https://forms.lanterncommunity.org/incident-reports/, or an app path such as /roster.">
-                  <Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} maxLength={2000} required inputMode="url" />
-                </Field>
+                <div className="inline-flex rounded-input border border-hairline p-0.5">
+                  {([["built", "A form built here"], ["link", "A link"]] as const).map(([k, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setForm(k === "link" ? { ...form, source: k } : { ...form, source: k, url: builtByUrl.has(form.url) ? form.url : "" })}
+                      className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", form.source === k ? "bg-navy text-white" : "text-muted hover:text-ink")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {form.source === "built" ? (
+                  <Field label="Form" hint={builtHint(form.url)}>
+                    <Select
+                      value={builtByUrl.has(form.url) ? form.url : ""}
+                      onChange={(e) => {
+                        const b = built?.find((x) => x.url === e.target.value);
+                        if (b) setForm(pickBuilt(form, b));
+                      }}
+                      placeholder={built?.length ? "Pick a form…" : "No forms built yet"}
+                    >
+                      {(["basic", "code"] as const).map((kind) => {
+                        const list = (built ?? []).filter((b) => b.kind === kind);
+                        if (!list.length) return null;
+                        return (
+                          <optgroup key={kind} label={kind === "code" ? "Code forms" : "Form builder"}>
+                            {list.map((b) => (
+                              <option key={b.id} value={b.url}>
+                                {b.title}
+                                {b.live ? "" : " (draft)"}
+                                {b.catalogLinkId && b.url !== form.url ? " · already on the catalog" : ""}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </Select>
+                  </Field>
+                ) : (
+                  <Field label="Link" hint="A full address such as https://forms.lanterncommunity.org/incident-reports/, or an app path such as /roster.">
+                    <Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} maxLength={2000} required inputMode="url" />
+                  </Field>
+                )}
                 <Field label="Category">
                   <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
                 </Field>

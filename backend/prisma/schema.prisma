@@ -344,6 +344,169 @@ model FormFavorite {
   @@index([formId])
 }
 
+// ───────────────────────── Form builder ─────────────────────────
+
+/// A form built in Admin → Form builder (or from code, an import, or the MCP
+/// server). The whole definition is one JSON document in the lcs-form format
+/// (backend/src/forms/schema.ts), so what the builder, the code editor, an
+/// export file and an LLM see is exactly the same thing.
+model BuiltForm {
+  id          String   @id @default(cuid())
+  /// "basic" (drag-and-drop lcs-form document) | "code" (a code form: a small
+  /// project of files — pages, server logic, styles; see backend/src/apps/).
+  kind        String   @default("basic")
+  /// URL name: the form opens at /f/<slug>. Unique; changing it breaks links.
+  slug        String   @unique
+  title       String
+  /// "draft" (never published) | "published" | "closed" (published, not taking
+  /// entries) | "archived" (hidden everywhere, entries kept).
+  status      String   @default("draft")
+  /// The working copy the builder edits. JSON text: an lcs-form document, or for
+  /// a code form { files: { path: source } }.
+  draftSchema String
+  /// What people actually fill in. Null until first published. For a code form,
+  /// { files, build } — the published sources and their compiled output.
+  liveSchema  String?
+  /// Bumped on every publish; entries record the version they were filled against.
+  liveVersion Int      @default(0)
+  /// Bumped on every draft save — the editor sends back the revision it loaded,
+  /// so two admins (or an admin and an LLM) can't silently overwrite each other.
+  revision    Int      @default(1)
+  /// Catalog card that opens this form, when it's been added to Forms.
+  catalogLinkId String?
+  createdById   String?
+  createdByName String
+  updatedByName String?
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions BuiltFormVersion[]
+  entries  FormEntry[]
+  files    FormFile[]
+  records  FormRecord[]
+
+  @@index([status])
+}
+
+/// Snapshot of a form each time it was published, so an entry can always be
+/// shown with the labels and choices it was filled in against, and an older
+/// version can be restored into the draft.
+model BuiltFormVersion {
+  id        String    @id @default(cuid())
+  form      BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId    String
+  version   Int
+  schema    String
+  note      String?
+  publishedByName String
+  createdAt DateTime  @default(now())
+
+  @@unique([formId, version])
+}
+
+/// One submission of a built form. Values are JSON keyed by field id.
+model FormEntry {
+  id          String    @id @default(cuid())
+  form        BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId      String
+  formVersion Int
+  /// JSON text: { [fieldId]: value }. Only fields that were visible are kept.
+  data        String
+  /// The site the entry was made for, when the form asks for one — entries are
+  /// then limited to people assigned to that site, like the rest of the app.
+  siteId      String?
+  /// "app" | "public" | "api" | "mcp" | "import"
+  source      String    @default("app")
+  /// "active" | "voided"
+  status      String    @default("active")
+  /// When it happened (a code form may record offline and upload later);
+  /// defaults to when it was saved.
+  occurredAt  DateTime  @default(now())
+  /// Roster id of the resident the entry is about, when there is one — indexed
+  /// so code forms can ask "this resident's entries today" cheaply.
+  tenantId    String?
+  /// Why a code form's rule (a limit, a cooldown) was overridden.
+  overrideReason String?
+  /// Idempotency key from the filling device, so a retried submit can't save twice.
+  clientId    String?
+  createdById   String?
+  createdByName String
+  ip          String?
+  userAgent   String?
+  voidedAt     DateTime?
+  voidedByName String?
+  voidReason   String?
+  /// Starred by an entry viewer (Gravity Forms' star), for follow-up.
+  starred     Boolean   @default(false)
+  updatedByName String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  notes FormEntryNote[]
+  files FormFile[]
+
+  @@index([formId, createdAt])
+  @@index([formId, status])
+  @@index([formId, occurredAt])
+  @@index([formId, tenantId, occurredAt])
+  @@index([clientId])
+  @@index([siteId])
+}
+
+/// A note on an entry — typed by a person, or written by the system
+/// (notification sent, entry edited, voided).
+model FormEntryNote {
+  id        String    @id @default(cuid())
+  entry     FormEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId   String
+  /// "note" | "system"
+  kind      String    @default("note")
+  authorName String
+  body      String
+  createdAt DateTime  @default(now())
+
+  @@index([entryId, createdAt])
+}
+
+/// A file uploaded through a File field. Stored in the database so the app has
+/// one thing to back up; capped per file in the route.
+model FormFile {
+  id        String     @id @default(cuid())
+  form      BuiltForm  @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId    String
+  /// Null while uploaded but not yet submitted; orphans older than a day are swept.
+  entry     FormEntry? @relation(fields: [entryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  entryId   String?
+  fieldId   String
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
+  createdAt DateTime   @default(now())
+
+  @@index([entryId])
+  @@index([formId, createdAt])
+}
+
+/// A code form's own data besides entries: lists admins edit (meal types),
+/// settings, anything the form's pages or server code keep. One JSON document
+/// per (form, collection, docId).
+model FormRecord {
+  id         String    @id @default(cuid())
+  form       BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId     String
+  collection String
+  docId      String
+  data       String
+  updatedByName String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([formId, collection, docId])
+  @@index([formId, collection])
+}
+
 // ───────────────────────── People ─────────────────────────
 
 model User {
