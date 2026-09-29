@@ -1,0 +1,47 @@
+# Lantern Forms — backend + frontend.
+#
+#   cp .env.example .env      # then fill in JWT_SECRET and the Microsoft values
+#   docker compose up --build
+#
+# Open http://localhost:5200. Only the frontend is published; it proxies
+# /api/* to the backend over the compose network, so the browser sees one origin.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4200
+      DATABASE_URL: ${DATABASE_URL:-file:/data/lantern-forms.db}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (a long random string)}
+      CORS_ORIGIN: ${APP_BASE_URL:-http://localhost:5200}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5200}
+      DEV_AUTH: ${DEV_AUTH:-false}
+      SSO_ALLOWED_DOMAINS: ${SSO_ALLOWED_DOMAINS:-lanterncommunity.org}
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI:-http://localhost:5200/api/auth/microsoft/callback}
+      DB_PUSH_ON_START: ${DB_PUSH_ON_START:-true}
+    volumes:
+      - lantern-data:/data
+    expose:
+      - "4200"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:4200
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-5200}:5200"
+
+volumes:
+  # SQLite database. Goes away when you move to Azure SQL.
+  lantern-data:

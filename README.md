@@ -114,6 +114,34 @@ Set `SEED_DEMO_QUEUE=false` to skip that. `npm run db:reset` starts over.
 
 ---
 
+## Running in Docker
+
+Two images, one per service: `backend/Dockerfile` (Express + Prisma) and `frontend/Dockerfile`
+(Next.js standalone build). Both run as a non-root user and have health checks.
+
+```bash
+cp .env.example .env     # set JWT_SECRET and the MICROSOFT_* values
+docker compose up --build
+```
+
+Open **http://localhost:5200**. Only the frontend is published; it proxies `/api/*` to the backend
+over the compose network, so the browser sees one origin (no CORS, cookies stay first-party).
+
+- **Sign-in.** The containers run with `NODE_ENV=production`, where prototype sign-in is refused, so
+  Entra has to be configured. For a local smoke test set `NODE_ENV=development` and `DEV_AUTH=true`
+  in `.env`. If 5200 is taken (for example by `npm run dev`), set `FRONTEND_PORT`.
+- **Database.** SQLite in the `lantern-data` volume (`/data`), created and brought up to date by
+  `prisma db push` each time the backend starts. That command refuses changes that would lose data,
+  so a bad schema change stops the container instead of dropping a column. Back up the volume.
+  The seed and importers work in the container: `docker compose exec backend npm run seed`.
+- **`BACKEND_URL` is a build argument.** Next bakes the `/api` rewrite into the build, so changing
+  where the backend lives means rebuilding the frontend image (`build.args` in `docker-compose.yml`).
+- **Before production:** move to Azure SQL (see Database), set `DB_PUSH_ON_START=false` and deploy
+  schema changes with `prisma migrate deploy`, and uncomment `app.set("trust proxy", 1)` in
+  `backend/src/app.ts` so the rate limiters see the real client IP behind the proxy.
+
+---
+
 ## Who gets in
 
 | Role | Can |
