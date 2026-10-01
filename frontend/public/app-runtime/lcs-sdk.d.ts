@@ -201,7 +201,11 @@ declare module "@lcs/sdk" {
     remove(name: string, id: string): Promise<void>;
   };
 
-  /** Call a server action (server/index.ts `actions`). */
+  /**
+   * Call a server action (server/index.ts `actions`). Actions listed in form.json
+   * "offline": { "actions": [...] } (read-only ones) return this device's last
+   * answer when there's no connection — possibly from an earlier day.
+   */
   export const actions: {
     call<T = unknown>(name: string, args?: unknown): Promise<T>;
   };

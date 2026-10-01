@@ -1,3 +1,5 @@
+import { cachedAtOf, noteNetworkFailure, noteResponse, requestStarted } from "./offline";
+
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
 /**
@@ -37,13 +39,49 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The request never got an answer: no connection, or the server is down.
+ * Deliberately not an ApiError — the upload queues read "not an ApiError" as
+ * "try again later". Its message replaces the browser's "Load failed".
+ */
+export class NetworkError extends Error {
+  constructor() {
+    super("No connection. Check the internet and try again.");
+    this.name = "NetworkError";
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    credentials: "include",
-    headers: body instanceof FormData ? {} : { "Content-Type": "application/json" },
-    body: body instanceof FormData ? body : body != null ? JSON.stringify(body) : undefined,
-  });
+  return (await requestWithMeta<T>(method, path, body)).data;
+}
+
+async function requestWithMeta<T>(method: string, path: string, body?: unknown, opts: { background?: boolean } = {}): Promise<{ data: T; cachedAt: number | null }> {
+  // Screens' own requests hold off background work (lib/snapshot.ts) until they're done.
+  const ended = opts.background ? null : requestStarted();
+  try {
+    return await send<T>(method, path, body);
+  } finally {
+    ended?.();
+  }
+}
+
+async function send<T>(method: string, path: string, body?: unknown): Promise<{ data: T; cachedAt: number | null }> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      credentials: "include",
+      headers: body instanceof FormData ? {} : { "Content-Type": "application/json" },
+      body: body instanceof FormData ? body : body != null ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    noteNetworkFailure();
+    throw new NetworkError();
+  }
+  // Fresh from the server, or the service worker's stored copy (public/sw.js) — see lib/offline.ts.
+  noteResponse(res);
+  const cachedAt = cachedAtOf(res);
 
   if (!res.ok) {
     let payload: any = undefined;
@@ -59,12 +97,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   const contentType = res.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) return (await res.json()) as T;
-  return (await res.text()) as unknown as T;
+  if (contentType.includes("application/json")) return { data: (await res.json()) as T, cachedAt };
+  return { data: (await res.text()) as unknown as T, cachedAt };
 }
 
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
+  /** A GET plus, when there's no connection and the answer is the device's stored copy, when that copy was saved (ms). */
+  getWithMeta: <T>(path: string) => requestWithMeta<T>("GET", path),
+  /** A GET for background work: it doesn't count as the app being busy. */
+  getInBackground: <T>(path: string) => requestWithMeta<T>("GET", path, undefined, { background: true }).then((r) => r.data),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),

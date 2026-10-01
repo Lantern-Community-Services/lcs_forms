@@ -18,5 +18,6 @@
   "collections": {
     "mealTypes": { "read": ["*"], "write": ["admin"] },
     "settings": { "read": ["*"], "write": ["admin"] }
-  }
+  },
+  "offline": { "actions": ["mealTypes", "today"] }
 }

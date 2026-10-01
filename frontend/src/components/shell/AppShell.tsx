@@ -8,8 +8,13 @@ import { PullToRefresh } from "./PullToRefresh";
 import { useDeviceKind } from "@/lib/device";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
-import { startHotFoodsSync } from "@/lib/hotFoodsQueue";
-import { startAppQueue } from "@/apps/queue";
+import { kick as kickHotFoods, startHotFoodsSync } from "@/lib/hotFoodsQueue";
+import { startAppQueue, syncNow as syncAppQueue } from "@/apps/queue";
+import { startFillQueue, syncFills } from "@/lib/fillQueue";
+import { startRosterSync } from "@/lib/rosterStore";
+import { onApiUpdated, onReconnect } from "@/lib/offline";
+import { startSnapshot } from "@/lib/snapshot";
+import { OfflineBar, useOfflineBarVisible } from "./OfflineBar";
 import { useCascade } from "@/lib/cascade";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +28,15 @@ import { cn } from "@/lib/utils";
  * bill review's approve bar) then stack against it correctly, which they cannot
  * do against something floating outside the layout.
  */
+/** public/sw.js DEVICE_FIRST paths (under /api), and the queries that read them. */
+const DEVICE_FIRST_KEYS: [string, readonly unknown[]][] = [
+  ["/hot-foods/items", ["hotfoods", "items"]],
+  ["/forms", ["forms"]],
+  ["/sites", ["roster", "sites"]],
+  ["/tenants/meta/archive-reasons", ["meta", "reasons"]],
+  ["/auth/roles", ["meta", "roles"]],
+];
+
 export function AppShell() {
   // Hot Foods entries saved on this device keep uploading whichever screen
   // is open, not only while Record is.
@@ -31,11 +45,46 @@ export function AppShell() {
   useEffect(() => {
     startHotFoodsSync(qc, user?.id ?? null);
     startAppQueue(user?.id ?? null);
+    startFillQueue(user?.id ?? null);
+    // The roster kept on this device, and its changes pulled from the server.
+    startRosterSync(qc, user?.id ?? null);
     return () => {
       startHotFoodsSync(qc, null);
       startAppQueue(null);
+      startFillQueue(null);
+      startRosterSync(qc, null);
     };
   }, [qc, user?.id]);
+
+  // Offline mode (lib/offline.ts). While there's a connection, a copy of the
+  // whole site is built up in the background (lib/snapshot.ts). When the
+  // connection comes back: upload what was kept, and refresh the screen from
+  // stored copies to the real thing.
+  useEffect(() => {
+    startSnapshot(user);
+  }, [user]);
+  useEffect(() => () => startSnapshot(null), []);
+  useEffect(
+    () =>
+      onReconnect(() => {
+        void kickHotFoods();
+        void syncFills();
+        void syncAppQueue();
+        void qc.invalidateQueries();
+      }),
+    [qc]
+  );
+  // A device-first list (meal types, the forms list, sites) changed on the
+  // server: the screens showing it refetch, and get the new copy.
+  useEffect(
+    () =>
+      onApiUpdated((path) => {
+        const key = DEVICE_FIRST_KEYS.find(([prefix]) => path.startsWith(prefix))?.[1];
+        if (key) void qc.invalidateQueries({ queryKey: key });
+      }),
+    [qc]
+  );
+  const offlineBar = useOfflineBarVisible();
 
   const device = useDeviceKind();
   const touch = device !== "desktop";
@@ -87,7 +136,9 @@ export function AppShell() {
         {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
             page is short, so content doesn't jump sideways when a list grows or
             shrinks past the fold (collapsing roster sites, filtering). */}
-        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
+        <OfflineBar state={offlineBar} />
+        {/* With the bar showing, it is the one clearing the status bar; the screen's own header doesn't. */}
+        <main ref={mainRef} className={cn("min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]", offlineBar.visible && "[--safe-top:0px]")}>
           <Outlet />
         </main>
         {/* Installed to the home screen there's no reload button: pull down from the top instead. */}

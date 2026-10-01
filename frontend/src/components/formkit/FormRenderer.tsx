@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, Paperclip, Plus, Search, Star, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CloudOff, Loader2, Paperclip, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -7,6 +7,9 @@ import { SignaturePad, type SignaturePadHandle } from "@/components/attendance/S
 import { CodeBlockFrame } from "./CodeBlockFrame";
 import { useSites, useTenants } from "@/lib/queries";
 import { fillApi } from "@/lib/builder";
+import { ApiError } from "@/lib/api";
+import { isLocalFile, saveLocalFile } from "@/lib/fillQueue";
+import { isOnline } from "@/lib/offline";
 import { cn, errorMessage } from "@/lib/utils";
 import {
   ADDRESS_PARTS, DEFAULT_ADDRESS_PARTS, DEFAULT_NAME_PARTS, NAME_PARTS, applyCalculations, formatValue, initialValues, isInputField,
@@ -208,6 +211,7 @@ export function FormRenderer({
                 onChange={(v) => set(f.id, v)}
                 disabled={disabled || f.readOnly}
                 slug={slug}
+                keepFilesOffline={mode === "fill"}
                 user={user}
                 formSite={siteCode}
                 doc={doc}
@@ -296,6 +300,8 @@ interface FieldProps {
   onChange: (v: unknown) => void;
   disabled?: boolean;
   slug?: string;
+  /** Filling in (not editing an entry): with no connection a file is kept on the device and goes with the queued entry. */
+  keepFilesOffline?: boolean;
   user: RendererUser | null;
   formSite: string | null;
   doc: FormDoc;
@@ -416,7 +422,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
       );
     }
     case "file":
-      return <FileInput field={f} value={Array.isArray(value) ? (value as UploadedFile[]) : []} onChange={onChange} disabled={disabled} slug={props.slug} />;
+      return <FileInput field={f} value={Array.isArray(value) ? (value as UploadedFile[]) : []} onChange={onChange} disabled={disabled} slug={props.slug} keepOffline={props.keepFilesOffline} />;
     case "signature":
       return <SignatureInput value={typeof value === "string" ? value : ""} onChange={onChange} disabled={disabled} />;
     case "rating": {
@@ -656,7 +662,7 @@ interface UploadedFile {
   mime: string;
 }
 
-function FileInput({ field: f, value, onChange, disabled, slug }: { field: Field; value: UploadedFile[]; onChange: (v: unknown) => void; disabled?: boolean; slug?: string }) {
+function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: { field: Field; value: UploadedFile[]; onChange: (v: unknown) => void; disabled?: boolean; slug?: string; keepOffline?: boolean }) {
   const [busy, setBusy] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const max = f.maxFiles ?? 1;
@@ -675,7 +681,7 @@ function FileInput({ field: f, value, onChange, disabled, slug }: { field: Field
       }
       setBusy((n) => n + 1);
       try {
-        const up = slug ? await fillApi.upload(slug, f.id, file) : { id: `preview-${Math.random().toString(36).slice(2)}`, name: file.name, size: file.size, mime: file.type };
+        const up = slug ? (keepOffline ? await uploadOrKeep(slug, f.id, file) : await fillApi.upload(slug, f.id, file)) : { id: `preview-${Math.random().toString(36).slice(2)}`, name: file.name, size: file.size, mime: file.type };
         latest.current = [...latest.current, up];
         onChange(latest.current);
       } catch (e) {
@@ -693,6 +699,11 @@ function FileInput({ field: f, value, onChange, disabled, slug }: { field: Field
             <li key={file.id} className="flex items-center gap-2 rounded-input border border-hairline bg-surface px-3 py-2 text-[13.5px] text-ink">
               <Paperclip className="h-4 w-4 shrink-0 text-muted" />
               <span className="min-w-0 flex-1 truncate">{file.name}</span>
+              {isLocalFile(file.id) && (
+                <span className="flex shrink-0 items-center gap-1 text-micro font-semibold text-status-amberText" title="Kept on this device; it uploads with the entry">
+                  <CloudOff className="h-3.5 w-3.5" /> On this device
+                </span>
+              )}
               <span className="text-micro text-muted">{formatBytes(file.size)}</span>
               {!disabled && (
                 <button type="button" onClick={() => onChange(value.filter((x) => x.id !== file.id))} className="rounded p-1 text-muted hover:text-status-redText" aria-label={`Remove ${file.name}`}>
@@ -716,6 +727,21 @@ function FileInput({ field: f, value, onChange, disabled, slug }: { field: Field
       {err && <p className="mt-1 text-[12.5px] text-status-redText">{err}</p>}
     </div>
   );
+}
+
+/**
+ * Upload now, or with no connection keep the file on the device: it uploads
+ * with the entry from the offline queue (lib/fillQueue.ts). A refusal from the
+ * server (wrong type, too big) is still an error.
+ */
+async function uploadOrKeep(slug: string, fieldId: string, file: File) {
+  if (!isOnline()) return saveLocalFile(slug, fieldId, file);
+  try {
+    return await fillApi.upload(slug, fieldId, file);
+  } catch (e) {
+    if (e instanceof ApiError && e.status < 500) throw e;
+    return saveLocalFile(slug, fieldId, file);
+  }
 }
 
 const formatBytes = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);

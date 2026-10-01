@@ -38,6 +38,72 @@ tenantsRouter.get(
   })
 );
 
+// ── Sync (the device's own copy) ─────────────────────────────────────────
+
+const SYNC_PAGE = 2000;
+
+/**
+ * GET /api/tenants/sync?site=a,b[&since=ISO]
+ *
+ * Feeds the roster copy an iPad keeps for its sites (frontend lib/rosterStore.ts),
+ * so the list opens instantly and offline, and then only changes travel.
+ *
+ * Without `since`: every active resident at those sites (all of mine when
+ * `site` is empty), exactly as the list endpoint returns them.
+ *
+ * With `since`: everyone at ANY of my sites changed since then — archived
+ * included, so the device drops people who left, and regardless of `site`, so
+ * someone moved away from a site the device keeps is dropped there too.
+ *
+ * `next` goes back as `since`. It is taken before reading, a couple of seconds
+ * early, so a write landing mid-read is fetched again rather than missed
+ * (applying a row twice is harmless). Every write to a Tenant row moves its
+ * updatedAt — activity, keep, archive, a move, an edit — and nothing in the
+ * app hard-deletes one.
+ */
+tenantsRouter.get(
+  "/sync",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    const startedAt = new Date(Date.now() - 2000).toISOString();
+    const hours = await attentionHours();
+    const raw = typeof req.query.since === "string" ? new Date(req.query.since) : null;
+    if (raw && Number.isNaN(raw.getTime())) throw badRequest("since must be an ISO time.");
+
+    if (!raw) {
+      const { sites, items, truncated } = await loadRoster(req, { site: req.query.site, status: "active" });
+      res.json({
+        full: true,
+        items,
+        truncated,
+        next: startedAt,
+        hasMore: false,
+        sites: sites.map((s) => ({ id: s.id, code: s.code, name: s.name, attentionHours: s.attentionHours })),
+        attentionHours: hours,
+      });
+      return;
+    }
+
+    const mine = await sitesInScope(req, undefined);
+    const siteById = new Map(mine.map((s) => [s.id, s]));
+    const rows = mine.length
+      ? await prisma.tenant.findMany({ where: { siteId: { in: mine.map((s) => s.id) }, updatedAt: { gt: raw } }, orderBy: { updatedAt: "asc" }, take: SYNC_PAGE })
+      : [];
+    const hasMore = rows.length === SYNC_PAGE;
+    res.json({
+      full: false,
+      // Staff notes stay on the resident's own page, as in the list.
+      items: rows.map((t) => ({ ...serializeTenant({ ...t, site: siteById.get(t.siteId) }, hours), notes: undefined })),
+      // A full page: resume just before its last row, so rows sharing that
+      // timestamp aren't skipped.
+      next: hasMore ? new Date(rows[rows.length - 1].updatedAt.getTime() - 1).toISOString() : startedAt,
+      hasMore,
+      sites: mine.map((s) => ({ id: s.id, code: s.code, name: s.name, attentionHours: s.attentionHours })),
+      attentionHours: hours,
+    });
+  })
+);
+
 // ── Export ───────────────────────────────────────────────────────────────
 
 /**

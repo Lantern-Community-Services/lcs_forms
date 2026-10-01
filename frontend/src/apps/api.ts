@@ -38,6 +38,8 @@ export interface AppRuntime {
   hash: string;
   user: { id: string; name: string; email: string; roleKey: string; roleName: string; permissions: string[]; siteIds: string[] | null };
   canEdit: boolean;
+  /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */
+  offlineActions?: string[];
 }
 
 export const appKeys = {

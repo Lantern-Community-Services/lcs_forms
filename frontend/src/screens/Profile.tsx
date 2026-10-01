@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LogOut } from "lucide-react";
 import { MobileBackLink, Page, PageHeader } from "@/components/shell/AppShell";
+import { SnapshotSummary } from "@/components/shell/OfflineBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -164,6 +165,11 @@ export function ProfilePage() {
         <Field label="Default landing page" className="mt-2">
           <Select value={landing} onChange={(e) => changeLanding(e.target.value)} options={landingOptions} disabled={preferenceStatus === "saving"} />
         </Field>
+      </Card>
+
+      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "88ms" }}>
+        <p className="kicker">Offline</p>
+        <SnapshotSummary className="mt-2" />
       </Card>
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "105ms" }}>

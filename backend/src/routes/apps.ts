@@ -174,6 +174,7 @@ appsRouter.get(
       hash: app.build.hash,
       user: { id: u.userId, name: u.name, email: u.email, roleKey: u.roleKey, roleName: u.roleName, permissions: u.permissions, siteIds: u.siteIds },
       canEdit: isDeveloper(u),
+      offlineActions: app.manifest.offline?.actions ?? [],
     });
   })
 );

@@ -27,6 +27,8 @@ export interface MealEntry {
 
 /** actions.call("today", { site }) */
 export interface Today {
+  /** The New York day these counts are for. Offline, the page may be shown an earlier day's answer. */
+  day: string;
   limit: number;
   cooldownMinutes: number;
   isShelter: boolean;

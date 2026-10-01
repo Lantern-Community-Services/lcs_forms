@@ -4,6 +4,7 @@ import { ApiError } from "./api";
 import { hotFoodsApi } from "./queries";
 import type { HotFoodToday } from "./types";
 import { errorMessage } from "@/lib/utils";
+import { isOnline, onConnectivityChange } from "./offline";
 
 /**
  * Hot Foods entries are saved on the device first and uploaded behind the
@@ -247,6 +248,12 @@ export function startHotFoodsSync(client: QueryClient, uid: string | null) {
     };
     window.addEventListener("online", wake);
     window.addEventListener("offline", () => set({ online: false }));
+    // The app's own reading (lib/offline.ts): site Wi-Fi with no internet still says navigator.onLine.
+    onConnectivityChange(() => {
+      if (isOnline() === state.online) return;
+      if (isOnline()) wake();
+      else set({ online: false });
+    });
     document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && void kick());
     setInterval(() => void kick(), 20_000);
   }

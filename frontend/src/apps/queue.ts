@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api";
 import { submitAppEntry } from "./api";
+import { isOnline } from "@/lib/offline";
 
 /**
  * The device's offline queue for code forms. A page calls
@@ -14,6 +15,8 @@ import { submitAppEntry } from "./api";
 export interface QueuedEntry {
   clientId: string;
   slug: string;
+  /** The form's title, for the app's "saved on this device" list. */
+  title?: string;
   draft: boolean;
   userId: string;
   entry: Record<string, unknown>;
@@ -76,10 +79,15 @@ export async function queueStatus(slug: string): Promise<QueueStatus> {
     pending: rows.filter((r) => !r.error).length,
     pendingIds: rows.filter((r) => !r.error).map((r) => r.clientId),
     failed: rows.filter((r) => r.error).map((r) => ({ clientId: r.clientId, error: r.error!, entry: r.entry })),
-    online: navigator.onLine,
+    online: isOnline(),
     syncing,
     lastSyncedAt,
   };
+}
+
+/** Every entry of the signed-in person's waiting on this device, all forms. */
+export async function allQueued() {
+  return (await all().catch(() => [] as QueuedEntry[])).filter((r) => r.userId === currentUser).sort((a, b) => a.queuedAt - b.queuedAt);
 }
 
 export async function enqueue(e: Omit<QueuedEntry, "queuedAt" | "attempts">) {

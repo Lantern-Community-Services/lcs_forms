@@ -74,6 +74,13 @@ export const manifestSchema = z.object({
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */
   server: z.string().optional(),
+  /**
+   * Working with no connection. `actions`: server actions that only read (meal
+   * types, today's counts). The device keeps each one's last answer and, offline,
+   * the page gets that instead of an error. Never list an action that saves
+   * anything — offline it would look as if it had.
+   */
+  offline: z.object({ actions: z.array(z.string().min(1).max(60)).max(50).optional() }).strict().optional(),
 }).strict();
 
 export type Manifest = z.infer<typeof manifestSchema>;

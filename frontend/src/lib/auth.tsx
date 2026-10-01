@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, API_BASE, setSessionLostHandler } from "./api";
+import { noteSignedIn, noteSignedOut } from "./offline";
+import { clearRoster } from "./rosterStore";
 import type { PermissionKey, User } from "./types";
 
 /** Holding any of these puts Admin in the navigation. */
@@ -66,6 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refresh() {
     try {
       const me = await api.get<User>("/auth/me");
+      // Offline, this is the device's stored copy, so someone who signed in
+      // here before still gets in (and their entries queue under them).
+      noteSignedIn(me.id);
       setUser(me);
     } catch {
       setUser(null);
@@ -109,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await api.post("/auth/logout");
+    noteSignedOut();
+    void clearRoster();
     setUser(null);
   }
 

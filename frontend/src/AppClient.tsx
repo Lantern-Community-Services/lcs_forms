@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { startOffline } from "./lib/offline";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
@@ -20,9 +21,18 @@ export function AppClient() {
       new QueryClient({
         // Refetch on focus: a phone coming back from the lock screen should see
         // the roster as it is now, not as it was an hour ago.
-        defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 15_000 } },
+        //
+        // networkMode "always": with the default, a device that says it's
+        // offline never sends a request at all, so a screen waits forever
+        // instead of getting the service worker's stored copy (lib/offline.ts),
+        // and a save never says it failed.
+        defaultOptions: {
+          queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 15_000, networkMode: "always" },
+          mutations: { networkMode: "always" },
+        },
       })
   );
+  useEffect(() => startOffline(), []);
 
   return (
     <QueryClientProvider client={queryClient}>

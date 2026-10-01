@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { isOnline, onConnectivityChange, storeAnswer, storedAnswer } from "@/lib/offline";
+import { loadTenants } from "@/lib/rosterStore";
 import { useToast } from "@/components/ui/toast";
 import type { Site, Tenant } from "@/lib/types";
 import { runtimeApi, submitAppEntry, type AppRuntime } from "./api";
@@ -156,7 +158,7 @@ export function AppFrame({
       page: l.page,
       params: l.params,
       pages: l.runtime.pages.filter((p) => !p.hidden).map((p) => ({ id: p.id, label: p.label })),
-      online: navigator.onLine,
+      online: isOnline(),
       today: nyDay(),
       device: l.device,
     };
@@ -166,14 +168,13 @@ export function AppFrame({
   useEffect(() => send({ t: "context", context: context() }), [params, page, device]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const push = () => send({ t: "context", context: context() });
-    window.addEventListener("online", push);
-    window.addEventListener("offline", push);
+    // The app's own reading of the connection (lib/offline.ts): site Wi-Fi with no internet still says navigator.onLine.
+    const offConn = onConnectivityChange(push);
     const mo = new MutationObserver(() => send({ t: "theme", theme: themeSnapshot() }));
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
     const offQueue = onQueueChange(() => void queueStatus(slug).then((s) => send({ t: "event", name: "queue", payload: s })));
     return () => {
-      window.removeEventListener("online", push);
-      window.removeEventListener("offline", push);
+      offConn();
       mo.disconnect();
       offQueue();
     };
@@ -202,7 +203,8 @@ export function AppFrame({
       "roster.sites": async () =>
         (await api.get<Site[]>("/sites")).map((s) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType, latitude: s.latitude ?? null, longitude: s.longitude ?? null, geofenceMeters: s.geofenceMeters ?? null })),
       "roster.residents": async (code: string) => {
-        const res = await api.get<{ items: Tenant[] }>(`/tenants?${new URLSearchParams({ site: String(code), status: "active" })}`);
+        // The device's own copy of the roster when it has one: instant, and offline.
+        const res = await loadTenants(String(code), { userId: latest.current.runtime.user.id });
         return res.items.map((t) => ({ id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit }));
       },
       "entries.list": async (query: Record<string, unknown>) => runtimeApi.entries(slug, draft, query ?? {}),
@@ -211,10 +213,18 @@ export function AppFrame({
         const clientId = (entry.clientId as string) || crypto.randomUUID();
         const body = { ...entry, clientId };
         if (opts?.offline) {
-          await enqueue({ clientId, slug, draft, userId: latest.current.runtime.user.id, entry: body, offlineOverride: opts.offlineOverride });
+          await enqueue({ clientId, slug, title: latest.current.runtime.form.title, draft, userId: latest.current.runtime.user.id, entry: body, offlineOverride: opts.offlineOverride });
           return { status: "queued", clientId };
         }
-        const out = await submitAppEntry(slug, draft, body);
+        let out;
+        try {
+          out = await submitAppEntry(slug, draft, body);
+        } catch (e) {
+          // The connection dropped: keep it rather than lose it, as if the page had asked for offline.
+          if (e instanceof ApiError && e.status < 500) throw e;
+          await enqueue({ clientId, slug, title: latest.current.runtime.form.title, draft, userId: latest.current.runtime.user.id, entry: body, offlineOverride: opts?.offlineOverride });
+          return { status: "queued", clientId };
+        }
         serverLogs(out.logs);
         return out;
       },
@@ -225,11 +235,20 @@ export function AppFrame({
       "collections.put": async (name: string, id: string | null, data: unknown) => runtimeApi.put(slug, draft, name, id, data),
       "collections.remove": async (name: string, id: string) => runtimeApi.remove(slug, draft, name, id),
       "actions.call": async (name: string, args: unknown) => {
+        // form.json offline.actions: ones that only read. Their last answer is
+        // kept, and given back when there's no connection.
+        const keep = latest.current.runtime.offlineActions?.includes(name);
+        const key = `${slug}/${draft ? "draft" : "live"}/${encodeURIComponent(name)}?${encodeURIComponent(JSON.stringify(args ?? null))}`;
         try {
           const r = await runtimeApi.action(slug, draft, name, args);
           serverLogs(r.logs);
+          if (keep) void storeAnswer(key, r.value);
           return r.value;
         } catch (e) {
+          if (keep && !(e instanceof ApiError && e.status < 500)) {
+            const stored = await storedAnswer(key);
+            if (stored !== undefined) return stored;
+          }
           serverLogs((e as { logs?: string[] }).logs);
           throw e;
         }

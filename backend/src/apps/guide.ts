@@ -40,7 +40,13 @@ Admins and developers pass every role check.
 - actions: server functions pages call (actions.call("today", { site })) — for anything that needs data the
   person can't read directly (e.g. counts across everyone's entries for a limit or a sort order).
 - Offline: entries.create(entry, { offline: true }) saves on the device and uploads in the background.
-  offlineOverride is sent automatically if the server asks for a reason later.
+  offlineOverride is sent automatically if the server asks for a reason later. (Without offline: true, a save
+  that loses its connection is queued the same way and returns { status: "queued" }.)
+- Offline reads: the app opens with no connection, and roster, entries and collections reads return what the
+  device last loaded. Actions are POSTs, so list the ones that only read in form.json
+  "offline": { "actions": ["mealTypes", "today"] }; offline they return the device's last answer. Never list an
+  action that saves anything. An answer can be from an earlier day: put the day in it (day: ctx.today) and
+  have the page ignore day-specific parts (today's counts) when it isn't dates.today().
 - Everything runs as the person using the form. Pages can't reach the network or the app directly —
   only the SDK. Server code can't reach anything but ctx (no fetch, no files); 3 s and 64 MB per call.
 

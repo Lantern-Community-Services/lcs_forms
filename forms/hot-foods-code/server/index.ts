@@ -102,7 +102,7 @@ export default defineServer({
       const past = ctx.db.entries.find<MealEntry>({ siteId: s.id, from: ctx.time.addDays(ctx.today, -REGULARS_DAYS), to: ctx.time.addDays(ctx.today, -1), fields: ["mealCount"], limit: 5000 });
       const regulars: Record<string, number> = {};
       for (const e of past) if (e.tenantId) regulars[e.tenantId] = (regulars[e.tenantId] ?? 0) + (e.data.mealCount ?? 1);
-      return { ...rules, isShelter: s.siteType === "shelter", counts, meals, regulars, regularsDays: REGULARS_DAYS };
+      return { day: ctx.today, ...rules, isShelter: s.siteType === "shelter", counts, meals, regulars, regularsDays: REGULARS_DAYS };
     },
 
     /** The Reports tab, for any of the person's sites and a date range. */

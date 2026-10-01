@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowDownUp, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CloudOff, Loader2, MapPin, MapPinOff, Minus, Plus, RefreshCw, Search, Trash2, UploadCloud, UtensilsCrossed, X } from "lucide-react";
-import { actions, app, entries, local, queue, roster, useApp, useData, type QueueStatus, type Resident, type Site } from "@lcs/sdk";
+import { actions, app, dates, entries, local, queue, roster, useApp, useData, type QueueStatus, type Resident, type Site } from "@lcs/sdk";
 import { Button, EmptyState, Input, LoadingState, Select, Sheet, SignaturePad, Textarea, cn, initials, tintFor, type SignaturePadHandle } from "@lcs/ui";
 import { slotColor } from "@lcs/charts";
 import { cooldownLeft, minutes, OFFLINE_REVIEW, OVER_LIMIT_REASONS, ruleProblems, type Rules, type Served } from "../lib/rules";
@@ -110,10 +110,13 @@ function RecordScreen({ sites, items, prefs, canManage }: { sites: Site[]; items
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Today's counts from the server plus this device's entries still waiting to upload.
+  // Offline, "today" is this device's last answer (form.json offline.actions); one
+  // from an earlier day has that day's meals in it, so its counts don't apply.
   const { counts, meals } = useMemo(() => {
-    const counts: Record<string, number> = { ...(today.data?.counts ?? {}) };
+    const current = today.data && (!today.data.day || today.data.day === dates.today()) ? today.data : null;
+    const counts: Record<string, number> = { ...(current?.counts ?? {}) };
     const meals: Record<string, Served> = {};
-    for (const [t, byItem] of Object.entries(today.data?.meals ?? {})) meals[t] = { ...byItem };
+    for (const [t, byItem] of Object.entries(current?.meals ?? {})) meals[t] = { ...byItem };
     for (const s of saved) {
       if (!pending.has(s.clientId) || s.siteCode !== site?.code) continue;
       counts[s.tenantId] = (counts[s.tenantId] ?? 0) + 1;

@@ -33,13 +33,9 @@ export function useSiteSelection() {
   const { data, isLoading } = useSites();
   const [params, setParams] = useSearchParams();
   const sites = data ?? [];
-  const valid = new Set(sites.map((s) => s.code));
 
   const fromUrl = params.get("site");
-  const raw = fromUrl !== null ? fromUrl.split(",").filter(Boolean) : remembered() ?? [];
-  // Drop anything not (or no longer) assigned. Selecting every site is the same as All.
-  let codes = sites.length ? raw.filter((c) => valid.has(c)) : raw;
-  if (sites.length && codes.length === sites.length) codes = [];
+  const codes = selectedCodes(fromUrl !== null ? fromUrl.split(",").filter(Boolean) : remembered() ?? [], sites);
   const key = codes.join(",");
 
   // If storage refuses, the URL still carries the choice.
@@ -68,6 +64,22 @@ export function useSiteSelection() {
     param: key || undefined,
     isLoading,
   };
+}
+
+/** Drop anything not (or no longer) assigned. Selecting every site is the same as All (empty). */
+function selectedCodes(raw: string[], sites: Site[]) {
+  const valid = new Set(sites.map((s) => s.code));
+  const codes = sites.length ? raw.filter((c) => valid.has(c)) : raw;
+  return sites.length && codes.length === sites.length ? [] : codes;
+}
+
+/**
+ * The `site` parameter the roster and Hot Foods screens would send on this
+ * device with no ?site= in the URL (undefined = all my sites), for reading
+ * them ahead of time (lib/snapshot.ts).
+ */
+export function rememberedSiteParam(sites: Site[]): string | undefined {
+  return selectedCodes(remembered() ?? [], sites).join(",") || undefined;
 }
 
 export function selectionLabel(codes: string[], sites: Site[]) {

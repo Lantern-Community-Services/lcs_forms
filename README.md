@@ -228,6 +228,53 @@ shared by the page and the server), offline recording, site-from-location, most-
 sorting, Entries, Reports and an admin Settings tab. Locally it holds a copy of the Hot Foods demo
 entries (`source = "demo"`) so Reports has data. The real Hot Foods is untouched.
 
+## Offline mode
+
+Site internet drops, so the app keeps working without it.
+
+- **The app opens with no connection.** `frontend/public/sw.js` (a service worker, registered by
+  `lib/offline.ts`) keeps the app's files and a copy of every screen's data (each GET `/api` answer)
+  on the device. Online, everything comes from the server as usual and refreshes the copy; offline, or
+  when Wi-Fi is up but the internet behind it isn't (a request that hangs past 6 s), the copy answers.
+- **What's ready offline: the whole site, saved a little at a time while it's used**
+  (`lib/snapshot.ts`). In the background, one request about every second, and only while no screen is
+  waiting on one of its own, the app reads every screen the person can open. That covers the forms
+  and their definitions, meal types and their pictures, the roster and each resident's page at the
+  device's sites, Review, Overview, Activity and attendance, plus Hot Foods entries, reports and form
+  entries for roles that can read them. Each read uses the screen's own URL and default filters, so
+  the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (today's
+  counts every 10 minutes, a resident's page daily). Profile → Offline shows the progress. With Low
+  Data Mode on, only what's needed to fill in forms is read.
+- **Lists that rarely change are answered from the device first:** meal types, the forms list, sites
+  and archive reasons (`DEVICE_FIRST` in `sw.js`). They show instantly, are checked with the server
+  behind the scenes, and the screen refreshes itself if the server's copy differs. A save to one of
+  them drops the device's copy, so an admin's edit is never hidden behind it.
+- **The roster is kept on the device** (`lib/rosterStore.ts`, IndexedDB) for every site the device
+  opens, so Roster, Hot Foods Record, a form's resident picker and attendance show the list at once,
+  online or offline. After the first load only changes travel: `GET /api/tenants/sync?since=` returns
+  who changed at any of the person's sites (archived and moved people included, so they drop off),
+  pulled every 20 s while the app is open, on focus, on reconnect and right after any roster edit. A
+  full reload every 12 hours catches anything a delta can't see. The Archived tab still asks the server.
+- **Entries are queued on the device** and upload by themselves when the connection is back, from
+  whichever screen is open: Hot Foods (`lib/hotFoodsQueue.ts`), built forms (`lib/fillQueue.ts`,
+  files attached offline included) and code forms (`apps/queue.ts`). Each carries a `clientId`, so a
+  retry never saves twice.
+- **The offline bar** above every screen (`components/shell/OfflineBar.tsx`) says when the app is
+  offline, how many entries are waiting, and how old the data on screen is. It turns red when the
+  server refused an entry. Tap it to see, retry or discard what's on the device.
+- **Code forms:** reads through the SDK (roster, entries, collections) work offline like any screen.
+  Server actions are POSTs, so list the read-only ones in form.json:
+  `"offline": { "actions": ["mealTypes", "today"] }`.
+- **Whose data:** the stored copies (and the kept roster) belong to whoever is signed in. They're cleared on sign-out, and
+  when a different person signs in on the device. Queued entries stay and upload under the person
+  who made them. Signing in needs the internet; someone already signed in stays signed in offline.
+
+Needs https (or `localhost`). On plain http, e.g. the dev server opened from an iPad by LAN
+address, there's no service worker: entries still queue, but the app can't be reopened offline.
+To test offline on a computer, open the app on localhost, then switch DevTools → Network to
+Offline and reload. `NEXT_PUBLIC_OFFLINE=off` at build time removes the worker and its copies from
+every device that opens the app.
+
 ## Quick start (local prototype)
 
 Needs Node 20+. No database server: the prototype runs on SQLite.

@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
-import { CheckCircle2, ClipboardList, Lock, PencilRuler } from "lucide-react";
+import { CheckCircle2, ClipboardList, CloudOff, Lock, PencilRuler } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
+import { isOnline } from "@/lib/offline";
 import { Page } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,7 +33,13 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [serverErrors, setServerErrors] = useState<Errors | undefined>();
-  const [done, setDone] = useState<{ id: string; values: Values } | null>(null);
+  /** queued: kept on this device to upload later — there's no entry id yet. */
+  const [done, setDone] = useState<{ id: string | null; values: Values; queued?: boolean } | null>(null);
+  const { user } = useAuth();
+  // Uploads run from AppShell when signed in; a public form has no shell.
+  useEffect(() => {
+    if (publicView) startFillQueue(undefined);
+  }, [publicView]);
   const [clientId, setClientId] = useState(newClientId);
   const [round, setRound] = useState(0);
   const draftKey = `lcs-form-draft:${slug}`;
@@ -55,16 +64,37 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
 
   const { doc, form } = data;
 
+  const clearDraft = () => {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** No connection: keep it on the device; lib/fillQueue.ts uploads it later. */
+  async function saveOnDevice(values: Values, extra: SubmitExtra) {
+    try {
+      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors });
+    } catch {
+      toast("No connection, and this device couldn't keep the entry. Try again once the internet is back.", "error");
+      return;
+    }
+    clearDraft();
+    setDone({ id: null, values, queued: true });
+    window.scrollTo({ top: 0 });
+  }
+
   async function submit(values: Values, extra: SubmitExtra) {
     setSubmitting(true);
     setServerErrors(undefined);
+    // Honeypot filled: a bot. Never queued; the server deals with it.
+    const canQueue = !extra.honeypot;
     try {
+      // A file attached offline is only on the device, so the queue (which uploads it first) has to send this.
+      if (canQueue && (!isOnline() || hasLocalFiles(values))) return await saveOnDevice(values, extra);
       const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, website_hp: extra.honeypot || undefined });
-      try {
-        localStorage.removeItem(draftKey);
-      } catch {
-        /* ignore */
-      }
+      clearDraft();
       const conf = doc.settings.confirmation;
       if (conf?.type === "redirect" && conf.url) {
         window.location.assign(renderTemplate(conf.url, { values: res.values, doc, user: data!.user, entry: { id: res.id } }));
@@ -73,6 +103,9 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
       setDone({ id: res.id, values: res.values ?? values });
       window.scrollTo({ top: 0 });
     } catch (e) {
+      // The connection dropped (or the server is down) mid-send. The clientId
+      // makes it safe even if the server did save it.
+      if (canQueue && (!(e instanceof ApiError) || e.status >= 500)) return await saveOnDevice(values, extra);
       const errs = submitErrors(e);
       if (Object.keys(errs).length) setServerErrors(errs);
       toast(errorMessage(e, "Couldn't save your answers. Try again."), "error");
@@ -108,7 +141,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
         {doc.description && !done && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
         <div className="mt-6">
           {done ? (
-            <Confirmation data={data} values={done.values} entryId={done.id} onAnother={another} slug={slug} />
+            <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} />
           ) : data.closed ? (
             <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-[14px] text-ink">{data.closed}</div>
           ) : (
@@ -129,18 +162,30 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   );
 }
 
-function Confirmation({ data, values, entryId, onAnother, slug }: { data: NonNullable<ReturnType<typeof useFillForm>["data"]>; values: Values; entryId: string; onAnother: () => void; slug: string }) {
+function Confirmation({ data, values, entryId, queued, onAnother, slug }: { data: NonNullable<ReturnType<typeof useFillForm>["data"]>; values: Values; entryId: string | null; queued?: boolean; onAnother: () => void; slug: string }) {
   const conf = data.doc.settings.confirmation;
   const html = useMemo(
-    () => renderTemplate(conf?.message || "<p>Thanks — your response has been saved.</p>", { values, doc: data.doc, user: data.user, entry: { id: entryId }, html: true }),
+    () => renderTemplate(conf?.message || "<p>Thanks — your response has been saved.</p>", { values, doc: data.doc, user: data.user, entry: { id: entryId ?? "" }, html: true }),
     [conf?.message, values, data, entryId]
   );
   return (
     <div>
-      <div className="flex items-start gap-3 rounded-card border border-status-greenDot/40 bg-status-greenBg p-4">
-        <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-status-greenText" />
-        <div className="prose-form text-[14.5px] text-ink" dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
+      {queued ? (
+        // The form's own message can promise things (an email, a reference
+        // number) that only happen once the server has it, so it isn't shown.
+        <div className="flex items-start gap-3 rounded-card border border-status-amberDot/40 bg-status-amberBg p-4">
+          <CloudOff className="mt-0.5 h-6 w-6 shrink-0 text-status-amberText" />
+          <div className="text-[14.5px] text-ink">
+            <p className="font-semibold">Saved on this device.</p>
+            <p className="mt-1 text-muted">There's no connection right now. It uploads by itself as soon as the internet is back. You can fill in another or leave this screen.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 rounded-card border border-status-greenDot/40 bg-status-greenBg p-4">
+          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-status-greenText" />
+          <div className="prose-form text-[14.5px] text-ink" dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+      )}
       {conf?.showSummary && (
         <div className="mt-5">
           <p className="mb-1 text-micro font-bold uppercase tracking-[0.04em] text-muted">Your answers</p>
@@ -149,7 +194,7 @@ function Confirmation({ data, values, entryId, onAnother, slug }: { data: NonNul
       )}
       <div className="mt-6 flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onAnother}>Fill in another</Button>
-        {data.canReadEntries && <Link to={`/f/${slug}/entries/${entryId}`}><Button variant="ghost">View this entry</Button></Link>}
+        {data.canReadEntries && entryId && <Link to={`/f/${slug}/entries/${entryId}`}><Button variant="ghost">View this entry</Button></Link>}
       </div>
     </div>
   );

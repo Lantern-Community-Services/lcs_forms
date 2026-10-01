@@ -1,5 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { useAuth } from "./auth";
+import { loadTenants } from "./rosterStore";
 import type {
   ApiKeyRow, AttendanceDetail, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
@@ -31,12 +33,18 @@ export function useSites(all = false, enabled = true) {
 
 /** `site`: comma list of site codes, or undefined for all of my sites. */
 export function useTenants(site: string | undefined, status: "active" | "archived" | "attention", enabled = true) {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const key = qk.tenants(site ?? "all", status);
   return useQuery({
-    queryKey: qk.tenants(site ?? "all", status),
+    queryKey: key,
     queryFn: () =>
-      api.get<{ items: Tenant[]; attentionHours: number; truncated: boolean }>(
-        `/tenants?${new URLSearchParams({ ...(site ? { site } : {}), status })}`
-      ),
+      // The active roster comes from the device's own copy (lib/rosterStore.ts):
+      // instant, and offline. A refetch (after an edit, or on focus) pulls the
+      // changes first. Archived is rarely opened and isn't kept.
+      status === "active"
+        ? loadTenants(site, { fresh: qc.getQueryData(key) !== undefined, userId: user?.id })
+        : api.get<{ items: Tenant[]; attentionHours: number; truncated: boolean }>(`/tenants?${new URLSearchParams({ ...(site ? { site } : {}), status })}`),
     enabled,
     placeholderData: (prev) => prev,
   });
@@ -199,10 +207,18 @@ export function useHotFoodItems(all = false) {
   return useQuery({ queryKey: ["hotfoods", "items", all], queryFn: () => api.get<HotFoodItem[]>(`/hot-foods/items${all ? "?all=1" : ""}`), staleTime: 5 * 60_000 });
 }
 
+const nyDay = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
 export function useHotFoodToday(site: string | undefined) {
   return useQuery({
     queryKey: ["hotfoods", "today", site ?? ""],
-    queryFn: () => api.get<HotFoodToday>(`/hot-foods/today?site=${encodeURIComponent(site!)}`),
+    queryFn: async () => {
+      const { data, cachedAt } = await api.getWithMeta<HotFoodToday>(`/hot-foods/today?site=${encodeURIComponent(site!)}`);
+      // Offline, this is the device's stored copy. One from an earlier day has
+      // that day's meals in it, which would block today's first meal; the
+      // rules and the regulars still hold.
+      return cachedAt && nyDay(cachedAt) !== nyDay(Date.now()) ? { ...data, counts: {}, meals: {} } : data;
+    },
     enabled: Boolean(site),
     // Two staff serving the same line see each other's entries within the minute.
     refetchInterval: 60_000,

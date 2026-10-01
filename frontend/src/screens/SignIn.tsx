@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useIsPhone } from "@/lib/useMediaQuery";
 import { readStorage, writeStorage } from "@/lib/storage";
+import { reachable } from "@/lib/offline";
 
 /**
  * Sign-in is Microsoft Entra ID only — one button, no form. The backend owns
@@ -95,8 +96,14 @@ export function SignInPage() {
     writeStorage(STAY_SIGNED_IN_KEY, next ? "1" : "0");
   }
 
-  function start(selectAccount = false) {
+  async function start(selectAccount = false) {
     setMessage(null);
+    // Leaving for Microsoft with no connection strands a home-screen app on a
+    // browser error page with no way back, so check first.
+    if (!(await reachable())) {
+      setMessage({ text: "You're offline, and signing in needs the internet. Try again once the connection is back.", tone: "error" });
+      return;
+    }
     setRedirecting(true);
     signInWithMicrosoft(params.get("returnTo") ?? undefined, {
       selectAccount,
@@ -154,7 +161,7 @@ export function SignInPage() {
 
           <button
             type="button"
-            onClick={() => start()}
+            onClick={() => void start()}
             disabled={redirecting || config?.microsoft === false}
             title={config?.microsoft === false ? "Microsoft sign-in isn't configured on this server yet" : undefined}
             className={`mt-7 inline-flex h-[52px] w-full items-center justify-center gap-[9px] rounded-input font-heading text-[15.5px] font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 disabled:pointer-events-none disabled:opacity-45 md:h-11 md:gap-2 md:text-[15px] ${BRAND_NAVY}`}
@@ -207,7 +214,7 @@ export function SignInPage() {
           {/* For the few people signed into more than one work account. */}
           <button
             type="button"
-            onClick={() => start(true)}
+            onClick={() => void start(true)}
             disabled={redirecting}
             className="mt-2.5 min-h-[44px] w-full text-center text-[13.5px] font-semibold text-[#2c3453] hover:underline disabled:opacity-50 dark:text-[#bccfff] md:mt-3 md:min-h-0 md:text-[13px]"
           >

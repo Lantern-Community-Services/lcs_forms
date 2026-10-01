@@ -8,6 +8,19 @@ const nextConfig = {
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*"],
   // Self-contained server bundle for the Docker image (frontend/Dockerfile).
   output: "standalone",
+  // The offline service worker (public/sw.js). Never served from a cache, so a
+  // new version reaches devices the next time they open the app.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
   // Proxy API calls to the Express backend (replaces the old Vite dev proxy).
   // Works in `next dev` and `next start`.
   async rewrites() {
