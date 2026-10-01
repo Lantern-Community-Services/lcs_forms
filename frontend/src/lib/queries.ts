@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import type {
-  ApiKeyRow, AttendanceDetail, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
+  ApiKeyRow, AttendanceDetail, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
 } from "./types";
 
@@ -97,6 +97,15 @@ export function useForms(editing = false) {
     queryFn: () => api.get<FormCatalog>(`/forms${editing ? "?all=1" : ""}`),
     // The catalog changes a few times a year; don't refetch it on every focus.
     staleTime: 5 * 60_000,
+  });
+}
+
+/** The Forms home dashboard: attention items, recent activity, counts. */
+export function useHome() {
+  return useQuery({
+    queryKey: ["home"],
+    queryFn: () => api.get<HomeData>("/home"),
+    staleTime: 60_000,
   });
 }
 

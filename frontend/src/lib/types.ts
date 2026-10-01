@@ -228,6 +228,43 @@ export interface FormCatalog {
   favorites: string[];
 }
 
+/** One card in "Needs your attention" on the Forms home (backend routes/home.ts). */
+export interface HomeAttentionItem {
+  id: string;
+  kind: "roster" | "hotfoods" | "draft";
+  /** "warn" = amber, act soon; "info" = a reminder. */
+  tone: "warn" | "info";
+  title: string;
+  detail: string;
+  action: string;
+  href: string;
+}
+
+export interface HomeActivityItem {
+  id: string;
+  actorName: string;
+  mine: boolean;
+  /** "You submitted", "Riley updated" — read before `subject`. */
+  verb: string;
+  subject: string;
+  detail: string | null;
+  at: string;
+  href: string | null;
+}
+
+export interface HomeData {
+  attention: HomeAttentionItem[];
+  activity: HomeActivityItem[];
+  stats: {
+    attention: number;
+    urgent: number;
+    submissionsWeek: number;
+    /** Null when the person has no roster access. */
+    residents: number | null;
+    sites: string[] | null;
+  };
+}
+
 export interface ImportSummary {
   committed: boolean;
   rows: number;
