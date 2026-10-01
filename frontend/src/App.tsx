@@ -1,11 +1,14 @@
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Monitor } from "lucide-react";
 import { ADMIN_AREA, useAuth } from "./lib/auth";
 import type { PermissionKey } from "./lib/types";
 import { AppShell } from "./components/shell/AppShell";
 import { ConfigLayout } from "./components/shell/ConfigLayout";
 import { SectionTabsLayout } from "./components/shell/SectionTabs";
 import { useReviewCount } from "./components/shell/navData";
-import { LoadingState } from "./components/ui/misc";
+import { Button } from "./components/ui/button";
+import { EmptyState, LoadingState } from "./components/ui/misc";
+import { useDeviceKind } from "./lib/device";
 
 import { SignInPage } from "./screens/SignIn";
 import { FormsPage } from "./screens/Forms";
@@ -61,6 +64,26 @@ function RequirePermission({ anyOf }: { anyOf: PermissionKey[] }) {
   if (loading) return <div className="grid h-full place-items-center"><LoadingState /></div>;
   if (!anyOf.some((p) => can(p))) return <Navigate to="/" replace />;
   return <Outlet />;
+}
+
+/**
+ * Admin is a desktop feature: the builder, the catalog, people and sites need a
+ * keyboard, a pointer and room. On a phone or an iPad the screens are not
+ * offered, and a typed or bookmarked address lands here instead of on them.
+ */
+function DesktopOnly() {
+  const device = useDeviceKind();
+  if (device === "desktop") return <Outlet />;
+  return (
+    <div className="flex flex-col items-center px-6 py-10">
+      <EmptyState
+        icon={<Monitor className="h-8 w-8" />}
+        title="Admin is desktop only"
+        hint="Open the app on a computer to change settings, forms, people or sites."
+      />
+      <Link to="/forms"><Button>Back to forms</Button></Link>
+    </div>
+  );
 }
 
 /**
@@ -188,6 +211,7 @@ export function App() {
           <Route path="/attendance/:id" element={<MovedAttendanceEntry />} />
         </Route>
 
+        <Route element={<DesktopOnly />}>
         <Route element={<RequirePermission anyOf={ADMIN_AREA} />}>
           <Route path="/admin" element={<AdminHome />} />
           {/* The editor takes the whole screen, outside the admin rail. */}
@@ -226,6 +250,7 @@ export function App() {
               <Route path="/admin/wordpress" element={<AdminWordPress />} />
             </Route>
           </Route>
+        </Route>
         </Route>
 
         <Route path="/profile" element={<ProfilePage />} />

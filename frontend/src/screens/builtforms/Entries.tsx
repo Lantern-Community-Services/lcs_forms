@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/components/ui/toast";
 import { fillApi, useEntries } from "@/lib/builder";
 import { formatValue, isInputField, type Field } from "@/lib/formEngine";
+import { useDeviceKind } from "@/lib/device";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 
 const PAGE = 50;
@@ -21,6 +22,8 @@ const PAGE = 50;
 export function BuiltFormEntriesPage() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
+  // The builder is desktop only, so no way into it elsewhere.
+  const canOpenBuilder = useDeviceKind() === "desktop";
   const toast = useToast();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
@@ -73,7 +76,7 @@ export function BuiltFormEntriesPage() {
         actions={
           <>
             <Link to={`/f/${slug}`}><Button variant="secondary"><ExternalLink className="h-4 w-4" /> Open form</Button></Link>
-            {data.isAdmin && <Link to={`/admin/builder/${data.form.id}`}><Button variant="secondary">Edit form</Button></Link>}
+            {data.isAdmin && canOpenBuilder && <Link to={`/admin/builder/${data.form.id}`}><Button variant="secondary">Edit form</Button></Link>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button><Download className="h-4 w-4" /> Export</Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">

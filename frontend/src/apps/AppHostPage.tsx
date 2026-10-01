@@ -5,6 +5,7 @@ import { CloudOff, Code2, RefreshCw } from "lucide-react";
 import { LoadingState, EmptyState } from "@/components/ui/misc";
 import { Card } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
+import { useDeviceKind } from "@/lib/device";
 import { cn, errorMessage } from "@/lib/utils";
 import { AppFrame, type ConsoleLine } from "./AppFrame";
 import { useAppRuntime } from "./api";
@@ -15,6 +16,8 @@ export function AppHostPage() {
   const { slug = "", page } = useParams();
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
+  // The code editor is desktop only, so no way into it elsewhere.
+  const canOpenEditor = useDeviceKind() === "desktop";
   // ?draft=1: the unsaved-to-live draft, for developers — what the code editor's device previews load.
   const draft = search.get("draft") === "1";
   const { data: runtime, isLoading, error } = useAppRuntime(slug, draft);
@@ -81,7 +84,7 @@ export function AppHostPage() {
           <div className="flex items-center gap-2 pb-2 pr-3 md:pr-0">
             {draft && <span className="rounded-pill bg-status-violetBg px-2 py-0.5 text-micro font-bold text-status-violetText">Draft</span>}
             <QueueBadge slug={slug} />
-            {runtime.canEdit && (
+            {runtime.canEdit && canOpenEditor && (
               <Link to={`/admin/apps/${runtime.form.id}`} className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Edit this code form">
                 <Code2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Edit</span>
               </Link>

@@ -12,6 +12,7 @@ import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit
 import { fillApi, submitErrors, useFillForm } from "@/lib/builder";
 import { ApiError } from "@/lib/api";
 import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
+import { useDeviceKind } from "@/lib/device";
 import { errorMessage } from "@/lib/utils";
 
 const newClientId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -24,6 +25,8 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   const { slug = "" } = useParams();
   const location = useLocation();
   const { data, isLoading, error } = useFillForm(slug);
+  // The builder is desktop only, so no way into it elsewhere.
+  const canOpenBuilder = useDeviceKind() === "desktop";
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [serverErrors, setServerErrors] = useState<Errors | undefined>();
@@ -91,7 +94,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
           <ToneBadge tone={form.isDraft ? "amber" : form.status === "published" ? "green" : "neutral"}>{form.isDraft ? "Draft" : form.status === "published" ? `Live · v${form.version}` : form.status}</ToneBadge>
           <span className="text-muted">You're an admin.</span>
           <div className="flex-1" />
-          <Link to={`/admin/builder/${form.id}`} className="inline-flex items-center gap-1 font-semibold text-accent"><PencilRuler className="h-3.5 w-3.5" /> Edit form</Link>
+          {canOpenBuilder && <Link to={`/admin/builder/${form.id}`} className="inline-flex items-center gap-1 font-semibold text-accent"><PencilRuler className="h-3.5 w-3.5" /> Edit form</Link>}
         </div>
       )}
       {data.canReadEntries && !publicView && (

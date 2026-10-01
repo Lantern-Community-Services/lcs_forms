@@ -3,6 +3,7 @@ import { ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Uploa
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/badge";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
+import { useDeviceKind } from "@/lib/device";
 import { useSites, useUsers } from "@/lib/queries";
 
 /**
@@ -12,7 +13,8 @@ import { useSites, useUsers } from "@/lib/queries";
  */
 export function MorePage() {
   const { user, can, logout } = useAuth();
-  const isAdmin = ADMIN_AREA.some(can);
+  // Admin is desktop only; this page is reached from touch screens, so it rarely shows.
+  const isAdmin = ADMIN_AREA.some(can) && useDeviceKind() === "desktop";
 
   return (
     <div className="pb-4">

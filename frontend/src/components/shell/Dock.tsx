@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ExternalLink, Home, LayoutGrid, LogOut, Settings, Contact, X } from "lucide-react";
+import { ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ADMIN_AREA, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
 import { CountBadge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
@@ -198,13 +198,12 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   // rather than requestAnimationFrame, which never fires in a hidden tab.
   const [entered, setEntered] = useState(false);
   const shown = open && entered;
-  const { user, logout, can } = useAuth();
+  const { user, logout } = useAuth();
   const { categories, pinned } = useNavCatalog();
   const reviewCount = useReviewCount();
   const lit = useIsLit();
   const [q, setQ] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
-  const isAdmin = ADMIN_AREA.some(can);
   const phone = device === "phone";
 
   // Focus moves into the sheet (not the search: on a phone that would throw
@@ -293,7 +292,7 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
           )}
         </div>
 
-        {/* You: profile, admin and sign-out, which the dock has no room for. */}
+        {/* You: profile and sign-out, which the dock has no room for. (No Admin: it is desktop only.) */}
         <div className={cn("flex flex-none items-center gap-2 border-t border-hairline bg-sidebar px-4 py-2.5", !phone && "md:px-6")}>
           <NavLink to="/profile" onClick={onClose} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-3">
             <Avatar name={user?.name ?? "?"} color={user?.avatarColor} />
@@ -302,11 +301,6 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
               <span className="block truncate text-micro text-muted">{user?.role?.name}</span>
             </span>
           </NavLink>
-          {isAdmin && (
-            <NavLink to="/admin" onClick={onClose} className="flex min-h-[44px] items-center gap-2 rounded-input px-3 text-[13.5px] font-bold text-ink hover:bg-navsel/60">
-              <Settings className="h-[18px] w-[18px] text-muted" /> Admin
-            </NavLink>
-          )}
           <button type="button" onClick={() => void logout()} aria-label="Sign out" title="Sign out" className="flex h-11 w-11 items-center justify-center rounded-input text-muted hover:bg-navsel/60 hover:text-ink">
             <LogOut className="h-[18px] w-[18px]" />
           </button>
