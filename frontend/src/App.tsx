@@ -4,7 +4,7 @@ import type { PermissionKey } from "./lib/types";
 import { AppShell } from "./components/shell/AppShell";
 import { ConfigLayout } from "./components/shell/ConfigLayout";
 import { SectionTabsLayout } from "./components/shell/SectionTabs";
-import { useReviewCount } from "./components/shell/Sidebar";
+import { useReviewCount } from "./components/shell/navData";
 import { LoadingState } from "./components/ui/misc";
 
 import { SignInPage } from "./screens/SignIn";

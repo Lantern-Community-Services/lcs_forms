@@ -1,28 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Settings, FileText, ChevronLeft, ChevronRight, ExternalLink,
-  LogOut, PanelLeftClose, PanelLeftOpen, Star,
+  Settings, Home, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
 import { Avatar } from "@/components/ui/avatar";
 import { CountBadge } from "@/components/ui/badge";
-import { useForms, useSites } from "@/lib/queries";
-import { canOpenForm, formIcon, formLinkIcon, isInternalForm } from "@/lib/formIcons";
-import type { FormCategory, FormLink } from "@/lib/types";
+import { SearchInput } from "@/components/ui/input";
+import { isInternalForm } from "@/lib/formIcons";
+import type { FormLink } from "@/lib/types";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useNavMode } from "@/lib/shellNav";
-import { forcedDevice } from "@/lib/device";
 import { readStorage, writeStorage } from "@/lib/storage";
+import { isFormPath, searchForms, useIsLit, useNavCatalog, useReviewCount, type NavCategory } from "./navData";
 
 const EXPANDED_WIDTH = 240;
 const COLLAPSED_WIDTH = 64;
-const DRILL_KEY = "ln.formDrill";
-/** Drill id of the Favorites pseudo-type; can't collide with a category's cuid. */
-const FAVORITES_ID = "favorites";
+/** Which categories are open in the accordion, remembered per device. */
+const OPEN_KEY = "ln.navOpen";
 const EASE = "ease-[cubic-bezier(.2,.8,.2,1)]";
 
 /*
@@ -40,14 +38,6 @@ const fade = (collapsed: boolean) =>
     "transition-opacity motion-reduce:transition-none",
     collapsed ? "opacity-0 duration-[90ms]" : "opacity-100 duration-[180ms] delay-[120ms]"
   );
-
-/** People waiting in the review queue across every site the user can see. */
-export function useReviewCount(): number {
-  const { can } = useAuth();
-  const rosterUser = can("roster.view");
-  const { data } = useSites(false, rosterUser);
-  return rosterUser ? (data ?? []).reduce((n, s) => n + s.attentionCount, 0) : 0;
-}
 
 /**
  * The start of a group of nav items: its name when the sidebar is open, a
@@ -88,195 +78,142 @@ const iconBox = (active: boolean, collapsed: boolean) =>
     collapsed && (active ? "bg-navsel" : "group-hover/item:bg-navsel/60")
   );
 
-function NavItem({ to, label, Icon, collapsed, alsoActiveFor, count, end }: {
-  to: string;
-  label: string;
-  Icon: React.ElementType;
-  collapsed: boolean;
-  /** Extra path prefixes that should light this item up. */
-  alsoActiveFor?: string[];
-  count?: number;
-  end?: boolean;
-}) {
-  const { pathname } = useLocation();
-  const alsoActive = alsoActiveFor?.some((p) => pathname.startsWith(p)) ?? false;
-  const waiting = (count ?? 0) > 0;
+/** Rows whose label may wrap: "Metro Card Reconciliation Form (Reports)" cut to "Metro Card Reco…" is useless. Collapsed, max-height clamps them to one icon. */
+const wrapRow = (collapsed: boolean) =>
+  cn("h-auto min-h-10 items-start transition-[max-height,background-color,color] duration-[240ms] motion-reduce:transition-none", EASE, collapsed ? "max-h-10" : "max-h-[96px]");
+
+function NavItem({ to, label, Icon, collapsed, end }: { to: string; label: string; Icon: React.ElementType; collapsed: boolean; end?: boolean }) {
   return (
-    <NavLink to={to} end={end} title={collapsed ? label : undefined} className={({ isActive }) => itemClass(isActive || alsoActive, collapsed)}>
+    <NavLink to={to} end={end} title={collapsed ? label : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
       {({ isActive }) => (
-      <>
-      <span className={iconBox(isActive || alsoActive, collapsed)}>
-        <Icon className="h-[18px] w-[18px]" />
-        {waiting && <WaitingDot collapsed={collapsed} />}
-      </span>
-      <span className={cn("flex shrink-0 items-center", TAIL_W, fade(collapsed))}>
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {waiting && <CountBadge count={count!} max={999} className="mr-2" />}
-      </span>
-      </>
+        <>
+          <span className={iconBox(isActive, collapsed)}><Icon className="h-[18px] w-[18px]" /></span>
+          <span className={cn("truncate", TAIL_W, fade(collapsed))}>{label}</span>
+        </>
       )}
     </NavLink>
   );
 }
 
-/** Which form type the sidebar is drilled into, remembered per device. */
-function useDrill() {
-  const [drill, setDrill] = useState<string | null>(() => readStorage(DRILL_KEY) || null);
-  useEffect(() => writeStorage(DRILL_KEY, drill || null), [drill]);
-  return [drill, setDrill] as const;
+/**
+ * One form: with its icon (Pinned, search results) or, inside an open
+ * category, as an indented line of text. Internal forms are links in the app;
+ * the rest still live on WordPress and open in a new tab.
+ */
+function FormRow({ form, Icon, subtitle, collapsed, lit, count }: {
+  form: FormLink;
+  Icon?: React.ElementType;
+  /** A second line, e.g. the category in search results. */
+  subtitle?: string;
+  collapsed: boolean;
+  lit: boolean;
+  /** Amber count, e.g. people waiting in the Roster's review queue. */
+  count?: number;
+}) {
+  const internal = isInternalForm(form.url);
+  const waiting = (count ?? 0) > 0;
+  const className = cn(itemClass(lit, collapsed), wrapRow(collapsed), !lit && "font-medium", !Icon && "text-[13px]");
+  const body = (
+    <>
+      {Icon && (
+        <span className={iconBox(lit, collapsed)}>
+          <Icon className="h-[18px] w-[18px]" />
+          {waiting && <WaitingDot collapsed={collapsed} />}
+        </span>
+      )}
+      <span className={cn("flex items-start gap-2 py-[11px] pr-2 text-left leading-[18px]", Icon ? cn("shrink-0", TAIL_W) : "min-w-0 flex-1 pl-2.5", fade(collapsed))}>
+        <span className="min-w-0 flex-1">
+          {form.title}
+          {subtitle && <span className="mt-0.5 block text-micro font-medium text-muted">{subtitle}</span>}
+        </span>
+        {waiting && <CountBadge count={count!} max={999} label={`${count} to review`} className="shrink-0" />}
+        {!internal && <ExternalLink className="mt-1 h-3 w-3 shrink-0 opacity-50" aria-hidden />}
+      </span>
+    </>
+  );
+  return internal ? (
+    <NavLink to={form.url} title={collapsed ? form.title : undefined} className={className}>{body}</NavLink>
+  ) : (
+    <a href={form.url} target="_blank" rel="noopener noreferrer" title={`${form.title} (opens in a new tab)`} className={className}>{body}</a>
+  );
 }
 
-/**
- * One form type on the top level: a row (open) or its icon (collapsed) that
- * drills into the type's forms, which then show the same way.
- */
-function TypeRow({ category, Icon, collapsed, onOpen, buttonRef }: {
-  category: FormCategory;
-  Icon: React.ElementType;
+/** A category in the accordion: opens in place, so its forms never slide out of view. */
+function CategoryRow({ type, open, here, collapsed, onToggle }: {
+  type: NavCategory;
+  open: boolean;
+  /** The form on screen is one of this category's. */
+  here: boolean;
   collapsed: boolean;
-  onOpen: () => void;
-  buttonRef: (el: HTMLButtonElement | null) => void;
+  onToggle: () => void;
 }) {
+  const { category, Icon } = type;
   return (
     <button
-      ref={buttonRef}
       type="button"
-      onClick={onOpen}
+      onClick={onToggle}
+      aria-expanded={collapsed ? undefined : open}
       title={collapsed ? category.name : undefined}
-      // The name wraps to a second line rather than truncating: "Client /
-      // Tenant Serv…" loses the half that tells the types apart. Collapsed,
-      // max-height clamps the row back to one icon's height.
-      className={cn(
-        itemClass(false, collapsed),
-        "h-auto min-h-10 items-start transition-[max-height,background-color,color] duration-[240ms] motion-reduce:transition-none",
-        EASE,
-        collapsed ? "max-h-10" : "max-h-[72px]"
-      )}
+      className={cn(itemClass(here && collapsed, collapsed), wrapRow(collapsed), here && "text-ink")}
     >
-      <span className={iconBox(false, collapsed)}><Icon className="h-[18px] w-[18px]" /></span>
-      <span className={cn("w-[149px] shrink-0 py-[11px] text-left leading-[18px]", fade(collapsed))}>{category.name}</span>
-      <span className={cn("flex h-10 w-5 shrink-0 items-center justify-center", fade(collapsed))}><ChevronRight className="h-4 w-4" /></span>
+      <span className={iconBox(here && collapsed, collapsed)}><Icon className="h-[18px] w-[18px]" /></span>
+      <span className={cn("w-[149px] shrink-0 py-[11px] text-left leading-[18px]", fade(collapsed))}>
+        {category.name}
+        {/* Closed over the form you're in: a dot says it's in here. */}
+        {here && !open && <span className="mb-px ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle dark:bg-white" />}
+      </span>
+      <span className={cn("flex h-10 w-5 shrink-0 items-center justify-center", fade(collapsed))}>
+        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </span>
     </button>
   );
 }
 
-/**
- * The second level: one type's forms, with the way back up. Built on the same
- * 40px icon column as the top level, so collapsed it's a column of the forms'
- * own icons under a back arrow, and the form you're in stays lit.
- */
-function TypePane({ category, Icon, forms, reviewCount, collapsed, onBack, backRef }: {
-  category: FormCategory;
-  Icon: React.ElementType;
-  forms: FormCategory["forms"];
-  /** Shown on the Roster link: people waiting in its review queue. */
-  reviewCount: number;
-  collapsed: boolean;
-  onBack: () => void;
-  backRef: React.Ref<HTMLButtonElement>;
-}) {
-  const { pathname } = useLocation();
-  // Long form names wrap rather than truncate ("Metro Card Reconciliation Form
-  // (Reports)" cut to "Metro Card Reco…" is useless); collapsed, max-height
-  // clamps each row back to one icon's height.
-  const rowClass = (active: boolean) =>
-    cn(
-      itemClass(active, collapsed),
-      "h-auto min-h-10 items-start font-medium transition-[max-height,background-color,color] duration-[240ms] motion-reduce:transition-none",
-      EASE,
-      active && "font-semibold",
-      collapsed ? "max-h-10" : "max-h-[96px]"
-    );
-  const label = "w-[169px] shrink-0 py-[11px] pr-2 text-left leading-[18px]";
-  const lit = (url: string) => pathname === url || pathname.startsWith(`${url}/`) || (url === "/roster" && isRosterPath(pathname));
-  return (
-    <div className="w-[209px] shrink-0">
-      <button ref={backRef} type="button" onClick={onBack} title={collapsed ? "All form types" : undefined} aria-label="All form types" className={itemClass(false, collapsed)}>
-        <span className={iconBox(false, collapsed)}><ChevronLeft className="h-[18px] w-[18px]" /></span>
-        <span className={cn("whitespace-nowrap", fade(collapsed))}>All form types</span>
-      </button>
-      <div className="mb-1 flex items-start border-b border-hairline pb-2 pt-1 text-ink dark:text-white" title={collapsed ? category.name : undefined}>
-        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
-          <Icon className="h-[18px] w-[18px]" />
-          {/* Collapsed, the name is hidden: an underline marks this icon as the
-              heading of the icons below, not one more link. */}
-          <span className={cn("absolute bottom-0.5 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-pill bg-current transition-opacity duration-200", collapsed ? "opacity-100" : "opacity-0")} />
-        </span>
-        <h2 className={cn("min-w-0 flex-1 pr-2 pt-2.5 font-heading text-[15px] font-extrabold leading-5", fade(collapsed))}>{category.name}</h2>
-      </div>
-      <ul className="space-y-px pb-2">
-        {forms.map((f) => {
-          const FormIcon = formLinkIcon(f, category.icon || "folder");
-          const waiting = f.url === "/roster" && reviewCount > 0;
-          return (
-            <li key={f.id}>
-              {isInternalForm(f.url) ? (
-                <NavLink
-                  to={f.url}
-                  end
-                  title={collapsed ? f.title : undefined}
-                  // The Roster link is the roster's only way in from the sidebar,
-                  // so it stays lit on every roster tab and resident page; a
-                  // rebuilt form stays lit on its own tabs (/forms/hot-foods/…).
-                  className={rowClass(lit(f.url))}
-                >
-                  <span className={iconBox(lit(f.url), collapsed)}>
-                    <FormIcon className="h-[18px] w-[18px]" />
-                    {waiting && <WaitingDot collapsed={collapsed} />}
-                  </span>
-                  <span className={cn(label, "flex items-start gap-2", fade(collapsed))}>
-                    <span className="min-w-0 flex-1">{f.title}</span>
-                    {waiting && <CountBadge count={reviewCount} max={999} label={`${reviewCount} to review`} className="shrink-0" />}
-                  </span>
-                </NavLink>
-              ) : (
-                <a href={f.url} target="_blank" rel="noopener noreferrer" title={`${f.title} (opens in a new tab)`} className={cn(rowClass(false), "group/link")}>
-                  <span className={iconBox(false, collapsed)}><FormIcon className="h-[18px] w-[18px]" /></span>
-                  <span className={cn(label, "flex items-start gap-2", fade(collapsed))}>
-                    <span className="min-w-0 flex-1">{f.title}</span>
-                    <ExternalLink className="mt-1 h-3 w-3 shrink-0 opacity-50 group-hover/link:opacity-100" aria-hidden />
-                  </span>
-                </a>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
+/** Open categories, remembered per device. */
+function useOpenCategories() {
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      const saved = JSON.parse(readStorage(OPEN_KEY) ?? "[]");
+      return new Set(Array.isArray(saved) ? saved.filter((v): v is string => typeof v === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => writeStorage(OPEN_KEY, JSON.stringify([...open])), [open]);
+  const set = (id: string, value: boolean) =>
+    setOpen((prev) => {
+      if (prev.has(id) === value) return prev;
+      const next = new Set(prev);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  return [open, set] as const;
 }
-
-const isRosterPath = (pathname: string) => pathname.startsWith("/roster") || pathname.startsWith("/tenants");
-/** Inside a form rather than on the catalog or an admin screen: built-in forms, the Roster, built forms and code forms. */
-const isFormPath = (pathname: string) =>
-  pathname.startsWith("/forms/") || pathname.startsWith("/f/") || pathname.startsWith("/apps/") || isRosterPath(pathname);
 
 /**
  * The sidebar's collapsed state.
  *
- * An iPad in portrait has 820px to share, and a form beside a 240px sidebar
- * gets barely two thirds of it, so inside a form there the sidebar folds to
- * its icons on its own. Expanding it then is a peek, not a change of the saved
- * preference: it folds again on the next navigation (picking a form from it
- * included), and the preference is still what the catalog and landscape use.
+ * A form beside a 240px sidebar in a portrait-shaped window gets barely two
+ * thirds of it, so inside a form there the sidebar folds to its icons on its
+ * own. Expanding it then is a peek, not a change of the saved preference: it
+ * folds again on the next navigation, and the preference is still what the
+ * catalog and wider windows use. (Tablets don't get the sidebar at all: they
+ * get the dock, see Dock.tsx.)
  */
 function useCollapsed() {
   const { collapsed: preferred, toggleCollapsed } = usePrefs();
   const { pathname } = useLocation();
-  const portraitTablet = useMediaQuery("(min-width: 768px) and (orientation: portrait)");
+  const portrait = useMediaQuery("(min-width: 768px) and (orientation: portrait)");
   const wide = useMediaQuery("(min-width: 768px)");
-  // A tablet: a coarse pointer, or a device preview frame standing in for an iPad.
-  const tablet = useMediaQuery("(min-width: 768px) and (pointer: coarse)") || (forcedDevice() === "tablet" && wide);
   // A code form's page can ask for more (or less) folding than the default.
   const mode = useNavMode() ?? "auto";
-  const auto =
-    isFormPath(pathname) &&
-    (mode === "always" ? wide : mode === "tablet" ? tablet || portraitTablet : mode === "never" ? false : portraitTablet);
+  const auto = isFormPath(pathname) && (mode === "always" ? wide : mode === "never" ? false : portrait);
   const [peek, setPeek] = useState(false);
   useEffect(() => setPeek(false), [pathname, auto]);
   return auto
-    ? { collapsed: !peek, toggleCollapsed: () => setPeek((p) => !p) }
-    : { collapsed: preferred, toggleCollapsed };
+    ? { collapsed: !peek, expand: () => setPeek(true), toggleCollapsed: () => setPeek((p) => !p) }
+    : { collapsed: preferred, expand: () => preferred && toggleCollapsed(), toggleCollapsed };
 }
 
 /**
@@ -306,83 +243,90 @@ function useSwipeToggle(collapsed: boolean, toggleCollapsed: () => void) {
   };
 }
 
+/**
+ * The desktop sidebar: search, Home, Pinned, then every category as a
+ * one-level accordion. Phones and tablets get the dock instead (Dock.tsx).
+ */
 export function Sidebar() {
   const { user, logout, can } = useAuth();
-  const { collapsed, toggleCollapsed } = useCollapsed();
+  const { collapsed, expand, toggleCollapsed } = useCollapsed();
   const swipe = useSwipeToggle(collapsed, toggleCollapsed);
   const reviewCount = useReviewCount();
-  const { data: catalog } = useForms();
-  const [drill, setDrill] = useDrill();
-  // The type the second pane shows. It outlives `drill` so the pane keeps its
-  // content while it slides back out, instead of blanking mid-animation.
-  const [shown, setShown] = useState(drill);
+  const { categories, pinned } = useNavCatalog();
+  const lit = useIsLit();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [open, setOpen] = useOpenCategories();
+  const [q, setQ] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const focusSearch = useRef(false);
   const isAdmin = ADMIN_AREA.some(can);
 
-  // Types with nothing this person may open are left out entirely.
-  const categoryTypes = (catalog?.categories ?? [])
-    .map((category) => ({
-      category,
-      Icon: formIcon(category.icon),
-      forms: category.forms.filter((f) => canOpenForm(f.url, can)),
-    }))
-    .filter((t) => t.forms.length > 0);
-  // Favorites leads the list as a type of its own, in the order they were starred.
-  const byId = new Map(categoryTypes.flatMap((t) => t.forms.map((f) => [f.id, f] as const)));
-  const favoriteForms = (catalog?.favorites ?? []).map((id) => byId.get(id)).filter((f): f is FormLink => Boolean(f));
-  const types = favoriteForms.length > 0
-    ? [{ category: { id: FAVORITES_ID, name: "Favorites", icon: "", sortOrder: -1, forms: favoriteForms }, Icon: Star, forms: favoriteForms }, ...categoryTypes]
-    : categoryTypes;
-  const shownType = types.find((t) => t.category.id === shown);
-  const drilled = !!drill && types.some((t) => t.category.id === drill);
+  const countFor = (form: FormLink) => (form.url === "/roster" ? reviewCount : 0);
+  const hereId = categories.find((c) => c.forms.some((f) => isInternalForm(f.url) && lit(f.url)))?.category.id;
 
-  // Inside a form, the sidebar shows that form's type, so the forms next to it
-  // are one tap away (and, collapsed, it's their icons rather than the types').
-  // A type already showing the form (Favorites, say) is left alone.
-  const { pathname } = useLocation();
-  const inType = (t: (typeof types)[number]) =>
-    t.forms.some((f) => isInternalForm(f.url) && (pathname === f.url || pathname.startsWith(`${f.url}/`) || (f.url === "/roster" && isRosterPath(pathname))));
-  const hereType = isFormPath(pathname) ? categoryTypes.find(inType) : undefined;
-  // On arriving at a form only (a new path, or the catalog loading), so the
-  // back arrow still takes you up to the types while you stay in the form.
+  // Arriving at a form opens its category, so the forms beside it are in view.
+  // Only on arrival: closing it again while you stay is left alone.
   useEffect(() => {
-    if (!hereType || types.some((t) => t.category.id === drill && inType(t))) return;
-    setShown(hereType.category.id);
-    setDrill(hereType.category.id);
-  }, [pathname, hereType?.category.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hereId) setOpen(hereId, true);
+  }, [pathname, hereId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus follows the slide, so a keyboard user lands on Back after drilling
-  // in and on the type they came from after going back.
-  const backRef = useRef<HTMLButtonElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
-  const pendingFocus = useRef<string | null>(null);
+  // Picking a form (or going anywhere) ends the search.
+  useEffect(() => setQ(""), [pathname]);
+
+  // Ctrl/⌘ K: straight to the search, unfolding the sidebar if it has to.
   useEffect(() => {
-    const target = pendingFocus.current;
-    if (!target) return;
-    pendingFocus.current = null;
-    // preventScroll: the panes sit side by side in an overflow-hidden track,
-    // and letting the browser scroll it to the focused element would knock the
-    // track out of line with its transform.
-    (target === "back" ? backRef.current : rowRefs.current.get(target))?.focus({ preventScroll: true });
-  }, [drill]);
-
-  const openType = (id: string) => {
-    pendingFocus.current = "back";
-    setShown(id);
-    setDrill(id);
+    function onKey(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      // The code editor has its own use for the chord.
+      if ((e.target as HTMLElement | null)?.closest?.(".cm-editor")) return;
+      e.preventDefault();
+      openSearch();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  const openSearch = () => {
+    if (collapsed) {
+      focusSearch.current = true;
+      expand();
+    } else {
+      searchRef.current?.focus();
+    }
   };
-  const goBack = () => {
-    pendingFocus.current = drill;
-    setDrill(null);
+  useEffect(() => {
+    if (!collapsed && focusSearch.current) {
+      focusSearch.current = false;
+      searchRef.current?.focus({ preventScroll: true });
+    }
+  }, [collapsed]);
+
+  const results = searchForms(categories, q);
+  const searching = !collapsed && q.trim() !== "";
+  const openResult = () => {
+    const first = results[0]?.form;
+    if (!first) return;
+    if (isInternalForm(first.url)) navigate(first.url);
+    else window.open(first.url, "_blank", "noopener,noreferrer");
+    setQ("");
+  };
+
+  // Collapsed, a category is just an icon: tapping it unfolds the sidebar with that category open.
+  const toggleCategory = (id: string) => {
+    if (collapsed) {
+      setOpen(id, true);
+      expand();
+    } else {
+      setOpen(id, !open.has(id));
+    }
   };
 
   return (
     <aside
       {...swipe}
       style={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH, touchAction: "pan-y" }}
-      // Hidden on a phone: most of a 402px viewport, and the bottom tab bar
-      // covers the same destinations. `hidden md:flex` rather than a conditional
-      // render so the collapse preference survives a rotation without the whole
-      // aside remounting.
+      // `hidden md:flex` as well as AppShell's choice, so even the very first
+      // paint on a phone (before the device is known) never shows it.
       className={cn(
         "hidden h-full shrink-0 flex-col overflow-hidden border-r border-hairline bg-sidebar py-5 transition-[width,padding] duration-[240ms] motion-reduce:transition-none md:flex",
         EASE,
@@ -390,7 +334,7 @@ export function Sidebar() {
       )}
     >
       {/* Brand lockup */}
-      <div className="mb-5 flex shrink-0 items-center">
+      <div className="mb-4 flex shrink-0 items-center">
         <span className="flex h-11 w-10 shrink-0 items-center justify-center">
           <ThemedLogo />
         </span>
@@ -402,28 +346,88 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Two panes side by side in a track twice the nav's width: the top
-          level, and one type's forms. Drilling in slides the track by one pane.
-          -mx/px: room for the scrollbar without shifting the items. */}
-      <nav className="relative -mx-1 min-h-0 flex-1 overflow-hidden">
-        <div className={cn("flex h-full w-[200%] transition-transform duration-300 motion-reduce:transition-none", EASE, drilled && "-translate-x-1/2")}>
-          <div inert={drilled} className="flex h-full w-1/2 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-1 scroll-thin">
-            <NavItem to="/forms" label="All forms" Icon={FileText} collapsed={collapsed} end />
+      {/* Search: the field when open, its icon when collapsed. Both stay
+          mounted so the height doesn't jump as the sidebar folds. */}
+      <div className="relative mb-2 h-10 shrink-0">
+        <button
+          type="button"
+          onClick={openSearch}
+          title="Find a form (Ctrl K)"
+          aria-label="Find a form"
+          tabIndex={collapsed ? undefined : -1}
+          aria-hidden={collapsed ? undefined : true}
+          className={cn(itemClass(false, true), "absolute inset-0 transition-opacity duration-200", collapsed ? "opacity-100" : "pointer-events-none opacity-0")}
+        >
+          <span className={iconBox(false, true)}><Search className="h-[18px] w-[18px]" /></span>
+        </button>
+        <div className={cn("absolute inset-y-0 left-0 w-[209px]", fade(collapsed), collapsed && "pointer-events-none")} aria-hidden={collapsed || undefined}>
+          <SearchInput
+            ref={searchRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") openResult();
+              else if (e.key === "Escape") {
+                setQ("");
+                e.currentTarget.blur();
+              }
+            }}
+            tabIndex={collapsed ? -1 : undefined}
+            placeholder="Find a form"
+            aria-label="Find a form"
+            className="h-10 min-h-10 bg-surface pr-14 text-[13.5px] md:min-h-10"
+          />
+          <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-hairline px-1.5 py-px font-body text-[10.5px] font-bold text-muted">Ctrl K</kbd>
+        </div>
+      </div>
 
-            {types.length > 0 && <SectionLabel label="Forms by type" collapsed={collapsed} />}
-            {types.map(({ category, Icon }) => (
-              <TypeRow
-                key={category.id}
-                category={category}
-                Icon={Icon}
-                collapsed={collapsed}
-                onOpen={() => openType(category.id)}
-                buttonRef={(el) => {
-                  if (el) rowRefs.current.set(category.id, el);
-                  else rowRefs.current.delete(category.id);
-                }}
-              />
+      {/* -mx/px: room for the scrollbar without shifting the items. */}
+      <nav aria-label="Main" className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-1 scroll-thin">
+        {searching ? (
+          <>
+            <SectionLabel label={results.length === 1 ? "1 form" : `${results.length} forms`} collapsed={false} />
+            {results.map((r) => (
+              <FormRow key={r.form.id} form={r.form} Icon={r.Icon} subtitle={r.category.name} collapsed={false} lit={lit(r.form.url)} count={countFor(r.form)} />
             ))}
+            {results.length === 0 && <p className="px-2.5 py-2 text-[13px] text-muted">No forms match. Try a shorter word.</p>}
+          </>
+        ) : (
+          <>
+            <NavItem to="/forms" label="Home" Icon={Home} collapsed={collapsed} end />
+
+            {pinned.length > 0 && (
+              <>
+                <SectionLabel label="Pinned" collapsed={collapsed} />
+                {pinned.map((p) => (
+                  <FormRow key={p.form.id} form={p.form} Icon={p.Icon} collapsed={collapsed} lit={lit(p.form.url)} count={countFor(p.form)} />
+                ))}
+              </>
+            )}
+
+            {categories.length > 0 && <SectionLabel label="All forms" collapsed={collapsed} />}
+            {categories.map((c) => {
+              const isOpen = open.has(c.category.id) && !collapsed;
+              return (
+                <div key={c.category.id} className="shrink-0">
+                  <CategoryRow
+                    type={c}
+                    open={open.has(c.category.id)}
+                    here={hereId === c.category.id}
+                    collapsed={collapsed}
+                    onToggle={() => toggleCategory(c.category.id)}
+                  />
+                  {isOpen && (
+                    <ul className="mb-1 ml-5 space-y-px border-l border-hairline pl-1.5">
+                      {c.forms.map((f) => (
+                        <li key={f.id}>
+                          <FormRow form={f} collapsed={false} lit={lit(f.url)} count={countFor(f)} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
 
             {isAdmin && (
               <>
@@ -431,12 +435,8 @@ export function Sidebar() {
                 <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} />
               </>
             )}
-          </div>
-
-          <div inert={!drilled} className="h-full w-1/2 overflow-y-auto overflow-x-hidden px-1 scroll-thin">
-            {shownType && <TypePane category={shownType.category} Icon={shownType.Icon} forms={shownType.forms} reviewCount={reviewCount} collapsed={collapsed} onBack={goBack} backRef={backRef} />}
-          </div>
-        </div>
+          </>
+        )}
       </nav>
 
       {/* Collapse toggle */}

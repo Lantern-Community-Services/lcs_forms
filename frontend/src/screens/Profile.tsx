@@ -101,7 +101,7 @@ export function ProfilePage() {
       {/* Artboard 1i. Reached through More on a phone, so it carries the way
           back; the desktop sidebar is always on screen and needs none. */}
       <div className="page-list-item-enter">
-        <MobileBackLink to="/more" label="More" />
+        <MobileBackLink to="/forms" label="Home" />
         <PageHeader title="Profile &amp; settings" />
       </div>
 

@@ -1,3 +1,5 @@
+import { useMediaQuery } from "./useMediaQuery";
+
 /**
  * The device a page is being shown on, when a preview says so.
  *
@@ -20,3 +22,17 @@ export function forcedDevice(): DeviceKind | null {
 }
 
 export const previewFrameName = (kind: DeviceKind) => `lcs-device:${kind}`;
+
+/**
+ * Which navigation the shell shows: the sidebar on a computer, the dock on a
+ * phone or a tablet. A tablet is a touch screen at least `md` wide — a coarse
+ * primary pointer — so a touch laptop, whose primary pointer is still the
+ * trackpad, keeps the sidebar. A preview frame's word wins over both.
+ */
+export function useDeviceKind(): DeviceKind {
+  const narrow = useMediaQuery("(max-width: 767px)");
+  const touchWide = useMediaQuery("(min-width: 768px) and (pointer: coarse)");
+  const forced = forcedDevice();
+  if (forced) return forced;
+  return narrow ? "phone" : touchWide ? "tablet" : "desktop";
+}

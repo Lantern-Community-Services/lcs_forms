@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, Lock, PencilLine, Star, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, Lock, PencilLine, Pin, Users } from "lucide-react";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Tag } from "@/components/ui/badge";
@@ -22,14 +22,14 @@ import { cn, errorMessage } from "@/lib/utils";
  * Two layouts, one set of state:
  * - tablet and desktop: attention beside activity (desktop adds a row of
  *   counts above), then a two-pane browser: groups down the left (All forms,
- *   Favorites, each category), that group's cards on the right;
- * - phone: one attention banner, favorites, and category tiles that open a
+ *   Pinned, each category), that group's cards on the right;
+ * - phone: one attention banner, pinned forms, and category tiles that open a
  *   list, so the forms are reachable without scrolling past the dashboard.
  *
- * The chosen group lives in the URL (?category=<id>, "favorites" or "all") so
+ * The chosen group lives in the URL (?category=<id>, "pinned" or "all") so
  * the sidebar can link straight to one.
  */
-const FAVORITES = "favorites";
+const FAVORITES = "pinned";
 const ALL = "all";
 
 /** A category id, FAVORITES, ALL, or null = nothing picked yet. */
@@ -40,7 +40,9 @@ export function FormsPage() {
   const { data, isLoading, isError } = useForms();
   const home = useHome();
   const [q, setQ] = useState("");
-  const [asked, setPick] = useSearchParam("category");
+  const [askedRaw, setPick] = useSearchParam("category");
+  // "favorites" was this group's name before it became Pinned; old links still land on it.
+  const asked = askedRaw === "favorites" ? FAVORITES : askedRaw;
   const toggleFavorite = useFavoriteToggle();
   const searchRef = useRef<HTMLInputElement>(null);
   const phoneSearchRef = useRef<HTMLInputElement>(null);
@@ -114,7 +116,7 @@ export function FormsPage() {
         {formsBody ?? (
           searching || pick ? (
             <PhoneFormList
-              title={searching ? "Results" : pick === FAVORITES ? "Favorites" : pick === ALL ? "All forms" : categories.find((c) => c.id === pick)?.name ?? ""}
+              title={searching ? "Results" : pick === FAVORITES ? "Pinned" : pick === ALL ? "All forms" : categories.find((c) => c.id === pick)?.name ?? ""}
               entries={searching ? searchResults : matchingFlat}
               favorites={favorites}
               onBack={() => {
@@ -127,7 +129,7 @@ export function FormsPage() {
               {favoriteForms.length > 0 && (
                 <section>
                   <h2 className="mb-2 flex items-center gap-1.5 text-[15px] font-heading font-extrabold text-ink">
-                    <Star className="h-4 w-4 fill-status-amberDot text-status-amberDot" /> Favorites
+                    <Pin className="h-4 w-4 fill-status-amberDot text-status-amberDot" /> Pinned
                   </h2>
                   <div className="chiprow -mx-4 flex gap-2 overflow-x-auto px-4">
                     {favoriteForms.map((e) => {
@@ -203,7 +205,7 @@ export function FormsPage() {
               <p className="mt-0.5 text-[13px] text-muted" aria-live="polite">
                 {searching
                   ? `${searchResults.length === 0 ? "No forms match" : `${searchResults.length} of ${totalForms} forms match`} “${q.trim()}”`
-                  : `${totalForms} forms · star one to keep it in Favorites`}
+                  : `${totalForms} forms · pin one to keep it close at hand`}
               </p>
             </div>
           </div>
@@ -262,7 +264,7 @@ function matchingFlatFor(categories: FormCategory[], pick: Selection, favorites:
 }
 
 /**
- * Star / unstar, optimistically: the star fills the instant it's tapped and
+ * Pin / unpin, optimistically: the pin fills the instant it's tapped and
  * springs back, with a toast, only if the server refuses.
  */
 function useFavoriteToggle() {
@@ -282,7 +284,7 @@ function useFavoriteToggle() {
       await (isFavorite ? formsApi.unfavorite(form.id) : formsApi.favorite(form.id));
     } catch (e) {
       if (before) qc.setQueryData(key, before);
-      toast(errorMessage(e, "Couldn't save that favorite."), "error");
+      toast(errorMessage(e, "Couldn't save that pin."), "error");
     }
   };
 }
@@ -315,11 +317,11 @@ function StarButton({ form, favorite, onToggle, className }: { form: FormLink; f
       type="button"
       onClick={onToggle}
       aria-pressed={favorite}
-      aria-label={favorite ? `Remove ${form.title} from favorites` : `Add ${form.title} to favorites`}
-      title={favorite ? "Remove from favorites" : "Add to favorites"}
+      aria-label={favorite ? `Unpin ${form.title}` : `Pin ${form.title}`}
+      title={favorite ? "Unpin" : "Pin"}
       className={cn("relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-input text-muted hover:bg-subtle hover:text-ink", className)}
     >
-      <Star className={cn("h-[18px] w-[18px]", favorite && "fill-status-amberDot text-status-amberDot")} />
+      <Pin className={cn("h-[18px] w-[18px]", favorite && "fill-status-amberDot text-status-amberDot")} />
     </button>
   );
 }
@@ -385,7 +387,7 @@ function FormCard({ form, category, favorite, onToggleFavorite, showCategory = f
 function NoMatch({ searching, favorites }: { searching: boolean; favorites: boolean }) {
   return (
     <div className="rounded-card border border-dashed border-strongline bg-surface px-6 py-10 text-center">
-      <p className="text-[15px] font-bold text-ink">{searching ? "No forms match that" : favorites ? "No favorites yet" : "Nothing here"}</p>
+      <p className="text-[15px] font-bold text-ink">{searching ? "No forms match that" : favorites ? "Nothing pinned yet" : "Nothing here"}</p>
       <p className="mt-1 text-[13px] text-muted">
         {searching ? "Try another word, or ask the help desk if a form is missing." : "Tap the star on any form to keep it here."}
       </p>
@@ -394,7 +396,7 @@ function NoMatch({ searching, favorites }: { searching: boolean; favorites: bool
 }
 
 /**
- * Tablet and desktop: the groups down the left (All forms, Favorites, then each
+ * Tablet and desktop: the groups down the left (All forms, Pinned, then each
  * category), that group's cards on the right. Searching replaces the right
  * pane with matches from every group.
  */
@@ -410,10 +412,10 @@ function FormsBrowser({ categories, pick, onPick, favoriteCount, totalForms, ent
   cardProps: (e: Entry) => Entry & { favorite: boolean; onToggleFavorite: () => void };
 }) {
   const current = categories.find((c) => c.id === pick);
-  const title = searching ? `Results for “${q}”` : pick === FAVORITES ? "Favorites" : pick === ALL ? "All forms" : current?.name ?? "";
+  const title = searching ? `Results for “${q}”` : pick === FAVORITES ? "Pinned" : pick === ALL ? "All forms" : current?.name ?? "";
   // Mixed groups: say which group each card is from.
   const mixed = searching || pick === ALL || pick === FAVORITES;
-  const item = (id: string, label: string, Icon: typeof Star, n: number) => {
+  const item = (id: string, label: string, Icon: typeof Pin, n: number) => {
     const on = !searching && pick === id;
     return (
       <button
@@ -437,7 +439,7 @@ function FormsBrowser({ categories, pick, onPick, favoriteCount, totalForms, ent
     <div className="flex overflow-hidden rounded-[14px] border border-hairline bg-surface">
       <nav aria-label="Form groups" className="flex w-[212px] shrink-0 flex-col gap-0.5 border-r border-hairline bg-sidebar p-2 xl:w-[250px] xl:p-2.5">
         {item(ALL, "All forms", LayoutGrid, totalForms)}
-        {item(FAVORITES, "Favorites", Star, favoriteCount)}
+        {item(FAVORITES, "Pinned", Pin, favoriteCount)}
         {categories.map((c) => item(c.id, c.name, formIcon(c.icon), c.forms.length))}
       </nav>
       <div className="min-w-0 flex-1 p-4 xl:px-6 xl:py-5">
@@ -471,7 +473,7 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
         <span className="text-[13px] text-muted">{entries.length} {entries.length === 1 ? "form" : "forms"}</span>
       </div>
       {entries.length === 0 ? (
-        <NoMatch searching={title === "Results"} favorites={title === "Favorites"} />
+        <NoMatch searching={title === "Results"} favorites={title === "Pinned"} />
       ) : (
         <ul className="overflow-hidden rounded-card border border-hairline bg-surface">
           {entries.map(({ form, category }) => {
@@ -487,7 +489,7 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
                   <span className={cn("flex flex-wrap items-center gap-1.5 text-[14.5px] font-bold leading-snug", locked ? "text-muted" : "text-ink")}>
                     {form.title}
                     {form.badge && <Tag tone={form.badge.toLowerCase() === "new" ? "accent" : "amber"}>{form.badge}</Tag>}
-                    {favorites.has(form.id) && <Star className="h-3 w-3 fill-status-amberDot text-status-amberDot" aria-label="Favorite" />}
+                    {favorites.has(form.id) && <Pin className="h-3 w-3 fill-status-amberDot text-status-amberDot" aria-label="Pinned" />}
                   </span>
                   <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">{locked ? formNeeds(form.url)?.hint : form.description}</span>
                 </span>

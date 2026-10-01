@@ -1,9 +1,10 @@
-import { useEffect } from "react";
-import { Link, Outlet } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { Sidebar } from "./Sidebar";
-import { MobileTabBar } from "./MobileTabBar";
+import { Dock, Launcher } from "./Dock";
+import { useDeviceKind } from "@/lib/device";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
 import { startHotFoodsSync } from "@/lib/hotFoodsQueue";
@@ -13,8 +14,8 @@ import { cn } from "@/lib/utils";
 /**
  * Full-page shell.
  *
- * Desktop: fixed sidebar beside a scrollable main column. Phone: the sidebar is
- * gone and the same main column sits above a bottom tab bar. The bar is a flex
+ * Desktop: fixed sidebar beside a scrollable main column. Phone and tablet: the
+ * sidebar is gone and the same main column sits above the dock. The dock is a flex
  * sibling rather than a fixed overlay, so `<main>`'s own scroll region ends
  * exactly where the bar begins — screens with their own sticky footer (the
  * bill review's approve bar) then stack against it correctly, which they cannot
@@ -34,16 +35,26 @@ export function AppShell() {
     };
   }, [qc, user?.id]);
 
+  const device = useDeviceKind();
+  const touch = device !== "desktop";
+  const [launcher, setLauncher] = useState(false);
+  const { pathname } = useLocation();
+  useEffect(() => setLauncher(false), [pathname, touch]);
+  const closeLauncher = useCallback(() => setLauncher(false), []);
+
   return (
-    <div className="app-height flex flex-col overflow-hidden bg-appbg md:flex-row">
-      <Sidebar />
-      {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
-          page is short, so content doesn't jump sideways when a list grows or
-          shrinks past the fold (collapsing roster sites, filtering). */}
-      <main className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
-        <Outlet />
-      </main>
-      <MobileTabBar />
+    <div className={cn("app-height flex flex-col overflow-hidden bg-appbg", !touch && "md:flex-row")}>
+      {!touch && <Sidebar />}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
+            page is short, so content doesn't jump sideways when a list grows or
+            shrinks past the fold (collapsing roster sites, filtering). */}
+        <main className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
+          <Outlet />
+        </main>
+      </div>
+      {touch && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
+      {touch && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} />}
     </div>
   );
 }
