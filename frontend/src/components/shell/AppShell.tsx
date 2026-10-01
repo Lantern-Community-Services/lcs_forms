@@ -94,7 +94,7 @@ export function AppShell() {
         {touch && <PullToRefresh scrollRef={mainRef} />}
       </div>
       {touch && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
-      {touch && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} />}
+      {touch && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
     </div>
   );
 }

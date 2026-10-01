@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
@@ -19,10 +19,11 @@ import { searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, ty
  * so <main>'s scroll region ends where the band begins and screens with their
  * own sticky footer (the bill review's approve bar) stack against it.
  */
-export function Dock({ device, launcherOpen, onToggleLauncher }: {
+export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }: {
   device: "phone" | "tablet";
   launcherOpen: boolean;
   onToggleLauncher: () => void;
+  onCloseLauncher: () => void;
 }) {
   const { can } = useAuth();
   const reviewCount = useReviewCount();
@@ -33,6 +34,16 @@ export function Dock({ device, launcherOpen, onToggleLauncher }: {
   const phone = device === "phone";
   const navRef = useRef<HTMLElement>(null);
   const { width, height } = useSize(navRef);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Any navigation, the launcher opening, or Escape puts the menu away.
+  useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => { if (launcherOpen) setMenuOpen(false); }, [launcherOpen]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   // The launcher sizes itself around the dock (the phone sheet runs on under it).
   useEffect(() => {
     document.documentElement.style.setProperty("--dock-h", `${height}px`);
@@ -45,11 +56,12 @@ export function Dock({ device, launcherOpen, onToggleLauncher }: {
     },
     []
   );
+  // The account slot is always last: your avatar, opening the account menu.
   // A phone has five slots. A tablet fits as many pins as its width allows:
   // ~6 on a portrait iPad, ~10 in landscape.
-  const fixed = roster ? 3 : 2;
+  const fixed = (roster ? 3 : 2) + 1; // Home, Roster, All forms, and the account slot
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
-  const pins = pinned.filter((p) => p.form.url !== "/roster").slice(0, phone ? (roster ? 2 : 3) : tabletPins);
+  const pins = pinned.filter((p) => p.form.url !== "/roster").slice(0, phone ? (roster ? 1 : 2) : tabletPins);
 
   const home = <DockLink key="home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} />;
   const rosterItem = roster && (
@@ -57,6 +69,9 @@ export function Dock({ device, launcherOpen, onToggleLauncher }: {
   );
   const all = (
     <DockButton key="all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
+  );
+  const account = (
+    <DockAccount key="account" active={menuOpen || pathname === "/profile"} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
   );
   const pinItems = pins.map((p) => <DockPin key={p.form.id} pin={p} active={!launcherOpen && isInternalForm(p.form.url) && lit(p.form.url)} phone={phone} />);
 
@@ -68,28 +83,32 @@ export function Dock({ device, launcherOpen, onToggleLauncher }: {
       // floats on top of it: the band goes clear, so there's no edge between the
       // dimmed page and a white strip.
       className={cn(
-        "flex flex-none justify-center px-3 pb-safe-bottom pt-2 transition-colors duration-200 motion-reduce:transition-none",
-        launcherOpen ? "relative z-50 bg-transparent" : "bg-surface"
+        "relative flex flex-none justify-center px-3 pb-safe-bottom pt-2 transition-colors duration-200 motion-reduce:transition-none",
+        launcherOpen ? "z-50 bg-transparent" : "bg-surface"
       )}
     >
+      {menuOpen && <AccountMenu phone={phone} onClose={() => setMenuOpen(false)} />}
       {phone ? (
         <div
-          className="grid w-full max-w-[480px] gap-0.5 rounded-[24px] border border-hairline bg-surface p-1.5 shadow-panel"
-          style={{ gridTemplateColumns: `repeat(${[home, rosterItem, all, ...pinItems].filter(Boolean).length}, minmax(0, 1fr))` }}
+          className="relative z-[45] grid w-full max-w-[480px] gap-0.5 rounded-[24px] border border-hairline bg-surface p-1.5 shadow-panel"
+          style={{ gridTemplateColumns: `repeat(${[home, rosterItem, all, ...pinItems, account].filter(Boolean).length}, minmax(0, 1fr))` }}
         >
           {home}
           {rosterItem}
           {all}
           {pinItems}
+          {account}
         </div>
       ) : (
-        <div className="flex items-center gap-1 rounded-[26px] border border-hairline bg-surface p-2 shadow-panel">
+        <div className="relative z-[45] flex items-center gap-1 rounded-[26px] border border-hairline bg-surface p-2 shadow-panel">
           {home}
           {rosterItem}
           {pinItems.length > 0 && <span className="mx-1 h-9 w-px bg-hairline" />}
           {pinItems}
           <span className="mx-1 h-9 w-px bg-hairline" />
           {all}
+          <span className="mx-1 h-9 w-px bg-hairline" />
+          {account}
         </div>
       )}
     </nav>
@@ -154,6 +173,54 @@ function DockButton({ label, Icon, active, onClick, phone, expanded }: { label: 
   );
 }
 
+/** The last dock slot: your avatar, opening the account menu. */
+function DockAccount({ active, open, onClick, phone }: { active: boolean; open: boolean; onClick: () => void; phone: boolean }) {
+  const { user } = useAuth();
+  return (
+    <button type="button" onClick={onClick} aria-expanded={open} aria-haspopup="dialog" className={itemClass(active, phone)}>
+      <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={26} />
+      <span className="max-w-full truncate">Profile</span>
+    </button>
+  );
+}
+
+/**
+ * Who you are signed in as, with Profile & settings and Sign out. It opens
+ * just above the dock, at its right end under the avatar; the dock stays above
+ * the scrim so the next tap on it still goes where it says.
+ */
+function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }) {
+  const { user, logout } = useAuth();
+  return (
+    <>
+      <button type="button" tabIndex={-1} aria-label="Close" onClick={onClose} className="fixed inset-0 z-40 cursor-default" />
+      <div
+        role="dialog"
+        aria-label="Account"
+        className={cn(
+          "absolute bottom-full z-50 mb-2 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[18px] border border-hairline bg-surface shadow-panel",
+          phone ? "right-3" : "right-6"
+        )}
+      >
+        <div className="flex items-center gap-3 border-b border-hairline bg-sidebar px-4 py-3">
+          <Avatar name={user?.name ?? "?"} color={user?.avatarColor} />
+          <span className="min-w-0">
+            <span className="block truncate text-[14px] font-bold text-ink">{user?.name}</span>
+            <span className="block truncate text-micro text-muted">{user?.role?.name}</span>
+          </span>
+        </div>
+        <NavLink to="/profile" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+          <span className="flex-1">Profile &amp; settings</span>
+          <ChevronRight className="h-4 w-4 text-muted" />
+        </NavLink>
+        <button type="button" onClick={() => void logout()} className="flex min-h-[50px] w-full items-center gap-3 px-4 text-left text-[14px] font-semibold text-status-redText active:bg-rowhover">
+          <LogOut className="h-[18px] w-[18px]" /> Sign out
+        </button>
+      </div>
+    </>
+  );
+}
+
 function DockPin({ pin, active, phone }: { pin: NavForm; active: boolean; phone: boolean }) {
   const { form, Icon } = pin;
   const body = (
@@ -170,7 +237,7 @@ function DockPin({ pin, active, phone }: { pin: NavForm; active: boolean; phone:
 }
 
 /**
- * Every form, as big tap targets grouped by category, plus your account. It
+ * Every form, as big tap targets grouped by category. It
  * rises out of the dock: on a phone a sheet that runs on down behind the dock
  * to the bottom of the screen, on a tablet a panel just above it. The dock stays
  * on top and usable, so "All forms" closes it again.
@@ -198,7 +265,6 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   // rather than requestAnimationFrame, which never fires in a hidden tab.
   const [entered, setEntered] = useState(false);
   const shown = open && entered;
-  const { user, logout } = useAuth();
   const { categories, pinned } = useNavCatalog();
   const reviewCount = useReviewCount();
   const lit = useIsLit();
@@ -290,20 +356,6 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
               ))}
             </div>
           )}
-        </div>
-
-        {/* You: profile and sign-out, which the dock has no room for. (No Admin: it is desktop only.) */}
-        <div className={cn("flex flex-none items-center gap-2 border-t border-hairline bg-sidebar px-4 py-2.5", !phone && "md:px-6")}>
-          <NavLink to="/profile" onClick={onClose} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-3">
-            <Avatar name={user?.name ?? "?"} color={user?.avatarColor} />
-            <span className="min-w-0">
-              <span className="block truncate text-[14px] font-bold text-ink">{user?.name}</span>
-              <span className="block truncate text-micro text-muted">{user?.role?.name}</span>
-            </span>
-          </NavLink>
-          <button type="button" onClick={() => void logout()} aria-label="Sign out" title="Sign out" className="flex h-11 w-11 items-center justify-center rounded-input text-muted hover:bg-navsel/60 hover:text-ink">
-            <LogOut className="h-[18px] w-[18px]" />
-          </button>
         </div>
       </div>
     </div>
