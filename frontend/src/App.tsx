@@ -103,7 +103,7 @@ function HotFoodsSection() {
       ? [{ to: "/forms/hot-foods/entries", label: "Entries" }, { to: "/forms/hot-foods/reports", label: "Reports" }]
       : []),
   ];
-  return <SectionTabsLayout title="Hot Foods" tabs={tabs} />;
+  return <SectionTabsLayout title="Hot Foods" tabs={tabs} enter />;
 }
 
 /** /forms/hot-foods: the Record tab, or Entries for someone who can only read. */

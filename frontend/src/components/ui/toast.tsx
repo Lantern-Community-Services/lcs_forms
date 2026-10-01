@@ -39,9 +39,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      {/* Phone: pinned above the bottom tab bar, full width. Desktop: bottom-right. */}
+      {/* Phone: full width. iPad and desktop: bottom-right. Either way it sits 12px
+          above the dock when there is one (--dock-h, measured by Dock, covers its
+          safe-area padding too), and 20px off the edge on desktop where there isn't. */}
       <div
-        className="fixed inset-x-3 bottom-[calc(66px+var(--tabbar-bottom))] z-40 flex flex-col gap-2 md:inset-x-auto md:bottom-5 md:right-5"
+        className="fixed inset-x-3 bottom-[calc(var(--dock-h,8px)+12px)] z-40 flex flex-col gap-2 md:inset-x-auto md:right-5"
       >
         {toasts.map((t) => (
           <div

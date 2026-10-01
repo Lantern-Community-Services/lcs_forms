@@ -212,9 +212,9 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
       </div>
 
       {/* The mask: a card is clipped the moment it leaves the band between the
-          search bar and the Save bar, instead of sliding over either. Vertical
-          only — the popup's own edge clips it sideways. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-clip pt-2 md:pt-4">
+          search bar and the Save bar, instead of sliding over either. The band's
+          edges fade (.deck-band), so the cut is soft, sideways too. */}
+      <div className="deck-band -mx-4 -mb-3 flex min-h-0 flex-1 flex-col overflow-y-clip px-4 pb-3 pt-3 md:-mx-6 md:px-6 md:pt-4">
       {top ? <div className="mx-auto flex min-h-0 w-full max-w-[420px] flex-1 flex-col">
         {jumpId && <div className="mb-2 flex flex-none items-center justify-between text-[12px] text-muted"><span>Search result · roll call resumes afterward</span><button type="button" onClick={() => setJumpId(null)} className="min-h-[36px] px-2 font-semibold text-accent">Back to roll call</button></div>}
         {/* 392px when there's room; shrinks toward 280px on a short phone. */}

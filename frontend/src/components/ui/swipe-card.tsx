@@ -11,29 +11,35 @@ export type ExitDir = "left" | "right" | "down";
 
 /**
  * Where the parent is holding the top card.
- *  lean — pulled toward an action, its stamp showing, as if mid-swipe. A button
- *         press plays this first so it looks like a swipe; a decision that asks
- *         a follow-up question waits here while it is open.
+ *  lean — pulled toward an action, its stamp showing, as if mid-swipe. Only a
+ *         decision that asks a follow-up question (Remove, a signature) waits
+ *         here, while the question is open.
  *  out  — flying off the screen.
  */
 export interface Pose {
   id: string;
   dir: ExitDir;
   stage: "lean" | "out";
+  /** Out only: one unhurried glide (a button, or carrying on from a lean) rather than a fling off a finger. */
+  smooth?: boolean;
 }
-/** How long a button-triggered lean shows before the card flies. */
+/** How long the lean takes to settle into place. */
 export const LEAN_MS = 190;
-/** Fly-out duration; the card is dropped from the deck when it ends. */
+/** A fling's fly-out, after a finger lets go past the threshold. */
 export const OUT_MS = 300;
+/** A button's fly-out: a little longer, so it reads as a swipe and not a flick. */
+export const OUT_SMOOTH_MS = 420;
 export const prefersReducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * The top card's pose, owned by the deck's parent, and `playOut` to send a
  * card off the screen. A swipe arrives already past the threshold, so it flies
- * straight out; a button or key press leans the card first — slide, tilt,
- * stamp — so it reads exactly like the swipe it stands in for. `after` runs
- * once the card is gone (drop it from the queue, send it to the back).
+ * straight out at the speed of the finger; a button or key press sends the card
+ * the same way in one continuous glide — slide, tilt and stamp together, with
+ * no stop partway — and a card already held leaning carries on from where it
+ * is. `after` runs once the card is gone (drop it from the queue, send it to
+ * the back).
  *
  * The timers live here in the parent, not in the card: the refetch that
  * follows a decision can drop the person from the data before the animation
@@ -43,16 +49,15 @@ export const prefersReducedMotion = () =>
 export function useDeckPose() {
   const [pose, setPose] = useState<Pose | null>(null);
   function playOut(id: string, dir: ExitDir, swiped: boolean, after?: () => void) {
-    const out = () => {
-      setPose({ id, dir, stage: "out" });
-      setTimeout(() => {
-        after?.();
-        setPose(null);
-      }, OUT_MS);
-    };
-    if (swiped || prefersReducedMotion()) return out();
-    setPose({ id, dir, stage: "lean" });
-    setTimeout(out, LEAN_MS);
+    // A finger's fling is quick; anything else, including a held card going on
+    // its way once its question is answered, glides.
+    const smooth = !swiped || pose?.stage === "lean";
+    const ms = smooth ? OUT_SMOOTH_MS : OUT_MS;
+    setPose({ id, dir, stage: "out", smooth });
+    setTimeout(() => {
+      after?.();
+      setPose(null);
+    }, ms);
   }
   return { pose, setPose, playOut };
 }
@@ -151,15 +156,25 @@ export function SwipeCard({
   const leftOpacity = Math.min(1, Math.max(0, -offset / THRESHOLD));
   const skipOpacity = Math.min(1, Math.max(0, drop / SKIP_THRESHOLD));
   const leaving = pose?.stage === "out";
-  // The lean is a quick, decisive pull; the fly-out accelerates away; with no
-  // pose the card settles back like a spring.
+  // The lean is a quick, decisive pull. Both exits are ease-OUT: the card is
+  // moving at full speed from the first frame and slows as it clears the screen.
+  // A thrown card has momentum, so an ease-in or ease-in-out curve — slow start,
+  // then a lunge — is what made these feel wrong. It stays solid for most of the
+  // trip, then dissolves — finished before the card reaches the band's edge, so
+  // nothing is left to be sliced by it. With no pose the card settles back like
+  // a spring.
   const transition = dragging
     ? "none"
     : pose?.stage === "lean"
       ? `transform ${LEAN_MS}ms cubic-bezier(.2,.9,.3,1)`
       : leaving
-        ? `transform ${OUT_MS}ms cubic-bezier(.4,0,.9,.6), opacity ${OUT_MS}ms ease-in`
+        ? pose?.smooth
+          ? `transform ${OUT_SMOOTH_MS}ms cubic-bezier(.22,.7,.3,1), opacity ${OUT_SMOOTH_MS * 0.7}ms ease-in ${OUT_SMOOTH_MS * 0.1}ms`
+          : `transform ${OUT_MS}ms cubic-bezier(.2,.75,.35,1), opacity ${OUT_MS * 0.7}ms ease-in ${OUT_MS * 0.1}ms`
         : "transform 320ms cubic-bezier(.2,1.2,.4,1)";
+  // A posed card brings its stamp up as it travels instead of having it appear
+  // whole on the first frame; under a finger the stamp tracks it directly.
+  const stampFade = pose && !dragging ? { transition: "opacity 220ms ease-out" } : undefined;
 
   return (
     <div
@@ -167,6 +182,9 @@ export function SwipeCard({
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={up}
+      // Pull-to-refresh leaves a touch that starts here alone (PullToRefresh):
+      // down on a card is Skip.
+      data-no-pull
       className={cn(
         "absolute inset-0 rounded-[16px] border border-hairline bg-surface shadow-panel",
         isTop ? "cursor-grab active:cursor-grabbing" : "pointer-events-none",
@@ -185,13 +203,13 @@ export function SwipeCard({
       {/* Stamps that fade in as the card travels. */}
       <span
         className="pointer-events-none absolute left-5 top-5 rotate-[-12deg] rounded-input border-[3px] border-status-greenDot px-2.5 py-1 font-heading text-[20px] font-extrabold tracking-wide text-status-greenText"
-        style={{ opacity: rightOpacity }}
+        style={{ opacity: rightOpacity, ...stampFade }}
       >
         {rightLabel}
       </span>
       <span
         className="pointer-events-none absolute right-5 top-5 rotate-[12deg] rounded-input border-[3px] border-status-redDot px-2.5 py-1 font-heading text-[20px] font-extrabold tracking-wide text-status-redText"
-        style={{ opacity: leftOpacity }}
+        style={{ opacity: leftOpacity, ...stampFade }}
       >
         {leftLabel}
       </span>
@@ -199,7 +217,7 @@ export function SwipeCard({
           tilt — in blue, top-centre and above the avatar so the two never collide. */}
       <span
         className="pointer-events-none absolute left-1/2 top-2.5 z-[1] flex -translate-x-1/2 rotate-[-4deg] items-center gap-1 rounded-input border-[3px] border-status-blueDot py-0 pl-1.5 pr-2.5 font-heading text-[18px] font-extrabold tracking-wide text-status-blueText"
-        style={{ opacity: skipOpacity }}
+        style={{ opacity: skipOpacity, ...stampFade }}
       >
         <ChevronsDown className="h-[18px] w-[18px]" strokeWidth={3} /> SKIP
       </span>
@@ -208,7 +226,7 @@ export function SwipeCard({
         className="swipe-card-body flex h-full flex-col items-center px-6 pb-5 pt-10 text-center"
         // Pulled down, the contents dim and settle 16px lower, so the stamp
         // gets clear space above the avatar instead of sitting on it.
-        style={{ opacity: 1 - skipOpacity * 0.4, transform: `translateY(${skipOpacity * 16}px)` }}
+        style={{ opacity: 1 - skipOpacity * 0.4, transform: `translateY(${skipOpacity * 16}px)`, ...(pose && !dragging ? { transition: "opacity 220ms ease-out, transform 220ms ease-out" } : undefined) }}
       >
         {children}
       </div>

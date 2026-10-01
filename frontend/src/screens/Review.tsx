@@ -259,10 +259,10 @@ export function ReviewPage() {
                 <UndoButton last={last} busy={undoing || Boolean(pose)} onUndo={() => void undo()} />
               </div>
 
-              {/* The mask: a card is clipped once it leaves this band (vertically —
-                  the page root clips it sideways) rather than sliding over the
-                  counts above or the tab bar below. */}
-              <div className="overflow-y-clip pt-3">
+              {/* The mask: a card is clipped once it leaves this band rather than
+                  sliding over the counts above or the tab bar below, and the band's
+                  edges fade (.deck-band) so the cut is soft. */}
+              <div className="deck-band -mx-4 -mb-3 overflow-y-clip px-4 pb-3 pt-3 md:-mx-6 md:px-6">
               <div className={DECK_CLASS}>
                 {queue.slice(0, 3).reverse().map((t) => {
                   const depth = queue.indexOf(t);

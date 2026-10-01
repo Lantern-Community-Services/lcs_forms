@@ -225,7 +225,7 @@ export function HotFoodsRecordPage() {
           mid-signature anyway, and the pad needs the height. On a wide screen
           it moves into the side panel instead (below), where there's room to
           spare and height is what the steps are short of. */}
-      <div className={cn("flex-none border-b border-hairline px-4 py-2 md:block md:px-7 md:py-3 lg:hidden", current === "sign" && "hidden")}>
+      <div className={cn("enter-up flex-none border-b border-hairline px-4 py-2 md:block md:px-7 md:py-3 lg:hidden", current === "sign" && "hidden")}>
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-start gap-3">
           <SiteControl sites={sites} site={site} nearby={nearby} finding={finding} onChange={changeSite} hintOnPhone={current === "meal"} className="min-w-0 flex-1 md:max-w-[360px]" />
           <div className="ml-auto mt-1 shrink-0 md:mt-1.5">
@@ -235,7 +235,7 @@ export function HotFoodsRecordPage() {
       </div>
 
       <div className="mx-auto flex min-h-0 w-full max-w-[1240px] flex-1 flex-col lg:flex-row">
-        <aside className="flex-none border-b border-hairline bg-sidebar px-4 py-1.5 scroll-thin md:py-3 md:px-7 lg:w-[272px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-5 lg:py-4">
+        <aside className="enter-up flex-none border-b border-hairline bg-sidebar px-4 py-1.5 scroll-thin md:py-3 md:px-7 lg:w-[272px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-5 lg:py-4">
           <div className="mb-3 hidden space-y-2 border-b border-hairline pb-3 lg:block">
             <SiteControl sites={sites} site={site} nearby={nearby} finding={finding} onChange={changeSite} />
             <SyncStatus />
@@ -465,7 +465,7 @@ function MealStep({ items, selected, onSelect, onStart, onManage }: { items: Hot
   return (
     <>
       <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scroll-thin md:px-7 md:py-6" aria-label="Meal being served">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-x-2 md:mb-4">
+        <div className="enter-up mb-3 flex flex-wrap items-end justify-between gap-x-2 md:mb-4">
           <div>
             <h2 className="hidden text-[24px] font-heading font-extrabold text-ink md:block">What are you serving this shift?</h2>
             <p className="text-[13.5px] text-muted md:mt-1 md:text-[14.5px]">Pick once. Everyone you record gets this meal unless you change it for them.</p>
@@ -487,7 +487,7 @@ function MealStep({ items, selected, onSelect, onStart, onManage }: { items: Hot
                 aria-checked={on}
                 onClick={() => onSelect(item.id)}
                 className={cn(
-                  "relative flex min-h-[64px] items-center gap-2.5 rounded-card border-2 p-2 pr-8 text-left active:scale-[0.99] md:min-h-[136px] md:flex-col md:items-start md:gap-3.5 md:p-4 md:pr-12",
+                  "enter-up relative flex min-h-[64px] items-center gap-2.5 rounded-card border-2 p-2 pr-8 text-left active:scale-[0.99] md:min-h-[136px] md:flex-col md:items-start md:gap-3.5 md:p-4 md:pr-12",
                   on ? "border-navy bg-navsel/50 dark:border-white" : "border-hairline bg-surface hover:border-strongline"
                 )}
               >
@@ -506,7 +506,7 @@ function MealStep({ items, selected, onSelect, onStart, onManage }: { items: Hot
           })}
         </div>
       </section>
-      <div className="flex flex-none justify-end border-t border-hairline bg-surface px-4 py-3 md:px-7 md:py-4">
+      <div className="enter-up flex flex-none justify-end border-t border-hairline bg-surface px-4 py-3 md:px-7 md:py-4">
         <Button className="min-h-[58px] w-full text-[17px] font-extrabold md:w-auto md:min-w-[300px]" onClick={onStart}>
           Start serving {chosen.name}
         </Button>
@@ -576,7 +576,7 @@ function ResidentStep({ roster, loading, counts, meals, regulars, regularsDays, 
 
   return (
     <section className="flex min-h-0 flex-1 flex-col px-4 pt-2 md:px-7 md:pt-6" aria-label="Residents">
-      <div className="mb-2 flex flex-none flex-col gap-2 md:mb-3 xl:flex-row xl:items-center xl:gap-3">
+      <div className="enter-up mb-2 flex flex-none flex-col gap-2 md:mb-3 xl:flex-row xl:items-center xl:gap-3">
         <div className="flex gap-2 xl:flex-1">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
@@ -615,7 +615,7 @@ function ResidentStep({ roster, loading, counts, meals, regulars, regularsDays, 
           ))}
         </div>
       </div>
-      <div className="mb-2 hidden flex-none items-center justify-between gap-3 md:flex">
+      <div className="enter-up mb-2 hidden flex-none items-center justify-between gap-3 md:flex">
         <p className="min-w-0 truncate text-[13px] text-muted">
           Serving <strong className="font-semibold text-ink">{meal.name}</strong>
         </p>
@@ -639,7 +639,7 @@ function ResidentStep({ roster, loading, counts, meals, regulars, regularsDays, 
           hint={q ? "Try part of the name or the room number." : undefined}
         />
       ) : (
-        <ul className="divide-y divide-hairline border-y border-hairline md:mx-0 md:grid md:grid-cols-2 md:gap-3 md:divide-y-0 md:border-0 xl:grid-cols-3">
+        <ul className="enter-up divide-y divide-hairline border-y border-hairline md:mx-0 md:grid md:grid-cols-2 md:gap-3 md:divide-y-0 md:border-0 xl:grid-cols-3">
           {shown.slice(0, 300).map((t) => {
             const n = counts[t.id] ?? 0;
             // The badge speaks for the shift's meal: its count against the
@@ -749,7 +749,7 @@ function SignStep({ tenant, items, defaultMeal, servedToday, served, rules, onSa
     // Scrolls only when something opened on top of the usual form — the over-limit
     // reasons, the full meal list, a note — leaves the pad no room at its minimum.
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 scroll-thin md:px-7 md:pt-6 xl:grid xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:gap-7 xl:pb-6" aria-label={`Serve ${tenant.displayName}`}>
-      <div className="space-y-3.5">
+      <div className="enter-up space-y-3.5">
         <div className="flex items-center gap-3.5">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[16px] font-bold text-white md:h-[60px] md:w-[60px] md:text-[19px]" style={{ background: tintFor(tenant.id) }}>
             {initials(tenant.displayName)}
@@ -840,7 +840,7 @@ function SignStep({ tenant, items, defaultMeal, servedToday, served, rules, onSa
         </div>
       </div>
 
-      <div className="mt-4 flex flex-1 flex-col xl:mt-0">
+      <div className="enter-up mt-4 flex flex-1 flex-col xl:mt-0">
         <div className="mb-1.5 flex items-baseline justify-between gap-3">
           <p className="text-[15px] font-semibold text-ink md:text-[17px]">
             <span className="md:hidden">{first}, sign here</span>
@@ -871,12 +871,12 @@ function DoneStep({ last, canUndo, served, total, onUndo, onNext }: { last?: Rec
   useEffect(() => nextRef.current?.focus(), []);
   return (
     <section className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-10 text-center" aria-live="polite">
-      <span className="flex h-24 w-24 items-center justify-center rounded-full bg-status-greenBg md:h-28 md:w-28">
+      <span className="enter-pop flex h-24 w-24 items-center justify-center rounded-full bg-status-greenBg md:h-28 md:w-28">
         <Check className="h-12 w-12 text-status-greenText md:h-14 md:w-14" strokeWidth={3} />
       </span>
-      <h2 className="text-[28px] font-heading font-extrabold text-ink md:text-[32px]">Saved</h2>
+      <h2 className="enter-up text-[28px] font-heading font-extrabold text-ink md:text-[32px]">Saved</h2>
       {last && (
-        <p className="max-w-[420px] text-[16px] leading-relaxed text-muted md:text-[17px]">
+        <p className="enter-up max-w-[420px] text-[16px] leading-relaxed text-muted md:text-[17px]">
           {last.mealCount} meal{last.mealCount === 1 ? "" : "s"} for {last.name}.
           <br />
           <span className="tabular">
@@ -884,7 +884,7 @@ function DoneStep({ last, canUndo, served, total, onUndo, onNext }: { last?: Rec
           </span>
         </p>
       )}
-      <div className="mt-2 flex w-full max-w-[560px] flex-col-reverse gap-3 md:flex-row md:justify-center">
+      <div className="enter-up mt-2 flex w-full max-w-[560px] flex-col-reverse gap-3 md:flex-row md:justify-center">
         {canUndo && (
           <Button variant="secondary" className="min-h-[58px] text-[16px] md:px-6" onClick={onUndo}>
             Undo this entry

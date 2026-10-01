@@ -37,6 +37,14 @@ export function Dock({ device, launcherOpen, onToggleLauncher }: {
   useEffect(() => {
     document.documentElement.style.setProperty("--dock-h", `${height}px`);
   }, [height]);
+  // Gone with the dock, so a desktop window resized up from an iPad's width
+  // doesn't leave toasts floating a dock's height off the bottom.
+  useEffect(
+    () => () => {
+      document.documentElement.style.removeProperty("--dock-h");
+    },
+    []
+  );
   // A phone has five slots. A tablet fits as many pins as its width allows:
   // ~6 on a portrait iPad, ~10 in landscape.
   const fixed = roster ? 3 : 2;

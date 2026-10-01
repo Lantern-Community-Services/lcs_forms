@@ -29,9 +29,10 @@ const COLLAPSED_KEY = "ln.roster.collapsed";
 /**
  * Rendering ~1,900 rows in one go blocked the main thread for half a second.
  * Instead the first screenful renders immediately (and slides in), and the rest
- * are appended a batch per frame — everything is in place within a few hundred
- * milliseconds, long before anyone can scroll to it, and no single frame is long
- * enough to feel.
+ * are appended a batch per frame, but only while the end of the list is within
+ * reach of the screen (see useProgressiveCount). Building all of them anyway
+ * came to ~46,000 elements: on an iPad that kept every tap waiting while it ran,
+ * and made leaving the Roster slow.
  */
 const FIRST_BATCH = 40;
 const BATCH = 120;
@@ -47,17 +48,55 @@ function closeOpenSwipeRows(exceptId?: string) {
   for (const [id, close] of openSwipeRowClosers) if (id !== exceptId) close();
 }
 
-function useProgressiveCount(total: number, resetKey: string) {
+/** How close to the screen (px) the end of the list has to be for the next batch to be built. */
+const BUILD_AHEAD = 1600;
+
+/** `layout` changes when the list's height can change without a scroll (sites folded or unfolded): time to measure again. */
+function useProgressiveCount(total: number, resetKey: string, sentinel: HTMLElement | null, layout: unknown) {
   const [state, setState] = useState({ key: resetKey, count: 1 });
   // Reset during render, not in an effect: an effect would let one full-size
   // render through first (the old count against the new list) — the very
   // freeze this exists to avoid.
   const count = state.key === resetKey ? state.count : 1;
   if (state.key !== resetKey) setState({ key: resetKey, count: 1 });
+
+  // Paused while the end of what's built is far below the screen; scrolling
+  // towards it (or the list or window changing size) resumes. Measured directly rather than with an
+  // IntersectionObserver, whose callbacks wait for a rendered frame, and a
+  // backgrounded or throttled page may not render one for a long time.
+  const [paused, setPaused] = useState(false);
+  const near = () => {
+    if (!sentinel) return true;
+    const root = sentinel.closest("main");
+    const bottom = root ? root.getBoundingClientRect().bottom : window.innerHeight;
+    return sentinel.getBoundingClientRect().top - bottom < BUILD_AHEAD;
+  };
   useEffect(() => {
     if (count >= total) return;
+    if (!near()) {
+      setPaused(true);
+      return;
+    }
+    if (paused) setPaused(false);
     return nextTask(() => setState((st) => ({ ...st, count: Math.min(total, st.count + 1) })));
-  }, [count, total]);
+  }, [count, total, paused, sentinel, layout]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!paused || !sentinel) return;
+    const root = sentinel.closest("main") ?? window;
+    const check = () => {
+      if (near()) setPaused(false);
+    };
+    root.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    // Folding sites shrinks the list without any scroll: watch its size too.
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(check);
+    if (sentinel.parentElement) ro?.observe(sentinel.parentElement);
+    return () => {
+      root.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+      ro?.disconnect();
+    };
+  }, [paused, sentinel]); // eslint-disable-line react-hooks/exhaustive-deps
   return Math.min(count, total);
 }
 
@@ -187,7 +226,8 @@ export function RosterPage() {
   // A search looks through folded sites too — hiding a match would read as "not found".
   const folded = useMemo(() => (grouped && !query ? collapsed : NO_SITES), [grouped, query, collapsed]);
   // Restart the progressive render whenever the list itself changes.
-  const shownChunks = useProgressiveCount(chunks.length, `${param ?? "all"}|${tab}|${query}`);
+  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
+  const shownChunks = useProgressiveCount(chunks.length, `${param ?? "all"}|${tab}|${query}`, sentinel, folded);
 
   const onRoster = selected.reduce((n, s) => n + s.activeCount, 0);
   const attention = tab === "archived" ? selected.reduce((n, s) => n + s.attentionCount, 0) : all.filter((t) => t.needsAttention).length;
@@ -330,6 +370,8 @@ export function RosterPage() {
                 />
               ))}
             </ul>
+            {/* The end of what's built: more is built as this nears the screen. */}
+            <div ref={setSentinel} aria-hidden className="h-px" />
           </Card>
           </>
         )}

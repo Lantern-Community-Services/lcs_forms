@@ -1,5 +1,6 @@
 import { MobileBackLink } from "./AppShell";
 import { useInSectionTabs } from "./SectionTabs";
+import { cn } from "@/lib/utils";
 
 /**
  * The band every phone screen in the design wears: the sidebar fill, a hairline
@@ -16,6 +17,7 @@ export function PhoneHeader({
   back,
   actions,
   children,
+  enter = false,
 }: {
   title: string;
   subtitle?: string;
@@ -25,6 +27,8 @@ export function PhoneHeader({
   actions?: React.ReactNode;
   /** Anything below the title: a search field, a chip row. */
   children?: React.ReactNode;
+  /** Let the title arrive with the rest of the screen (see useCascade). */
+  enter?: boolean;
 }) {
   // Inside a tabbed section the tab strip above has taken the status-bar inset
   // and names the screen, so only the toolbar is left to draw.
@@ -47,7 +51,7 @@ export function PhoneHeader({
   return (
     <div className="flex-none border-b border-hairline bg-sidebar px-4 pb-3 pt-safe-top md:hidden">
       {back && <MobileBackLink to={back.to} label={back.label} className="mb-0.5" />}
-      <div className="flex items-start gap-2.5">
+      <div className={cn("flex items-start gap-2.5", enter && "enter-up")}>
         <div className="min-w-0 flex-1">
           <h1 className="text-[23px] font-heading font-extrabold text-ink">{title}</h1>
           {subtitle && <p className="mt-[3px] text-[13px] text-muted">{subtitle}</p>}

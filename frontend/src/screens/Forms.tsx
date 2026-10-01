@@ -105,8 +105,8 @@ export function FormsPage() {
   return (
     <div className="flex min-h-full flex-col">
       {/* ── Phone ─────────────────────────────────────────────────────── */}
-      <PhoneHeader title={greeting} subtitle={today}>
-        <div className="mt-3">
+      <PhoneHeader title={greeting} subtitle={today} enter>
+        <div className="enter-up mt-3">
           <SearchInput ref={phoneSearchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all forms" aria-label="Search forms" />
         </div>
       </PhoneHeader>
@@ -127,7 +127,7 @@ export function FormsPage() {
           ) : (
             <>
               {favoriteForms.length > 0 && (
-                <section>
+                <section className="enter-up">
                   <h2 className="mb-2 flex items-center gap-1.5 text-[15px] font-heading font-extrabold text-ink">
                     <Pin className="h-4 w-4 fill-status-amberDot text-status-amberDot" /> Pinned
                   </h2>
@@ -147,7 +147,7 @@ export function FormsPage() {
                 </section>
               )}
               <section>
-                <div className="mb-2 flex items-baseline justify-between">
+                <div className="enter-up mb-2 flex items-baseline justify-between">
                   <h2 className="text-[15px] font-heading font-extrabold text-ink">All forms</h2>
                   <span className="text-[12.5px] text-muted">{totalForms} forms</span>
                 </div>
@@ -159,7 +159,7 @@ export function FormsPage() {
                         key={c.id}
                         type="button"
                         onClick={() => setPick(c.id)}
-                        className="flex min-h-[96px] flex-col items-start gap-2.5 rounded-card border border-hairline bg-surface p-3 text-left active:bg-rowhover"
+                        className="enter-up flex min-h-[96px] flex-col items-start gap-2.5 rounded-card border border-hairline bg-surface p-3 text-left active:bg-rowhover"
                       >
                         <span className="flex h-9 w-9 items-center justify-center rounded-input bg-navy text-white">
                           <Icon className="h-[18px] w-[18px]" />
@@ -181,7 +181,7 @@ export function FormsPage() {
 
       {/* ── Tablet and desktop ────────────────────────────────────────── */}
       <Page className="hidden w-full md:block">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 xl:mb-6">
+        <div className="enter-up mb-5 flex flex-wrap items-center justify-between gap-4 xl:mb-6">
           <div className="min-w-0">
             <h1 className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">{greeting}</h1>
             <p className="mt-1 text-[13.5px] text-muted">{subtitle}</p>
@@ -199,7 +199,7 @@ export function FormsPage() {
         </div>
 
         <section id="forms" aria-labelledby="all-forms">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div className="enter-up mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 id="all-forms" className="text-[18px] font-heading font-extrabold text-ink xl:text-[21px]">All forms</h2>
               <p className="mt-0.5 text-[13px] text-muted" aria-live="polite">
@@ -346,7 +346,7 @@ function FormCard({ form, category, favorite, onToggleFavorite, showCategory = f
   return (
     <li
       className={cn(
-        "group relative flex min-h-[172px] flex-col gap-3 rounded-card border border-hairline bg-surface p-4 shadow-card transition-[border-color,box-shadow]",
+        "enter-up group relative flex min-h-[172px] flex-col gap-3 rounded-card border border-hairline bg-surface p-4 shadow-card transition-[border-color,box-shadow]",
         !locked && "hover:border-strongline hover:shadow-[0_6px_18px_rgba(35,42,58,0.08)]"
       )}
     >
@@ -386,7 +386,7 @@ function FormCard({ form, category, favorite, onToggleFavorite, showCategory = f
 
 function NoMatch({ searching, favorites }: { searching: boolean; favorites: boolean }) {
   return (
-    <div className="rounded-card border border-dashed border-strongline bg-surface px-6 py-10 text-center">
+    <div className="enter-up rounded-card border border-dashed border-strongline bg-surface px-6 py-10 text-center">
       <p className="text-[15px] font-bold text-ink">{searching ? "No forms match that" : favorites ? "Nothing pinned yet" : "Nothing here"}</p>
       <p className="mt-1 text-[13px] text-muted">
         {searching ? "Try another word, or ask the help desk if a form is missing." : "Tap the star on any form to keep it here."}
@@ -424,7 +424,7 @@ function FormsBrowser({ categories, pick, onPick, favoriteCount, totalForms, ent
         onClick={() => onPick(id)}
         aria-pressed={on}
         className={cn(
-          "flex min-h-[46px] items-center gap-2.5 rounded-input px-2.5 text-left text-[13.5px]",
+          "enter-up flex min-h-[46px] items-center gap-2.5 rounded-input px-2.5 text-left text-[13.5px]",
           on ? "bg-navy font-bold text-white" : "font-semibold text-ink hover:bg-rowhover"
         )}
       >
@@ -436,26 +436,36 @@ function FormsBrowser({ categories, pick, onPick, favoriteCount, totalForms, ent
   };
 
   return (
-    <div className="flex overflow-hidden rounded-[14px] border border-hairline bg-surface">
+    // The frame is as tall as the group list needs, so every group is in view;
+    // the forms scroll inside their own pane beside it (absolutely placed, so a
+    // long list can't stretch the frame).
+    <div className="enter-up flex min-h-[420px] overflow-hidden rounded-[14px] border border-hairline bg-surface">
       <nav aria-label="Form groups" className="flex w-[212px] shrink-0 flex-col gap-0.5 border-r border-hairline bg-sidebar p-2 xl:w-[250px] xl:p-2.5">
         {item(ALL, "All forms", LayoutGrid, totalForms)}
         {item(FAVORITES, "Pinned", Pin, favoriteCount)}
         {categories.map((c) => item(c.id, c.name, formIcon(c.icon), c.forms.length))}
       </nav>
-      <div className="min-w-0 flex-1 p-4 xl:px-6 xl:py-5">
-        <div className="mb-3 flex items-baseline gap-2.5 xl:mb-4">
-          <h3 className="text-[16px] font-heading font-extrabold text-ink xl:text-[19px]">{title}</h3>
-          <span className="text-[13px] text-muted">{entries.length} {entries.length === 1 ? "form" : "forms"}</span>
+      <div className="relative min-w-0 flex-1">
+        <div className="absolute inset-0 flex flex-col px-4 pt-4 xl:px-6 xl:pt-5">
+          <div className="enter-up mb-3 flex flex-none items-baseline gap-2.5 xl:mb-4">
+            <h3 className="text-[16px] font-heading font-extrabold text-ink xl:text-[19px]">{title}</h3>
+            <span className="text-[13px] text-muted">{entries.length} {entries.length === 1 ? "form" : "forms"}</span>
+          </div>
+          {/* Keyed by group so picking another one starts the list back at the top
+              and replays the arrival; typing in the search keeps the list, and
+              only the matches that are new animate. */}
+          <div key={searching ? "search" : pick} className="-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-4 scroll-thin xl:pb-5">
+            {entries.length === 0 ? (
+              <NoMatch searching={searching} favorites={pick === FAVORITES} />
+            ) : (
+              <ul className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 xl:gap-3.5">
+                {entries.map((e) => (
+                  <FormCard key={e.form.id} {...cardProps(e)} showCategory={mixed} />
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
-        {entries.length === 0 ? (
-          <NoMatch searching={searching} favorites={pick === FAVORITES} />
-        ) : (
-          <ul className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 xl:gap-3.5">
-            {entries.map((e) => (
-              <FormCard key={e.form.id} {...cardProps(e)} showCategory={mixed} />
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );
@@ -465,10 +475,10 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
   const { can } = useAuth();
   return (
     <section className="flex flex-col gap-2.5">
-      <button type="button" onClick={onBack} className="-ml-2 inline-flex min-h-[44px] items-center gap-1 self-start px-2 text-[14px] font-bold text-accent dark:text-white">
+      <button type="button" onClick={onBack} className="enter-up -ml-2 inline-flex min-h-[44px] items-center gap-1 self-start px-2 text-[14px] font-bold text-accent dark:text-white">
         <ChevronLeft className="h-[18px] w-[18px]" /> All forms
       </button>
-      <div className="flex items-baseline gap-2">
+      <div className="enter-up flex items-baseline gap-2">
         <h2 className="text-[19px] font-heading font-extrabold text-ink">{title}</h2>
         <span className="text-[13px] text-muted">{entries.length} {entries.length === 1 ? "form" : "forms"}</span>
       </div>
@@ -503,7 +513,7 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
             );
             const rowClass = "flex items-center gap-3 px-3.5 py-3";
             return (
-              <li key={form.id} className="border-b border-hairline last:border-b-0">
+              <li key={form.id} className="enter-up border-b border-hairline last:border-b-0">
                 {locked ? (
                   <div className={rowClass} aria-disabled>{body}</div>
                 ) : (
@@ -514,7 +524,7 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
           })}
         </ul>
       )}
-      <p className="flex items-center gap-1.5 text-[12px] text-muted">
+      <p className="enter-up flex items-center gap-1.5 text-[12px] text-muted">
         <ExternalLink className="h-3 w-3" /> Opens the old forms site in a new tab
       </p>
     </section>
@@ -559,7 +569,7 @@ function PanelNote({ children }: { children: React.ReactNode }) {
 function AttentionPanel({ home, loading, failed }: { home?: HomeData; loading: boolean; failed: boolean }) {
   const items = home?.attention ?? [];
   return (
-    <section id="attention" className="flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card">
+    <section id="attention" className="enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card">
       <PanelHeader title="Needs your attention" count={items.length} />
       {loading ? (
         <PanelNote>Checking…</PanelNote>
@@ -638,7 +648,7 @@ function ActivityPanel({ home, loading, failed, limit, wideLimit, className }: {
 
   let lastDay = "";
   return (
-    <section className={cn("flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card", className)}>
+    <section className={cn("enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card", className)}>
       <PanelHeader title="Recent activity">
         {canFilter && (
           <div className="flex rounded-input bg-subtle p-[3px]" role="group" aria-label="Whose activity">
@@ -741,7 +751,7 @@ function StatStrip({ home, totalForms }: { home?: HomeData; totalForms: number }
             </span>
           </>
         );
-        const cls = "flex flex-col gap-1 rounded-card border border-hairline bg-surface px-5 py-4 shadow-card";
+        const cls = "enter-up flex flex-col gap-1 rounded-card border border-hairline bg-surface px-5 py-4 shadow-card";
         return t.href?.startsWith("/") ? (
           <Link key={t.label} to={t.href} className={cn(cls, "hover:border-strongline")}>{body}</Link>
         ) : t.href ? (
@@ -761,7 +771,7 @@ function PhoneAttention({ home }: { home?: HomeData }) {
   if (!items.length) return null;
   const warn = items.some((a) => a.tone === "warn");
   return (
-    <section className={cn("overflow-hidden rounded-card border bg-surface", warn ? "border-status-amberDot/50" : "border-hairline")}>
+    <section className={cn("enter-up overflow-hidden rounded-card border bg-surface", warn ? "border-status-amberDot/50" : "border-hairline")}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3.5 py-3 text-left">
         <AttentionIcon item={items[0]} size="sm" />
         <span className="min-w-0 flex-1">

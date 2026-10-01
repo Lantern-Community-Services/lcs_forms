@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Dock, Launcher } from "./Dock";
+import { PullToRefresh } from "./PullToRefresh";
 import { useDeviceKind } from "@/lib/device";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
 import { startHotFoodsSync } from "@/lib/hotFoodsQueue";
 import { startAppQueue } from "@/apps/queue";
+import { useCascade } from "@/lib/cascade";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,17 +43,55 @@ export function AppShell() {
   const { pathname } = useLocation();
   useEffect(() => setLauncher(false), [pathname, touch]);
   const closeLauncher = useCallback(() => setLauncher(false), []);
+  const mainRef = useRef<HTMLElement>(null);
+  // Anything on a screen marked enter-up arrives from the top down.
+  useCascade(mainRef);
+
+  // The shell is fixed, so the window itself should never be scrolled. iOS
+  // still scrolls it to keep a focused field above the keyboard, and doesn't
+  // always scroll it back when the keyboard goes; then taps land off target
+  // (hit-testing follows the shifted page, the drawing doesn't). Put it back
+  // whenever nothing is being typed into.
+  useEffect(() => {
+    const typing = () => Boolean(document.activeElement?.closest?.("input, textarea, select, [contenteditable]"));
+    const reset = () => {
+      if ((window.scrollY || window.scrollX) && !typing()) window.scrollTo(0, 0);
+    };
+    const later = () => window.setTimeout(reset, 120);
+    window.addEventListener("scroll", reset, { passive: true });
+    window.addEventListener("focusout", later);
+    window.visualViewport?.addEventListener("resize", later);
+    return () => {
+      window.removeEventListener("scroll", reset);
+      window.removeEventListener("focusout", later);
+      window.visualViewport?.removeEventListener("resize", later);
+    };
+  }, []);
 
   return (
-    <div className={cn("app-height flex flex-col overflow-hidden bg-appbg", !touch && "md:flex-row")}>
+    <div
+      // Pinned to the screen. Sized as 100dvh in the normal flow, iPad Safari
+      // could still scroll the page under it (its toolbar showing or hiding, a
+      // rubber-band drag, a scrollIntoView or focus reaching past <main>), and
+      // the dock rode down with it. Fixed, there is no page to scroll; and an
+      // overflow-hidden box can still be scrolled by script, so any scroll that
+      // does land on it is put straight back.
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        if (el.scrollTop || el.scrollLeft) el.scrollTo(0, 0);
+      }}
+      className={cn("fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-appbg", !touch && "md:flex-row")}
+    >
       {!touch && <Sidebar />}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
             page is short, so content doesn't jump sideways when a list grows or
             shrinks past the fold (collapsing roster sites, filtering). */}
-        <main className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
           <Outlet />
         </main>
+        {/* Installed to the home screen there's no reload button: pull down from the top instead. */}
+        {touch && <PullToRefresh scrollRef={mainRef} />}
       </div>
       {touch && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
       {touch && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} />}

@@ -275,6 +275,30 @@ h6 {
   will-change: transform, opacity;
 }
 
+/* Elements arriving when a screen opens (home, Hot Foods). Their order down the
+   screen is set by useCascade (lib/cascade), which writes each one's
+   animation-delay from its position; don't set one by hand.
+
+   `backwards` fill, not `both`: the delay is covered (nothing flashes before its
+   turn) but no transform is left behind afterwards, so a card doesn't stay a
+   containing block or its own layer once it has landed. The rise is 12px, under
+   the 16px padding of the scrolling panes it appears in, so the shifted
+   starting position never makes a scrollbar flicker in. */
+@keyframes enter-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes enter-pop {
+  0% { opacity: 0; transform: scale(0.55); }
+  65% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.enter-up { animation: enter-up 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.enter-pop { animation: enter-pop 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .enter-up, .enter-pop { animation: none; }
+}
+
 /* A batch of bills just loaded into a ledger group.
 
    These rows arrive already tinted, hold for a beat, then settle back to the
@@ -661,6 +685,27 @@ h6 {
   .roster-row { contain-intrinsic-size: auto 49px; }
 }
 
+/* The band a swipe deck's cards travel in. Its edges are soft, not a hard clip:
+   a card swinging out dissolves into the edge instead of being sliced by it.
+   The band is padded out past the card by exactly the width of each fade (set
+   with --fx / --fy, matching the padding), so a card at rest never touches one.
+   Two gradients, intersected — the -webkit- pair is the one Safari reads. */
+.deck-band {
+  --fx: 16px;
+  --fy: 12px;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 var(--fx), #000 calc(100% - var(--fx)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fy), #000 calc(100% - var(--fy)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--fx), #000 calc(100% - var(--fx)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fy), #000 calc(100% - var(--fy)), transparent);
+  mask-composite: intersect;
+}
+@media (min-width: 768px) {
+  .deck-band { --fx: 24px; }
+}
+
 /* Swipe decks (Review, roll call). The deck is a size container so a card
    squeezed onto a short phone screen tightens itself — smaller avatar, less
    air — instead of letting its contents run past the card's bottom edge. At
@@ -733,3 +778,17 @@ html.lcs-dragging iframe { pointer-events: none; }
 html.lcs-resizing,
 html.lcs-resizing * { cursor: col-resize !important; user-select: none !important; }
 html.lcs-resizing iframe { pointer-events: none; }
+
+/*
+ * iPad and iPhone Safari zoom the whole page in when a field with text under
+ * 16px is focused. Installed to the home screen there's no easy way back out,
+ * and every tap after it lands off target. Touch screens get 16px fields, so it
+ * never zooms.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
