@@ -23,3 +23,7 @@ frontend/public/app-runtime/runtime.css
 
 # Copied in by `npm run forms -- app:pull` for local type-checking
 forms/*/lcs-sdk.d.ts
+
+# Local HTTPS for iPad testing (frontend/scripts/dev-https.mjs): includes the dev
+# certificate authority's private key.
+.dev-https/
