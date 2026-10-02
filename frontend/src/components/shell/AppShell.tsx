@@ -133,12 +133,12 @@ export function AppShell() {
     >
       {!touch && <Sidebar />}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Floats over the top of the screen; it takes no room. */}
+        <OfflineBar state={offlineBar} />
         {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
             page is short, so content doesn't jump sideways when a list grows or
             shrinks past the fold (collapsing roster sites, filtering). */}
-        <OfflineBar state={offlineBar} />
-        {/* With the bar showing, it is the one clearing the status bar; the screen's own header doesn't. */}
-        <main ref={mainRef} className={cn("min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]", offlineBar.visible && "[--safe-top:0px]")}>
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
           <Outlet />
         </main>
         {/* Installed to the home screen there's no reload button: pull down from the top instead. */}

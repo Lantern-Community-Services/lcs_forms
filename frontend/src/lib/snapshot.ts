@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { api } from "./api";
-import { appIsQuiet, isOnline } from "./offline";
+import { appIsQuiet, isOnline, offlineEnabled } from "./offline";
 import { hotFoodParams } from "./queries";
-import { keptResidentIds, keptSites, primeRoster } from "./rosterStore";
+import { keepAllSites, keptResidentIds } from "./rosterStore";
 import { rememberedSiteParam } from "./site";
 import { readStorage, readStoredJson, writeStorage } from "./storage";
 import { presetRange } from "@/components/hotfoods/DateRange";
@@ -14,9 +14,10 @@ import type { FormCatalog, HotFoodItem, Site, User } from "./types";
  *
  * public/sw.js keeps every answer the app reads, so whatever someone opens is
  * there offline later. This makes sure of the rest. In the background it works
- * through every screen this person can open and reads each one: the forms and
- * their definitions, meal types and their pictures, the roster and each
- * resident's page, Review, Overview and Activity, attendance, and the entries
+ * through every screen this person can open and reads each one: the residents
+ * at all of their sites, the forms and their definitions, meal types and their
+ * pictures, today's counts at every site, each resident's page (at the sites
+ * this device is used at), Review, Overview and Activity, attendance, and the entries
  * and reports the person may see. The worker stores each answer exactly as if
  * the screen had asked, because each read here uses the screen's own URL,
  * default filters included.
@@ -61,9 +62,11 @@ export interface SnapshotStatus {
   fresh: number;
   /** When everything was last up to date (ms), or null. */
   completeAt: number | null;
+  /** What's being saved right now ("Residents", "Forms", …). */
+  current: string | null;
 }
 
-let status: SnapshotStatus = { running: false, total: 0, fresh: 0, completeAt: null };
+let status: SnapshotStatus = { running: false, total: 0, fresh: 0, completeAt: null, current: null };
 const listeners = new Set<() => void>();
 function setStatus(patch: Partial<SnapshotStatus>) {
   status = { ...status, ...patch };
@@ -144,12 +147,14 @@ async function buildTargets(user: User): Promise<Target[]> {
   const slugs = (prefix: string) => [...new Set(urls.filter((u) => u.startsWith(prefix)).map((u) => u.slice(prefix.length).split(/[/?#]/)[0]).filter(Boolean))];
 
   // ── Filling in forms ──
+  // Residents first: every form that names someone needs them. All of the
+  // person's sites (lib/rosterStore.ts keeps them current from then on).
+  if (can("roster.view")) targets.push({ key: "roster:all", label: "Residents", tier: 0, ttlMs: 12 * HOUR, run: () => keepAllSites() });
   for (const slug of [...slugs("/f/"), ...slugs("/p/")]) targets.push({ key: `form:${slug}`, label: "Forms", tier: 0, ttlMs: HOUR, run: get(`/f/${slug}`) });
   for (const slug of slugs("/apps/")) targets.push({ key: `app:${slug}`, label: "Forms", tier: 0, ttlMs: HOUR, run: get(`/apps/${slug}/runtime`) });
 
   // The sites this device is used at: the Record site, the person's default, (unless they have every site) their
   // own, and those picked on the roster screens here.
-  const deviceSites = new Set<string>(await keptSites());
   const recordSite = readStorage("ln.hotfoods.site");
   const mine = [
     ...(recordSite ? [recordSite] : []),
@@ -158,15 +163,15 @@ async function buildTargets(user: User): Promise<Target[]> {
     // The sites picked on the roster screens here.
     ...(rememberedSiteParam(sites)?.split(",") ?? []),
   ].filter((c, i, all) => all.indexOf(c) === i && sites.some((s) => s.code === c));
-  mine.forEach((c) => deviceSites.add(c));
 
-  if (can("roster.view") || can("roster.edit")) {
-    targets.push({ key: "roster", label: "Roster", tier: 0, ttlMs: 12 * HOUR, run: () => primeRoster([...deviceSites]) });
-  }
   if (urls.some((u) => u.startsWith("/forms/hot-foods")) && can("roster.edit")) {
     targets.push({ key: "hf:items", label: "Meal types", tier: 0, ttlMs: 2 * HOUR, run: get("/hot-foods/items") });
     for (const it of items) if (it.active && it.imageUrl) targets.push({ key: `img:${it.imageUrl}`, label: "Meal pictures", tier: 0, ttlMs: 24 * HOUR, run: image(it.imageUrl) });
-    for (const code of mine) targets.push({ key: `hf:today:${code}`, label: "Today's meals", tier: 0, ttlMs: 10 * MIN, run: get(`/hot-foods/today?site=${encodeURIComponent(code)}`) });
+    // Today's counts (for the limits) at every site: every 10 minutes where this device is used, half-hourly elsewhere.
+    for (const s of sites) {
+      const here = mine.includes(s.code);
+      targets.push({ key: `hf:today:${s.code}`, label: "Today's meals", tier: here ? 0 : 1, ttlMs: (here ? 10 : 30) * MIN, run: get(`/hot-foods/today?site=${encodeURIComponent(s.code)}`) });
+    }
   }
 
   // ── The roster's screens ──
@@ -240,13 +245,13 @@ async function loop(user: User, gen: number) {
     if (!next) {
       if (!complete) setStatus({ completeAt: Date.now() });
       complete = true;
-      setStatus({ running: false, total: targets.length, fresh });
+      setStatus({ running: false, total: targets.length, fresh, current: null });
       // Everything's current: look again in a minute (something will be due by then, or the list will change).
       await sleep(MIN);
       continue;
     }
     complete = false;
-    setStatus({ running: true, total: targets.length, fresh });
+    setStatus({ running: true, total: targets.length, fresh, current: next.label });
     try {
       await next.run();
       stamps[next.key] = Date.now();
@@ -265,8 +270,9 @@ export function startSnapshot(user: User | null) {
   if ((user?.id ?? null) === current) return;
   generation++;
   current = user?.id ?? null;
-  setStatus({ running: false, total: 0, fresh: 0, completeAt: null });
-  if (!user || typeof window === "undefined") return;
+  setStatus({ running: false, total: 0, fresh: 0, completeAt: null, current: null });
+  // Offline mode is for iPads and phones (lib/offline.ts).
+  if (!user || typeof window === "undefined" || !offlineEnabled()) return;
   loadStamps(user.id);
   void loop(user, generation);
 }

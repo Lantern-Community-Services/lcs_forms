@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { isOnline, onReconnect } from "./offline";
+import { isOnline, offlineEnabled, onReconnect } from "./offline";
 import type { Tenant } from "./types";
 
 /**
@@ -20,7 +20,8 @@ import type { Tenant } from "./types";
  *
  * Only active residents are kept; the Archived tab still asks the server. The
  * copy belongs to one person and is wiped when someone else signs in, or on
- * sign-out (lib/offline.ts).
+ * sign-out (lib/offline.ts). iPads and phones only: a computer reads the roster
+ * from the server, as it always did.
  */
 
 export interface RosterList {
@@ -223,6 +224,8 @@ async function loadFull(site: string | undefined): Promise<RosterList> {
  * list endpoint is tried (the service worker may hold a copy of it).
  */
 export async function loadTenants(site: string | undefined, opts: { fresh?: boolean; userId?: string | null } = {}): Promise<RosterList> {
+  // A computer doesn't keep the roster (offline mode is for iPads and phones): straight from the server, as before.
+  if (!offlineEnabled()) return api.get<RosterList>(`/tenants?${new URLSearchParams({ ...(site ? { site } : {}), status: "active" })}`);
   // A screen's first query can run before AppShell's effect has said who's signed in.
   if (opts.userId && !currentUser) currentUser = opts.userId;
   if (opts.fresh && (await readLocal(site))) await pull({ timeoutMs: 4000 });
@@ -326,6 +329,16 @@ let started = false;
 /** Called from AppShell with the signed-in person (null on sign-out). */
 export function startRosterSync(client: QueryClient, userId: string | null) {
   qc = client;
+  if (!offlineEnabled()) {
+    // Nothing kept on a computer; a copy left from before offline mode was mobile-only goes.
+    memState = null;
+    try {
+      indexedDB.deleteDatabase(DB_NAME);
+    } catch {
+      // No IndexedDB: nothing to remove.
+    }
+    return;
+  }
   if (currentUser !== userId) {
     currentUser = userId;
     // Someone else's copy: not theirs to see.
@@ -349,18 +362,16 @@ export function startRosterSync(client: QueryClient, userId: string | null) {
   void pull();
 }
 
-/** Keep these sites on the device (the offline read-ahead). */
-export async function primeRoster(codes: string[]) {
-  for (const code of codes) if (!(await readLocal(code))) await loadFull(code).catch(() => undefined);
-}
-
-/** Sites whose roster is kept on this device (for the signed-in person). */
-export async function keptSites(): Promise<string[]> {
-  const state = await readState();
-  return state && state.userId === currentUser ? state.loaded : [];
-}
-
 /** Ids of the residents kept here for these sites. */
 export async function keptResidentIds(codes: string[]): Promise<string[]> {
   return (await rowsFor(codes)).map((r) => r.id);
+}
+
+/**
+ * Keep every site this person has (an admin: the whole organisation, ~2,000
+ * people, one request). A form's resident picker can then name anyone offline,
+ * whichever site is chosen, and Roster's "All my sites" opens from the device.
+ */
+export async function keepAllSites() {
+  if (!(await readLocal(undefined))) await loadFull(undefined);
 }

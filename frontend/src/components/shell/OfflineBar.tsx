@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight, CloudOff, Loader2, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, CloudDownload, CloudOff, Loader2, RefreshCw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetBody, SheetClose, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
-import { useConnectivity } from "@/lib/offline";
+import { offlineEnabled, useConnectivity } from "@/lib/offline";
 import { useSnapshotStatus } from "@/lib/snapshot";
 import { discardHotFood, kick, retryHotFoods, useHotFoodsQueue } from "@/lib/hotFoodsQueue";
 import { discardFill, retryFills, syncFills, useFillQueue } from "@/lib/fillQueue";
@@ -104,62 +104,142 @@ export function useOfflineBarVisible() {
     const t = setTimeout(() => setCelebrate(false), 4000);
     return () => clearTimeout(t);
   }, [waiting, conn.online, box.failed.length]);
-  return { conn, box, celebrate, visible: !conn.online || box.failed.length > 0 || (waiting > 0 && (backlog.current || stuck)) || celebrate };
+
+  // Saving the site for offline use (lib/snapshot.ts). Shown while the first
+  // full download of this session runs; the refreshes that follow (today's
+  // counts every few minutes) aren't news. "Ready to work offline" only after
+  // a real download (a launch with almost everything already saved just goes quiet).
+  const snap = useSnapshotStatus();
+  const downloading = conn.online && conn.ready && !snap.completeAt && snap.total > 0 && snap.fresh < snap.total;
+  const missingAtStart = useRef<number | null>(null);
+  if (snap.total > 0 && missingAtStart.current === null) missingAtStart.current = snap.total - snap.fresh;
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!snap.completeAt || (missingAtStart.current ?? 0) < 10) return;
+    setReady(true);
+    const t = setTimeout(() => setReady(false), 4000);
+    return () => clearTimeout(t);
+  }, [snap.completeAt]);
+
+  return {
+    conn,
+    box,
+    snap,
+    celebrate,
+    downloading,
+    ready,
+    visible: !conn.online || box.failed.length > 0 || (waiting > 0 && (backlog.current || stuck)) || celebrate || downloading || ready,
+  };
 }
 
-export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVisible> }) {
-  const { conn, box, celebrate, visible } = state;
-  const [open, setOpen] = useState(false);
-  if (!visible && !open) return null;
+interface PillContent {
+  tone: string;
+  icon: React.ReactNode;
+  title: string;
+  detail: string | null;
+  progress: number | null;
+}
 
+/** What the pill says, most urgent first. */
+function pillContent({ conn, box, snap, celebrate, downloading, ready }: ReturnType<typeof useOfflineBarVisible>): PillContent {
   const waiting = box.pending.length;
   const failed = box.failed.length;
-
-  let tone: string, icon: React.ReactNode, title: string, detail: string | null;
-  if (failed) {
-    tone = "bg-status-redBg text-status-redText";
-    icon = <AlertTriangle className="h-4 w-4" />;
-    title = `${plural(failed, "entry", "entries")} couldn't upload`;
-    detail = "Tap to see why";
-  } else if (!conn.online) {
-    tone = "bg-status-amberBg text-status-amberText";
-    icon = <CloudOff className="h-4 w-4" />;
-    title = waiting ? `Offline · ${plural(waiting, "entry", "entries")} saved on this device` : "Offline";
-    detail = !conn.ready
+  if (failed) return { tone: "bg-status-redBg text-status-redText border-status-redDot/30", icon: <AlertTriangle className="h-4 w-4" />, title: `${plural(failed, "entry", "entries")} couldn't upload`, detail: "Tap to see why", progress: null };
+  if (!conn.online) {
+    let detail = !conn.ready
       ? "Keep the app open until the connection is back"
       : conn.showingSavedFrom
         ? `Forms still work · data from ${clock(conn.showingSavedFrom)}`
         : "Forms still work and are saved on this device";
-  } else if (waiting) {
-    tone = "bg-status-blueBg text-status-blueText";
-    icon = <Loader2 className="h-4 w-4 animate-spin" />;
-    title = `Uploading ${plural(waiting, "saved entry", "saved entries")}…`;
-    detail = null;
-  } else {
-    tone = "bg-status-greenBg text-status-greenText";
-    icon = <CheckCircle2 className="h-4 w-4" />;
-    title = celebrate ? "Back online · everything uploaded" : "Everything uploaded";
-    detail = null;
+    // The download didn't finish before the connection went: say how far it got.
+    if (conn.ready && snap.total && snap.fresh < snap.total && !snap.completeAt) detail += ` · ${snap.fresh} of ${snap.total} saved for offline`;
+    return { tone: "bg-status-amberBg text-status-amberText border-status-amberDot/40", icon: <CloudOff className="h-4 w-4" />, title: waiting ? `Offline · ${plural(waiting, "entry", "entries")} saved on this device` : "Offline", detail, progress: null };
   }
+  if (waiting) return { tone: "bg-status-blueBg text-status-blueText border-status-blueDot/30", icon: <Loader2 className="h-4 w-4 animate-spin" />, title: `Uploading ${plural(waiting, "saved entry", "saved entries")}…`, detail: null, progress: null };
+  if (celebrate) return { tone: "bg-status-greenBg text-status-greenText border-status-greenDot/30", icon: <CheckCircle2 className="h-4 w-4" />, title: "Back online · everything uploaded", detail: null, progress: null };
+  if (downloading)
+    return {
+      tone: "bg-status-blueBg text-status-blueText border-status-blueDot/30",
+      icon: <CloudDownload className="h-4 w-4" />,
+      title: `Saving for offline use · ${snap.fresh} of ${snap.total}`,
+      detail: snap.current,
+      progress: snap.total ? Math.round((snap.fresh / snap.total) * 100) : null,
+    };
+  return { tone: "bg-status-greenBg text-status-greenText border-status-greenDot/30", icon: <CheckCircle2 className="h-4 w-4" />, title: ready ? "Ready to work offline" : "Everything uploaded", detail: ready ? "the whole site is saved on this device" : null, progress: null };
+}
+
+const EXIT_MS = 240;
+
+/**
+ * Mounted while shown and for its exit; `shown` flips a frame after mounting
+ * so the entrance transition has a start to run from.
+ */
+function usePresence(visible: boolean) {
+  const [mounted, setMounted] = useState(visible);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      const raf = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
+      return () => cancelAnimationFrame(raf);
+    }
+    setShown(false);
+    const t = setTimeout(() => setMounted(false), EXIT_MS);
+    return () => clearTimeout(t);
+  }, [visible]);
+  return { mounted, shown };
+}
+
+/**
+ * A pill floating over the top of the screen (it takes no room, so nothing
+ * below moves when it comes and goes). It slides down into place and back up
+ * out of the way; with Reduce Motion it only fades.
+ */
+export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVisible> }) {
+  const { conn, box, visible } = state;
+  const [open, setOpen] = useState(false);
+  const { mounted, shown } = usePresence(visible);
+  // Leaving, it keeps saying what it last said rather than "Everything uploaded".
+  const last = useRef<PillContent | null>(null);
+  if (visible) last.current = pillContent(state);
+  const c = last.current;
+
+  const waiting = box.pending.length;
+  const failed = box.failed.length;
 
   return (
     <>
-      {visible && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          // Clears the status bar on a phone; the screen below drops its own allowance (AppShell).
-          style={{ paddingTop: "max(6px, var(--safe-top))" }}
-          className={cn("flex w-full flex-none items-center gap-2 px-4 pb-1.5 text-left text-[13px] font-semibold md:px-7", tone)}
-          aria-label={`${title}. ${detail ?? ""} Show what's saved on this device.`}
+      {mounted && c && (
+        <div
+          // Clear of the status bar on a phone or iPad; over the main column, under sheets and the launcher.
+          style={{ top: "calc(var(--safe-top) + 8px)" }}
+          className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-3"
         >
-          {icon}
-          <span className="min-w-0 flex-1 truncate">
-            {title}
-            {detail && <span className="font-normal opacity-90"> · {detail}</span>}
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 opacity-70" />
-        </button>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label={`${c.title}. ${c.detail ?? ""} Show what's saved on this device.`}
+            className={cn(
+              "relative flex min-h-[38px] max-w-[min(640px,100%)] items-center gap-2 overflow-hidden rounded-pill border px-4 py-1.5 text-left text-[13px] font-semibold shadow-panel backdrop-blur",
+              "transition-[transform,opacity] duration-[240ms] ease-out motion-reduce:transition-opacity",
+              shown ? "pointer-events-auto translate-y-0 opacity-100" : "-translate-y-3 opacity-0 motion-reduce:translate-y-0",
+              c.tone
+            )}
+          >
+            {c.icon}
+            <span className="min-w-0 truncate">
+              {c.title}
+              {c.detail && <span className="font-normal opacity-90"> · {c.detail}</span>}
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 opacity-70" />
+            {c.progress !== null && (
+              <>
+                <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] bg-current opacity-20" />
+                <span aria-hidden className="absolute bottom-0 left-0 h-[2px] bg-current transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${c.progress}%` }} />
+              </>
+            )}
+          </button>
+        </div>
       )}
 
       <Sheet open={open} onOpenChange={setOpen}>
@@ -228,7 +308,8 @@ export function SnapshotSummary({ className }: { className?: string }) {
   const conn = useConnectivity();
   const snap = useSnapshotStatus();
   let text: string;
-  if (!conn.ready) text = "This device can't keep the app for offline use (it needs a secure https connection). Forms still queue entries while it stays open.";
+  if (!offlineEnabled()) text = "Offline mode is for iPads and phones. On a computer, the app needs a connection (entries that lose theirs mid-save still upload once it's back).";
+  else if (!conn.ready) text = "This device can't keep the app for offline use (it needs a secure https connection). Forms still queue entries while it stays open.";
   else if (!snap.total) text = "Getting ready to save the site on this device…";
   else if (snap.fresh >= snap.total && snap.completeAt) text = `The whole site is saved on this device for offline use, up to date as of ${clock(snap.completeAt)}.`;
   else text = `Saving the site on this device for offline use, a little at a time while you work: ${snap.fresh} of ${snap.total} screens ready.`;

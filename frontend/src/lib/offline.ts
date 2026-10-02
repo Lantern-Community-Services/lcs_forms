@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { readStorage, writeStorage } from "./storage";
+import { isMobileDevice } from "./device";
 
 /**
  * Offline mode, the page's side of it. public/sw.js keeps the app and what it
@@ -89,6 +90,7 @@ export function cachedAtOf(res: Response) {
 const answerKey = (key: string) => new Request(`${location.origin}/__lcs-answer/${key}`);
 
 export async function storeAnswer(key: string, value: unknown) {
+  if (!offlineEnabled()) return;
   try {
     const cache = await caches.open("lcs-api");
     await cache.put(answerKey(key), new Response(JSON.stringify(value ?? null), { headers: { "Content-Type": "application/json", "x-lcs-cached-at": String(Date.now()) } }));
@@ -99,6 +101,7 @@ export async function storeAnswer(key: string, value: unknown) {
 
 /** The stored answer, or undefined. Being shown it counts as showing stored data. */
 export async function storedAnswer<T>(key: string): Promise<T | undefined> {
+  if (!offlineEnabled()) return undefined;
   try {
     const hit = await (await caches.open("lcs-api")).match(answerKey(key));
     if (!hit) return undefined;
@@ -204,6 +207,26 @@ export function useConnectivity() {
 // ── The service worker ───────────────────────────────────────────────────
 
 let started = false;
+let enabled: boolean | null = null;
+
+/**
+ * Offline mode — the service worker, stored copies of screens, the background
+ * download (lib/snapshot.ts) and the roster kept on the device
+ * (lib/rosterStore.ts) — runs on iPads and phones only. A computer is used
+ * online at an office, and needn't hold a copy of every resident. (Entries
+ * that lose their connection mid-save are still queued there, as before.)
+ * Decided once per page load.
+ */
+export function offlineEnabled() {
+  enabled ??= typeof window !== "undefined" && isMobileDevice();
+  return enabled;
+}
+
+/** The service worker and every copy it or the app stored, gone (a computer, or the kill switch). */
+function removeOfflineCopies() {
+  void navigator.serviceWorker?.getRegistrations().then((rs) => rs.forEach((r) => void r.unregister()));
+  if (typeof caches !== "undefined") void caches.keys().then((ks) => ks.filter((k) => k.startsWith("lcs-")).forEach((k) => void caches.delete(k)));
+}
 
 /**
  * Called once when the app starts. Service workers need https (or localhost):
@@ -220,10 +243,11 @@ export function startOffline() {
 
   if (!("serviceWorker" in navigator) || !window.isSecureContext) return;
 
-  // Kill switch: NEXT_PUBLIC_OFFLINE=off removes the worker and its copies from every device that opens the app.
-  if (process.env.NEXT_PUBLIC_OFFLINE === "off") {
-    void navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => void r.unregister()));
-    void caches?.keys().then((ks) => ks.filter((k) => k.startsWith("lcs-")).forEach((k) => void caches.delete(k)));
+  // A computer (anything left from before offline mode was mobile-only goes too), or the kill switch:
+  // NEXT_PUBLIC_OFFLINE=off removes the worker and its copies from every device that opens the app.
+  if (!offlineEnabled() || process.env.NEXT_PUBLIC_OFFLINE === "off") {
+    enabled = false;
+    removeOfflineCopies();
     return;
   }
 

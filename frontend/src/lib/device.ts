@@ -24,6 +24,24 @@ export function forcedDevice(): DeviceKind | null {
 export const previewFrameName = (kind: DeviceKind) => `lcs-device:${kind}`;
 
 /**
+ * A phone or a tablet, as opposed to a computer, however wide or narrow its
+ * window — where offline mode runs (lib/offline.ts). Touch as the main pointer,
+ * or an iPhone / iPad / Android device by name: an iPad with a trackpad
+ * keyboard can report a fine pointer, and iPadOS Safari calls itself a Mac
+ * (but has touch points). A Windows touch laptop's main pointer is its
+ * trackpad, so it counts as a computer. Not a hook: decided once, at start.
+ */
+export function isMobileDevice(): boolean {
+  const forced = forcedDevice();
+  if (forced) return forced !== "desktop";
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+}
+
+/**
  * Which navigation the shell shows: the sidebar on a computer, the dock on a
  * phone or a tablet. A tablet is a touch screen at least `md` wide — a coarse
  * primary pointer — so a touch laptop, whose primary pointer is still the

@@ -230,7 +230,13 @@ entries (`source = "demo"`) so Reports has data. The real Hot Foods is untouched
 
 ## Offline mode
 
-Site internet drops, so the app keeps working without it.
+Site internet drops, so the app keeps working without it. **iPads and phones only**: on a computer
+there's no service worker, stored copies, background download or kept roster, and the app reads
+everything from the server as before (`offlineEnabled()` in `lib/offline.ts`, decided by
+`isMobileDevice()` in `lib/device.ts`: touch as the main pointer, or an iPhone/iPad/Android device by
+name, so an iPad with a trackpad keyboard still counts). A computer that had them from before
+deletes them on its next load. Entries that lose their connection mid-save still queue and upload
+on any device.
 
 - **The app opens with no connection.** `frontend/public/sw.js` (a service worker, registered by
   `lib/offline.ts`) keeps the app's files and a copy of every screen's data (each GET `/api` answer)
@@ -238,12 +244,15 @@ Site internet drops, so the app keeps working without it.
   when Wi-Fi is up but the internet behind it isn't (a request that hangs past 6 s), the copy answers.
 - **What's ready offline: the whole site, saved a little at a time while it's used**
   (`lib/snapshot.ts`). In the background, one request about every second, and only while no screen is
-  waiting on one of its own, the app reads every screen the person can open. That covers the forms
-  and their definitions, meal types and their pictures, the roster and each resident's page at the
-  device's sites, Review, Overview, Activity and attendance, plus Hot Foods entries, reports and form
+  waiting on one of its own, the app reads every screen the person can open. That covers the
+  residents at all of the person's sites first (so any form's resident picker works offline,
+  whichever site is chosen), then the forms and their definitions, meal types and their pictures,
+  today's Hot Foods counts at every site, each resident's page at the device's sites, Review, Overview, Activity and attendance, plus Hot Foods entries, reports and form
   entries for roles that can read them. Each read uses the screen's own URL and default filters, so
   the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (today's
-  counts every 10 minutes, a resident's page daily). Profile → Offline shows the progress. With Low
+  counts every 10 minutes, a resident's page daily). The pill at the top shows the first download as it
+runs ("Saving for offline use · 34 of 120", with a progress line), then "Ready to work offline".
+Profile → Offline shows it too. With Low
   Data Mode on, only what's needed to fill in forms is read.
 - **Lists that rarely change are answered from the device first:** meal types, the forms list, sites
   and archive reasons (`DEVICE_FIRST` in `sw.js`). They show instantly, are checked with the server
@@ -259,8 +268,8 @@ Site internet drops, so the app keeps working without it.
   whichever screen is open: Hot Foods (`lib/hotFoodsQueue.ts`), built forms (`lib/fillQueue.ts`,
   files attached offline included) and code forms (`apps/queue.ts`). Each carries a `clientId`, so a
   retry never saves twice.
-- **The offline bar** above every screen (`components/shell/OfflineBar.tsx`) says when the app is
-  offline, how many entries are waiting, and how old the data on screen is. It turns red when the
+- **The offline pill** floating over the top of every screen (`components/shell/OfflineBar.tsx`;
+  it takes no room and slides in and out) says when the app is offline, how many entries are waiting, and how old the data on screen is. It turns red when the
   server refused an entry. Tap it to see, retry or discard what's on the device.
 - **Code forms:** reads through the SDK (roster, entries, collections) work offline like any screen.
   Server actions are POSTs, so list the read-only ones in form.json:
@@ -274,6 +283,41 @@ address, there's no service worker: entries still queue, but the app can't be re
 To test offline on a computer, open the app on localhost, then switch DevTools → Network to
 Offline and reload. `NEXT_PUBLIC_OFFLINE=off` at build time removes the worker and its copies from
 every device that opens the app.
+
+### Testing on an iPad (local https)
+
+`npm run dev:https` in `frontend/` (started by `start-site.bat` too) puts https in front of the dev
+server: **https://&lt;this PC's LAN address&gt;:5443** is the app, and
+**http://&lt;LAN address&gt;:5480** is a setup page for the iPad. The script prints both addresses.
+The certificate comes from a "Lantern Forms dev" certificate authority made on first run, in
+`frontend/.dev-https/` (git-ignored: it holds the authority's private key). The authority can only
+vouch for localhost and private network addresses, never a real site.
+
+Once per iPad, open the setup page in Safari:
+1. Download the certificate, then in Settings tap **Profile Downloaded → Install**.
+2. In Settings → General → About → **Certificate Trust Settings**, turn on **Lantern Forms dev**.
+3. Open the https address, sign in (the dev sign-in, since `DEV_AUTH=true`; Microsoft sign-in would
+   need this address added as a redirect URI in Entra), then Share → **Add to Home Screen**. Delete
+   the old http icon first: it's a different site to iOS, with its own storage.
+
+**Offline needs the production build.** The dev server can't be tested offline: a `next dev` page
+waits on the dev server to compile and send it code, so with no connection it stays blank.
+`npm run preview:https` (in `frontend/`, with the backend running) builds the app, starts it, and
+serves it at **https://&lt;LAN address&gt;:5444** with the same certificate. iOS treats 5444 as a
+separate app from the dev server on 5443, with its own icon and stored copies. Code changes need a
+rebuild: stop it and run it again.
+
+To test offline, add **:5444** to the home screen and open it from the icon online once. That installs
+the service worker and starts the snapshot. Wait for Profile → Offline to say the site is saved, then
+turn on Airplane Mode, swipe the app closed, and open it from the icon again.
+
+Pages served through the https proxy report the device's errors to its window (a remote console for
+iPads, which have no dev tools without a Mac), and a device that doesn't trust the certificate shows
+there as `TLS REFUSED`. A home-screen app shows a blank white page in that case.
+
+If the PC's LAN address changes, the server certificate is remade on the next start and the iPad
+keeps working (it trusts the authority, not the address). `npm run dev:https -- --target 5300` puts
+the same https in front of something else, such as a production build.
 
 ## Quick start (local prototype)
 
