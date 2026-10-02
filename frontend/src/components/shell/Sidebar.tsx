@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Settings, Home, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
+  Settings, Home, CalendarDays, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
@@ -244,7 +244,7 @@ function useSwipeToggle(collapsed: boolean, toggleCollapsed: () => void) {
 }
 
 /**
- * The desktop sidebar: search, Home, Pinned, then every category as a
+ * The desktop sidebar: search, Home, Calendar, Pinned, then every category as a
  * one-level accordion. Phones and tablets get the dock instead (Dock.tsx).
  */
 export function Sidebar() {
@@ -394,6 +394,7 @@ export function Sidebar() {
         ) : (
           <>
             <NavItem to="/forms" label="Home" Icon={Home} collapsed={collapsed} end />
+            <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} />
 
             {pinned.length > 0 && (
               <>

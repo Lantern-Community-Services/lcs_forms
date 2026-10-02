@@ -27,6 +27,8 @@ export const PERMISSIONS = [
   "forms.manage",
   /** Build code forms: their files, server logic and data (Admin and Developer). */
   "apps.develop",
+  /** Add, change and remove calendar events and their categories. Everyone signed in can read the calendar. */
+  "calendar.manage",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number];

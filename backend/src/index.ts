@@ -4,6 +4,7 @@ import { ensureDefaultCatalog, ensureFormIcons } from "./services/formCatalog.js
 import { migrateLegacyRoles } from "./services/permissions.js";
 import { ensureDefaultHotFoodItems } from "./services/hotFoods.js";
 import { ensureSiteLocations } from "./services/siteLocations.js";
+import { ensureDefaultCalendarCategories } from "./services/calendar.js";
 
 // A fresh database (a new deployment) opens with the forms already listed.
 // Logged, never fatal: the API is still worth serving without a catalog.
@@ -16,6 +17,10 @@ ensureDefaultCatalog()
 ensureDefaultHotFoodItems()
   .then((wrote) => wrote && console.log("  Hot Foods: wrote the default meal types."))
   .catch((err) => console.error("[hot-foods] could not write the default meal types:", err));
+
+ensureDefaultCalendarCategories()
+  .then((wrote) => wrote && console.log("  Calendar: wrote the default categories."))
+  .catch((err) => console.error("[calendar] could not write the default categories:", err));
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

@@ -18,7 +18,7 @@ import { execSync as execFileSync } from "node:child_process";
  * 1,700-byte key limit. Size them here instead: ids 40, free text MAX,
  * everything else 255.
  */
-const LONG = new Set(["notes", "changes", "summary", "lastError", "error", "address", "url", "description", "signature", "overrideReason", "voidReason", "imageUrl"]);
+const LONG = new Set(["notes", "changes", "summary", "lastError", "error", "address", "url", "description", "signature", "overrideReason", "voidReason", "imageUrl", "recurrence"]);
 function sized(line: string): string {
   const m = line.match(/^(\s+)(\w+)(\s+)String(\??)(.*)$/);
   if (!m || line.includes("@db.")) return line;

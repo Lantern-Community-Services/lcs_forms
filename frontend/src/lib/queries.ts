@@ -3,7 +3,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
 import type {
-  ApiKeyRow, AttendanceDetail, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
+  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
 } from "./types";
 
@@ -266,6 +266,49 @@ export function useHotFoodConfig(enabled = true) {
 export function useHotFoodsMutation<TVars, TResult>(fn: (vars: TVars) => Promise<TResult>) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ["hotfoods"] }) });
+}
+
+// ── Calendar ─────────────────────────────────────────────────────────────
+
+/** `site`: comma list of site codes, or undefined for all of my sites. `from`/`to`: inclusive days. */
+export function calendarPath(from: string, to: string, site: string | undefined) {
+  return `/calendar?${new URLSearchParams({ from, to, ...(site ? { site } : {}) })}`;
+}
+
+export function useCalendar(from: string, to: string, site: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["calendar", "range", from, to, site ?? "all"],
+    queryFn: () => api.get<{ from: string; to: string; items: CalendarOccurrence[] }>(calendarPath(from, to, site)),
+    enabled,
+    // Moving to the next month keeps this one on screen until that one arrives.
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCalendarCategories() {
+  return useQuery({ queryKey: ["calendar", "categories"], queryFn: () => api.get<CalendarCategory[]>("/calendar/categories"), staleTime: 5 * 60_000 });
+}
+
+export function useCalendarSeries(id: string | undefined) {
+  return useQuery({ queryKey: ["calendar", "series", id ?? ""], queryFn: () => api.get<CalendarSeries>(`/calendar/events/${id}`), enabled: Boolean(id) });
+}
+
+export const calendarApi = {
+  create: (event: CalendarEventInput) => api.post<{ id: string }>("/calendar/events", event),
+  update: (id: string, body: { scope: CalendarScope; date?: string; event: CalendarEventInput }) => api.patch<{ id: string }>(`/calendar/events/${id}`, body),
+  remove: (id: string, scope: CalendarScope, date?: string) =>
+    api.delete<{ ok: true }>(`/calendar/events/${id}?${new URLSearchParams({ scope, ...(date ? { date } : {}) })}`),
+  restore: (id: string, date: string) => api.post<{ ok: true }>(`/calendar/events/${id}/restore`, { date }),
+  createCategory: (body: { name: string; colorSlot: number }) => api.post<CalendarCategory>("/calendar/categories", body),
+  updateCategory: (id: string, body: { name?: string; colorSlot?: number }) => api.patch<CalendarCategory>(`/calendar/categories/${id}`, body),
+  removeCategory: (id: string) => api.delete<{ ok: true }>(`/calendar/categories/${id}`),
+  reorderCategories: (ids: string[]) => api.put<{ ok: true }>("/calendar/categories/order", { ids }),
+};
+
+/** Every calendar write refreshes the whole family: the months on screen, the series, the categories' counts. */
+export function useCalendarMutation<TVars, TResult>(fn: (vars: TVars) => Promise<TResult>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }) });
 }
 
 // ── Admin ────────────────────────────────────────────────────────────────

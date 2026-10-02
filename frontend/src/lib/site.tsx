@@ -97,10 +97,13 @@ export function SitePicker({
   codes,
   onChange,
   className,
+  counts = true,
 }: {
   codes: string[];
   onChange: (codes: string[]) => void;
   className?: string;
+  /** The roster's numbers beside each site (residents, people to review). Off where they mean nothing (the calendar). */
+  counts?: boolean;
 }) {
   const { data: sites } = useSites();
   const phone = useIsPhone();
@@ -143,7 +146,7 @@ export function SitePicker({
     onChange(next.length === 0 || next.length === list.length ? [] : next);
   };
 
-  const attention = (all ? list : list.filter((s) => codes.includes(s.code))).reduce((n, s) => n + s.attentionCount, 0);
+  const attention = counts ? (all ? list : list.filter((s) => codes.includes(s.code))).reduce((n, s) => n + s.attentionCount, 0) : 0;
 
   const trigger = (
     <button
@@ -183,8 +186,8 @@ export function SitePicker({
             checked={all || codes.includes(s.code)}
             dim={all}
             label={s.name}
-            meta={`${s.activeCount}`}
-            badge={s.attentionCount || undefined}
+            meta={counts ? `${s.activeCount}` : undefined}
+            badge={counts ? s.attentionCount || undefined : undefined}
             onClick={() => toggle(s.code)}
           />
         ))}

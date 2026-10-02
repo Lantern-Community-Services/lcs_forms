@@ -23,6 +23,8 @@ export const SETTING_DEFAULTS = {
   formIconsSeeded: "",
   /** Set once site addresses and coordinates have been filled from the site map; see siteLocations.ts. */
   siteLocationsSeeded: "",
+  /** Set once the default calendar categories have been written; see calendar.ts. */
+  calendarCategoriesSeeded: "",
   /** Hot Foods: meals of each meal type one resident gets per day at supportive housing. */
   hotFoodsLimitSupportive: "1",
   /** Hot Foods: the same at a shelter. */

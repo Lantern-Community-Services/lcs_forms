@@ -13,7 +13,8 @@ export type PermissionKey =
   | "integrations.manage"
   | "settings.manage"
   | "forms.manage"
-  | "apps.develop";
+  | "apps.develop"
+  | "calendar.manage";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";
@@ -346,3 +347,85 @@ export interface HotFoodReport {
   /** avatarColor = their profile color; null = none chosen (the avatar default navy). */
   byStaff: { name: string; entries: number; userId: string | null; avatarColor: string | null }[];
 }
+
+// ── Calendar ─────────────────────────────────────────────────────────────
+
+/** A kind of event and its color (a --viz palette slot). */
+export interface CalendarCategory {
+  id: string;
+  name: string;
+  colorSlot: number;
+  sortOrder: number;
+  eventCount: number;
+}
+
+/**
+ * One day's occurrence of an event. Days and times are New York wall-clock
+ * text ("2026-10-06", "10:00"), drawn as they are.
+ */
+export interface CalendarOccurrence {
+  key: string;
+  eventId: string;
+  /** The day the series puts it on: how this one occurrence is addressed. */
+  date: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  allDay: boolean;
+  startDate: string;
+  startTime: string | null;
+  endDate: string;
+  endTime: string | null;
+  categoryId: string | null;
+  allSites: boolean;
+  sites: { code: string; name: string }[];
+  repeats: boolean;
+  repeatText: string | null;
+  /** Changed on its own, apart from the rest of the series. */
+  changed: boolean;
+}
+
+/** A whole event (or series) as the editor loads it. */
+export interface CalendarSeries {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  categoryId: string | null;
+  allSites: boolean;
+  siteIds: string[];
+  sites: { code: string; name: string }[];
+  allDay: boolean;
+  startDate: string;
+  startTime: string | null;
+  endDate: string;
+  endTime: string | null;
+  recurrence: import("./recurrence").Recurrence | null;
+  repeatText: string | null;
+  lastDate: string | null;
+  cancelledDates: string[];
+  changedDates: string[];
+  createdByName: string;
+  updatedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What the editor sends. */
+export interface CalendarEventInput {
+  title: string;
+  description: string | null;
+  location: string | null;
+  categoryId: string | null;
+  allSites: boolean;
+  siteIds: string[];
+  allDay: boolean;
+  startDate: string;
+  startTime: string | null;
+  endDate: string;
+  endTime: string | null;
+  recurrence: import("./recurrence").Recurrence | null;
+}
+
+/** Which occurrences a change to a repeating event applies to. */
+export type CalendarScope = "all" | "this" | "following";

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
+import { CalendarDays, ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
@@ -12,8 +12,9 @@ import { searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, ty
 
 /**
  * Phone and tablet navigation: a floating dock at the bottom, within thumb
- * reach, holding Home, the Roster and your pinned forms; "All forms" opens the
- * Launcher above it. The desktop gets the sidebar instead (Sidebar.tsx).
+ * reach, holding Home, the Roster, (on a tablet) the Calendar and your pinned
+ * forms; "All forms" opens the Launcher above it. A phone's five slots are
+ * full, so its Calendar is at the top of the Launcher. The desktop gets the sidebar instead (Sidebar.tsx).
  *
  * The dock sits in a band that is a flex sibling of <main>, not an overlay,
  * so <main>'s scroll region ends where the band begins and screens with their
@@ -59,13 +60,16 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   // The account slot is always last: your avatar, opening the account menu.
   // A phone has five slots. A tablet fits as many pins as its width allows:
   // ~6 on a portrait iPad, ~10 in landscape.
-  const fixed = (roster ? 3 : 2) + 1; // Home, Roster, All forms, and the account slot
+  const fixed = (roster ? 3 : 2) + 1 + (phone ? 0 : 1); // Home, Roster, All forms, the account slot, and on a tablet the Calendar
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
   const pins = pinned.filter((p) => p.form.url !== "/roster").slice(0, phone ? (roster ? 1 : 2) : tabletPins);
 
   const home = <DockLink key="home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} />;
   const rosterItem = roster && (
     <DockLink key="roster" to="/roster" label="Roster" Icon={Contact} active={!launcherOpen && lit("/roster")} count={reviewCount} phone={phone} />
+  );
+  const calendarItem = !phone && (
+    <DockLink key="calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} />
   );
   const all = (
     <DockButton key="all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
@@ -103,6 +107,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
         <div className="relative z-[45] flex items-center gap-1 rounded-[26px] border border-hairline bg-surface p-2 shadow-panel">
           {home}
           {rosterItem}
+          {calendarItem}
           {pinItems.length > 0 && <span className="mx-1 h-9 w-px bg-hairline" />}
           {pinItems}
           <span className="mx-1 h-9 w-px bg-hairline" />
@@ -344,6 +349,21 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
             </div>
           ) : (
             <div className={cn("grid gap-x-6 gap-y-5 pt-1", !phone && "grid-cols-2")}>
+              {/* The phone dock has no room for the Calendar; it's here instead. */}
+              {phone && (
+                <Group title="Go to">
+                  <NavLink
+                    to="/calendar"
+                    onClick={onClose}
+                    className={cn(
+                      "flex min-h-[44px] items-center gap-2 rounded-[12px] border px-3.5 py-2 text-[14px] font-bold leading-[18px] transition-colors",
+                      lit("/calendar") ? "border-navy bg-navy text-white dark:border-navsel dark:bg-navsel" : "border-hairline bg-surface text-ink hover:bg-navsel/60"
+                    )}
+                  >
+                    <CalendarDays className="h-4 w-4" /> Calendar
+                  </NavLink>
+                </Group>
+              )}
               {pinned.length > 0 && (
                 <Group title="Pinned" className={cn(!phone && "col-span-2")}>
                   {pinned.map((p) => chip(p.form, `pin-${p.form.id}`))}

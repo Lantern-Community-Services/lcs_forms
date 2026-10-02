@@ -1,5 +1,6 @@
 // Keeps the files the browser and the server must share identical.
 //   backend/src/forms/engine.ts      → frontend/src/lib/formEngine.ts   (form rules)
+//   backend/src/calendar/recurrence.ts → frontend/src/lib/recurrence.ts (which days a repeating event is on)
 //   frontend/tailwind.theme.ts       → backend/src/apps/tailwindTheme.ts (design tokens for code forms' CSS)
 //   backend/src/apps/sdk.d.ts        → frontend/public/app-runtime/lcs-sdk.d.ts (code-form SDK types)
 //                                    → backend/src/apps/sdkText.ts (the same, as a string the server serves)
@@ -18,6 +19,7 @@ const banner = (from) => "// GENERATED from " + from + " by `npm run sync:engine
 
 const COPIES = [
   ["backend/src/forms/engine.ts", "frontend/src/lib/formEngine.ts", (from, text) => banner(from) + text],
+  ["backend/src/calendar/recurrence.ts", "frontend/src/lib/recurrence.ts", (from, text) => banner(from) + text],
   ["frontend/tailwind.theme.ts", "backend/src/apps/tailwindTheme.ts", (from, text) => banner(from) + text],
   ["backend/src/apps/sdk.d.ts", "frontend/public/app-runtime/lcs-sdk.d.ts", (from, text) => banner(from) + text],
   ["backend/src/apps/sdk.d.ts", "backend/src/apps/sdkText.ts", (from, text) => banner(from) + "export const SDK_TYPES = " + JSON.stringify(text) + ";" + NL],

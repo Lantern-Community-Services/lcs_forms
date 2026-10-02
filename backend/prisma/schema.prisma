@@ -51,6 +51,7 @@ model Site {
   apiKeys          ApiKey[]
   attendanceEvents AttendanceEvent[]
   hotFoodEntries   HotFoodEntry[]
+  calendarEvents   CalendarEventSite[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -282,6 +283,100 @@ model HotFoodEntryItem {
 
   @@index([entryId])
   @@index([itemId])
+}
+
+// ───────────────────────── Calendar ─────────────────────────
+// Dates and times are New York wall-clock text ("2026-10-02", "09:30"), not
+// instants: a 9:30 meeting stays at 9:30 on every one of its days, either side
+// of a clock change, and the repeat rule works on days (src/calendar/recurrence.ts).
+
+/// A kind of event ("Training", "Holiday") and the color it's drawn in.
+model CalendarCategory {
+  id        String   @id @default(cuid())
+  name      String
+  /// Slot 0-7 of the chart palette (frontend index.css --viz-1…8), so a
+  /// color means the same kind of event on every screen.
+  colorSlot Int      @default(0)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events CalendarEvent[]
+}
+
+/// One event on the calendar, or a whole repeating series of them.
+model CalendarEvent {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  location    String?
+  /// Deleting a category leaves its events uncategorized.
+  category    CalendarCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId  String?
+  /// True: every site sees it. False: only people at the sites in `sites`.
+  allSites    Boolean @default(true)
+  allDay      Boolean @default(false)
+  /// The first occurrence as entered. Later ones keep its length and times.
+  startDate   String
+  /// "HH:MM"; null when all day.
+  startTime   String?
+  /// The day it ends (the same day, or later for a multi-day event).
+  endDate     String
+  endTime     String?
+  /// JSON text: the repeat rule (src/calendar/recurrence.ts). Null = happens once.
+  recurrence  String?
+  /// The day it first happens, and the day its last occurrence ends, so a
+  /// month's events are an indexed range query. lastDate null = repeats forever.
+  firstDate   String
+  lastDate    String?
+  createdById   String?
+  createdByName String
+  updatedByName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sites      CalendarEventSite[]
+  exceptions CalendarException[]
+
+  @@index([firstDate])
+  @@index([lastDate])
+}
+
+/// A site an event is for, when it isn't for every site.
+model CalendarEventSite {
+  event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+  site    Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  siteId  String
+
+  @@id([eventId, siteId])
+  @@index([siteId])
+}
+
+/// One day of a repeating event changed on its own: cancelled, moved, or
+/// reworded. Fields left null follow the series.
+model CalendarException {
+  id           String        @id @default(cuid())
+  event        CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId      String
+  /// The day the series puts it on, which says which occurrence this is.
+  originalDate String
+  cancelled    Boolean       @default(false)
+  title        String?
+  description  String?
+  location     String?
+  /// Set all together, only when this one was moved or retimed.
+  allDay       Boolean?
+  startDate    String?
+  startTime    String?
+  endDate      String?
+  endTime      String?
+  updatedByName String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([eventId, originalDate])
+  @@index([startDate])
 }
 
 // ───────────────────────── Forms hub ─────────────────────────

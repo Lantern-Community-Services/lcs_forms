@@ -42,6 +42,7 @@ import { BuiltFormPreviewPage } from "./screens/builtforms/PreviewPage";
 import { AppHostPage } from "./apps/AppHostPage";
 import { CodeFormsList } from "./apps/CodeFormsList";
 import { AppEditorPage } from "./apps/AppEditor";
+import { CalendarPage } from "./screens/calendar/CalendarPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -169,6 +170,8 @@ export function App() {
       <Route element={<Protected><AppShell /></Protected>}>
         <Route index element={<HomeRedirect />} />
         <Route path="/forms" element={<FormsPage />} />
+        {/* Everyone reads the calendar; the screen offers changes to calendar.manage only. */}
+        <Route path="/calendar" element={<CalendarPage />} />
         {/* Built forms. Each screen checks access itself (the form's own settings decide). */}
         <Route path="/f/:slug" element={<FillPage />} />
         <Route path="/f/:slug/entries" element={<BuiltFormEntriesPage />} />

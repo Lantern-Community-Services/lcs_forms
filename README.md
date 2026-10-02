@@ -18,6 +18,8 @@ built to be extended with LLM help.
 - **Hot Foods** (`/forms/hot-foods`), which replaces Gravity Forms form 21. See below.
 - **Admin → Forms catalog**, where admins add, edit, hide, reorder and recategorize the links
   without a deploy.
+- **Calendar** (`/calendar`): events for every site or for chosen sites, with repeat rules. Admins
+  add them; everyone sees the ones for their sites. See below.
 
 The UI shell (sidebar, bottom tab bar, themes, sign-in, design tokens) comes from `lcs_invoices`
 through the roster app, so all three apps look and behave the same. Invoices are not part of this
@@ -228,6 +230,57 @@ shared by the page and the server), offline recording, site-from-location, most-
 sorting, Entries, Reports and an admin Settings tab. Locally it holds a copy of the Hot Foods demo
 entries (`source = "demo"`) so Reports has data. The real Hot Foods is untouched.
 
+## Calendar
+
+One calendar for the whole organization, at `/calendar`: **Calendar** under Home in the desktop
+sidebar, a slot in the iPad dock next to Roster, and (the phone dock's five slots being full) the
+top of the phone's **All forms** sheet.
+
+- **Who sees what.** Everyone signed in reads it. An event is for **every site** or for **chosen
+  sites**; people see the every-site events plus those for the sites they're assigned to (admins:
+  all). The site picker narrows that further and is the same selection the roster screens use. A
+  request for a site you aren't assigned to is a 403, the same as the roster.
+- **Only Admin changes it** (`calendar.manage`, which only the Admin role has). Everyone else gets
+  the same screens without New event, Edit, Delete or the categories button; the API refuses the
+  writes either way. To let another role add events later, add `calendar.manage` to it in
+  `backend/src/services/permissions.ts`.
+- **Views.** Month, Week, Day and List on a computer or an iPad; on a phone, Month (day numbers with
+  a dot per event, the chosen day's events underneath, swipe to change month), Day and List. The view
+  and the day are in the URL (`?view=week&date=2026-10-06`) and the view is remembered per device.
+  On a computer: ← → move, T today, M/W/D/L views, N new event. Admins can also click an empty day
+  (an all-day event) or an hour in Week/Day (an hour-long one) to start an event there.
+- **Repeating.** Quick choices worded for the start day (every day, every weekday, every week on
+  Friday, every 2 weeks, every month on day 2, on the first Friday, on the last Friday, on the last
+  day, every year on October 2), or **Custom**: every N days / weeks / months / years; for weeks,
+  any days of the week; for days, only certain days of the week; for months and years, a day of the
+  month (1–31 or the last day) or *the first / second / third / fourth / fifth / second-to-last /
+  last* Monday … Sunday, day, weekday or weekend day ("the last weekday of the month", "the fourth
+  Thursday of November"); for years, any months. It ends never, on a date, or after a number of
+  times. The editor shows the rule in words and the next six dates as you build it. A month without
+  the day (a 31st, a fifth Monday) is skipped, as in Outlook and Google.
+- **Changing one day of a series.** Edit or Delete on a repeating event asks *this event*, *this and
+  following events* or *all events*. "This event" moves, retimes, renames or cancels that day alone
+  (`CalendarException`); only what differs from the series is kept, so later changes to the series
+  still reach it. "This and following" ends the series the day before and starts a new one from
+  there, carrying over that day's changes; a series that ran a number of times keeps its total.
+  Removing one day has an Undo.
+- **Categories** (Meeting, Training, Resident event, Inspection, Deadline, Holiday to start) give each
+  event its color, from the same colorblind-checked palette as the Hot Foods reports. Admins edit them
+  from the tag button beside New event; deleting one leaves its events uncategorized. Anyone can hide
+  categories from view (remembered per device).
+- **Times are New York wall-clock times.** Days and times are stored as text (`"2026-10-06"`,
+  `"09:30"`), so a 9:30 meeting stays at 9:30 every week through clock changes. The rule logic is
+  `backend/src/calendar/recurrence.ts`, copied to `frontend/src/lib/recurrence.ts` by
+  `npm run sync:engine` so the editor's preview and the server agree; edit the backend copy.
+- **API** (`/api/calendar`, signed-in session): `GET /?from=&to=&site=` (days inclusive, up to 400
+  days; each occurrence comes back with the series id and its date), `GET /events/:id`,
+  `POST /events`, `PATCH /events/:id` (`{ scope, date, event }`), `DELETE /events/:id?scope=&date=`,
+  `POST /events/:id/restore`, and `/categories`. Writes are in the audit log as `calendar.*`.
+- **Offline**, on iPads and phones: this month and next are saved with the rest of the site, so the
+  calendar opens without a connection. Changes need one.
+- **Not done yet:** reminders or email, an iCal/Outlook subscription feed, and showing upcoming
+  events on the Home dashboard.
+
 ## Offline mode
 
 Site internet drops, so the app keeps working without it. **iPads and phones only**: on a computer
@@ -247,7 +300,7 @@ on any device.
   waiting on one of its own, the app reads every screen the person can open. That covers the
   residents at all of the person's sites first (so any form's resident picker works offline,
   whichever site is chosen), then the forms and their definitions, meal types and their pictures,
-  today's Hot Foods counts at every site, each resident's page at the device's sites, Review, Overview, Activity and attendance, plus Hot Foods entries, reports and form
+  today's Hot Foods counts at every site, each resident's page at the device's sites, Review, Overview, Activity and attendance, this month's and next month's calendar, plus Hot Foods entries, reports and form
   entries for roles that can read them. Each read uses the screen's own URL and default filters, so
   the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (today's
   counts every 10 minutes, a resident's page daily). The pill at the top shows the first download as it
@@ -510,7 +563,8 @@ To enable it, register an app in Entra (single tenant, Web redirect
 ## Database
 
 - `backend/prisma/schema.prisma` is the source of truth. Tables: `FormCategory`, `FormLink`, `FormFavorite`,
-  `HotFoodItem`, `HotFoodEntry`, `HotFoodEntryItem`, `Site`, `Tenant`,
+  `HotFoodItem`, `HotFoodEntry`, `HotFoodEntryItem`, `CalendarCategory`, `CalendarEvent`,
+  `CalendarEventSite`, `CalendarException`, `Site`, `Tenant`,
   `TenantActivity`, `AuditEvent`, `User`, `UserSite`, `ApiKey`, `Webhook`, `WebhookDelivery`,
   `Setting`.
 - `database/azure-sql-schema.sql` is the same schema as T-SQL for Azure SQL, regenerated with
@@ -550,11 +604,12 @@ rather than removed automatically.
 ```
 backend/    Express + Prisma API (port 4200)
   prisma/schema.prisma, seed.ts
-  src/routes/     forms, hotFoods, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
-  src/services/   formCatalog (default forms), hotFoods + hotFoodsExport, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
+  src/routes/     forms, hotFoods, calendar, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
+  src/calendar/   recurrence.ts (repeat rules; shared with the frontend)
+  src/services/   formCatalog (default forms), hotFoods + hotFoodsExport, calendar, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
   scripts/        import-tenants.ts, export-azure-sql.ts, demo-hot-foods.ts
 frontend/   Next.js-hosted React SPA (port 5200, proxies /api → backend)
-  src/screens/    Forms (home), hotfoods/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
+  src/screens/    Forms (home), calendar/*, hotfoods/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
   src/components/ shell (from lcs_invoices), ui (from lcs_invoices), roster/*
 integrations/wordpress/lantern-roster-connector.php
 database/azure-sql-schema.sql

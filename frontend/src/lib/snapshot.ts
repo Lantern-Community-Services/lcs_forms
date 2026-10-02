@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { api } from "./api";
 import { appIsQuiet, isOnline, offlineEnabled } from "./offline";
-import { hotFoodParams } from "./queries";
+import { calendarPath, hotFoodParams } from "./queries";
+import { addMonths, fetchRange, nyToday } from "./calendar";
 import { keepAllSites, keptResidentIds } from "./rosterStore";
 import { rememberedSiteParam } from "./site";
 import { readStorage, readStoredJson, writeStorage } from "./storage";
@@ -17,7 +18,8 @@ import type { FormCatalog, HotFoodItem, Site, User } from "./types";
  * through every screen this person can open and reads each one: the residents
  * at all of their sites, the forms and their definitions, meal types and their
  * pictures, today's counts at every site, each resident's page (at the sites
- * this device is used at), Review, Overview and Activity, attendance, and the entries
+ * this device is used at), Review, Overview and Activity, attendance, this month's
+ * and next month's calendar, and the entries
  * and reports the person may see. The worker stores each answer exactly as if
  * the screen had asked, because each read here uses the screen's own URL,
  * default filters included.
@@ -186,6 +188,13 @@ async function buildTargets(user: User): Promise<Target[]> {
     );
     const detailSites = mine.slice(0, MAX_DETAIL_SITES);
     for (const id of await keptResidentIds(detailSites)) targets.push({ key: `tenant:${id}`, label: "Residents' pages", tier: 1, ttlMs: 24 * HOUR, run: get(`/tenants/${id}`) });
+  }
+
+  // ── The calendar ── this month and next, as the screen reads them (its site selection is the roster's).
+  targets.push({ key: "cal:categories", label: "Calendar", tier: 1, ttlMs: 24 * HOUR, run: get("/calendar/categories") });
+  for (const day of [nyToday(), addMonths(nyToday(), 1)]) {
+    const { from, to } = fetchRange(day);
+    targets.push({ key: `cal:${from}:${selection ?? "all"}`, label: "Calendar", tier: 1, ttlMs: HOUR, run: get(calendarPath(from, to, selection)) });
   }
 
   // ── Reading entries back ──

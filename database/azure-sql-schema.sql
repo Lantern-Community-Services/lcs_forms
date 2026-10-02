@@ -153,6 +153,69 @@ CREATE TABLE [dbo].[HotFoodEntryItem] (
 );
 
 -- CreateTable
+CREATE TABLE [dbo].[CalendarCategory] (
+    [id] NVARCHAR(64) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [colorSlot] INT NOT NULL CONSTRAINT [CalendarCategory_colorSlot_df] DEFAULT 0,
+    [sortOrder] INT NOT NULL CONSTRAINT [CalendarCategory_sortOrder_df] DEFAULT 0,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarCategory_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [CalendarCategory_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[CalendarEvent] (
+    [id] NVARCHAR(64) NOT NULL,
+    [title] NVARCHAR(255) NOT NULL,
+    [description] NVARCHAR(max),
+    [location] NVARCHAR(255),
+    [categoryId] NVARCHAR(64),
+    [allSites] BIT NOT NULL CONSTRAINT [CalendarEvent_allSites_df] DEFAULT 1,
+    [allDay] BIT NOT NULL CONSTRAINT [CalendarEvent_allDay_df] DEFAULT 0,
+    [startDate] NVARCHAR(255) NOT NULL,
+    [startTime] NVARCHAR(255),
+    [endDate] NVARCHAR(255) NOT NULL,
+    [endTime] NVARCHAR(255),
+    [recurrence] NVARCHAR(max),
+    [firstDate] NVARCHAR(255) NOT NULL,
+    [lastDate] NVARCHAR(255),
+    [createdById] NVARCHAR(64),
+    [createdByName] NVARCHAR(255) NOT NULL,
+    [updatedByName] NVARCHAR(255),
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarEvent_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [CalendarEvent_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[CalendarEventSite] (
+    [eventId] NVARCHAR(64) NOT NULL,
+    [siteId] NVARCHAR(64) NOT NULL,
+    CONSTRAINT [CalendarEventSite_pkey] PRIMARY KEY CLUSTERED ([eventId],[siteId])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[CalendarException] (
+    [id] NVARCHAR(64) NOT NULL,
+    [eventId] NVARCHAR(64) NOT NULL,
+    [originalDate] NVARCHAR(255) NOT NULL,
+    [cancelled] BIT NOT NULL CONSTRAINT [CalendarException_cancelled_df] DEFAULT 0,
+    [title] NVARCHAR(255),
+    [description] NVARCHAR(max),
+    [location] NVARCHAR(255),
+    [allDay] BIT,
+    [startDate] NVARCHAR(255),
+    [startTime] NVARCHAR(255),
+    [endDate] NVARCHAR(255),
+    [endTime] NVARCHAR(255),
+    [updatedByName] NVARCHAR(255),
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarException_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [CalendarException_pkey] PRIMARY KEY CLUSTERED ([id]),
+    CONSTRAINT [CalendarException_eventId_originalDate_key] UNIQUE NONCLUSTERED ([eventId],[originalDate])
+);
+
+-- CreateTable
 CREATE TABLE [dbo].[FormCategory] (
     [id] NVARCHAR(64) NOT NULL,
     [name] NVARCHAR(255) NOT NULL,
@@ -187,6 +250,107 @@ CREATE TABLE [dbo].[FormFavorite] (
     [formId] NVARCHAR(64) NOT NULL,
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormFavorite_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT [FormFavorite_pkey] PRIMARY KEY CLUSTERED ([userId],[formId])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[BuiltForm] (
+    [id] NVARCHAR(64) NOT NULL,
+    [kind] NVARCHAR(255) NOT NULL CONSTRAINT [BuiltForm_kind_df] DEFAULT 'basic',
+    [slug] NVARCHAR(255) NOT NULL,
+    [title] NVARCHAR(255) NOT NULL,
+    [status] NVARCHAR(255) NOT NULL CONSTRAINT [BuiltForm_status_df] DEFAULT 'draft',
+    [draftSchema] NVARCHAR(255) NOT NULL,
+    [liveSchema] NVARCHAR(255),
+    [liveVersion] INT NOT NULL CONSTRAINT [BuiltForm_liveVersion_df] DEFAULT 0,
+    [revision] INT NOT NULL CONSTRAINT [BuiltForm_revision_df] DEFAULT 1,
+    [catalogLinkId] NVARCHAR(64),
+    [createdById] NVARCHAR(64),
+    [createdByName] NVARCHAR(255) NOT NULL,
+    [updatedByName] NVARCHAR(255),
+    [publishedAt] DATETIME2,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [BuiltForm_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [BuiltForm_pkey] PRIMARY KEY CLUSTERED ([id]),
+    CONSTRAINT [BuiltForm_slug_key] UNIQUE NONCLUSTERED ([slug])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[BuiltFormVersion] (
+    [id] NVARCHAR(64) NOT NULL,
+    [formId] NVARCHAR(64) NOT NULL,
+    [version] INT NOT NULL,
+    [schema] NVARCHAR(255) NOT NULL,
+    [note] NVARCHAR(255),
+    [publishedByName] NVARCHAR(255) NOT NULL,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [BuiltFormVersion_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [BuiltFormVersion_pkey] PRIMARY KEY CLUSTERED ([id]),
+    CONSTRAINT [BuiltFormVersion_formId_version_key] UNIQUE NONCLUSTERED ([formId],[version])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[FormEntry] (
+    [id] NVARCHAR(64) NOT NULL,
+    [formId] NVARCHAR(64) NOT NULL,
+    [formVersion] INT NOT NULL,
+    [data] NVARCHAR(255) NOT NULL,
+    [siteId] NVARCHAR(64),
+    [source] NVARCHAR(255) NOT NULL CONSTRAINT [FormEntry_source_df] DEFAULT 'app',
+    [status] NVARCHAR(255) NOT NULL CONSTRAINT [FormEntry_status_df] DEFAULT 'active',
+    [occurredAt] DATETIME2 NOT NULL CONSTRAINT [FormEntry_occurredAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [tenantId] NVARCHAR(64),
+    [overrideReason] NVARCHAR(max),
+    [clientId] NVARCHAR(64),
+    [createdById] NVARCHAR(64),
+    [createdByName] NVARCHAR(255) NOT NULL,
+    [ip] NVARCHAR(255),
+    [userAgent] NVARCHAR(255),
+    [voidedAt] DATETIME2,
+    [voidedByName] NVARCHAR(255),
+    [voidReason] NVARCHAR(max),
+    [starred] BIT NOT NULL CONSTRAINT [FormEntry_starred_df] DEFAULT 0,
+    [updatedByName] NVARCHAR(255),
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormEntry_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [FormEntry_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[FormEntryNote] (
+    [id] NVARCHAR(64) NOT NULL,
+    [entryId] NVARCHAR(64) NOT NULL,
+    [kind] NVARCHAR(255) NOT NULL CONSTRAINT [FormEntryNote_kind_df] DEFAULT 'note',
+    [authorName] NVARCHAR(255) NOT NULL,
+    [body] NVARCHAR(255) NOT NULL,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormEntryNote_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [FormEntryNote_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[FormFile] (
+    [id] NVARCHAR(64) NOT NULL,
+    [formId] NVARCHAR(64) NOT NULL,
+    [entryId] NVARCHAR(64),
+    [fieldId] NVARCHAR(64) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [mime] NVARCHAR(255) NOT NULL,
+    [size] INT NOT NULL,
+    [data] VARBINARY(max) NOT NULL,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormFile_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [FormFile_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[FormRecord] (
+    [id] NVARCHAR(64) NOT NULL,
+    [formId] NVARCHAR(64) NOT NULL,
+    [collection] NVARCHAR(255) NOT NULL,
+    [docId] NVARCHAR(64) NOT NULL,
+    [data] NVARCHAR(255) NOT NULL,
+    [updatedByName] NVARCHAR(255),
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormRecord_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [FormRecord_pkey] PRIMARY KEY CLUSTERED ([id]),
+    CONSTRAINT [FormRecord_formId_collection_docId_key] UNIQUE NONCLUSTERED ([formId],[collection],[docId])
 );
 
 -- CreateTable
@@ -323,10 +487,55 @@ CREATE NONCLUSTERED INDEX [HotFoodEntryItem_entryId_idx] ON [dbo].[HotFoodEntryI
 CREATE NONCLUSTERED INDEX [HotFoodEntryItem_itemId_idx] ON [dbo].[HotFoodEntryItem]([itemId]);
 
 -- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarEvent_firstDate_idx] ON [dbo].[CalendarEvent]([firstDate]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarEvent_lastDate_idx] ON [dbo].[CalendarEvent]([lastDate]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarEventSite_siteId_idx] ON [dbo].[CalendarEventSite]([siteId]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarException_startDate_idx] ON [dbo].[CalendarException]([startDate]);
+
+-- CreateIndex
 CREATE NONCLUSTERED INDEX [FormLink_categoryId_sortOrder_idx] ON [dbo].[FormLink]([categoryId], [sortOrder]);
 
 -- CreateIndex
 CREATE NONCLUSTERED INDEX [FormFavorite_formId_idx] ON [dbo].[FormFavorite]([formId]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [BuiltForm_status_idx] ON [dbo].[BuiltForm]([status]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntry_formId_createdAt_idx] ON [dbo].[FormEntry]([formId], [createdAt]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntry_formId_status_idx] ON [dbo].[FormEntry]([formId], [status]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntry_formId_occurredAt_idx] ON [dbo].[FormEntry]([formId], [occurredAt]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntry_formId_tenantId_occurredAt_idx] ON [dbo].[FormEntry]([formId], [tenantId], [occurredAt]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntry_clientId_idx] ON [dbo].[FormEntry]([clientId]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntry_siteId_idx] ON [dbo].[FormEntry]([siteId]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormEntryNote_entryId_createdAt_idx] ON [dbo].[FormEntryNote]([entryId], [createdAt]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormFile_entryId_idx] ON [dbo].[FormFile]([entryId]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormFile_formId_createdAt_idx] ON [dbo].[FormFile]([formId], [createdAt]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormRecord_formId_collection_idx] ON [dbo].[FormRecord]([formId], [collection]);
 
 -- CreateIndex
 CREATE NONCLUSTERED INDEX [User_entraObjectId_idx] ON [dbo].[User]([entraObjectId]);
@@ -365,6 +574,18 @@ ALTER TABLE [dbo].[HotFoodEntryItem] ADD CONSTRAINT [HotFoodEntryItem_entryId_fk
 ALTER TABLE [dbo].[HotFoodEntryItem] ADD CONSTRAINT [HotFoodEntryItem_itemId_fkey] FOREIGN KEY ([itemId]) REFERENCES [dbo].[HotFoodItem]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE [dbo].[CalendarEvent] ADD CONSTRAINT [CalendarEvent_categoryId_fkey] FOREIGN KEY ([categoryId]) REFERENCES [dbo].[CalendarCategory]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarEventSite] ADD CONSTRAINT [CalendarEventSite_eventId_fkey] FOREIGN KEY ([eventId]) REFERENCES [dbo].[CalendarEvent]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarEventSite] ADD CONSTRAINT [CalendarEventSite_siteId_fkey] FOREIGN KEY ([siteId]) REFERENCES [dbo].[Site]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarException] ADD CONSTRAINT [CalendarException_eventId_fkey] FOREIGN KEY ([eventId]) REFERENCES [dbo].[CalendarEvent]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE [dbo].[FormLink] ADD CONSTRAINT [FormLink_categoryId_fkey] FOREIGN KEY ([categoryId]) REFERENCES [dbo].[FormCategory]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -372,6 +593,24 @@ ALTER TABLE [dbo].[FormFavorite] ADD CONSTRAINT [FormFavorite_userId_fkey] FOREI
 
 -- AddForeignKey
 ALTER TABLE [dbo].[FormFavorite] ADD CONSTRAINT [FormFavorite_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[FormLink]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[BuiltFormVersion] ADD CONSTRAINT [BuiltFormVersion_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[FormEntry] ADD CONSTRAINT [FormEntry_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[FormEntryNote] ADD CONSTRAINT [FormEntryNote_entryId_fkey] FOREIGN KEY ([entryId]) REFERENCES [dbo].[FormEntry]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[FormFile] ADD CONSTRAINT [FormFile_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[FormFile] ADD CONSTRAINT [FormFile_entryId_fkey] FOREIGN KEY ([entryId]) REFERENCES [dbo].[FormEntry]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[FormRecord] ADD CONSTRAINT [FormRecord_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE [dbo].[UserSite] ADD CONSTRAINT [UserSite_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE CASCADE ON UPDATE CASCADE;

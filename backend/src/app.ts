@@ -22,6 +22,7 @@ import { fillRouter } from "./routes/fill.js";
 import { handleMcp } from "./forms/mcp.js";
 import { appsRouter } from "./routes/apps.js";
 import { homeRouter } from "./routes/home.js";
+import { calendarRouter } from "./routes/calendar.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false });
@@ -71,6 +72,7 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/forms", formsRouter);
   app.use("/api/home", homeRouter);
+  app.use("/api/calendar", calendarRouter);
   app.use("/api/hot-foods", hotFoodsRouter);
   app.use("/api/tenants", tenantsRouter);
   app.use("/api/attendance", attendanceRouter);
