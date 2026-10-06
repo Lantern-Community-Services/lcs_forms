@@ -171,6 +171,18 @@ const fail = (what: string, r: { status: number; data: unknown }) => new Error(`
 /** The branch's head commit, making the first commit if the repository is still empty. */
 async function head(branch: string): Promise<{ commit: string; tree: string }> {
   let ref = await gh<{ object?: { sha: string } }>("GET", `/git/ref/heads/${encodeURIComponent(branch)}`);
+  if (ref.status === 401) throw new Error("GitHub refused the token (401). It may have expired or been revoked — make a new one and update FORM_BACKUP_TOKEN.");
+  if (ref.status === 404 || ref.status === 409) {
+    // GitHub says 404 both for "no such branch" and "this token can't see the repository".
+    const repo = await gh<{ permissions?: { push?: boolean } }>("GET", "");
+    if (repo.status === 404 || repo.status === 403) {
+      throw new Error(
+        `This token can't see ${env.formBackup.repo}. Check that its resource owner is Lantern-Community-Services, that the repository is selected, ` +
+          "that it has Contents: read and write, and that an org owner has approved it if the org requires approval."
+      );
+    }
+    if (repo.data.permissions && !repo.data.permissions.push) throw new Error(`This token can read ${env.formBackup.repo} but not write to it — give it Contents: read and write.`);
+  }
   if (ref.status === 404 || ref.status === 409) {
     // The Git data API doesn't work on an empty repository; the contents API can make its first commit.
     const init = await gh("PUT", "/contents/README.md", { message: "Start the form backup", content: Buffer.from(README).toString("base64"), branch });
