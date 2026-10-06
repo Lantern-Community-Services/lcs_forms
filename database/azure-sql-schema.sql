@@ -164,6 +164,13 @@ CREATE TABLE [dbo].[CalendarCategory] (
 );
 
 -- CreateTable
+CREATE TABLE [dbo].[CalendarCategoryMute] (
+    [userId] NVARCHAR(64) NOT NULL,
+    [categoryId] NVARCHAR(64) NOT NULL,
+    CONSTRAINT [CalendarCategoryMute_pkey] PRIMARY KEY CLUSTERED ([userId],[categoryId])
+);
+
+-- CreateTable
 CREATE TABLE [dbo].[CalendarEvent] (
     [id] NVARCHAR(64) NOT NULL,
     [title] NVARCHAR(255) NOT NULL,
@@ -209,8 +216,24 @@ CREATE TABLE [dbo].[CalendarFollow] (
 );
 
 -- CreateTable
+CREATE TABLE [dbo].[CalendarCopy] (
+    [id] NVARCHAR(64) NOT NULL,
+    [eventId] NVARCHAR(64) NOT NULL,
+    [userId] NVARCHAR(64) NOT NULL,
+    [mailbox] NVARCHAR(255) NOT NULL,
+    [outlookEventId] NVARCHAR(64),
+    [hash] NVARCHAR(64),
+    [fallbackInvite] BIT NOT NULL CONSTRAINT [CalendarCopy_fallbackInvite_df] DEFAULT 0,
+    [error] NVARCHAR(max),
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [CalendarCopy_pkey] PRIMARY KEY CLUSTERED ([id]),
+    CONSTRAINT [CalendarCopy_eventId_userId_key] UNIQUE NONCLUSTERED ([eventId],[userId])
+);
+
+-- CreateTable
 CREATE TABLE [dbo].[CalendarOutlookTrash] (
     [id] NVARCHAR(64) NOT NULL,
+    [mailbox] NVARCHAR(255),
     [outlookEventId] NVARCHAR(64) NOT NULL,
     [title] NVARCHAR(255) NOT NULL,
     [error] NVARCHAR(max),
@@ -393,6 +416,11 @@ CREATE TABLE [dbo].[User] (
     [calendarEditor] BIT NOT NULL CONSTRAINT [User_calendarEditor_df] DEFAULT 0,
     [calendarSyncEverySite] BIT NOT NULL CONSTRAINT [User_calendarSyncEverySite_df] DEFAULT 0,
     [calendarSyncSetAt] DATETIME2,
+    [calendarEmailTeams] BIT NOT NULL CONSTRAINT [User_calendarEmailTeams_df] DEFAULT 1,
+    [calendarEmailOther] BIT NOT NULL CONSTRAINT [User_calendarEmailOther_df] DEFAULT 0,
+    [calendarReminderMinutes] INT CONSTRAINT [User_calendarReminderMinutes_df] DEFAULT 15,
+    [calendarAllDayFree] BIT NOT NULL CONSTRAINT [User_calendarAllDayFree_df] DEFAULT 1,
+    [calendarSkipUncategorized] BIT NOT NULL CONSTRAINT [User_calendarSkipUncategorized_df] DEFAULT 0,
     [lastSignInAt] DATETIME2,
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [User_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
@@ -514,6 +542,9 @@ CREATE NONCLUSTERED INDEX [HotFoodEntryItem_entryId_idx] ON [dbo].[HotFoodEntryI
 CREATE NONCLUSTERED INDEX [HotFoodEntryItem_itemId_idx] ON [dbo].[HotFoodEntryItem]([itemId]);
 
 -- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarCategoryMute_categoryId_idx] ON [dbo].[CalendarCategoryMute]([categoryId]);
+
+-- CreateIndex
 CREATE NONCLUSTERED INDEX [CalendarEvent_firstDate_idx] ON [dbo].[CalendarEvent]([firstDate]);
 
 -- CreateIndex
@@ -604,6 +635,12 @@ ALTER TABLE [dbo].[HotFoodEntryItem] ADD CONSTRAINT [HotFoodEntryItem_entryId_fk
 ALTER TABLE [dbo].[HotFoodEntryItem] ADD CONSTRAINT [HotFoodEntryItem_itemId_fkey] FOREIGN KEY ([itemId]) REFERENCES [dbo].[HotFoodItem]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE [dbo].[CalendarCategoryMute] ADD CONSTRAINT [CalendarCategoryMute_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarCategoryMute] ADD CONSTRAINT [CalendarCategoryMute_categoryId_fkey] FOREIGN KEY ([categoryId]) REFERENCES [dbo].[CalendarCategory]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE [dbo].[CalendarEvent] ADD CONSTRAINT [CalendarEvent_categoryId_fkey] FOREIGN KEY ([categoryId]) REFERENCES [dbo].[CalendarCategory]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -617,6 +654,9 @@ ALTER TABLE [dbo].[CalendarFollow] ADD CONSTRAINT [CalendarFollow_userId_fkey] F
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarFollow] ADD CONSTRAINT [CalendarFollow_siteId_fkey] FOREIGN KEY ([siteId]) REFERENCES [dbo].[Site]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarCopy] ADD CONSTRAINT [CalendarCopy_eventId_fkey] FOREIGN KEY ([eventId]) REFERENCES [dbo].[CalendarEvent]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarException] ADD CONSTRAINT [CalendarException_eventId_fkey] FOREIGN KEY ([eventId]) REFERENCES [dbo].[CalendarEvent]([id]) ON DELETE CASCADE ON UPDATE CASCADE;

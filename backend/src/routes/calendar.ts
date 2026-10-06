@@ -66,6 +66,8 @@ calendarRouter.patch(
     if (!before) throw notFound("That category no longer exists.");
     const row = await prisma.calendarCategory.update({ where: { id: before.id }, data: body });
     await audit({ actor: actorOf(req), action: "calendar.category_updated", summary: `Changed the calendar category "${before.name}"${row.name !== before.name ? ` to "${row.name}"` : ""}` });
+    // Its name and color are on people's Outlook copies.
+    await markUpcomingDirty();
     res.json(row);
   })
 );
@@ -79,6 +81,7 @@ calendarRouter.delete(
     // Its events stay on the calendar, uncategorized (onDelete: SetNull).
     await prisma.calendarCategory.delete({ where: { id: row.id } });
     await audit({ actor: actorOf(req), action: "calendar.category_deleted", summary: `Removed the calendar category "${row.name}"` });
+    await markUpcomingDirty();
     res.json({ ok: true });
   })
 );
@@ -167,7 +170,11 @@ calendarRouter.get(
   asyncHandler(async (req, res) => {
     const me = await prisma.user.findUnique({
       where: { id: req.user!.userId },
-      select: { email: true, calendarSyncEverySite: true, calendarSyncSetAt: true, calendarFollows: { select: { siteId: true } } },
+      select: {
+        email: true, calendarSyncEverySite: true, calendarSyncSetAt: true, calendarFollows: { select: { siteId: true } },
+        calendarEmailTeams: true, calendarEmailOther: true, calendarReminderMinutes: true, calendarAllDayFree: true,
+        calendarSkipUncategorized: true, calendarMutes: { select: { categoryId: true } },
+      },
     });
     res.json({
       /** False until the server is set up to send to Outlook; choices are kept for then. */
@@ -176,6 +183,13 @@ calendarRouter.get(
       answered: Boolean(me?.calendarSyncSetAt),
       everySite: Boolean(me?.calendarSyncEverySite),
       siteIds: (me?.calendarFollows ?? []).map((f) => f.siteId),
+      emailTeams: me?.calendarEmailTeams ?? true,
+      emailOther: me?.calendarEmailOther ?? false,
+      reminderMinutes: me === null ? 15 : me.calendarReminderMinutes,
+      allDayFree: me?.calendarAllDayFree ?? true,
+      /** Categories they left out; everything else (new categories too) comes. */
+      mutedCategoryIds: (me?.calendarMutes ?? []).map((m) => m.categoryId),
+      skipUncategorized: me?.calendarSkipUncategorized ?? false,
       sites: await followableSites(req),
     });
   })
@@ -184,14 +198,46 @@ calendarRouter.get(
 calendarRouter.put(
   "/outlook/me",
   asyncHandler(async (req, res) => {
-    const body = z.object({ everySite: z.boolean(), siteIds: z.array(z.string()).max(500) }).parse(req.body);
+    const body = z
+      .object({
+        everySite: z.boolean(),
+        siteIds: z.array(z.string()).max(500),
+        // How they arrive; left out = unchanged.
+        emailTeams: z.boolean().optional(),
+        emailOther: z.boolean().optional(),
+        reminderMinutes: z.union([z.literal(0), z.literal(5), z.literal(15), z.literal(30), z.literal(60), z.literal(120), z.literal(1440), z.null()]).optional(),
+        allDayFree: z.boolean().optional(),
+        mutedCategoryIds: z.array(z.string()).max(200).optional(),
+        skipUncategorized: z.boolean().optional(),
+      })
+      .parse(req.body);
+    const mutes = body.mutedCategoryIds
+      ? (await prisma.calendarCategory.findMany({ where: { id: { in: body.mutedCategoryIds } }, select: { id: true } })).map((c) => c.id)
+      : null;
     const allowed = new Set((await followableSites(req)).map((s) => s.id));
     const siteIds = [...new Set(body.siteIds)];
     if (siteIds.some((id) => !allowed.has(id))) throw forbidden("You can only add your own sites.");
     await prisma.$transaction([
       prisma.calendarFollow.deleteMany({ where: { userId: req.user!.userId } }),
       prisma.calendarFollow.createMany({ data: siteIds.map((siteId) => ({ userId: req.user!.userId, siteId })) }),
-      prisma.user.update({ where: { id: req.user!.userId }, data: { calendarSyncEverySite: body.everySite, calendarSyncSetAt: new Date() } }),
+      ...(mutes
+        ? [
+            prisma.calendarCategoryMute.deleteMany({ where: { userId: req.user!.userId } }),
+            prisma.calendarCategoryMute.createMany({ data: mutes.map((categoryId) => ({ userId: req.user!.userId, categoryId })) }),
+          ]
+        : []),
+      prisma.user.update({
+        where: { id: req.user!.userId },
+        data: {
+          calendarSyncEverySite: body.everySite,
+          calendarSyncSetAt: new Date(),
+          calendarEmailTeams: body.emailTeams,
+          calendarEmailOther: body.emailOther,
+          calendarReminderMinutes: body.reminderMinutes,
+          calendarAllDayFree: body.allDayFree,
+          calendarSkipUncategorized: body.skipUncategorized,
+        },
+      }),
     ]);
     // Every upcoming event's invite list is checked again (unchanged ones aren't re-sent).
     await markUpcomingDirty();

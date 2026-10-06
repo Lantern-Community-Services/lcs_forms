@@ -303,6 +303,18 @@ model CalendarCategory {
   updatedAt DateTime @updatedAt
 
   events CalendarEvent[]
+  mutes  CalendarCategoryMute[]
+}
+
+/// A category someone doesn't want in their Outlook ("no trainings, thanks").
+model CalendarCategoryMute {
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  category   CalendarCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  @@id([userId, categoryId])
+  @@index([categoryId])
 }
 
 /// One event on the calendar, or a whole repeating series of them.
@@ -341,6 +353,7 @@ model CalendarEvent {
 
   sites      CalendarEventSite[]
   exceptions CalendarException[]
+  copies     CalendarCopy[]
 
   // ── Outlook (services/outlookSync.ts) ──
   /// The meeting's id in the organizer mailbox (CALENDAR_ORGANIZER), once sent.
@@ -381,9 +394,32 @@ model CalendarFollow {
   @@index([siteId])
 }
 
-/// An Outlook meeting still to be cancelled, after its event was deleted here.
+/// One person's quiet copy of an event, written straight into their own
+/// Outlook calendar (no invite email). See services/outlookSync.ts.
+model CalendarCopy {
+  id             String        @id @default(cuid())
+  event          CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId        String
+  userId         String
+  /// The mailbox it was written to (their email when it was written).
+  mailbox        String
+  outlookEventId String?
+  /// What was last written, hashed.
+  hash           String?
+  /// They have no mailbox here (a partner account): they get the invite instead.
+  fallbackInvite Boolean       @default(false)
+  error          String?
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([eventId, userId])
+}
+
+/// An Outlook meeting (or a quiet copy) still to be removed, after its event was deleted here.
 model CalendarOutlookTrash {
   id             String   @id @default(cuid())
+  /// Whose calendar: null = the organizer's meeting (cancelled, so invitees hear),
+  /// otherwise a quiet copy in that mailbox (just deleted).
+  mailbox        String?
   outlookEventId String
   title          String
   error          String?
@@ -669,6 +705,19 @@ model User {
   calendarSyncEverySite Boolean @default(false)
   /// When they last answered that popup. Null = never asked yet.
   calendarSyncSetAt     DateTime?
+  /// How events reach their Outlook: an invite (with an email) or a quiet copy
+  /// written straight into their calendar (no email). Teams meetings default
+  /// to invites, everything else to quiet copies.
+  calendarEmailTeams    Boolean   @default(true)
+  calendarEmailOther    Boolean   @default(false)
+  /// Reminder on quiet copies, in minutes before. Null = no reminder.
+  calendarReminderMinutes Int?    @default(15)
+  /// Quiet copies of all-day events show as free rather than busy.
+  calendarAllDayFree    Boolean   @default(true)
+  /// Leave events with no category out of their Outlook. Categories they left
+  /// out are in CalendarCategoryMute (so a new category is in by default).
+  calendarSkipUncategorized Boolean @default(false)
+  calendarMutes         CalendarCategoryMute[]
   lastSignInAt  DateTime?
 
   /// Sites this person may act on. Empty = all sites (admins always all).

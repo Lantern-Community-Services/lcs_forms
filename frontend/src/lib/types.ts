@@ -450,7 +450,18 @@ export interface OutlookPrefs {
   everySite: boolean;
   siteIds: string[];
   sites: SiteRef[];
+  /** Teams meetings / other events arrive as invites with an email; otherwise quietly. */
+  emailTeams: boolean;
+  emailOther: boolean;
+  /** Reminder on quiet copies; null = none. */
+  reminderMinutes: number | null;
+  allDayFree: boolean;
+  /** Categories left out of their Outlook. */
+  mutedCategoryIds: string[];
+  skipUncategorized: boolean;
 }
+
+export type OutlookPrefsInput = Pick<OutlookPrefs, "everySite" | "siteIds" | "emailTeams" | "emailOther" | "reminderMinutes" | "allDayFree" | "mutedCategoryIds" | "skipUncategorized">;
 
 /** Which occurrences a change to a repeating event applies to. */
 export type CalendarScope = "all" | "this" | "following";

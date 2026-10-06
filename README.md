@@ -293,29 +293,48 @@ top of the phone's **All forms** sheet.
 
 ### Calendar in Outlook
 
-Events go into each person's **own** Outlook calendar as meeting invites from a **Lantern
-Calendar** mailbox. The app is still where events are made and changed; Outlook is told about each
-change (one way: edits made in Outlook aren't brought back).
+Events go into each person's **own** Outlook calendar. The app is still where events are made and
+changed; Outlook is told about each change (one way: edits made in Outlook aren't brought back).
+Nobody sets anything up in Outlook.
 
-- **Who gets what.** The first time someone opens the calendar, a popup asks which events they want
-  in Outlook: "Events for every site" and any of their own sites (all ticked to start; "None for
-  me" is an answer too). The Outlook button on the calendar reopens it. An every-site event goes to
-  everyone who ticked every-site events; a site event to everyone who ticked one of its sites and is
-  still assigned there. Invites don't ask for replies.
-- **Teams.** An event with **Teams meeting** on gets a Teams link in the invite, and a "Join the
-  Teams meeting" link on the calendar. Once Outlook has made the link it can't be removed, so the
-  switch then stays on. A Teams meeting's notes aren't updated in Outlook after it's sent (a new
-  body would wipe out the join details).
+- **What each person gets.** The first time someone opens the calendar, a popup asks (the Outlook
+  button reopens it):
+  - **Sites:** "Events for every site" and any of their own sites (all ticked to start).
+  - **Categories:** untick one (Training, say) and its events stay out of their Outlook; "No
+    category" too. New categories are in by default.
+  - **How they arrive:** an **invite** from the **Lantern Calendar** mailbox, which emails them, or
+    added **quietly**, written straight into their calendar with no email. By default Teams
+    meetings come as invites and everything else quietly.
+  - **For quiet ones:** their reminder (none to a day before, default 15 minutes) and whether
+    all-day events show as free (default yes).
+  "None for me" is an answer too. Someone with no mailbox in this organization (a partner account)
+  gets invites whatever they chose.
+- **Colors.** Quiet copies are tagged with the event's category, and the app creates that category
+  in the person's Outlook in the calendar's color (the nearest of Outlook's colors), so it shows
+  colored with no setup. Invites can't carry a category (Outlook doesn't send one with a meeting),
+  so invites arrive uncolored.
+- **Can't be changed in Outlook for everyone.** Invites are Lantern Calendar's meetings: attendees
+  can't edit them, and "propose new time" is off. A quiet copy belongs to the person, so they could
+  edit their own copy; it changes nothing for anyone else, and it's put back the next time the event
+  changes here.
+- **Teams.** An event with **Teams meeting** on always has Lantern Calendar's meeting, since that's
+  where the Teams link comes from; invites carry it and quiet copies get the join link in their
+  notes, and the calendar shows "Join the Teams meeting". Once Outlook has made the link it can't be
+  removed, so the switch then stays on. A Teams meeting's notes aren't updated in Outlook after it's
+  sent (a new body would wipe out the join details). If the organizer can't host Teams meetings,
+  the event says so and gets the link once it can.
+- **Few emails.** The meeting is only re-sent (an "updated" email to invitees) when the meeting
+  itself changed: not when a quiet copy, a category color or someone else's choices change.
 - **What's sent.** Title, times (New York), location, notes with a link back here, the repeat rule,
-  and single days changed or cancelled. Deleting an event cancels the meeting. Repeat patterns
-  Outlook can't express (a "fifth" or "second-to-last" day, yearly in several months, every few days
-  on some weekdays only, days 29–31 of the month) stay on this calendar only; the editor says so.
-- **How.** `backend/src/services/outlookSync.ts`. A save marks the event; about 15 seconds later
-  (so an Undo cancels out) the server sends it through Microsoft Graph, app-only, as
-  `CALENDAR_ORGANIZER`. Unchanged events aren't re-sent. Failures are retried every 5 minutes, and
-  every 6 hours each upcoming event's invite list is checked again, since people's sites change.
-  Admins can see where it stands at `GET /api/calendar/outlook/status` and send now with
-  `POST /api/calendar/outlook/run`.
+  and single days changed or cancelled. Deleting an event cancels the meeting and removes the quiet
+  copies. Repeat patterns Outlook can't express (a "fifth" or "second-to-last" day, yearly in several
+  months, every few days on some weekdays only, days 29–31 of the month) stay on this calendar only;
+  the editor says so.
+- **How.** `backend/src/services/outlookSync.ts`. A save marks the event; about 15 seconds later (so
+  an Undo cancels out) the server sends it through Microsoft Graph, app-only. Unchanged events aren't
+  re-sent. Failures are retried every 5 minutes, and every 6 hours each upcoming event's recipients
+  are checked again, since people's sites change. Admins can see where it stands at
+  `GET /api/calendar/outlook/status` and re-check everything now with `POST /api/calendar/outlook/run`.
 - **Restoring a cancelled day** after Outlook already cancelled it doesn't bring it back in Outlook.
 
 **Setting it up (once).** The app uses its existing Entra app registration and client secret (the
@@ -328,8 +347,12 @@ ones sign-in uses).
 2. **Find the app's two IDs.** Entra admin center → **Enterprise applications** (not App
    registrations, which shows different values) → the Lantern Forms app → Overview. Copy the
    **Application ID** and the **Object ID**.
-3. **Give the app calendar access to that one mailbox only**, in Exchange Online PowerShell as an
-   Exchange admin (Organization Management). Don't add Calendars.ReadWrite under API permissions in
+3. **Give the app its Exchange access** by running
+   `powershell -ExecutionPolicy Bypass -File .\backend\scripts\setup-outlook-calendar.ps1` as an
+   Exchange admin (Organization Management). It grants Calendars.ReadWrite on Lantern Calendar and on
+   staff mailboxes (for quiet copies), and MailboxSettings.ReadWrite on staff mailboxes (for the
+   colored categories); "staff" is every user mailbox unless you pass `-StaffFilter`. The commands it
+   runs, for reference (organizer part): Don't add Calendars.ReadWrite under API permissions in
    Entra: an Entra grant reaches every mailbox in the organization, and Exchange can't fence it.
 
    ```powershell

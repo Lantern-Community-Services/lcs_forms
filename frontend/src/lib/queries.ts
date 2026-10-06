@@ -3,7 +3,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
 import type {
-  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
+  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
 } from "./types";
 
@@ -308,7 +308,7 @@ export const calendarApi = {
   updateCategory: (id: string, body: { name?: string; colorSlot?: number }) => api.patch<CalendarCategory>(`/calendar/categories/${id}`, body),
   removeCategory: (id: string) => api.delete<{ ok: true }>(`/calendar/categories/${id}`),
   reorderCategories: (ids: string[]) => api.put<{ ok: true }>("/calendar/categories/order", { ids }),
-  saveOutlook: (body: { everySite: boolean; siteIds: string[] }) => api.put<{ ok: true }>("/calendar/outlook/me", body),
+  saveOutlook: (body: OutlookPrefsInput) => api.put<{ ok: true }>("/calendar/outlook/me", body),
 };
 
 /** Every calendar write refreshes the whole family: the months on screen, the series, the categories' counts. */
