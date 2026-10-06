@@ -335,6 +335,9 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
           </>
         )}
 
+        {target.mode === "edit" && target.series.outlook?.error && (
+          <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">{target.series.outlook.error}</p>
+        )}
         {!single && (
           <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
             <span className="flex gap-2.5">

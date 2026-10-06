@@ -168,9 +168,19 @@ export async function syncEvent(id: string): Promise<void> {
   const body = { contentType: "HTML", content: bodyHtml(ev, siteNames) };
   const exceptions = ev.exceptions.map((x) => ({ d: x.originalDate, c: x.cancelled, t: x.title, l: x.location, s: [x.allDay, x.startDate, x.startTime, x.endDate, x.endTime] }));
   const hash = crypto.createHash("sha1").update(JSON.stringify({ meeting, body, exceptions })).digest("hex");
+  // Unchanged: nothing to send. One still missing the Teams link it asked for is
+  // sent again, but only once the organizer can host Teams meetings; before
+  // that, a re-send would only mail attendees a pointless "updated" notice.
   if (ev.outlookEventId && hash === ev.outlookHash) {
-    await done(id, { outlookError: null });
-    return;
+    const retryTeams = ev.teamsMeeting && !ev.teamsJoinUrl;
+    if (!retryTeams) {
+      await done(id, { outlookError: null });
+      return;
+    }
+    if (!(await teamsAvailable())) {
+      await done(id, { outlookError: TEAMS_MISSING });
+      return;
+    }
   }
 
   let outlookId = ev.outlookEventId;
@@ -196,7 +206,33 @@ export async function syncEvent(id: string): Promise<void> {
   // Save the id before the day-by-day changes, so a failure there can't send a second meeting.
   await prisma.calendarEvent.update({ where: { id }, data: { outlookEventId: outlookId, teamsJoinUrl: joinUrl } });
   if (recurrence) await applyExceptions(outlookId!, ev);
+  if (ev.teamsMeeting && !joinUrl) {
+    // Exchange takes the request and quietly leaves the Teams link off when the
+    // organizer can't host Teams meetings. Say so, and leave no hash, so the next
+    // re-check (or "send now") asks again once Teams works for that account.
+    await done(id, { outlookError: TEAMS_MISSING, outlookHash: null });
+    return;
+  }
   await done(id, { outlookError: null, outlookHash: hash });
+}
+
+export const TEAMS_MISSING =
+  "In Outlook, but without a Teams link: the Lantern Calendar account can't host Teams meetings yet (Teams not in its license, still being set up, or the Outlook add-in is off in its Teams meeting policy). It's tried again automatically.";
+
+let teamsCheck: { at: number; ok: boolean } | null = null;
+/** Can the organizer host Teams meetings now? Asked at most every 10 minutes. */
+async function teamsAvailable(): Promise<boolean> {
+  if (teamsCheck && Date.now() - teamsCheck.at < 10 * 60_000) return teamsCheck.ok;
+  const ok = ((await organizerMeetingProviders()) ?? []).includes("teamsForBusiness");
+  teamsCheck = { at: Date.now(), ok };
+  return ok;
+}
+
+/** Whether the organizer mailbox can host Teams meetings at all, as Exchange sees it. */
+export async function organizerMeetingProviders(): Promise<string[] | null> {
+  if (!configured()) return null;
+  const cal = await graph<{ allowedOnlineMeetingProviders?: string[] }>("GET", `${mailbox()}/calendar?$select=allowedOnlineMeetingProviders`);
+  return cal?.allowedOnlineMeetingProviders ?? [];
 }
 
 /** Single days changed or cancelled here, on their Outlook occurrence. */

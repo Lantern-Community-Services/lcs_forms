@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
 import { env } from "../env.js";
-import { markUpcomingDirty, outlookConfigured, runQueue } from "../services/outlookSync.js";
+import { markUpcomingDirty, organizerMeetingProviders, outlookConfigured, runQueue } from "../services/outlookSync.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { isDay } from "../calendar/recurrence.js";
@@ -211,15 +211,23 @@ calendarRouter.get(
       prisma.user.count({ where: { status: "active", calendarSyncSetAt: { not: null }, OR: [{ calendarSyncEverySite: true }, { calendarFollows: { some: {} } }] } }),
       prisma.calendarOutlookTrash.count(),
     ]);
-    res.json({ enabled: outlookConfigured(), organizer: env.calendarOrganizer || null, waiting, sent, people, cancelsWaiting: trash, failing });
+    const providers = await organizerMeetingProviders().catch((e: Error) => e.message);
+    res.json({
+      enabled: outlookConfigured(),
+      organizer: env.calendarOrganizer || null,
+      // ["teamsForBusiness"] when the organizer can host Teams meetings; [] when it can't.
+      organizerMeetingProviders: providers,
+      waiting, sent, people, cancelsWaiting: trash, failing,
+    });
   })
 );
 
-/** For Admins: send what's waiting now rather than in a few minutes. */
+/** For Admins: check every upcoming event against Outlook now (unchanged ones aren't re-sent). */
 calendarRouter.post(
   "/outlook/run",
   MANAGE,
   asyncHandler(async (_req, res) => {
+    await markUpcomingDirty();
     res.json(await runQueue());
   })
 );
