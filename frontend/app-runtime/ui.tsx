@@ -25,7 +25,7 @@ import { SignaturePad } from "@/components/attendance/SignaturePad";
 import { DateRangeBar as AppDateRangeBar, PRESETS, presetRange, type Preset } from "@/components/hotfoods/DateRange";
 import { useState } from "react";
 import { Camera, FileText, Paperclip, X } from "lucide-react";
-import { device, files, useApp, useFileUrl, type FileRef } from "./sdk";
+import { dates, device, entries, files, useApp, useData, useFileUrl, type FileRef } from "./sdk";
 import { distanceMeters, formatDistance } from "@/lib/location";
 
 export function Page({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -116,6 +116,47 @@ export function useMediaQuery(query: string): boolean {
     if (o) return device.orientation === o[1];
     return window.matchMedia(`(${p})`).matches;
   });
+}
+
+// ── Entry history ────────────────────────────────────────────────────────
+
+type HistoryItem = { at: string; byName: string; kind: "edit" | "void" | "restore"; reason?: string | null; changes?: { field: string; from: unknown; to: unknown }[] };
+
+const shown = (v: unknown) => {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "object") {
+    if (Array.isArray(v) && v.every((x) => x && typeof x === "object" && "fileId" in x)) return `${v.length} file${v.length === 1 ? "" : "s"}`;
+    return JSON.stringify(v);
+  }
+  return String(v);
+};
+
+/**
+ * What happened to an entry after it was made: each edit with what changed,
+ * voids and restores. `labels` turns data keys into the names people know.
+ */
+export function EntryHistory({ entryId, labels, className }: { entryId: string; labels?: Record<string, string>; className?: string }) {
+  const { data, loading, error } = useData(() => entries.history(entryId) as Promise<HistoryItem[]>, [entryId]);
+  if (loading && !data) return <Spinner />;
+  if (error) return <p className="text-[12.5px] text-status-redText">{error.message}</p>;
+  if (!data?.length) return <p className={cn("text-[12.5px] text-muted", className)}>No changes since it was made.</p>;
+  return (
+    <ol className={cn("space-y-3", className)}>
+      {data.map((h, i) => (
+        <li key={i} className="border-l-2 border-hairline pl-3">
+          <p className="text-[12.5px] text-muted">
+            <span className="font-semibold text-ink">{h.byName}</span> {h.kind === "edit" ? "edited" : h.kind === "void" ? "voided" : "restored"} · {dates.format(h.at, "datetime")}
+          </p>
+          {h.reason && <p className="text-[12.5px] text-muted">Reason: {h.reason}</p>}
+          {h.changes?.map((c) => (
+            <p key={c.field} className="text-[13px] text-ink">
+              <span className="font-semibold">{labels?.[c.field] ?? c.field}:</span> <span className="text-muted line-through">{shown(c.from)}</span> → {shown(c.to)}
+            </p>
+          ))}
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 // ── Photos and files ─────────────────────────────────────────────────────

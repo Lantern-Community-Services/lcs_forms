@@ -463,6 +463,8 @@ declare module "@lcs/ui" {
   export function Modal(props: { open: boolean; onOpenChange: (open: boolean) => void; title: string; subtitle?: string; footer?: React.ReactNode; children?: React.ReactNode; wide?: boolean }): React.JSX.Element;
   /** A bottom sheet on phones, a side sheet on wider screens. */
   export function Sheet(props: { open: boolean; onOpenChange: (open: boolean) => void; title: string; footer?: React.ReactNode; children?: React.ReactNode }): React.JSX.Element;
+  /** An entry's history (entries.history): each edit with what changed, voids, restores. labels: data key → name. */
+  export function EntryHistory(props: { entryId: string; labels?: Record<string, string>; className?: string }): React.JSX.Element;
   /** A photo from a FileRef (or fileId). */
   export function Photo(props: { file: import("@lcs/sdk").FileRef | string | null | undefined; alt?: string; className?: string; onClick?: () => void }): React.JSX.Element;
   /** Thumbnails + "Add photo" (opens the camera). Holds FileRefs — put value straight into the entry's data. */
