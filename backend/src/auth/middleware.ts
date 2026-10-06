@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AUTH_COOKIE, verifySession, type SessionPayload } from "./auth.js";
 import { prisma } from "../prisma.js";
 import { forbidden, unauthorized } from "../http.js";
-import { roleFor, type PermissionKey } from "../services/permissions.js";
+import { permissionsFor, roleFor, type PermissionKey } from "../services/permissions.js";
 import { looksLikeApiKey, resolveApiKey, type ApiScope, type ResolvedKey } from "../services/apiKeys.js";
 
 /** The signed-in person, with what their role currently grants. */
@@ -52,7 +52,7 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, name: true, email: true, status: true, roleKey: true, sites: { select: { siteId: true } } },
+      select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, sites: { select: { siteId: true } } },
     });
     if (!user || user.status !== "active") return next();
 
@@ -63,7 +63,7 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
       email: user.email,
       roleKey: role.key,
       roleName: role.name,
-      permissions: role.permissions,
+      permissions: permissionsFor(role, user),
       siteIds: role.allSites ? null : user.sites.map((s) => s.siteId),
     };
     next();

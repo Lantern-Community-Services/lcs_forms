@@ -184,7 +184,7 @@ authRouter.get(
       ...user,
       sites: user.sites.map((s) => s.site),
       role: { key: role.key, name: role.name, description: role.description, allSites: role.allSites },
-      permissions: role.permissions,
+      permissions: req.user!.permissions,
       allSites: req.user!.siteIds === null,
     });
   })

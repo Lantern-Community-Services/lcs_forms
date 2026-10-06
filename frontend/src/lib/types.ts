@@ -14,7 +14,8 @@ export type PermissionKey =
   | "settings.manage"
   | "forms.manage"
   | "apps.develop"
-  | "calendar.manage";
+  | "calendar.manage"
+  | "calendar.edit";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";
@@ -48,6 +49,8 @@ export interface User {
   sites: SiteRef[];
   allSites: boolean;
   lastSignInAt?: string | null;
+  /** The "Can edit the calendar" switch: events for their own sites, whatever their role. */
+  calendarEditor?: boolean;
 }
 
 export interface Site extends SiteRef {
@@ -383,6 +386,8 @@ export interface CalendarOccurrence {
   repeatText: string | null;
   /** Changed on its own, apart from the rest of the series. */
   changed: boolean;
+  /** The signed-in person may edit or delete it (the server decides). */
+  canEdit: boolean;
 }
 
 /** A whole event (or series) as the editor loads it. */
@@ -405,6 +410,7 @@ export interface CalendarSeries {
   lastDate: string | null;
   cancelledDates: string[];
   changedDates: string[];
+  canEdit: boolean;
   createdByName: string;
   updatedByName: string | null;
   createdAt: string;

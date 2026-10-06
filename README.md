@@ -240,16 +240,26 @@ top of the phone's **All forms** sheet.
   sites**; people see the every-site events plus those for the sites they're assigned to (admins:
   all). The site picker narrows that further and is the same selection the roster screens use. A
   request for a site you aren't assigned to is a 403, the same as the roster.
-- **Only the main Admin changes it.** Creating, editing and deleting events, and the categories, need
-  `calendar.manage`, which only the Admin role has, by design: not Site Admins, Main Office or any
-  other role. Everyone else gets the same screens without New event, Edit, Delete or the
-  categories button, and the API refuses their writes (403) either way. Checked for every role
-  against every write endpoint.
-- **Views.** Month, Week, Day and List on a computer or an iPad; on a phone, Month (day numbers with
-  a dot per event, the chosen day's events underneath, swipe to change month), Day and List. The view
-  and the day are in the URL (`?view=week&date=2026-10-06`) and the view is remembered per device.
-  On a computer: ← → move, T today, M/W/D/L views, N new event. Admins can also click an empty day
-  (an all-day event) or an hour in Week/Day (an hour-long one) to start an event there.
+- **Who changes it.**
+  - **Admin** (`calendar.manage`, the Admin role only): everything, including events for every
+    site and the categories.
+  - **Calendar editors**: anyone, whatever their role, with **Can edit the calendar** switched on
+    in Admin → People & roles (`User.calendarEditor`, which gives `calendar.edit`). They add,
+    change and remove events for their own sites only. They can't make an every-site event, touch
+    one that also reaches a site they aren't at, or edit the categories. A Site Manager keeps all of
+    their roster access. Only an Admin can turn the switch on or off. Site Admins see it but can't
+    change it, and it's in the audit log. People with it carry a "Calendar" tag in the list.
+  - **Everyone else** gets the same screens without New event, Edit or Delete.
+
+  The server decides each event: every occurrence comes back with `canEdit`, and writes outside a
+  person's reach are refused (403). All checked for each role against every write endpoint.
+- **Views.** It opens on **Week**. Month, Week, Day and List on a computer or an iPad; on a phone
+  (too narrow for a week of columns, so it opens on Month), Month (day numbers with a dot per event,
+  the chosen day's events underneath, swipe to change month), Day and List. The view and the day
+  are in the URL (`?view=month&date=2026-10-06`), so a link or a pull-to-refresh keeps them; opening
+  the Calendar fresh is always Week. On a computer: ← → move, T today, M/W/D/L views, N new event.
+  Anyone who can add events can also click an empty day (an all-day event) or an hour in Week/Day
+  (an hour-long one) to start one there.
 - **Repeating.** Quick choices worded for the start day (every day, every weekday, every week on
   Friday, every 2 weeks, every month on day 2, on the first Friday, on the last Friday, on the last
   day, every year on October 2), or **Custom**: every N days / weeks / months / years; for weeks,

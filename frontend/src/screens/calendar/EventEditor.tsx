@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { Field, Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/lib/auth";
 import { calendarApi, useCalendarCategories, useCalendarMutation, useSites } from "@/lib/queries";
 import { addDays, canonicalRule, daysApart, presetKeyFor, repeatPresets, ruleProblem, type Recurrence } from "@/lib/recurrence";
 import { categoryColor, longDay, minutesOf, timeOf } from "@/lib/calendar";
@@ -40,7 +41,11 @@ interface Draft {
 
 const withoutEnd = ({ end: _end, ...shape }: Recurrence): RuleShape => shape;
 
-function draftFor(target: EditorTarget): Draft {
+/**
+ * `everySite`: this person may make events for every site (an Admin). A
+ * calendar editor's new event starts on their site when they have just one.
+ */
+function draftFor(target: EditorTarget, everySite: boolean, ownSiteIds: string[]): Draft {
   if (target.mode === "new") {
     const start = target.minutes ?? 9 * 60;
     return {
@@ -48,8 +53,8 @@ function draftFor(target: EditorTarget): Draft {
       description: "",
       location: "",
       categoryId: null,
-      allSites: true,
-      siteIds: [],
+      allSites: everySite,
+      siteIds: everySite || ownSiteIds.length !== 1 ? [] : ownSiteIds,
       allDay: target.minutes === null,
       startDate: target.day,
       startTime: timeOf(start),
@@ -102,12 +107,13 @@ function ruleOf(d: Draft): Recurrence | null {
 }
 
 /** The first thing wrong with the draft, in words, or null. */
-function problemOf(d: Draft, rule: Recurrence | null, scope: CalendarScope | null, splitDay: string | null): string | null {
+function problemOf(d: Draft, rule: Recurrence | null, scope: CalendarScope | null, splitDay: string | null, everySite: boolean): string | null {
   if (!d.title.trim()) return "Give the event a title.";
   if (!d.startDate || !d.endDate) return "Choose the days.";
   if (!d.allDay && (!d.startTime || !d.endTime)) return "Choose the times, or make it all day.";
   if (`${d.endDate} ${d.allDay ? "" : d.endTime}` < `${d.startDate} ${d.allDay ? "" : d.startTime}`) return "It can't end before it starts.";
-  if (scope !== "this" && !d.allSites && d.siteIds.length === 0) return "Choose at least one site, or make it for every site.";
+  if (scope !== "this" && !d.allSites && d.siteIds.length === 0) return everySite ? "Choose at least one site, or make it for every site." : "Choose at least one of your sites.";
+  if (scope !== "this" && d.allSites && !everySite) return "Only an Admin can add events for every site.";
   if (scope === "following" && splitDay && d.startDate < splitDay) return `From this one on starts on or after ${longDay(splitDay)}.`;
   if (rule) return ruleProblem(d.startDate, rule);
   return null;
@@ -126,14 +132,17 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
   const toast = useToast();
   const { data: categories } = useCalendarCategories();
   const { data: sites } = useSites();
-  const [draft, setDraft] = useState<Draft>(() => draftFor(target));
+  const { can, user } = useAuth();
+  // Admins make events for every site; a calendar editor only for their own (the server holds them to it).
+  const everySite = can("calendar.manage");
+  const [draft, setDraft] = useState<Draft>(() => draftFor(target, everySite, user?.allSites ? [] : (user?.sites ?? []).map((s) => s.id)));
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const scope = target.mode === "edit" ? target.scope : null;
   const single = scope === "this" && target.mode === "edit" && Boolean(target.series.recurrence);
   const splitDay = target.mode === "edit" && scope === "following" ? target.occ?.date ?? null : null;
   const rule = useMemo(() => (single ? null : ruleOf(draft)), [draft, single]);
-  const problem = problemOf(draft, rule, scope, splitDay);
+  const problem = problemOf(draft, rule, scope, splitDay, everySite);
   const presets = useMemo(() => repeatPresets(draft.startDate || "2026-01-01"), [draft.startDate]);
   useEffect(() => setError(null), [draft]);
 
@@ -278,11 +287,15 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
           <>
             {/* Who sees it */}
             <section className="space-y-2">
-              <Label>Who it's for</Label>
-              <div role="radiogroup" className="grid grid-cols-2 gap-2">
-                <Choice on={draft.allSites} onClick={() => set({ allSites: true })} title="Every site" hint="Everyone sees it" />
-                <Choice on={!draft.allSites} onClick={() => set({ allSites: false })} title="Chosen sites" hint={draft.allSites ? "Only people at those sites" : `${draft.siteIds.length} chosen`} />
-              </div>
+              <Label>{everySite ? "Who it's for" : "Sites"}</Label>
+              {everySite ? (
+                <div role="radiogroup" className="grid grid-cols-2 gap-2">
+                  <Choice on={draft.allSites} onClick={() => set({ allSites: true })} title="Every site" hint="Everyone sees it" />
+                  <Choice on={!draft.allSites} onClick={() => set({ allSites: false })} title="Chosen sites" hint={draft.allSites ? "Only people at those sites" : `${draft.siteIds.length} chosen`} />
+                </div>
+              ) : (
+                <p className="text-[12.5px] text-muted">Only people at these sites see it. Events for every site are added by an Admin.</p>
+              )}
               {!draft.allSites && (
                 <CheckboxList
                   options={(sites ?? []).map((s) => ({ value: s.id, label: s.name }))}

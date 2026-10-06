@@ -44,7 +44,8 @@ const SITES_INCLUDE = { sites: { include: { site: { select: { id: true, code: tr
  *     person holds is one of theirs — a role applies everywhere, so one site's
  *     admin must not demote someone another site relies on. Otherwise they can
  *     still add or remove that person at their own sites.
- * Admin and Main Office Staff accounts are never theirs to touch.
+ * Admin and Main Office Staff accounts are never theirs to touch. Nor is the
+ * "Can edit the calendar" switch: only an Admin turns that on or off.
  */
 const managesEveryone = (req: Request) => req.user!.permissions.includes("users.manage");
 
@@ -93,7 +94,10 @@ const userBody = z.object({
   roleKey: z.string().refine(isRoleKey, "Unknown role"),
   siteIds: z.array(z.string()).default([]),
   title: z.string().trim().max(120).nullable().optional(),
+  calendarEditor: z.boolean().optional(),
 });
+
+const CALENDAR_SWITCH_ADMIN_ONLY = "Only an Admin can change who edits the calendar.";
 
 /**
  * Pre-create (invite) a person. Their first sign-in — Microsoft or a Google
@@ -107,6 +111,7 @@ usersRouter.post(
     const body = userBody.parse(req.body);
     assertAssignable(req, body.roleKey, body.siteIds);
     if (!managesEveryone(req) && body.siteIds.length === 0) throw badRequest("Pick at least one of your sites.");
+    if (body.calendarEditor && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
     if (await prisma.user.findUnique({ where: { email: body.email } })) throw badRequest("Someone with that email already exists.");
     const user = await prisma.user.create({
       data: {
@@ -114,12 +119,13 @@ usersRouter.post(
         email: body.email,
         roleKey: body.roleKey,
         title: body.title ?? null,
+        calendarEditor: body.calendarEditor ?? false,
         status: "invited",
         sites: { create: body.siteIds.map((siteId) => ({ siteId })) },
       },
       include: SITES_INCLUDE,
     });
-    await audit({ actor: actorOf(req), action: "user.invited", summary: `Invited ${user.name} (${user.email}) as ${roleFor(user.roleKey).name}` });
+    await audit({ actor: actorOf(req), action: "user.invited", summary: `Invited ${user.name} (${user.email}) as ${roleFor(user.roleKey).name}${user.calendarEditor ? ", with calendar editing" : ""}` });
     res.status(201).json(shape(user));
   })
 );
@@ -134,10 +140,13 @@ usersRouter.patch(
         status: z.enum(["active", "invited", "denied", "deactivated"]).optional(),
         siteIds: z.array(z.string()).optional(),
         name: z.string().trim().min(1).max(120).optional(),
+        calendarEditor: z.boolean().optional(),
       })
       .parse(req.body);
     const before = await prisma.user.findUnique({ where: { id: req.params.id }, include: { sites: { select: { siteId: true } } } });
     if (!before) throw notFound();
+    const calendarChange = body.calendarEditor !== undefined && body.calendarEditor !== before.calendarEditor;
+    if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
 
     const mine = managedSiteIds(req);
     if (mine) {
@@ -170,7 +179,7 @@ usersRouter.patch(
       }
       return tx.user.update({
         where: { id: before.id },
-        data: { roleKey: body.roleKey, status: body.status, name: body.name },
+        data: { roleKey: body.roleKey, status: body.status, name: body.name, calendarEditor: calendarChange ? body.calendarEditor : undefined },
         include: SITES_INCLUDE,
       });
     });
@@ -178,6 +187,7 @@ usersRouter.patch(
       body.roleKey && body.roleKey !== before.roleKey ? `role → ${roleFor(body.roleKey).name}` : null,
       body.status && body.status !== before.status ? `status → ${body.status}` : null,
       body.siteIds ? `sites → ${body.siteIds.length || "none"}` : null,
+      calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });
     res.json(shape(user));

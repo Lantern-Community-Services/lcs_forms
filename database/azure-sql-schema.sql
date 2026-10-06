@@ -366,6 +366,7 @@ CREATE TABLE [dbo].[User] (
     [avatarColor] NVARCHAR(255),
     [defaultLandingPage] NVARCHAR(255) NOT NULL CONSTRAINT [User_defaultLandingPage_df] DEFAULT '/forms',
     [defaultSiteCode] NVARCHAR(255),
+    [calendarEditor] BIT NOT NULL CONSTRAINT [User_calendarEditor_df] DEFAULT 0,
     [lastSignInAt] DATETIME2,
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [User_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,

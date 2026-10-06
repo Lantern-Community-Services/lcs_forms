@@ -9,16 +9,16 @@ import { colorOf, type ColorOf } from "./colors";
 
 /**
  * One occurrence: when, how it repeats, who it's for, where, and the notes.
- * Admins get Edit and Delete; for a repeating event both ask which of its
- * occurrences they mean first.
+ * Edit and Delete show when the server says this person may change it (an
+ * Admin, or a calendar editor at all of its sites); for a repeating event both
+ * ask which of its occurrences they mean first.
  */
 export function EventDetail({
-  occ, today, colors, canManage, onClose, onEdit, onDelete,
+  occ, today, colors, onClose, onEdit, onDelete,
 }: {
   occ: CalendarOccurrence | null;
   today: string;
   colors: ColorOf;
-  canManage: boolean;
   onClose: () => void;
   onEdit: (o: CalendarOccurrence) => void;
   onDelete: (o: CalendarOccurrence) => void;
@@ -31,7 +31,7 @@ export function EventDetail({
       onOpenChange={(open) => !open && onClose()}
       title={occ?.title ?? ""}
       footer={
-        occ && canManage ? (
+        occ?.canEdit ? (
           <>
             <Button variant="outlineDanger" onClick={() => onDelete(occ)} className="min-h-[44px] flex-1 md:min-h-0 md:flex-none">
               <Trash2 className="h-4 w-4" /> Delete

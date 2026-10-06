@@ -11,12 +11,14 @@ import {
 
 /**
  * The calendar. Reading is for everyone signed in (each sees the events for
- * every site and for their own sites); changing it needs `calendar.manage`,
- * which only Admin has.
+ * every site and for their own sites). Categories need `calendar.manage`
+ * (Admin). Events need that or `calendar.edit` (the per-person switch), and
+ * services/calendar.ts then holds a calendar editor to their own sites.
  */
 export const calendarRouter = Router();
 calendarRouter.use(requireAuth);
 const MANAGE = requirePermission("calendar.manage");
+const EDIT = requirePermission("calendar.manage", "calendar.edit");
 
 // ── Categories ───────────────────────────────────────────────────────────
 
@@ -98,7 +100,7 @@ calendarRouter.get(
 
 calendarRouter.post(
   "/events",
-  MANAGE,
+  EDIT,
   asyncHandler(async (req, res) => {
     const id = await createEvent(req, eventInput.parse(req.body));
     res.status(201).json({ id });
@@ -115,7 +117,7 @@ const changeBody = z.object({
 /** Returns the id of the series that now holds the change: a new one after "this and following". */
 calendarRouter.patch(
   "/events/:id",
-  MANAGE,
+  EDIT,
   asyncHandler(async (req, res) => {
     const body = changeBody.parse(req.body);
     res.json({ id: await updateEvent(req, req.params.id, body.scope, body.date, body.event) });
@@ -124,7 +126,7 @@ calendarRouter.patch(
 
 calendarRouter.delete(
   "/events/:id",
-  MANAGE,
+  EDIT,
   asyncHandler(async (req, res) => {
     const scope = scopeSchema.parse(req.query.scope ?? "all");
     const date = typeof req.query.date === "string" ? req.query.date : undefined;
@@ -137,7 +139,7 @@ calendarRouter.delete(
 /** Put back one day of a series that was cancelled (the Undo after removing it). */
 calendarRouter.post(
   "/events/:id/restore",
-  MANAGE,
+  EDIT,
   asyncHandler(async (req, res) => {
     const { date } = z.object({ date: z.string().refine(isDay, "date is a day, YYYY-MM-DD.") }).parse(req.body);
     await restoreOccurrence(req, req.params.id, date);

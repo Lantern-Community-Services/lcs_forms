@@ -28,11 +28,18 @@ export const PERMISSIONS = [
   /** Build code forms: their files, server logic and data (Admin and Developer). */
   "apps.develop",
   /**
-   * Add, change and remove calendar events and their categories. Deliberately
-   * Admin only: no other role gets it, Site Admin included. Everyone signed in
-   * can read the calendar.
+   * The whole calendar: categories, events for every site, and any event at
+   * all. Deliberately Admin only: no other role gets it, Site Admin included.
+   * Everyone signed in can read the calendar.
    */
   "calendar.manage",
+  /**
+   * Add, change and remove calendar events for one's own sites only (never an
+   * every-site event, never categories). Not part of any role but Admin's: it
+   * comes from the per-person "Can edit the calendar" switch (User.calendarEditor),
+   * which only an Admin can turn on. See permissionsFor().
+   */
+  "calendar.edit",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number];
@@ -113,6 +120,15 @@ export const SITE_ROLE_KEYS = ROLES.filter((r) => !r.allSites).map((r) => r.key)
 export function roleFor(key: string): RoleDef {
   const k = LEGACY_ROLES[key] ?? key;
   return ROLES.find((r) => r.key === k) ?? ROLES.find((r) => r.key === DEFAULT_ROLE_KEY)!;
+}
+
+/**
+ * What a person may do: their role's permissions, plus the ones switched on
+ * for them alone. Everything that works out permissions goes through here, so
+ * the switch can't be honored in one place and missed in another.
+ */
+export function permissionsFor(role: RoleDef, person: { calendarEditor?: boolean | null }): PermissionKey[] {
+  return person.calendarEditor && !role.permissions.includes("calendar.edit") ? [...role.permissions, "calendar.edit"] : role.permissions;
 }
 
 export function isRoleKey(key: string): boolean {

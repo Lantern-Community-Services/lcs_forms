@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { calendarApi, useCalendar, useCalendarCategories, useCalendarMutation } from "@/lib/queries";
 import { addDays, isDay } from "@/lib/recurrence";
 import { addMonths, categoryColor, fetchRange, nyNowMinutes, nyToday, shortDay, startOfWeek, step, viewTitle, type CalendarView } from "@/lib/calendar";
-import { readStorage, readStoredJson, writeStorage } from "@/lib/storage";
+import { readStoredJson, writeStorage } from "@/lib/storage";
 import { cn, errorMessage } from "@/lib/utils";
 import type { CalendarOccurrence, CalendarScope, CalendarSeries } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,6 @@ import { EventDetail, ScopeDialog } from "./EventDetail";
 import { EventEditor, type EditorTarget } from "./EventEditor";
 import { CategoriesDialog } from "./CategoriesDialog";
 
-const VIEW_KEY = "ln.calendar.view";
 const HIDDEN_KEY = "ln.calendar.hidden";
 /** The filter's stand-in for "no category". */
 const NONE = "none";
@@ -33,18 +32,22 @@ const isView = (v: unknown): v is CalendarView => typeof v === "string" && v in 
 
 /**
  * The calendar. Everyone sees the events for every site and for the sites
- * they're at, filtered further by the site picker and by category; admins
- * (calendar.manage) add, change and remove them.
+ * they're at, filtered further by the site picker and by category. Admins
+ * (calendar.manage) change anything; people with the "Can edit the calendar"
+ * switch (calendar.edit) add events and change the ones for their own sites,
+ * as each occurrence's canEdit says. Only Admins edit the categories.
  *
- * Month, week, day and list views on a computer or an iPad; month (with the
- * chosen day's events under it), day and list on a phone, where a week of
- * columns would be too narrow to read. The view and the day are in the URL
- * (?view=week&date=2026-10-06), so a link or a pull-to-refresh opens the same
- * place; the view is also remembered per device.
+ * It opens on Week on a computer or an iPad. Month, week, day and list there;
+ * month (with the chosen day's events under it), day and list on a phone,
+ * where a week of columns would be too narrow to read, so a phone opens on
+ * Month. The view and the day are in the URL (?view=month&date=2026-10-06), so
+ * a link or a pull-to-refresh opens the same place.
  */
 export function CalendarPage() {
   const { can } = useAuth();
   const manage = can("calendar.manage");
+  // Admins, and anyone with the switch (for their own sites; the server checks each event).
+  const canAdd = manage || can("calendar.edit");
   const device = useDeviceKind();
   const phone = device === "phone";
   const qc = useQueryClient();
@@ -52,8 +55,8 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const today = nyToday();
 
-  const wanted = params.get("view") ?? readStorage(VIEW_KEY);
-  const chosen: CalendarView = isView(wanted) ? wanted : "month";
+  const wanted = params.get("view");
+  const chosen: CalendarView = isView(wanted) ? wanted : phone ? "month" : "week";
   const view: CalendarView = phone && chosen === "week" ? "day" : chosen;
   const dateParam = params.get("date");
   const anchor = isDay(dateParam) ? dateParam : today;
@@ -71,7 +74,6 @@ export function CalendarPage() {
       },
       { replace: true }
     );
-    if (next.view) writeStorage(VIEW_KEY, next.view);
   };
 
   const { codes, setCodes, param: siteParam } = useSiteSelection();
@@ -163,7 +165,7 @@ export function CalendarPage() {
       else if (k === "w") go({ view: "week" });
       else if (k === "d") go({ view: "day" });
       else if (k === "l") go({ view: "list" });
-      else if (k === "n" && manage) newEvent();
+      else if (k === "n" && canAdd) newEvent();
       else return;
       e.preventDefault();
     };
@@ -227,12 +229,12 @@ export function CalendarPage() {
             onOpen={setOpen}
             onPick={(date) => go({ date })}
             onSwipe={(dir) => go({ date: addMonths(anchor, dir) })}
-            onNew={manage ? (day) => newAt(day, 9 * 60) : undefined}
+            onNew={canAdd ? (day) => newAt(day, 9 * 60) : undefined}
           />
         </div>
       );
     if (view === "month")
-      return <MonthGrid anchor={anchor} today={today} items={items} colors={colors} onOpen={setOpen} onDay={(date) => go({ view: "day", date })} onNew={manage ? (day) => newAt(day, null) : undefined} />;
+      return <MonthGrid anchor={anchor} today={today} items={items} colors={colors} onOpen={setOpen} onDay={(date) => go({ view: "day", date })} onNew={canAdd ? (day) => newAt(day, null) : undefined} />;
     if (view === "week" || view === "day") {
       const days = view === "day" ? [anchor] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i));
       return (
@@ -243,7 +245,7 @@ export function CalendarPage() {
           colors={colors}
           onOpen={setOpen}
           onDay={view === "week" ? (date) => go({ view: "day", date }) : undefined}
-          onNewAt={manage ? (day, minutes) => newAt(day, minutes < 0 ? null : minutes) : undefined}
+          onNewAt={canAdd ? (day, minutes) => newAt(day, minutes < 0 ? null : minutes) : undefined}
         />
       );
     }
@@ -262,7 +264,7 @@ export function CalendarPage() {
             <h1 className="flex-1 text-[23px] font-heading font-extrabold text-ink">Calendar</h1>
             {isFetching && <Spinner className="h-4 w-4" />}
             <Button variant="secondary" size="sm" onClick={() => go({ date: today })} className="h-9">Today</Button>
-            {manage && (
+            {canAdd && (
               <Button size="icon" onClick={newEvent} aria-label="New event" className="h-9 w-9">
                 <Plus className="h-5 w-5" />
               </Button>
@@ -296,7 +298,7 @@ export function CalendarPage() {
                   <Tags className="h-4 w-4" />
                 </Button>
               )}
-              {manage && (
+              {canAdd && (
                 <Button onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined}>
                   <Plus className="h-4 w-4" /> New event
                 </Button>
@@ -318,7 +320,7 @@ export function CalendarPage() {
 
       <div className="relative min-h-0 flex-1">{content}</div>
 
-      <EventDetail occ={open} today={today} colors={colors} canManage={manage} onClose={() => setOpen(null)} onEdit={onEdit} onDelete={onDelete} />
+      <EventDetail occ={open} today={today} colors={colors} onClose={() => setOpen(null)} onEdit={onEdit} onDelete={onDelete} />
       <ScopeDialog
         action={scopeFor?.action ?? null}
         onClose={() => setScopeFor(null)}

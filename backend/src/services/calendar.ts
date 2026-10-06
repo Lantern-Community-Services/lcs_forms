@@ -2,7 +2,8 @@ import type { Request } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import { badRequest, notFound } from "../http.js";
+import { badRequest, forbidden, notFound } from "../http.js";
+import { canAccessSite } from "../auth/middleware.js";
 import { sitesInScope } from "./siteScope.js";
 import { actorOf, audit } from "./audit.js";
 import { getSetting, setSetting } from "./settings.js";
@@ -16,9 +17,13 @@ import {
  * with single days of a series cancelled, moved or reworded on their own.
  *
  * Everyone signed in reads it and sees the events for every site plus those for
- * the sites they're assigned to (admins: all). Only `calendar.manage` writes:
- * events and categories are set by the main Admin alone, never a Site Admin or
- * anyone else. Days and times are New York wall-clock text; see schema.prisma.
+ * the sites they're assigned to (admins: all). Two kinds of people change it:
+ *   - `calendar.manage` (the Admin role only): everything, categories included;
+ *   - `calendar.edit` (the per-person "Can edit the calendar" switch, which only
+ *     an Admin turns on): events whose sites are all their own. Never an event
+ *     for every site, never one that also reaches a site they aren't at, never
+ *     the categories.
+ * Days and times are New York wall-clock text; see schema.prisma.
  */
 
 export const COLOR_SLOTS = 8;
@@ -187,6 +192,29 @@ export function ruleOf(ev: { recurrence: string | null }): Recurrence | null {
   }
 }
 
+// ── Who may change what ──────────────────────────────────────────────────
+
+const managesAll = (req: Request) => Boolean(req.user?.permissions.includes("calendar.manage"));
+
+/**
+ * May this person change an event that's for these sites (or create one)?
+ * Admins: any. A calendar editor: only one for chosen sites, every one of
+ * them theirs, so they can't touch what other sites see.
+ */
+export function canChangeEvent(req: Request, ev: { allSites: boolean; siteIds: string[] }): boolean {
+  if (managesAll(req)) return true;
+  if (!req.user?.permissions.includes("calendar.edit")) return false;
+  return !ev.allSites && ev.siteIds.length > 0 && ev.siteIds.every((id) => canAccessSite(req, id));
+}
+
+function assertCanChange(req: Request, ev: { allSites: boolean; siteIds: string[] }) {
+  if (canChangeEvent(req, ev)) return;
+  if (ev.allSites) throw forbidden("Only an Admin can add or change events for every site.");
+  throw forbidden("You can only add or change events for your own sites.");
+}
+
+const sitesOf = (ev: { allSites: boolean; sites: { siteId: string }[] }) => ({ allSites: ev.allSites, siteIds: ev.sites.map((s) => s.siteId) });
+
 /** Can this person see this event: it's for every site, or for one of theirs. */
 function canSee(req: Request, ev: { allSites: boolean; sites: { siteId: string }[] }): boolean {
   const mine = req.user?.siteIds;
@@ -209,9 +237,12 @@ export interface Occurrence extends When {
   repeatText: string | null;
   /** This day was changed on its own. */
   changed: boolean;
+  /** The person asking may edit or delete it (see canChangeEvent). */
+  canEdit: boolean;
 }
+type Occ = Omit<Occurrence, "canEdit">;
 
-function occurrenceOf(ev: SeriesRow, rule: Recurrence | null, date: string, ex: SeriesRow["exceptions"][number] | undefined): Occurrence {
+function occurrenceOf(ev: SeriesRow, rule: Recurrence | null, date: string, ex: SeriesRow["exceptions"][number] | undefined): Occ {
   const span = daysApart(ev.startDate, ev.endDate);
   const moved = ex?.startDate && ex.endDate;
   return {
@@ -236,11 +267,11 @@ function occurrenceOf(ev: SeriesRow, rule: Recurrence | null, date: string, ex: 
 }
 
 /** Every occurrence of one series that touches `from`–`to`. */
-function expand(ev: SeriesRow, from: string, to: string): Occurrence[] {
+function expand(ev: SeriesRow, from: string, to: string): Occ[] {
   const rule = ruleOf(ev);
   const span = daysApart(ev.startDate, ev.endDate);
   const exceptions = new Map(ev.exceptions.map((x) => [x.originalDate, x]));
-  const out: Occurrence[] = [];
+  const out: Occ[] = [];
   // Starting up to `span` days early: a multi-day occurrence that began before
   // `from` is still on screen.
   for (const day of daysBetween(ev.startDate, rule, addDays(from, -span), to)) {
@@ -254,7 +285,7 @@ function expand(ev: SeriesRow, from: string, to: string): Occurrence[] {
   return out;
 }
 
-const sortKey = (o: Occurrence) => `${o.startDate} ${o.allDay ? "" : o.startTime} ${o.title.toLowerCase()}`;
+const sortKey = (o: Occ) => `${o.startDate} ${o.allDay ? "" : o.startTime} ${o.title.toLowerCase()}`;
 
 /**
  * The occurrences from `from` to `to` (inclusive days) for the sites asked
@@ -290,7 +321,10 @@ export async function loadOccurrences(req: Request, query: Record<string, unknow
     },
     include: SERIES_INCLUDE,
   });
-  const items = rows.flatMap((ev) => expand(ev, from, to));
+  const items = rows.flatMap((ev) => {
+    const canEdit = canChangeEvent(req, sitesOf(ev));
+    return expand(ev, from, to).map((o): Occurrence => ({ ...o, canEdit }));
+  });
   items.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
   return { from, to, items };
 }
@@ -319,6 +353,7 @@ export async function loadSeries(req: Request, id: string) {
     lastDate: ev.lastDate,
     cancelledDates: ev.exceptions.filter((x) => x.cancelled).map((x) => x.originalDate).sort(),
     changedDates: ev.exceptions.filter((x) => !x.cancelled).map((x) => x.originalDate).sort(),
+    canEdit: canChangeEvent(req, sitesOf(ev)),
     createdByName: ev.createdByName,
     updatedByName: ev.updatedByName,
     createdAt: ev.createdAt,
@@ -344,6 +379,7 @@ async function siteNames(ids: string[]) {
 }
 
 export async function createEvent(req: Request, input: EventInput) {
+  assertCanChange(req, input);
   const { data, rule, siteIds } = await seriesFields(input);
   const ev = await prisma.calendarEvent.create({
     data: {
@@ -444,6 +480,9 @@ async function updateFollowing(req: Request, ev: SeriesRow, rule: Recurrence, da
 export async function updateEvent(req: Request, id: string, scope: Scope, date: string | undefined, input: EventInput) {
   const ev = await loadForWrite(id);
   const rule = ruleOf(ev);
+  assertCanChange(req, sitesOf(ev));
+  // Changing one day keeps the series' sites; anything else may move it, and it must stay within reach.
+  if (!rule || scope !== "this") assertCanChange(req, input);
   let result: string;
   if (!rule || scope === "all") {
     result = await updateSeries(req, ev, input);
@@ -465,6 +504,7 @@ export async function updateEvent(req: Request, id: string, scope: Scope, date: 
 
 export async function deleteEvent(req: Request, id: string, scope: Scope, date: string | undefined) {
   const ev = await loadForWrite(id);
+  assertCanChange(req, sitesOf(ev));
   const rule = ruleOf(ev);
   if (rule && scope !== "all" && (!date || !isOccurrence(ev.startDate, rule, date))) throw badRequest("That day isn't one of this event's.");
 
@@ -494,6 +534,7 @@ export async function deleteEvent(req: Request, id: string, scope: Scope, date: 
 /** Undo cancelling one day of a series. */
 export async function restoreOccurrence(req: Request, id: string, date: string) {
   const ev = await loadForWrite(id);
+  assertCanChange(req, sitesOf(ev));
   const ex = ev.exceptions.find((x) => x.originalDate === date && x.cancelled);
   if (!ex) return;
   const reworded = ex.title !== null || ex.description !== null || ex.location !== null || ex.startDate !== null;

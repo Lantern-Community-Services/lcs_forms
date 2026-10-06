@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Avatar } from "@/components/ui/avatar";
-import { ToneBadge } from "@/components/ui/badge";
+import { Tag, ToneBadge } from "@/components/ui/badge";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { Chip } from "@/components/ui/chip";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
@@ -35,6 +36,8 @@ type Draft = {
   /** Sites the person holds that this editor doesn't manage. */
   otherSites: number;
   canEditRole: boolean;
+  /** "Can edit the calendar": events for their own sites. Only an Admin changes it. */
+  calendarEditor: boolean;
 };
 
 /**
@@ -43,7 +46,8 @@ type Draft = {
  *
  * An Admin sees everyone. A Site Admin sees the people at their sites (and new
  * sign-ins not placed anywhere yet), can hand out only the site roles, and can
- * only tick their own sites — the server enforces the same.
+ * only tick their own sites — the server enforces the same. The "Can edit the
+ * calendar" switch is an Admin's alone: a Site Admin sees it but can't change it.
  */
 export function AdminPeople() {
   const { can } = useAuth();
@@ -64,8 +68,10 @@ export function AdminPeople() {
   async function save() {
     if (!draft) return;
     try {
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds });
-      else await api.post("/users", { name: draft.name, email: draft.email, roleKey: draft.roleKey, siteIds: draft.siteIds });
+      // Only an Admin may send the calendar switch; the server refuses it from anyone else.
+      const calendar = everyone ? { calendarEditor: draft.calendarEditor } : {};
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar });
+      else await api.post("/users", { name: draft.name, email: draft.email, roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar });
       toast(draft.id ? "Saved." : `Invited ${draft.name}. They'll be active on first sign-in.`);
       setDraft(null);
       await qc.invalidateQueries({ queryKey: ["admin", "users"] });
@@ -81,6 +87,7 @@ export function AdminPeople() {
       siteIds: u.sites.filter((s) => mine.has(s.id)).map((s) => s.id),
       otherSites: u.sites.filter((s) => !mine.has(s.id)).length,
       canEditRole: u.canEditRole,
+      calendarEditor: Boolean(u.calendarEditor),
     });
   };
   const role = roles?.find((r) => r.key === draft?.roleKey);
@@ -95,7 +102,7 @@ export function AdminPeople() {
           ? "Invite Lantern and partner staff. Partner staff can sign in with Google Workspace once their domain or address is admitted."
           : "People at your sites, and new sign-ins waiting to be placed. You can give out the site roles for your own sites."}
         actions={
-          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", siteIds: [], otherSites: 0, canEditRole: true })}>
+          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false })}>
             <UserPlus className="h-4 w-4" /> Invite
           </Button>
         }
@@ -121,6 +128,7 @@ export function AdminPeople() {
                     </span>
                   </span>
                   <span className="hidden text-micro text-muted md:block">{u.lastSignInAt ? `signed in ${relativeTime(u.lastSignInAt)}` : "never signed in"}</span>
+                  {u.calendarEditor && u.roleKey !== "admin" && <Tag tone="accent" title="Can edit the calendar">Calendar</Tag>}
                   <span className="hidden text-[13px] text-ink sm:block">{u.role.name}</span>
                   <ToneBadge tone={STATUS_TONE[u.status]}>{u.status === "requested" ? "Wants access" : u.status}</ToneBadge>
                 </button>
@@ -164,6 +172,21 @@ export function AdminPeople() {
                   </Field>
                 )}
               </div>
+              {draft.roleKey === "admin" ? (
+                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Admins can always edit the calendar and its categories.</p>
+              ) : everyone ? (
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
+                  <span>
+                    <span className="block text-[13.5px] font-semibold text-ink">Can edit the calendar</span>
+                    <span className="block text-micro text-muted">
+                      Add, change and remove events for {role?.allSites ? "any site, one site at a time" : "their own sites"}. Events for every site and the categories stay with Admins.
+                    </span>
+                  </span>
+                  <Switch checked={draft.calendarEditor} onCheckedChange={(calendarEditor) => setDraft({ ...draft, calendarEditor })} className="mt-0.5" />
+                </label>
+              ) : draft.calendarEditor ? (
+                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can edit the calendar at their sites. Only an Admin can change that.</p>
+              ) : null}
               {role?.allSites ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{role.name} sees every site.</p>
               ) : (

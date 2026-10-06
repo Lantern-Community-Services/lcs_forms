@@ -624,6 +624,9 @@ model User {
   defaultLandingPage String @default("/forms")
   /// Site code the roster opens on. Null = first site they can see.
   defaultSiteCode    String?
+  /// Can add, change and remove calendar events for their own sites, whatever
+  /// their role. Only an Admin turns it on. Admins can always edit the calendar.
+  calendarEditor     Boolean @default(false)
   lastSignInAt  DateTime?
 
   /// Sites this person may act on. Empty = all sites (admins always all).
