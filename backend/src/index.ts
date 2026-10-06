@@ -5,6 +5,7 @@ import { migrateLegacyRoles } from "./services/permissions.js";
 import { ensureDefaultHotFoodItems } from "./services/hotFoods.js";
 import { ensureSiteLocations } from "./services/siteLocations.js";
 import { ensureDefaultCalendarCategories } from "./services/calendar.js";
+import { startOutlookSync } from "./services/outlookSync.js";
 
 // A fresh database (a new deployment) opens with the forms already listed.
 // Logged, never fatal: the API is still worth serving without a catalog.
@@ -21,6 +22,8 @@ ensureDefaultHotFoodItems()
 ensureDefaultCalendarCategories()
   .then((wrote) => wrote && console.log("  Calendar: wrote the default categories."))
   .catch((err) => console.error("[calendar] could not write the default categories:", err));
+
+if (startOutlookSync()) console.log("  Calendar: sending events to Outlook.");
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, Plus, Tags } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, Mail, Plus, Tags } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useDeviceKind } from "@/lib/device";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { api } from "@/lib/api";
-import { calendarApi, useCalendar, useCalendarCategories, useCalendarMutation } from "@/lib/queries";
+import { calendarApi, useCalendar, useCalendarCategories, useCalendarMutation, useOutlookPrefs } from "@/lib/queries";
 import { addDays, isDay } from "@/lib/recurrence";
 import { addMonths, categoryColor, fetchRange, nyNowMinutes, nyToday, shortDay, startOfWeek, step, viewTitle, type CalendarView } from "@/lib/calendar";
 import { readStoredJson, writeStorage } from "@/lib/storage";
@@ -23,6 +23,7 @@ import { AgendaList } from "./AgendaList";
 import { EventDetail, ScopeDialog } from "./EventDetail";
 import { EventEditor, type EditorTarget } from "./EventEditor";
 import { CategoriesDialog } from "./CategoriesDialog";
+import { OutlookDialog } from "./OutlookDialog";
 
 const HIDDEN_KEY = "ln.calendar.hidden";
 /** The filter's stand-in for "no category". */
@@ -96,6 +97,22 @@ export function CalendarPage() {
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [scopeFor, setScopeFor] = useState<{ action: "edit" | "delete"; occ: CalendarOccurrence } | null>(null);
   const [showCategories, setShowCategories] = useState(false);
+  // "Add to my Outlook": asked once, the first time someone opens the calendar.
+  const { data: outlook } = useOutlookPrefs();
+  const [showOutlook, setShowOutlook] = useState(false);
+  const [askedOutlook, setAskedOutlook] = useState(false);
+  useEffect(() => {
+    if (outlook && !outlook.answered && !askedOutlook) {
+      setAskedOutlook(true);
+      setShowOutlook(true);
+    }
+  }, [outlook, askedOutlook]);
+  const outlookButton = (
+    <Button variant="secondary" size={phone ? "icon" : "md"} onClick={() => setShowOutlook(true)} aria-label="Add to my Outlook" title="Add to my Outlook" className={phone ? "h-9 w-9" : undefined}>
+      <Mail className="h-4 w-4" />
+      {!phone && "Outlook"}
+    </Button>
+  );
   const fail = (e: unknown, fallback: string) => toast(errorMessage(e, fallback), "error");
 
   async function startEdit(occ: CalendarOccurrence, scope: CalendarScope) {
@@ -263,6 +280,7 @@ export function CalendarPage() {
           <div className="flex items-center gap-2">
             <h1 className="flex-1 text-[23px] font-heading font-extrabold text-ink">Calendar</h1>
             {isFetching && <Spinner className="h-4 w-4" />}
+            {outlookButton}
             <Button variant="secondary" size="sm" onClick={() => go({ date: today })} className="h-9">Today</Button>
             {canAdd && (
               <Button size="icon" onClick={newEvent} aria-label="New event" className="h-9 w-9">
@@ -292,6 +310,7 @@ export function CalendarPage() {
             {isFetching && <Spinner className="h-4 w-4" />}
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <SitePicker codes={codes} onChange={setCodes} counts={false} className="w-[220px]" />
+              {outlookButton}
               {viewSwitch}
               {manage && (
                 <Button variant="secondary" size="icon" onClick={() => setShowCategories(true)} title="Event categories" aria-label="Event categories">
@@ -333,6 +352,7 @@ export function CalendarPage() {
         }}
       />
       <EventEditor target={editor} onClose={() => setEditor(null)} />
+      <OutlookDialog open={showOutlook} onClose={() => setShowOutlook(false)} />
       {manage && <CategoriesDialog open={showCategories} onClose={() => setShowCategories(false)} />}
     </div>
   );

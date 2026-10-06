@@ -388,6 +388,8 @@ export interface CalendarOccurrence {
   changed: boolean;
   /** The signed-in person may edit or delete it (the server decides). */
   canEdit: boolean;
+  /** The Teams link Outlook made for it. */
+  teamsJoinUrl: string | null;
 }
 
 /** A whole event (or series) as the editor loads it. */
@@ -411,6 +413,10 @@ export interface CalendarSeries {
   cancelledDates: string[];
   changedDates: string[];
   canEdit: boolean;
+  teamsMeeting: boolean;
+  teamsJoinUrl: string | null;
+  /** How it stands in Outlook; only for people who can change it. */
+  outlook: { sent: boolean; waiting: boolean; error: string | null; syncedAt: string | null } | null;
   createdByName: string;
   updatedByName: string | null;
   createdAt: string;
@@ -431,6 +437,19 @@ export interface CalendarEventInput {
   endDate: string;
   endTime: string | null;
   recurrence: import("./recurrence").Recurrence | null;
+  /** Give it a Teams meeting link in Outlook. */
+  teamsMeeting: boolean;
+}
+
+/** The "Add to my Outlook" choices. */
+export interface OutlookPrefs {
+  /** The server is set up to send to Outlook. Choices are kept either way. */
+  enabled: boolean;
+  email: string;
+  answered: boolean;
+  everySite: boolean;
+  siteIds: string[];
+  sites: SiteRef[];
 }
 
 /** Which occurrences a change to a repeating event applies to. */

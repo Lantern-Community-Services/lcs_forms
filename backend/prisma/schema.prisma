@@ -52,6 +52,7 @@ model Site {
   attendanceEvents AttendanceEvent[]
   hotFoodEntries   HotFoodEntry[]
   calendarEvents   CalendarEventSite[]
+  calendarFollows  CalendarFollow[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -325,6 +326,9 @@ model CalendarEvent {
   endTime     String?
   /// JSON text: the repeat rule (src/calendar/recurrence.ts). Null = happens once.
   recurrence  String?
+  /// Give it a Microsoft Teams meeting link when it goes to Outlook. Once
+  /// Outlook has made the link it can't be taken away (a Microsoft rule).
+  teamsMeeting Boolean @default(false)
   /// The day it first happens, and the day its last occurrence ends, so a
   /// month's events are an indexed range query. lastDate null = repeats forever.
   firstDate   String
@@ -337,6 +341,19 @@ model CalendarEvent {
 
   sites      CalendarEventSite[]
   exceptions CalendarException[]
+
+  // ── Outlook (services/outlookSync.ts) ──
+  /// The meeting's id in the organizer mailbox (CALENDAR_ORGANIZER), once sent.
+  outlookEventId  String?
+  /// The Teams join link Outlook made for it.
+  teamsJoinUrl    String?
+  /// Changed since Outlook last heard about it; the sync queue picks these up.
+  outlookDirty    Boolean   @default(true)
+  /// Why the last send failed (or can't happen), in words. Null = fine.
+  outlookError    String?
+  outlookSyncedAt DateTime?
+  /// What was last sent, hashed, so an unchanged event isn't sent again.
+  outlookHash     String?
 
   @@index([firstDate])
   @@index([lastDate])
@@ -351,6 +368,26 @@ model CalendarEventSite {
 
   @@id([eventId, siteId])
   @@index([siteId])
+}
+
+/// A site whose events someone wants as invites in their own Outlook calendar.
+model CalendarFollow {
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  siteId String
+
+  @@id([userId, siteId])
+  @@index([siteId])
+}
+
+/// An Outlook meeting still to be cancelled, after its event was deleted here.
+model CalendarOutlookTrash {
+  id             String   @id @default(cuid())
+  outlookEventId String
+  title          String
+  error          String?
+  createdAt      DateTime @default(now())
 }
 
 /// One day of a repeating event changed on its own: cancelled, moved, or
@@ -627,11 +664,17 @@ model User {
   /// Can add, change and remove calendar events for their own sites, whatever
   /// their role. Only an Admin turns it on. Admins can always edit the calendar.
   calendarEditor     Boolean @default(false)
+  /// Outlook invites: every-site events too. Set in the calendar's "Add to my
+  /// Outlook" popup, along with the sites in CalendarFollow.
+  calendarSyncEverySite Boolean @default(false)
+  /// When they last answered that popup. Null = never asked yet.
+  calendarSyncSetAt     DateTime?
   lastSignInAt  DateTime?
 
   /// Sites this person may act on. Empty = all sites (admins always all).
   sites UserSite[]
   formFavorites FormFavorite[]
+  calendarFollows CalendarFollow[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

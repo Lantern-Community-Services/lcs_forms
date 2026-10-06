@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlignLeft, Building2, MapPin, Pencil, Repeat, Tag as TagIcon, Trash2 } from "lucide-react";
+import { AlignLeft, Building2, MapPin, Pencil, Repeat, Tag as TagIcon, Trash2, Video } from "lucide-react";
 import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { relativeDayName, whenText } from "@/lib/calendar";
@@ -60,6 +60,13 @@ export function EventDetail({
           )}
           <Row icon={<Building2 className="h-4 w-4" />}>{occ.allSites ? "Every site" : occ.sites.map((s) => s.name).join(", ")}</Row>
           {color.name && <Row icon={<TagIcon className="h-4 w-4" />}>{color.name}</Row>}
+          {occ.teamsJoinUrl && (
+            <Row icon={<Video className="h-4 w-4" />}>
+              <a href={occ.teamsJoinUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent underline underline-offset-2 dark:text-white">
+                Join the Teams meeting
+              </a>
+            </Row>
+          )}
           {occ.location && <Row icon={<MapPin className="h-4 w-4" />}>{occ.location}</Row>}
           {occ.description && (
             <Row icon={<AlignLeft className="h-4 w-4" />}>

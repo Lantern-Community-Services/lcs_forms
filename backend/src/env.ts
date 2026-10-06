@@ -41,6 +41,13 @@ export const env = {
   mailFrom: process.env.MAIL_FROM ?? "",
 
   /**
+   * The "Lantern Calendar" mailbox that organizes the calendar's Outlook
+   * meetings and invites people to them (Graph, app-only; see
+   * services/outlookSync.ts). Empty = nothing is sent to Outlook.
+   */
+  calendarOrganizer: (process.env.CALENDAR_ORGANIZER ?? "").trim(),
+
+  /**
    * Email domains always allowed to sign in. Admins add partner / Google
    * Workspace domains at runtime in Admin → Sign-in access; those are unioned
    * with this list. Empty = any account the tenant admits.

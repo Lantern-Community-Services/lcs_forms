@@ -289,8 +289,66 @@ top of the phone's **All forms** sheet.
   `POST /events/:id/restore`, and `/categories`. Writes are in the audit log as `calendar.*`.
 - **Offline**, on iPads and phones: this month and next are saved with the rest of the site, so the
   calendar opens without a connection. Changes need one.
-- **Not done yet:** reminders or email, an iCal/Outlook subscription feed, and showing upcoming
-  events on the Home dashboard.
+- **Not done yet:** reminders or email, and showing upcoming events on the Home dashboard.
+
+### Calendar in Outlook
+
+Events go into each person's **own** Outlook calendar as meeting invites from a **Lantern
+Calendar** mailbox. The app is still where events are made and changed; Outlook is told about each
+change (one way: edits made in Outlook aren't brought back).
+
+- **Who gets what.** The first time someone opens the calendar, a popup asks which events they want
+  in Outlook: "Events for every site" and any of their own sites (all ticked to start; "None for
+  me" is an answer too). The Outlook button on the calendar reopens it. An every-site event goes to
+  everyone who ticked every-site events; a site event to everyone who ticked one of its sites and is
+  still assigned there. Invites don't ask for replies.
+- **Teams.** An event with **Teams meeting** on gets a Teams link in the invite, and a "Join the
+  Teams meeting" link on the calendar. Once Outlook has made the link it can't be removed, so the
+  switch then stays on. A Teams meeting's notes aren't updated in Outlook after it's sent (a new
+  body would wipe out the join details).
+- **What's sent.** Title, times (New York), location, notes with a link back here, the repeat rule,
+  and single days changed or cancelled. Deleting an event cancels the meeting. Repeat patterns
+  Outlook can't express (a "fifth" or "second-to-last" day, yearly in several months, every few days
+  on some weekdays only, days 29–31 of the month) stay on this calendar only; the editor says so.
+- **How.** `backend/src/services/outlookSync.ts`. A save marks the event; about 15 seconds later
+  (so an Undo cancels out) the server sends it through Microsoft Graph, app-only, as
+  `CALENDAR_ORGANIZER`. Unchanged events aren't re-sent. Failures are retried every 5 minutes, and
+  every 6 hours each upcoming event's invite list is checked again, since people's sites change.
+  Admins can see where it stands at `GET /api/calendar/outlook/status` and send now with
+  `POST /api/calendar/outlook/run`.
+- **Restoring a cancelled day** after Outlook already cancelled it doesn't bring it back in Outlook.
+
+**Setting it up (once).** The app uses its existing Entra app registration and client secret (the
+ones sign-in uses).
+
+1. **Create the organizer.** In the Microsoft 365 admin center, create a user
+   `calendar@lanterncommunity.org`, display name **Lantern Calendar**, with a license that includes
+   Exchange Online and Teams (Teams is needed for it to organize Teams meetings). Nobody needs to
+   sign in as it.
+2. **Find the app's two IDs.** Entra admin center → **Enterprise applications** (not App
+   registrations, which shows different values) → the Lantern Forms app → Overview. Copy the
+   **Application ID** and the **Object ID**.
+3. **Give the app calendar access to that one mailbox only**, in Exchange Online PowerShell as an
+   Exchange admin (Organization Management). Don't add Calendars.ReadWrite under API permissions in
+   Entra: an Entra grant reaches every mailbox in the organization, and Exchange can't fence it.
+
+   ```powershell
+   Connect-ExchangeOnline
+   New-ServicePrincipal -AppId <Application ID> -ObjectId <Object ID> -DisplayName "Lantern Forms"
+   New-ManagementScope -Name "Lantern Calendar only" -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'calendar@lanterncommunity.org'"
+   New-ManagementRoleAssignment -App <Object ID> -Role "Application Calendars.ReadWrite" -CustomResourceScope "Lantern Calendar only"
+   Test-ServicePrincipalAuthorization -Identity <Object ID> -Resource calendar@lanterncommunity.org
+   ```
+
+   The test should list Application Calendars.ReadWrite with InScope True. Exchange can take 30
+   minutes to 2 hours to apply it.
+4. **Tell the server.** Set `CALENDAR_ORGANIZER=calendar@lanterncommunity.org` (with the
+   `MICROSOFT_*` values sign-in already uses) and restart. The log says
+   "Calendar: sending events to Outlook."
+5. **Check it.** Turn on Teams for a test event, save, and wait about 15 seconds. The invite arrives
+   from Lantern Calendar, and `GET /api/calendar/outlook/status` shows it sent. If the Teams link
+   doesn't appear, check Teams admin center → Meetings → Meeting policies → the Outlook add-in is on
+   for Lantern Calendar's policy.
 
 ## Offline mode
 

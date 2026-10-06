@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { asyncHandler, badRequest, notFound } from "../http.js";
+import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
+import { env } from "../env.js";
+import { markUpcomingDirty, outlookConfigured, runQueue } from "../services/outlookSync.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { isDay } from "../calendar/recurrence.js";
@@ -144,5 +146,80 @@ calendarRouter.post(
     const { date } = z.object({ date: z.string().refine(isDay, "date is a day, YYYY-MM-DD.") }).parse(req.body);
     await restoreOccurrence(req, req.params.id, date);
     res.json({ ok: true });
+  })
+);
+
+// ── In my Outlook ────────────────────────────────────────────────────────
+
+/** The sites this person may follow: their own (every active site for an all-sites role). */
+async function followableSites(req: import("express").Request) {
+  const mine = req.user!.siteIds;
+  return prisma.site.findMany({
+    where: { active: true, ...(mine ? { id: { in: mine } } : {}) },
+    select: { id: true, code: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+/** What the "Add to my Outlook" popup shows: the choices, and what this person picked. */
+calendarRouter.get(
+  "/outlook/me",
+  asyncHandler(async (req, res) => {
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { email: true, calendarSyncEverySite: true, calendarSyncSetAt: true, calendarFollows: { select: { siteId: true } } },
+    });
+    res.json({
+      /** False until the server is set up to send to Outlook; choices are kept for then. */
+      enabled: outlookConfigured(),
+      email: me?.email ?? "",
+      answered: Boolean(me?.calendarSyncSetAt),
+      everySite: Boolean(me?.calendarSyncEverySite),
+      siteIds: (me?.calendarFollows ?? []).map((f) => f.siteId),
+      sites: await followableSites(req),
+    });
+  })
+);
+
+calendarRouter.put(
+  "/outlook/me",
+  asyncHandler(async (req, res) => {
+    const body = z.object({ everySite: z.boolean(), siteIds: z.array(z.string()).max(500) }).parse(req.body);
+    const allowed = new Set((await followableSites(req)).map((s) => s.id));
+    const siteIds = [...new Set(body.siteIds)];
+    if (siteIds.some((id) => !allowed.has(id))) throw forbidden("You can only add your own sites.");
+    await prisma.$transaction([
+      prisma.calendarFollow.deleteMany({ where: { userId: req.user!.userId } }),
+      prisma.calendarFollow.createMany({ data: siteIds.map((siteId) => ({ userId: req.user!.userId, siteId })) }),
+      prisma.user.update({ where: { id: req.user!.userId }, data: { calendarSyncEverySite: body.everySite, calendarSyncSetAt: new Date() } }),
+    ]);
+    // Every upcoming event's invite list is checked again (unchanged ones aren't re-sent).
+    await markUpcomingDirty();
+    res.json({ ok: true });
+  })
+);
+
+/** For Admins: is Outlook switched on, and is anything stuck. */
+calendarRouter.get(
+  "/outlook/status",
+  MANAGE,
+  asyncHandler(async (_req, res) => {
+    const [waiting, failing, sent, people, trash] = await Promise.all([
+      prisma.calendarEvent.count({ where: { outlookDirty: true } }),
+      prisma.calendarEvent.findMany({ where: { outlookError: { not: null } }, select: { id: true, title: true, outlookError: true }, take: 20 }),
+      prisma.calendarEvent.count({ where: { outlookEventId: { not: null } } }),
+      prisma.user.count({ where: { status: "active", calendarSyncSetAt: { not: null }, OR: [{ calendarSyncEverySite: true }, { calendarFollows: { some: {} } }] } }),
+      prisma.calendarOutlookTrash.count(),
+    ]);
+    res.json({ enabled: outlookConfigured(), organizer: env.calendarOrganizer || null, waiting, sent, people, cancelsWaiting: trash, failing });
+  })
+);
+
+/** For Admins: send what's waiting now rather than in a few minutes. */
+calendarRouter.post(
+  "/outlook/run",
+  MANAGE,
+  asyncHandler(async (_req, res) => {
+    res.json(await runQueue());
   })
 );

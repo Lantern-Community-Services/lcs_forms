@@ -373,3 +373,82 @@ export function presetKeyFor(start: string, rule: Recurrence | null): string {
   const want = shape(rule);
   return repeatPresets(start).find((p) => p.rule && shape(p.rule) === want)?.key ?? "custom";
 }
+
+// ── Outlook ──────────────────────────────────────────────────────────────
+
+const GRAPH_DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+const GRAPH_INDEX: Partial<Record<Nth, string>> = { 1: "first", 2: "second", 3: "third", 4: "fourth", [-1]: "last" };
+
+/** Microsoft Graph's patternedRecurrence, as it's sent to Outlook. */
+export interface GraphRecurrence {
+  pattern: {
+    type: "daily" | "weekly" | "absoluteMonthly" | "relativeMonthly" | "absoluteYearly" | "relativeYearly";
+    interval: number;
+    daysOfWeek?: string[];
+    firstDayOfWeek?: string;
+    dayOfMonth?: number;
+    month?: number;
+    index?: string;
+  };
+  range: { type: "noEnd" | "endDate" | "numbered"; startDate: string; endDate?: string; numberOfOccurrences?: number; recurrenceTimeZone: string };
+}
+
+function graphDaysFor(of: NthOf): string[] {
+  if (typeof of === "number") return [GRAPH_DAYS[of]];
+  if (of === "day") return [...GRAPH_DAYS];
+  if (of === "weekday") return GRAPH_DAYS.slice(1, 6);
+  return ["saturday", "sunday"];
+}
+
+/**
+ * The rule as Outlook's recurrence, or why Outlook can't repeat it that way.
+ * Outlook has no "fifth" or "second-to-last", repeats a yearly event in one
+ * month only, and can't limit "every 3 days" to some weekdays. Days 29–31 are
+ * refused too: in a month without the day, Outlook and this calendar may not
+ * agree on where the meeting goes, and invites must match the calendar.
+ */
+export function toGraphRecurrence(start: string, input: Recurrence): { ok: true; value: GraphRecurrence } | { ok: false; reason: string } {
+  const rule = canonicalRule(start, input);
+  const n = rule.interval;
+  const no = (reason: string) => ({ ok: false as const, reason });
+  let pattern: GraphRecurrence["pattern"];
+  const monthDayPattern = (md: MonthDay, month: number | undefined, maxDay: number) => {
+    if (md.kind === "day") {
+      if (md.day === -1) return { type: month ? "relativeYearly" : "relativeMonthly", interval: n, daysOfWeek: [...GRAPH_DAYS], index: "last", ...(month ? { month } : {}) } as GraphRecurrence["pattern"];
+      if (md.day > maxDay) return null;
+      return { type: month ? "absoluteYearly" : "absoluteMonthly", interval: n, dayOfMonth: md.day, ...(month ? { month } : {}) } as GraphRecurrence["pattern"];
+    }
+    const index = GRAPH_INDEX[md.nth];
+    if (!index) return undefined;
+    return { type: month ? "relativeYearly" : "relativeMonthly", interval: n, daysOfWeek: graphDaysFor(md.of), index, ...(month ? { month } : {}) } as GraphRecurrence["pattern"];
+  };
+
+  if (rule.freq === "daily") {
+    if (!rule.weekdays) pattern = { type: "daily", interval: n };
+    else if (n === 1) pattern = { type: "weekly", interval: 1, daysOfWeek: rule.weekdays.map((d) => GRAPH_DAYS[d]), firstDayOfWeek: "sunday" };
+    else return no("Outlook can't repeat every few days on some weekdays only.");
+  } else if (rule.freq === "weekly") {
+    pattern = { type: "weekly", interval: n, daysOfWeek: rule.weekdays!.map((d) => GRAPH_DAYS[d]), firstDayOfWeek: "sunday" };
+  } else if (rule.freq === "monthly") {
+    const p = monthDayPattern(rule.monthDay!, undefined, 28);
+    if (p === null) return no("Outlook handles days 29–31 differently in short months. Choose “Last day”, or a day up to 28.");
+    if (p === undefined) return no("Outlook has no “fifth” or “second-to-last”.");
+    pattern = p;
+  } else {
+    if (rule.months!.length !== 1) return no("Outlook repeats a yearly event in one month only.");
+    const month = rule.months![0];
+    const p = monthDayPattern(rule.monthDay!, month, month === 2 ? 28 : daysInMonth(2001, month));
+    if (p === null) return no("Outlook can't repeat on February 29.");
+    if (p === undefined) return no("Outlook has no “fifth” or “second-to-last”.");
+    pattern = p;
+  }
+
+  const tz = "Eastern Standard Time";
+  const range: GraphRecurrence["range"] =
+    rule.end.kind === "count"
+      ? { type: "numbered", startDate: start, numberOfOccurrences: rule.end.count, recurrenceTimeZone: tz }
+      : rule.end.kind === "until"
+        ? { type: "endDate", startDate: start, endDate: rule.end.date, recurrenceTimeZone: tz }
+        : { type: "noEnd", startDate: start, recurrenceTimeZone: tz };
+  return { ok: true, value: { pattern, range } };
+}

@@ -15,7 +15,7 @@ export const mailConfigured = () =>
 
 let client: ConfidentialClientApplication | null = null;
 
-async function graphToken(): Promise<string> {
+export async function graphToken(): Promise<string> {
   client ??= new ConfidentialClientApplication({
     auth: {
       clientId: env.microsoft.clientId,

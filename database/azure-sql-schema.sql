@@ -177,6 +177,7 @@ CREATE TABLE [dbo].[CalendarEvent] (
     [endDate] NVARCHAR(255) NOT NULL,
     [endTime] NVARCHAR(255),
     [recurrence] NVARCHAR(max),
+    [teamsMeeting] BIT NOT NULL CONSTRAINT [CalendarEvent_teamsMeeting_df] DEFAULT 0,
     [firstDate] NVARCHAR(255) NOT NULL,
     [lastDate] NVARCHAR(255),
     [createdById] NVARCHAR(64),
@@ -184,6 +185,12 @@ CREATE TABLE [dbo].[CalendarEvent] (
     [updatedByName] NVARCHAR(255),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarEvent_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
+    [outlookEventId] NVARCHAR(64),
+    [teamsJoinUrl] NVARCHAR(255),
+    [outlookDirty] BIT NOT NULL CONSTRAINT [CalendarEvent_outlookDirty_df] DEFAULT 1,
+    [outlookError] NVARCHAR(255),
+    [outlookSyncedAt] DATETIME2,
+    [outlookHash] NVARCHAR(255),
     CONSTRAINT [CalendarEvent_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
@@ -192,6 +199,23 @@ CREATE TABLE [dbo].[CalendarEventSite] (
     [eventId] NVARCHAR(64) NOT NULL,
     [siteId] NVARCHAR(64) NOT NULL,
     CONSTRAINT [CalendarEventSite_pkey] PRIMARY KEY CLUSTERED ([eventId],[siteId])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[CalendarFollow] (
+    [userId] NVARCHAR(64) NOT NULL,
+    [siteId] NVARCHAR(64) NOT NULL,
+    CONSTRAINT [CalendarFollow_pkey] PRIMARY KEY CLUSTERED ([userId],[siteId])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[CalendarOutlookTrash] (
+    [id] NVARCHAR(64) NOT NULL,
+    [outlookEventId] NVARCHAR(64) NOT NULL,
+    [title] NVARCHAR(255) NOT NULL,
+    [error] NVARCHAR(max),
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarOutlookTrash_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [CalendarOutlookTrash_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
 -- CreateTable
@@ -367,6 +391,8 @@ CREATE TABLE [dbo].[User] (
     [defaultLandingPage] NVARCHAR(255) NOT NULL CONSTRAINT [User_defaultLandingPage_df] DEFAULT '/forms',
     [defaultSiteCode] NVARCHAR(255),
     [calendarEditor] BIT NOT NULL CONSTRAINT [User_calendarEditor_df] DEFAULT 0,
+    [calendarSyncEverySite] BIT NOT NULL CONSTRAINT [User_calendarSyncEverySite_df] DEFAULT 0,
+    [calendarSyncSetAt] DATETIME2,
     [lastSignInAt] DATETIME2,
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [User_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
@@ -497,6 +523,9 @@ CREATE NONCLUSTERED INDEX [CalendarEvent_lastDate_idx] ON [dbo].[CalendarEvent](
 CREATE NONCLUSTERED INDEX [CalendarEventSite_siteId_idx] ON [dbo].[CalendarEventSite]([siteId]);
 
 -- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarFollow_siteId_idx] ON [dbo].[CalendarFollow]([siteId]);
+
+-- CreateIndex
 CREATE NONCLUSTERED INDEX [CalendarException_startDate_idx] ON [dbo].[CalendarException]([startDate]);
 
 -- CreateIndex
@@ -582,6 +611,12 @@ ALTER TABLE [dbo].[CalendarEventSite] ADD CONSTRAINT [CalendarEventSite_eventId_
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarEventSite] ADD CONSTRAINT [CalendarEventSite_siteId_fkey] FOREIGN KEY ([siteId]) REFERENCES [dbo].[Site]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarFollow] ADD CONSTRAINT [CalendarFollow_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarFollow] ADD CONSTRAINT [CalendarFollow_siteId_fkey] FOREIGN KEY ([siteId]) REFERENCES [dbo].[Site]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarException] ADD CONSTRAINT [CalendarException_eventId_fkey] FOREIGN KEY ([eventId]) REFERENCES [dbo].[CalendarEvent]([id]) ON DELETE CASCADE ON UPDATE CASCADE;

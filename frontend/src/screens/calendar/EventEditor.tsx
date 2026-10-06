@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Repeat } from "lucide-react";
+import { Repeat, Video } from "lucide-react";
 import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Field, Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { calendarApi, useCalendarCategories, useCalendarMutation, useSites } from "@/lib/queries";
-import { addDays, canonicalRule, daysApart, presetKeyFor, repeatPresets, ruleProblem, type Recurrence } from "@/lib/recurrence";
+import { addDays, canonicalRule, daysApart, presetKeyFor, repeatPresets, ruleProblem, toGraphRecurrence, type Recurrence } from "@/lib/recurrence";
 import { categoryColor, longDay, minutesOf, timeOf } from "@/lib/calendar";
 import type { CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries } from "@/lib/types";
 import { cn, errorMessage } from "@/lib/utils";
@@ -37,6 +37,7 @@ interface Draft {
   repeatKey: string;
   custom: RuleShape;
   end: EndDraft;
+  teamsMeeting: boolean;
 }
 
 const withoutEnd = ({ end: _end, ...shape }: Recurrence): RuleShape => shape;
@@ -63,6 +64,7 @@ function draftFor(target: EditorTarget, everySite: boolean, ownSiteIds: string[]
       repeatKey: "none",
       custom: shapeFor("weekly", target.day),
       end: { kind: "never", count: 10, until: addDays(target.day, 90) },
+      teamsMeeting: false,
     };
   }
   const { series: s, scope, occ } = target;
@@ -91,6 +93,7 @@ function draftFor(target: EditorTarget, everySite: boolean, ownSiteIds: string[]
     endTime: when.endTime ?? "10:00",
     repeatKey: presetKeyFor(when.startDate, rule),
     custom: rule ? withoutEnd(canonicalRule(s.startDate, rule)) : shapeFor("weekly", when.startDate),
+    teamsMeeting: s.teamsMeeting,
     end: {
       kind: rule?.end.kind ?? "never",
       count: rule?.end.kind === "count" ? rule.end.count : 10,
@@ -143,6 +146,13 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
   const splitDay = target.mode === "edit" && scope === "following" ? target.occ?.date ?? null : null;
   const rule = useMemo(() => (single ? null : ruleOf(draft)), [draft, single]);
   const problem = problemOf(draft, rule, scope, splitDay, everySite);
+  // Outlook can't repeat every pattern this calendar can; say so before saving.
+  const outlookProblem = useMemo(() => {
+    if (!rule || !draft.startDate || ruleProblem(draft.startDate, rule)) return null;
+    const mapped = toGraphRecurrence(draft.startDate, rule);
+    return mapped.ok ? null : mapped.reason;
+  }, [rule, draft.startDate]);
+  const teamsLocked = target.mode === "edit" && Boolean(target.series.teamsJoinUrl);
   const presets = useMemo(() => repeatPresets(draft.startDate || "2026-01-01"), [draft.startDate]);
   useEffect(() => setError(null), [draft]);
 
@@ -189,6 +199,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
       endDate: draft.endDate,
       endTime: draft.allDay ? null : draft.endTime,
       recurrence: single ? (target.mode === "edit" ? target.series.recurrence : null) : rule,
+      teamsMeeting: draft.teamsMeeting,
     };
     save.mutate(input, {
       onSuccess: () => {
@@ -278,6 +289,11 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
               <>
                 <EndFields value={draft.end} start={draft.startDate} onChange={(end) => set({ end })} />
                 <RepeatSummary rule={rule} start={draft.startDate} problem={draft.startDate ? ruleProblem(draft.startDate, rule) : null} />
+                {outlookProblem && (
+                  <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+                    {outlookProblem} So this event will stay on this calendar and won't be sent to people's Outlook.
+                  </p>
+                )}
               </>
             )}
           </section>
@@ -317,6 +333,21 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
               </div>
             </section>
           </>
+        )}
+
+        {!single && (
+          <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
+            <span className="flex gap-2.5">
+              <Video className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+              <span>
+                <span className="block text-[13.5px] font-semibold text-ink">Teams meeting</span>
+                <span className="block text-micro text-muted">
+                  {teamsLocked ? "This event's Outlook invite has a Teams link. Outlook can't take it away." : "The Outlook invite gets a link to join on Teams. Once it's sent, it can't be removed."}
+                </span>
+              </span>
+            </span>
+            <Switch checked={draft.teamsMeeting || teamsLocked} disabled={teamsLocked} onCheckedChange={(teamsMeeting) => set({ teamsMeeting })} className="mt-0.5" />
+          </label>
         )}
 
         <Field label="Location">

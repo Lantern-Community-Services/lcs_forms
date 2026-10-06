@@ -7,6 +7,7 @@ import { canAccessSite } from "../auth/middleware.js";
 import { sitesInScope } from "./siteScope.js";
 import { actorOf, audit } from "./audit.js";
 import { getSetting, setSetting } from "./settings.js";
+import { noteCalendarChange, queueOutlookCancel } from "./outlookSync.js";
 import {
   addDays, canonicalRule, countBefore, daysApart, daysBetween, describeRule, firstDay, isDay, isOccurrence, lastDay, ruleProblem,
   type Recurrence,
@@ -99,6 +100,8 @@ export const eventInput = z.object({
   endTime: time.nullish(),
   // The shapes match recurrence.ts; ruleProblem() checks the values.
   recurrence: recurrenceSchema.nullish().transform((r) => (r ?? null) as Recurrence | null),
+  /** Give it a Teams meeting link in Outlook. */
+  teamsMeeting: z.boolean().default(false),
 });
 export type EventInput = z.infer<typeof eventInput>;
 
@@ -166,6 +169,7 @@ async function seriesFields(input: EventInput) {
       allSites: input.allSites,
       ...when,
       recurrence: rule ? JSON.stringify(rule) : null,
+      teamsMeeting: input.teamsMeeting,
       firstDate: first,
       lastDate: last === null ? null : addDays(last, span),
     },
@@ -239,6 +243,8 @@ export interface Occurrence extends When {
   changed: boolean;
   /** The person asking may edit or delete it (see canChangeEvent). */
   canEdit: boolean;
+  /** The Teams link Outlook made for it, when it has one. */
+  teamsJoinUrl: string | null;
 }
 type Occ = Omit<Occurrence, "canEdit">;
 
@@ -263,6 +269,7 @@ function occurrenceOf(ev: SeriesRow, rule: Recurrence | null, date: string, ex: 
     repeats: Boolean(rule),
     repeatText: rule ? describeRule(ev.startDate, rule) : null,
     changed: Boolean(ex),
+    teamsJoinUrl: ev.teamsJoinUrl,
   };
 }
 
@@ -354,6 +361,12 @@ export async function loadSeries(req: Request, id: string) {
     cancelledDates: ev.exceptions.filter((x) => x.cancelled).map((x) => x.originalDate).sort(),
     changedDates: ev.exceptions.filter((x) => !x.cancelled).map((x) => x.originalDate).sort(),
     canEdit: canChangeEvent(req, sitesOf(ev)),
+    teamsMeeting: ev.teamsMeeting,
+    teamsJoinUrl: ev.teamsJoinUrl,
+    // How it stands in Outlook, for the people who can change it.
+    outlook: canChangeEvent(req, sitesOf(ev))
+      ? { sent: Boolean(ev.outlookEventId), waiting: ev.outlookDirty, error: ev.outlookError, syncedAt: ev.outlookSyncedAt }
+      : null,
     createdByName: ev.createdByName,
     updatedByName: ev.updatedByName,
     createdAt: ev.createdAt,
@@ -396,12 +409,15 @@ export async function createEvent(req: Request, input: EventInput) {
     summary: `Added "${ev.title}" to the calendar for ${whereLabel(ev.allSites, await siteNames(siteIds))}${rule ? ` (${describeRule(ev.startDate, rule)})` : ` on ${ev.startDate}`}`,
     changes: { eventId: ev.id },
   });
+  await noteCalendarChange([ev.id]);
   return ev.id;
 }
 
 /** Change the whole series. Days changed on their own stay changed while the series still falls on them. */
 async function updateSeries(req: Request, ev: SeriesRow, input: EventInput) {
   const { data, rule, siteIds } = await seriesFields(input);
+  // Outlook can't take a Teams link away once it's made one.
+  if (ev.teamsJoinUrl) data.teamsMeeting = true;
   const stale = ev.exceptions.filter((x) => !rule || !isOccurrence(data.startDate, rule, x.originalDate)).map((x) => x.id);
   await prisma.$transaction([
     prisma.calendarEvent.update({ where: { id: ev.id }, data: { ...data, updatedByName: req.user!.name } }),
@@ -499,6 +515,7 @@ export async function updateEvent(req: Request, id: string, scope: Scope, date: 
     summary: `Changed "${input.title}" on the calendar${what}`,
     changes: { eventId: id, scope, date, newEventId: result !== id ? result : undefined },
   });
+  await noteCalendarChange([...new Set([id, result])]);
   return result;
 }
 
@@ -508,7 +525,9 @@ export async function deleteEvent(req: Request, id: string, scope: Scope, date: 
   const rule = ruleOf(ev);
   if (rule && scope !== "all" && (!date || !isOccurrence(ev.startDate, rule, date))) throw badRequest("That day isn't one of this event's.");
 
-  if (!rule || scope === "all" || (scope === "following" && date! <= ev.firstDate)) {
+  const gone = !rule || scope === "all" || (scope === "following" && date! <= ev.firstDate);
+  if (gone) {
+    await queueOutlookCancel(ev);
     await prisma.calendarEvent.delete({ where: { id } });
   } else if (scope === "this") {
     await prisma.calendarException.upsert({
@@ -529,6 +548,7 @@ export async function deleteEvent(req: Request, id: string, scope: Scope, date: 
     summary: `Removed "${ev.title}" from the calendar${what}`,
     changes: { eventId: id, scope, date },
   });
+  if (!gone) await noteCalendarChange([id]);
 }
 
 /** Undo cancelling one day of a series. */
@@ -541,4 +561,5 @@ export async function restoreOccurrence(req: Request, id: string, date: string) 
   if (reworded) await prisma.calendarException.update({ where: { id: ex.id }, data: { cancelled: false, updatedByName: req.user!.name } });
   else await prisma.calendarException.delete({ where: { id: ex.id } });
   await audit({ actor: actorOf(req), action: "calendar.event_updated", summary: `Put "${ev.title}" back on the calendar on ${date}`, changes: { eventId: id, date } });
+  await noteCalendarChange([id]);
 }

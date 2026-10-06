@@ -3,7 +3,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
 import type {
-  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
+  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
 } from "./types";
 
@@ -289,6 +289,11 @@ export function useCalendarCategories() {
   return useQuery({ queryKey: ["calendar", "categories"], queryFn: () => api.get<CalendarCategory[]>("/calendar/categories"), staleTime: 5 * 60_000 });
 }
 
+/** This person's "Add to my Outlook" choices. */
+export function useOutlookPrefs() {
+  return useQuery({ queryKey: ["calendar", "outlook"], queryFn: () => api.get<OutlookPrefs>("/calendar/outlook/me"), staleTime: 5 * 60_000 });
+}
+
 export function useCalendarSeries(id: string | undefined) {
   return useQuery({ queryKey: ["calendar", "series", id ?? ""], queryFn: () => api.get<CalendarSeries>(`/calendar/events/${id}`), enabled: Boolean(id) });
 }
@@ -303,6 +308,7 @@ export const calendarApi = {
   updateCategory: (id: string, body: { name?: string; colorSlot?: number }) => api.patch<CalendarCategory>(`/calendar/categories/${id}`, body),
   removeCategory: (id: string) => api.delete<{ ok: true }>(`/calendar/categories/${id}`),
   reorderCategories: (ids: string[]) => api.put<{ ok: true }>("/calendar/categories/order", { ids }),
+  saveOutlook: (body: { everySite: boolean; siteIds: string[] }) => api.put<{ ok: true }>("/calendar/outlook/me", body),
 };
 
 /** Every calendar write refreshes the whole family: the months on screen, the series, the categories' counts. */
