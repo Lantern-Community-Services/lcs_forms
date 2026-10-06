@@ -240,10 +240,11 @@ top of the phone's **All forms** sheet.
   sites**; people see the every-site events plus those for the sites they're assigned to (admins:
   all). The site picker narrows that further and is the same selection the roster screens use. A
   request for a site you aren't assigned to is a 403, the same as the roster.
-- **Only Admin changes it** (`calendar.manage`, which only the Admin role has). Everyone else gets
-  the same screens without New event, Edit, Delete or the categories button; the API refuses the
-  writes either way. To let another role add events later, add `calendar.manage` to it in
-  `backend/src/services/permissions.ts`.
+- **Only the main Admin changes it.** Creating, editing and deleting events, and the categories, need
+  `calendar.manage`, which only the Admin role has, by design: not Site Admins, Main Office or any
+  other role. Everyone else gets the same screens without New event, Edit, Delete or the
+  categories button, and the API refuses their writes (403) either way. Checked for every role
+  against every write endpoint.
 - **Views.** Month, Week, Day and List on a computer or an iPad; on a phone, Month (day numbers with
   a dot per event, the chosen day's events underneath, swipe to change month), Day and List. The view
   and the day are in the URL (`?view=week&date=2026-10-06`) and the view is remembered per device.

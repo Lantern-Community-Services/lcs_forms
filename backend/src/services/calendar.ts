@@ -2,7 +2,7 @@ import type { Request } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import { badRequest, forbidden, notFound } from "../http.js";
+import { badRequest, notFound } from "../http.js";
 import { sitesInScope } from "./siteScope.js";
 import { actorOf, audit } from "./audit.js";
 import { getSetting, setSetting } from "./settings.js";
@@ -16,8 +16,9 @@ import {
  * with single days of a series cancelled, moved or reworded on their own.
  *
  * Everyone signed in reads it and sees the events for every site plus those for
- * the sites they're assigned to (admins: all). Only `calendar.manage` (Admin)
- * writes. Days and times are New York wall-clock text; see schema.prisma.
+ * the sites they're assigned to (admins: all). Only `calendar.manage` writes:
+ * events and categories are set by the main Admin alone, never a Site Admin or
+ * anyone else. Days and times are New York wall-clock text; see schema.prisma.
  */
 
 export const COLOR_SLOTS = 8;
@@ -499,8 +500,4 @@ export async function restoreOccurrence(req: Request, id: string, date: string) 
   if (reworded) await prisma.calendarException.update({ where: { id: ex.id }, data: { cancelled: false, updatedByName: req.user!.name } });
   else await prisma.calendarException.delete({ where: { id: ex.id } });
   await audit({ actor: actorOf(req), action: "calendar.event_updated", summary: `Put "${ev.title}" back on the calendar on ${date}`, changes: { eventId: id, date } });
-}
-
-export function assertManage(req: Request) {
-  if (!req.user?.permissions.includes("calendar.manage")) throw forbidden("Only admins can change the calendar.");
 }
