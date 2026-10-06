@@ -74,7 +74,7 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => (v ? v : null));
 
-const formBody = z.object({
+export const formBody = z.object({
   categoryId: z.string().min(1),
   title: z.string().trim().min(1).max(120),
   description: optionalText(300),
@@ -92,7 +92,7 @@ const formBody = z.object({
     .transform((v) => (v && v.length ? [...new Set(v)].join(",") : null)),
 });
 
-const categoryBody = z.object({
+export const categoryBody = z.object({
   name: z.string().trim().min(1).max(80),
   icon: z.enum(FORM_ICONS).default("folder"),
 });

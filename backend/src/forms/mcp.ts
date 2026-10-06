@@ -19,6 +19,7 @@ import {
 } from "./service.js";
 import { docForEntry, entryRow, entryWhere, submitEntry } from "./entries.js";
 import { registerCodeTools } from "../apps/mcpTools.js";
+import { registerCatalogTools } from "./catalogTools.js";
 
 /**
  * MCP server for building forms with an LLM — Claude Code, Claude Desktop,
@@ -404,12 +405,12 @@ function buildServer(key: ResolvedKey): McpServer {
     }
   );
 
-  tool("list_catalog_categories", "Categories on the Forms screen, for add_to_catalog.", {}, async () => {
+  tool("list_catalog_categories", "Categories on the Forms screen, for add_to_catalog (list_catalog shows the cards too).", {}, async () => {
     need("forms:build");
     return prisma.formCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } });
   }, { readOnlyHint: true });
 
-  tool("add_to_catalog", "Show the form on the Forms screen and sidebar under a category (null category removes it).", { form: formRef, categoryId: z.string().nullable() }, async ({ form, categoryId }) => {
+  tool("add_to_catalog", "Show a form built here (a basic form or a code form) on the Forms screen and sidebar under a category; null category removes it. The card then follows the form (its title, URL and roles). For a link to a form on another site use save_catalog_card.", { form: formRef, categoryId: z.string().nullable() }, async ({ form, categoryId }) => {
     need("forms:build");
     const row = await findAnyForm(form);
     await setCatalog(row.id, categoryId, actor);
@@ -461,6 +462,7 @@ function buildServer(key: ResolvedKey): McpServer {
   );
 
   registerCodeTools(tool, need, actor, key);
+  registerCatalogTools(tool, need, actor);
   return server;
 }
 
