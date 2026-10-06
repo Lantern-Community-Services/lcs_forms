@@ -88,6 +88,8 @@ export const manifestSchema = z.object({
    * It returns { attention?: [...], tiles?: [...] } (see the guide). `roles`: who gets them (default: everyone who can open the form).
    */
   home: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/), roles: roleList }).strict().optional(),
+  /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
+  email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
   /** Other forms (slugs) whose entries the server code may read — still only if the person may. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */

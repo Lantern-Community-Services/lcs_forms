@@ -11,6 +11,7 @@ import { runInSandbox, type SandboxResult } from "./sandbox.js";
 import { DEFAULT_ENTRY_READERS, readManifest, roleAllowed, type Files, type Manifest } from "./project.js";
 import * as time from "./time.js";
 import { attachFiles, filesToAttach } from "./files.js";
+import { queueEmail } from "./email.js";
 import type { Request } from "express";
 import { createEvent, eventInput, loadOccurrences } from "../services/calendar.js";
 
@@ -564,6 +565,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         const site = q.site ? (Array.isArray(q.site) ? q.site.join(",") : String(q.site)) : undefined;
         return (await loadOccurrences({ user: asker } as unknown as Request, { from: q.from, to: q.to, site })).items.map(({ canEdit: _c, ...o }) => o);
       }
+      case "email.send":
+        return queueEmail(app, user, args ?? {});
       case "calendar.categories":
         return prisma.calendarCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, colorSlot: true } });
       case "calendar.create": {

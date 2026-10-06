@@ -613,6 +613,15 @@ declare module "@lcs/server" {
        */
       logActivity(tenantId: string, opts?: { label?: string; occurredAt?: string }): { logged: boolean; reason?: string };
     };
+    /**
+     * Email from the app's mailbox. Queued and sent in the background, so it returns at once: { queued: true },
+     * or { queued: false, reason } in the draft (nothing is sent) or when the server has no email set up.
+     * To: up to 10 Lantern addresses, or ones listed in form.json "email": { "to": ["vendor@x.com", "@partner.org"] }.
+     * Give html, or text (sent as-is). replyTo defaults to the person using the form. Results go to the audit log.
+     */
+    email: {
+      send(message: { to: string | string[]; subject: string; html?: string; text?: string; replyTo?: string }): { queued: boolean; reason?: string };
+    };
     /** The site calendar, as the person using the form sees it. */
     calendar: {
       events(q: { from: string; to: string; site?: string | string[] }): Omit<import("@lcs/sdk").CalendarOccurrence, "canEdit">[];

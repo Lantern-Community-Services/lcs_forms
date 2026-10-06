@@ -132,6 +132,9 @@ globalThis.__makeCtx = (base) => ({
     residents: (x, opts) => __h("roster.residents", { x, opts: opts || {} }),
     logActivity: (tenantId, opts) => __h("roster.logActivity", { tenantId, label: opts && opts.label, occurredAt: opts && opts.occurredAt }),
   },
+  email: {
+    send: (m) => __h("email.send", m || {}),
+  },
   calendar: {
     events: (q) => __h("calendar.events", { q: q || {} }),
     categories: () => __h("calendar.categories", {}),
