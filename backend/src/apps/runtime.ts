@@ -11,6 +11,8 @@ import { runInSandbox, type SandboxResult } from "./sandbox.js";
 import { DEFAULT_ENTRY_READERS, readManifest, roleAllowed, type Files, type Manifest } from "./project.js";
 import * as time from "./time.js";
 import { attachFiles, filesToAttach } from "./files.js";
+import type { Request } from "express";
+import { createEvent, eventInput, loadOccurrences } from "../services/calendar.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -539,6 +541,20 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         const s = await prisma.site.findFirst({ where: { OR: [{ id: String(args.x) }, { code: String(args.x) }] } });
         if (!s || !canSite(s.id)) return [];
         return (await prisma.tenant.findMany({ where: { siteId: s.id, status: "active" } })).map(residentOut);
+      }
+      case "calendar.events": {
+        // The calendar service speaks Express requests; it only reads req.user.
+        const asker = (user ?? { userId: "", name: "Server code", permissions: [], siteIds: null }) as CurrentUser;
+        const q = args?.q ?? {};
+        const site = q.site ? (Array.isArray(q.site) ? q.site.join(",") : String(q.site)) : undefined;
+        return (await loadOccurrences({ user: asker } as unknown as Request, { from: q.from, to: q.to, site })).items.map(({ canEdit: _c, ...o }) => o);
+      }
+      case "calendar.categories":
+        return prisma.calendarCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, colorSlot: true } });
+      case "calendar.create": {
+        if (!user) throw new Error("Adding a calendar event needs a signed-in person (not an API key).");
+        if (app.draft) throw new Error("The draft (preview) doesn't add calendar events — publish to try it for real.");
+        return { id: await createEvent({ user } as unknown as Request, eventInput.parse(args?.event ?? {})) };
       }
       case "time.dayOf":
         return time.dayOf(String(args.iso));

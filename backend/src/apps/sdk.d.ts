@@ -207,6 +207,79 @@ declare module "@lcs/sdk" {
     restore(id: string): Promise<void>;
   };
 
+  /** One day's showing of a calendar event (a repeating event has one per day it falls on). */
+  export interface CalendarOccurrence {
+    /** Unique per occurrence. */
+    key: string;
+    eventId: string;
+    /** The day the series puts it on — pass it as `date` to change just this one. */
+    date: string;
+    title: string;
+    description: string | null;
+    location: string | null;
+    categoryId: string | null;
+    allSites: boolean;
+    sites: { code: string; name: string }[];
+    allDay: boolean;
+    startDate: string;
+    /** "HH:MM", New York; null when all day. */
+    startTime: string | null;
+    endDate: string;
+    endTime: string | null;
+    repeats: boolean;
+    repeatText: string | null;
+    changed: boolean;
+    /** This person may change or remove it. */
+    canEdit: boolean;
+    teamsJoinUrl: string | null;
+  }
+
+  /** A repeat rule. Weekdays: 0 = Sunday … 6 = Saturday. */
+  export interface CalendarRepeat {
+    freq: "daily" | "weekly" | "monthly" | "yearly";
+    interval: number;
+    weekdays?: number[];
+    monthDay?: { kind: "day"; day: number } | { kind: "nth"; nth: 1 | 2 | 3 | 4 | 5 | -1 | -2; of: number | "day" | "weekday" | "weekend" };
+    months?: number[];
+    end: { kind: "never" } | { kind: "count"; count: number } | { kind: "until"; date: string };
+  }
+
+  export interface CalendarEventInput {
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    categoryId?: string | null;
+    /** For every site (Admins only), or for siteIds (site ids from roster.sites(), every one the person's). */
+    allSites: boolean;
+    siteIds?: string[];
+    allDay: boolean;
+    startDate: string;
+    startTime?: string | null;
+    endDate: string;
+    endTime?: string | null;
+    recurrence?: CalendarRepeat | null;
+    /** Give it a Teams link in Outlook. */
+    teamsMeeting?: boolean;
+  }
+
+  /**
+   * The site calendar (/calendar), as this person sees it: events for every site plus their own sites'.
+   * Adding, changing and removing need the person's own calendar rights (Admin, or the calendar editor
+   * switch for their own sites) and don't work in the draft preview. Changes go to Outlook like any other.
+   */
+  export const calendar: {
+    /** Occurrences from `from` to `to` (days, inclusive, at most a year). `site`: codes; omit for all of theirs. */
+    events(q: { from: string; to: string; site?: string | string[] }): Promise<CalendarOccurrence[]>;
+    /** Event kinds, with their chart palette slot (slotColor in @lcs/charts). */
+    categories(): Promise<{ id: string; name: string; colorSlot: number }[]>;
+    /** One whole series (its repeat rule, sites, who made it). */
+    event(id: string): Promise<CalendarEventInput & { id: string; canEdit: boolean; repeatText: string | null; createdByName: string }>;
+    create(event: CalendarEventInput): Promise<{ id: string }>;
+    /** scope "this" / "following" change one day (or it and the rest) of a repeating event; give its `date`. */
+    update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event: CalendarEventInput }): Promise<{ id: string }>;
+    remove(id: string, opts?: { scope?: "all" | "this" | "following"; date?: string }): Promise<void>;
+  };
+
   export interface Doc<T = Record<string, unknown>> {
     id: string;
     data: T;
@@ -464,6 +537,16 @@ declare module "@lcs/server" {
       sites(): ServerSite[];
       resident(id: string): ServerResident | null;
       residents(siteIdOrCode: string): ServerResident[];
+    };
+    /** The site calendar, as the person using the form sees it. */
+    calendar: {
+      events(q: { from: string; to: string; site?: string | string[] }): Omit<import("@lcs/sdk").CalendarOccurrence, "canEdit">[];
+      categories(): { id: string; name: string; colorSlot: number }[];
+      /**
+       * Add an event as the person using the form, with their calendar rights — e.g. from afterCreate
+       * when an event request is approved. Not from the draft or an API key.
+       */
+      create(event: import("@lcs/sdk").CalendarEventInput): { id: string };
     };
     time: {
       /** New York "YYYY-MM-DD" of an ISO time. */

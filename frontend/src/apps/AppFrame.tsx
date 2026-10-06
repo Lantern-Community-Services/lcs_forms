@@ -354,6 +354,29 @@ export function AppFrame({
           /* ignore */
         }
       },
+      // The calendar, as this person sees it (and can change it) on /calendar.
+      "calendar.events": async (q: { from?: string; to?: string; site?: string | string[] }) => {
+        const p = new URLSearchParams({ from: String(q?.from ?? ""), to: String(q?.to ?? "") });
+        if (q?.site) p.set("site", Array.isArray(q.site) ? q.site.join(",") : String(q.site));
+        return (await api.get<{ items: Record<string, unknown>[] }>(`/calendar?${p}`)).items;
+      },
+      "calendar.categories": async () =>
+        (await api.get<{ id: string; name: string; colorSlot: number }[]>("/calendar/categories")).map((c) => ({ id: c.id, name: c.name, colorSlot: c.colorSlot })),
+      "calendar.event": async (id: string) => api.get(`/calendar/events/${encodeURIComponent(String(id))}`),
+      "calendar.create": async (event: unknown) => {
+        if (draft) throw new Error("The preview doesn't add calendar events — publish to try it for real.");
+        return api.post<{ id: string }>("/calendar/events", event);
+      },
+      "calendar.update": async (id: string, change: { scope?: string; date?: string; event: unknown }) => {
+        if (draft) throw new Error("The preview doesn't change calendar events — publish to try it for real.");
+        return api.patch<{ id: string }>(`/calendar/events/${encodeURIComponent(String(id))}`, { scope: change?.scope ?? "all", date: change?.date, event: change?.event });
+      },
+      "calendar.remove": async (id: string, opts: { scope?: string; date?: string }) => {
+        if (draft) throw new Error("The preview doesn't remove calendar events — publish to try it for real.");
+        const p = new URLSearchParams({ scope: opts?.scope ?? "all" });
+        if (opts?.date) p.set("date", opts.date);
+        await api.delete(`/calendar/events/${encodeURIComponent(String(id))}?${p}`);
+      },
       "queue.status": async () => queueStatus(slug),
       "queue.retry": async () => retryFailed(slug),
       "queue.discard": async (clientId: string) => discard(clientId),

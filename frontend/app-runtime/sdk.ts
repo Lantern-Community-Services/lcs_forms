@@ -121,6 +121,15 @@ export const entries = {
   restore: (id: string) => call("entries.restore", id),
 };
 
+export const calendar = {
+  events: (q: { from: string; to: string; site?: string | string[] }) => call("calendar.events", q),
+  categories: () => call("calendar.categories"),
+  event: (id: string) => call("calendar.event", id),
+  create: (event: Json) => call<{ id: string }>("calendar.create", event),
+  update: (id: string, change: Json) => call<{ id: string }>("calendar.update", id, change),
+  remove: (id: string, opts?: { scope?: "all" | "this" | "following"; date?: string }) => call<void>("calendar.remove", id, opts ?? {}),
+};
+
 export const collections = {
   list: (name: string) => call("collections.list", name),
   get: (name: string, id: string) => call("collections.get", name, id),

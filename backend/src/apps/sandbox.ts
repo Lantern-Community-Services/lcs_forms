@@ -131,6 +131,11 @@ globalThis.__makeCtx = (base) => ({
     resident: (id) => __h("roster.resident", { id }),
     residents: (x) => __h("roster.residents", { x }),
   },
+  calendar: {
+    events: (q) => __h("calendar.events", { q: q || {} }),
+    categories: () => __h("calendar.categories", {}),
+    create: (event) => __h("calendar.create", { event }),
+  },
   time: __time,
   log: (...a) => __log(a.map(__fmt).join(" ")),
 });
