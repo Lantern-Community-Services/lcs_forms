@@ -115,6 +115,8 @@ export const entries = {
   list: (query?: Json) => call("entries.list", query ?? {}),
   get: (id: string) => call("entries.get", id),
   create: (entry: Json, opts?: Json) => call("entries.create", entry, opts ?? {}),
+  update: (id: string, data: Json, opts?: { reason?: string }) => call("entries.update", id, { data, reason: opts?.reason }),
+  history: (id: string) => call("entries.history", id),
   void: (id: string, reason: string) => call("entries.void", id, reason),
   restore: (id: string) => call("entries.restore", id),
 };
@@ -138,7 +140,83 @@ export const local = {
 
 export const device = {
   location: (opts?: { timeoutMs?: number }) => call("device.location", opts ?? {}),
+  takePhoto: (opts?: { title?: string; facing?: "environment" | "user"; label?: string }) => call<FileRef | null>("device.takePhoto", opts ?? {}),
 };
+
+// ── Photos and files ─────────────────────────────────────────────────────
+
+export interface FileRef {
+  fileId: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+/** Data URLs already fetched, by fileId (a file never changes once uploaded). */
+const urlCache = new Map<string, Promise<string>>();
+
+/** A file input in the frame itself: it has to open from the tap that asked for it. */
+function pick(opts: { accept?: string; capture?: "environment" | "user"; multiple?: boolean } = {}): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    if (opts.accept) input.accept = opts.accept;
+    if (opts.capture) input.setAttribute("capture", opts.capture);
+    input.multiple = Boolean(opts.multiple);
+    input.style.display = "none";
+    document.body.appendChild(input);
+    const done = (files: File[]) => {
+      input.remove();
+      resolve(files);
+    };
+    input.addEventListener("change", () => done(Array.from(input.files ?? [])));
+    input.addEventListener("cancel", () => done([]));
+    input.click();
+  });
+}
+
+async function upload(file: Blob, opts: { name?: string; label?: string; shrink?: boolean } = {}): Promise<FileRef> {
+  const name = opts.name ?? (file instanceof File ? file.name : "file");
+  return call<FileRef>("files.upload", { name, mime: file.type, label: opts.label, shrink: opts.shrink, data: await file.arrayBuffer() });
+}
+
+export const files = {
+  upload,
+  pick,
+  /** Pick (must be called from a tap) and upload. Returns [] if the person cancels. */
+  choose: async (opts: { accept?: string; capture?: "environment" | "user"; multiple?: boolean; label?: string } = {}) => {
+    const picked = await pick(opts);
+    return Promise.all(picked.map((f) => upload(f, { label: opts.label })));
+  },
+  /** A data: URL of the file, for an <img> or a link. */
+  url: (ref: FileRef | string) => {
+    const id = typeof ref === "string" ? ref : ref.fileId;
+    let p = urlCache.get(id);
+    if (!p) {
+      p = call<string>("files.read", id);
+      p.catch(() => urlCache.delete(id));
+      urlCache.set(id, p);
+    }
+    return p;
+  },
+  download: (ref: FileRef, filename?: string) => call<void>("files.download", ref.fileId, filename ?? ref.name),
+};
+
+/** files.url as a hook: undefined while loading. */
+export function useFileUrl(ref: FileRef | string | null | undefined): string | undefined {
+  const id = !ref ? null : typeof ref === "string" ? ref : ref.fileId;
+  const [url, setUrl] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setUrl(undefined);
+    if (!id) return;
+    let live = true;
+    files.url(id).then((u) => live && setUrl(u), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return url;
+}
 
 export const queue = {
   status: () => call("queue.status"),

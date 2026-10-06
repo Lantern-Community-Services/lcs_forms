@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api";
-import { submitAppEntry } from "./api";
+import { runtimeApi, submitAppEntry } from "./api";
 import { isOnline } from "@/lib/offline";
 
 /**
@@ -38,21 +38,26 @@ export interface QueueStatus {
 
 const DB = "lcs-app-queue";
 const STORE = "entries";
+/** Photos and files taken with no connection, waiting to upload ahead of their entry. */
+const FILES = "files";
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "clientId" });
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE, { keyPath: "clientId" });
+      if (!req.result.objectStoreNames.contains(FILES)) req.result.createObjectStore(FILES, { keyPath: "id" });
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = STORE): Promise<T> {
   const db = await open();
   return new Promise<T>((resolve, reject) => {
-    const t = db.transaction(STORE, mode);
-    const req = fn(t.objectStore(STORE));
+    const t = db.transaction(store, mode);
+    const req = fn(t.objectStore(store));
     t.oncomplete = () => resolve(req.result);
     t.onerror = () => reject(t.error);
   });
@@ -61,6 +66,72 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
 const all = () => tx<QueuedEntry[]>("readonly", (s) => s.getAll() as IDBRequest<QueuedEntry[]>);
 const put = (e: QueuedEntry) => tx("readwrite", (s) => s.put(e));
 const del = (id: string) => tx("readwrite", (s) => s.delete(id));
+
+// ── Files kept on the device ─────────────────────────────────────────────
+
+export interface LocalFile {
+  /** "local:<uuid>" — the fileId the page holds until it uploads. */
+  id: string;
+  slug: string;
+  draft: boolean;
+  userId: string;
+  name: string;
+  mime: string;
+  label?: string;
+  data: Blob;
+  savedAt: number;
+}
+
+export interface FileRef {
+  fileId: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+/** Keep a file on the device; the ref works in an entry and with files.url until it uploads. */
+export async function saveLocalFile(f: Omit<LocalFile, "id" | "savedAt">): Promise<FileRef> {
+  const id = `local:${crypto.randomUUID()}`;
+  await tx("readwrite", (s) => s.put({ ...f, id, savedAt: Date.now() }), FILES);
+  return { fileId: id, name: f.name, mime: f.mime, size: f.data.size };
+}
+
+export const localFile = (id: string) => tx<LocalFile | undefined>("readonly", (s) => s.get(id) as IDBRequest<LocalFile | undefined>, FILES);
+
+/**
+ * Upload the device-kept files an entry refers to and swap in the server's
+ * ids. Throws (leaving the entry queued) if an upload can't go through yet.
+ */
+async function uploadLocalFiles(r: QueuedEntry): Promise<QueuedEntry> {
+  const ids = new Set<string>();
+  const walk = (v: unknown, depth = 0) => {
+    if (depth > 20 || !v || typeof v !== "object") return;
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1));
+    const o = v as Record<string, unknown>;
+    if (typeof o.fileId === "string" && o.fileId.startsWith("local:")) ids.add(o.fileId);
+    Object.values(o).forEach((x) => walk(x, depth + 1));
+  };
+  walk(r.entry.data);
+  if (!ids.size) return r;
+  const swap = new Map<string, FileRef>();
+  for (const id of ids) {
+    const f = await localFile(id);
+    if (!f) throw new ApiError(400, "A photo for this entry is missing from the device.");
+    swap.set(id, await runtimeApi.upload(r.slug, r.draft, { name: f.name, mime: f.mime, label: f.label, data: f.data }));
+  }
+  const replace = (v: unknown, depth = 0): unknown => {
+    if (depth > 20 || !v || typeof v !== "object") return v;
+    if (Array.isArray(v)) return v.map((x) => replace(x, depth + 1));
+    const o = v as Record<string, unknown>;
+    if (typeof o.fileId === "string" && swap.has(o.fileId)) return { ...o, ...swap.get(o.fileId) };
+    return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, replace(x, depth + 1)]));
+  };
+  const next = { ...r, entry: { ...r.entry, data: replace(r.entry.data) } };
+  // Saved before the entry goes, so a retry doesn't upload the photos twice.
+  await put(next);
+  for (const id of ids) await tx("readwrite", (s) => s.delete(id), FILES);
+  return next;
+}
 
 let syncing = false;
 let lastSyncedAt: string | null = null;
@@ -113,8 +184,10 @@ export async function syncNow() {
   notify();
   try {
     const rows = (await all()).filter((r) => !r.error && r.userId === currentUser).sort((a, b) => a.queuedAt - b.queuedAt);
-    for (const r of rows) {
+    for (const queued of rows) {
+      let r = queued;
       try {
+        r = await uploadLocalFiles(r);
         let res = await submitAppEntry(r.slug, r.draft, r.entry);
         if (res.status === "needs_override") {
           res = await submitAppEntry(r.slug, r.draft, { ...r.entry, override: r.offlineOverride || "Recorded offline — the limit wasn't checked in time. Please review." });

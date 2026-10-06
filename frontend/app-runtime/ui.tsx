@@ -23,7 +23,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SignaturePad } from "@/components/attendance/SignaturePad";
 import { DateRangeBar as AppDateRangeBar, PRESETS, presetRange, type Preset } from "@/components/hotfoods/DateRange";
-import { useApp } from "./sdk";
+import { useState } from "react";
+import { Camera, FileText, Paperclip, X } from "lucide-react";
+import { device, files, useApp, useFileUrl, type FileRef } from "./sdk";
 import { distanceMeters, formatDistance } from "@/lib/location";
 
 export function Page({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -114,6 +116,112 @@ export function useMediaQuery(query: string): boolean {
     if (o) return device.orientation === o[1];
     return window.matchMedia(`(${p})`).matches;
   });
+}
+
+// ── Photos and files ─────────────────────────────────────────────────────
+
+/** A photo from a FileRef (or its fileId), fetched through the SDK. */
+export function Photo({ file, alt, className, onClick }: { file: FileRef | string | null | undefined; alt?: string; className?: string; onClick?: () => void }) {
+  const url = useFileUrl(file);
+  if (!url) return <div className={cn("animate-pulse rounded-input bg-rowhover", className)} aria-label="Loading photo" />;
+  return <img src={url} alt={alt ?? (typeof file === "object" && file ? file.name : "Photo")} className={cn("rounded-input object-cover", className)} onClick={onClick} />;
+}
+
+/**
+ * Photos for an entry: thumbnails with remove, and an "Add photo" button that
+ * opens the camera (with a "Choose a photo" option). value/onChange hold FileRefs —
+ * put them straight into the entry's data.
+ */
+export function PhotoInput({ value, onChange, max = 5, label = "Add photo", fileLabel = "photo", disabled, className }: {
+  value: FileRef[]; onChange: (v: FileRef[]) => void; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [big, setBig] = useState<FileRef | null>(null);
+  async function add() {
+    setError(null);
+    setBusy(true);
+    try {
+      const ref = await device.takePhoto({ label: fileLabel });
+      if (ref) onChange([...value, ref]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className={cn("space-y-2", className)}>
+      <div className="flex flex-wrap gap-2">
+        {value.map((f) => (
+          <div key={f.fileId} className="relative">
+            <Photo file={f} className="h-20 w-20 cursor-zoom-in border border-hairline" onClick={() => setBig(f)} />
+            {!disabled && (
+              <button type="button" aria-label="Remove photo" onClick={() => onChange(value.filter((x) => x.fileId !== f.fileId))}
+                className="absolute -right-1.5 -top-1.5 rounded-full bg-ink p-0.5 text-surface shadow">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+        {value.length < max && !disabled && (
+          <button type="button" onClick={add} disabled={busy}
+            className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-input border border-dashed border-hairline text-[12px] font-semibold text-muted hover:bg-rowhover disabled:opacity-60">
+            {busy ? <Spinner /> : <Camera className="h-5 w-5" />}
+            {label}
+          </button>
+        )}
+      </div>
+      {error && <p className="text-[12.5px] text-status-redText">{error}</p>}
+      <Modal open={big !== null} onOpenChange={(o) => !o && setBig(null)} title={big?.name ?? "Photo"} wide>
+        {big && <Photo file={big} className="max-h-[65vh] w-full object-contain" />}
+      </Modal>
+    </div>
+  );
+}
+
+/** Files for an entry (documents, PDFs, photos from the library), as FileRefs. */
+export function FileInput({ value, onChange, accept, max = 5, label = "Attach a file", fileLabel = "file", disabled, className }: {
+  value: FileRef[]; onChange: (v: FileRef[]) => void; accept?: string; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function add() {
+    setError(null);
+    setBusy(true);
+    try {
+      const refs = await files.choose({ accept, multiple: max - value.length > 1, label: fileLabel });
+      if (refs.length) onChange([...value, ...refs].slice(0, max));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className={cn("space-y-2", className)}>
+      {value.map((f) => <FileChip key={f.fileId} file={f} onRemove={disabled ? undefined : () => onChange(value.filter((x) => x.fileId !== f.fileId))} />)}
+      {value.length < max && !disabled && (
+        <Button type="button" variant="secondary" onClick={add} disabled={busy}>
+          {busy ? <Spinner /> : <Paperclip className="h-4 w-4" />} {label}
+        </Button>
+      )}
+      {error && <p className="text-[12.5px] text-status-redText">{error}</p>}
+    </div>
+  );
+}
+
+/** One file as a row: name and size; tap to download. */
+export function FileChip({ file, onRemove }: { file: FileRef; onRemove?: () => void }) {
+  const kb = file.size < 1024 * 1024 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  return (
+    <div className="flex items-center gap-2 rounded-input border border-hairline px-3 py-2 text-[13px]">
+      <FileText className="h-4 w-4 shrink-0 text-muted" />
+      <button type="button" className="min-w-0 flex-1 truncate text-left font-semibold text-ink hover:underline" onClick={() => void files.download(file)}>{file.name}</button>
+      <span className="shrink-0 text-micro text-muted">{kb}</span>
+      {onRemove && <button type="button" aria-label={`Remove ${file.name}`} onClick={onRemove} className="text-muted hover:text-ink"><X className="h-4 w-4" /></button>}
+    </div>
+  );
 }
 
 export {

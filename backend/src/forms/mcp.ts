@@ -125,9 +125,15 @@ export type ToolRegistrar = <S extends z.ZodRawShape>(
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean }
 ) => unknown;
 
-type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+type ToolResult = { content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[]; isError?: boolean };
 
-const ok = (data: unknown): ToolResult => ({ content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] });
+/** A tool's answer as MCP content blocks (an image, say) rather than JSON text. */
+export class McpContent {
+  constructor(public content: ToolResult["content"]) {}
+}
+
+const ok = (data: unknown): ToolResult =>
+  data instanceof McpContent ? { content: data.content } : { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 
 function fail(err: unknown): ToolResult {
   if (err instanceof DocError) {

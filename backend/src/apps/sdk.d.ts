@@ -127,7 +127,22 @@ declare module "@lcs/sdk" {
     voidedAt: string | null;
     source: string;
     clientId: string | null;
+    updatedAt: string;
+    /** Who last edited it (entries.update), or null. */
+    updatedByName: string | null;
   }
+
+  /** One thing that happened to an entry after it was made. `changes` values are cut short past 500 characters. */
+  export type EntryHistoryItem = { at: string; byName: string } & (
+    | { kind: "edit"; reason: string | null; changes: { field: string; from: unknown; to: unknown }[] }
+    | { kind: "void"; reason: string }
+    | { kind: "restore" }
+  );
+
+  export type UpdateResult<T> =
+    | { status: "saved"; entry: Entry<T> }
+    /** The server's beforeUpdate refused it. */
+    | { status: "invalid"; errors: Record<string, string>; message: string };
 
   export interface EntryQuery {
     /** Site code(s). Omit for every site this person can see. */
@@ -179,6 +194,14 @@ declare module "@lcs/sdk" {
      * then wants an override, `offlineOverride` is used as the reason.
      */
     create<T = Record<string, unknown>>(entry: NewEntry<T>, opts?: { offline?: boolean; offlineOverride?: string }): Promise<CreateResult<T>>;
+    /**
+     * Replace an entry's data (online only). Allowed for form.json entries.edit roles (default: admins and
+     * developers), or for its maker within entries.editOwnMinutes. Every change is kept: see history().
+     * New photos in the data are attached; the server's beforeUpdate can refuse or rewrite.
+     */
+    update<T = Record<string, unknown>>(id: string, data: T, opts?: { reason?: string }): Promise<UpdateResult<T>>;
+    /** Edits (with what changed), voids and restores, oldest first. */
+    history(id: string): Promise<EntryHistoryItem[]>;
     /** Void with a reason (roles in form.json entries.void, or your own entry within the undo window). */
     void(id: string, reason: string): Promise<void>;
     restore(id: string): Promise<void>;
@@ -222,7 +245,42 @@ declare module "@lcs/sdk" {
   export const device: {
     /** The device's position (asked for by the app on the form's behalf), or null if unavailable. */
     location(opts?: { timeoutMs?: number }): Promise<{ latitude: number; longitude: number; accuracy: number } | null>;
+    /**
+     * Open the camera (a live preview with a shutter, plus "Choose a photo") and upload the photo.
+     * Resolves to its FileRef, or null if the person closes it. Works offline: the photo is kept on the
+     * device and uploads ahead of the entry that holds it. Photos are shrunk to 1600px JPEG.
+     */
+    takePhoto(opts?: { title?: string; facing?: "environment" | "user"; label?: string }): Promise<FileRef | null>;
   };
+
+  /**
+   * An uploaded photo or file. Put refs anywhere in an entry's data (a field, an array, a nested object):
+   * every { fileId } is attached to the entry when it's saved. A ref whose fileId starts with "local:" was
+   * taken offline and is still on the device.
+   */
+  export interface FileRef {
+    fileId: string;
+    name: string;
+    mime: string;
+    size: number;
+  }
+
+  /** Photos and files. Allowed types and size: form.json "files" (default 10 MB; images, PDF, office files). */
+  export const files: {
+    /** Upload a File or Blob (e.g. from a canvas). Images are shrunk unless shrink: false. */
+    upload(file: Blob, opts?: { name?: string; label?: string; shrink?: boolean }): Promise<FileRef>;
+    /** The device's file picker. Call it from a tap (a click handler), or the browser won't open it. */
+    pick(opts?: { accept?: string; capture?: "environment" | "user"; multiple?: boolean }): Promise<File[]>;
+    /** pick() then upload() each. [] if the person cancels. */
+    choose(opts?: { accept?: string; capture?: "environment" | "user"; multiple?: boolean; label?: string }): Promise<FileRef[]>;
+    /** A data: URL of the file, for <img src> (only for people who can read its entry, or who uploaded it). */
+    url(ref: FileRef | string): Promise<string>;
+    /** Hand the person the file to save. */
+    download(ref: FileRef, filename?: string): Promise<void>;
+  };
+
+  /** files.url as a hook: undefined while loading. */
+  export function useFileUrl(ref: FileRef | string | null | undefined): string | undefined;
 
   export interface QueueStatus {
     pending: number;
@@ -287,6 +345,14 @@ declare module "@lcs/ui" {
   export function Modal(props: { open: boolean; onOpenChange: (open: boolean) => void; title: string; subtitle?: string; footer?: React.ReactNode; children?: React.ReactNode; wide?: boolean }): React.JSX.Element;
   /** A bottom sheet on phones, a side sheet on wider screens. */
   export function Sheet(props: { open: boolean; onOpenChange: (open: boolean) => void; title: string; footer?: React.ReactNode; children?: React.ReactNode }): React.JSX.Element;
+  /** A photo from a FileRef (or fileId). */
+  export function Photo(props: { file: import("@lcs/sdk").FileRef | string | null | undefined; alt?: string; className?: string; onClick?: () => void }): React.JSX.Element;
+  /** Thumbnails + "Add photo" (opens the camera). Holds FileRefs — put value straight into the entry's data. */
+  export function PhotoInput(props: { value: import("@lcs/sdk").FileRef[]; onChange: (v: import("@lcs/sdk").FileRef[]) => void; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string }): React.JSX.Element;
+  /** File rows + "Attach a file" (the device's picker). */
+  export function FileInput(props: { value: import("@lcs/sdk").FileRef[]; onChange: (v: import("@lcs/sdk").FileRef[]) => void; accept?: string; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string }): React.JSX.Element;
+  /** One file as a row (name, size); tap downloads it. */
+  export function FileChip(props: { file: import("@lcs/sdk").FileRef; onRemove?: () => void }): React.JSX.Element;
   export function DropdownMenu(props: { trigger: React.ReactNode; items: ({ label: string; onSelect: () => void; danger?: boolean } | "separator")[]; align?: "start" | "end" }): React.JSX.Element;
   export interface SignaturePadHandle { clear(): void; toDataURL(): string | null; isEmpty(): boolean }
   export const SignaturePad: React.ForwardRefExoticComponent<{ className?: string; onChangeEmpty?: (empty: boolean) => void } & React.RefAttributes<SignaturePadHandle>>;
@@ -437,6 +503,11 @@ declare module "@lcs/server" {
     beforeCreate?(entry: IncomingEntry<any>, ctx: Ctx): BeforeCreateResult<any> | void | Promise<BeforeCreateResult<any> | void>;
     /** Runs after an entry is saved (notifications, follow-up records). */
     afterCreate?(entry: ServerEntry<any>, ctx: Ctx): void | Promise<void>;
+    /**
+     * Runs before an entry's data is changed with entries.update. Return errors to refuse, or data to
+     * rewrite what's saved. (beforeCreate does not run on edits.)
+     */
+    beforeUpdate?(change: { entry: ServerEntry<any>; data: any; reason: string | null }, ctx: Ctx): { errors?: Record<string, string | undefined>; data?: any } | void | Promise<{ errors?: Record<string, string | undefined>; data?: any } | void>;
     /** Endpoints your pages call with actions.call(name, args). Return JSON. */
     actions?: Record<string, (args: any, ctx: Ctx) => unknown>;
   }

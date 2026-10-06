@@ -65,6 +65,19 @@ export const manifestSchema = z.object({
       undoMinutes: z.number().int().min(0).max(1440).optional(),
       /** Entries about a resident log roster activity (resets their review clock). Default true. */
       rosterActivity: z.boolean().optional(),
+      /** Roles that can edit anyone's entry (every change is kept in its history). Default: admins and developers only. */
+      edit: roleList,
+      /** Minutes during which people can edit their own entry. Default 0 (off). */
+      editOwnMinutes: z.number().int().min(0).max(10_080).optional(),
+    })
+    .strict()
+    .optional(),
+  /** Photos and files pages upload (files.upload / takePhoto). Default: 10 MB, images, PDF and office files. */
+  files: z
+    .object({
+      maxMb: z.number().min(0.1).max(10).optional(),
+      /** Like an <input accept>: "image/*,application/pdf,.docx". */
+      accept: z.string().max(300).optional(),
     })
     .strict()
     .optional(),

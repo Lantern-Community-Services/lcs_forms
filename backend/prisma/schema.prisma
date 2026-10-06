@@ -646,11 +646,15 @@ model FormFile {
   /// Null while uploaded but not yet submitted; orphans older than a day are swept.
   entry     FormEntry? @relation(fields: [entryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   entryId   String?
+  /// The File field's id; for a code form, the page's own label for the file ("photo").
   fieldId   String
   name      String
   mime      String
   size      Int
   data      Bytes
+  /// Who uploaded it. A code form's file that isn't on an entry yet can only be
+  /// read back (or attached) by the person who uploaded it.
+  createdById String?
   createdAt DateTime   @default(now())
 
   @@index([entryId])

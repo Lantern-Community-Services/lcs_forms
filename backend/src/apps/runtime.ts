@@ -10,6 +10,7 @@ import { buildProject, type Build } from "./compile.js";
 import { runInSandbox, type SandboxResult } from "./sandbox.js";
 import { DEFAULT_ENTRY_READERS, readManifest, roleAllowed, type Files, type Manifest } from "./project.js";
 import * as time from "./time.js";
+import { attachFiles, filesToAttach } from "./files.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -67,6 +68,9 @@ export function access(app: LoadedApp, user: CurrentUser) {
     create: app.form.status !== "closed" && roleAllowed(e.create, role, dev),
     voidAny: e.void ? roleAllowed(e.void, role, dev) : dev || user.permissions.includes("entries.void"),
     undoMinutes: e.undoMinutes ?? 10,
+    /** Edit anyone's entry: form.json entries.edit (only admins and developers when it's left out). */
+    editAny: app.form.status !== "closed" && (e.edit ? roleAllowed(e.edit, role, dev) : dev),
+    editOwnMinutes: e.editOwnMinutes ?? 0,
     collection(name: string, mode: "read" | "write") {
       const rule = m.collections?.[name];
       if (mode === "read") return roleAllowed(rule?.read ?? ["*"], role, dev);
@@ -107,6 +111,8 @@ export function entryOut(e: FormEntry, sites: Sites, fields?: string[]) {
     voidedAt: e.voidedAt?.toISOString() ?? null,
     source: e.source,
     clientId: e.clientId,
+    updatedAt: e.updatedAt.toISOString(),
+    updatedByName: e.updatedByName,
   };
 }
 
@@ -251,6 +257,7 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
     if (res.needsOverride?.length && !input.override?.trim()) return { status: "needs_override", problems: res.needsOverride, logs };
     if (res.data && typeof res.data === "object") data = res.data;
   }
+  const attach = await filesToAttach(app, user, data);
 
   const entry = await prisma.formEntry.create({
     data: {
@@ -267,6 +274,7 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
       createdByName: user?.name ?? opts.actorName ?? "System",
     },
   });
+  await attachFiles(entry.id, attach);
   if (tenant && app.manifest.entries?.rosterActivity !== false && !app.draft) {
     await recordActivity({ tenantId: tenant.id, source: "form", label: app.form.title, externalRef: entry.id, occurredAt, recordedBy: entry.createdByName }).catch((err) =>
       console.error(`[apps] roster activity for ${entry.id} failed:`, err)
@@ -290,6 +298,7 @@ export async function voidEntry(app: LoadedApp, user: CurrentUser, id: string, r
   if (user.siteIds && e.siteId && !user.siteIds.includes(e.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
   if (!reason.trim()) throw badRequest("Say why.");
   await prisma.formEntry.update({ where: { id: e.id }, data: { status: "voided", voidedAt: new Date(), voidedByName: user.name, voidReason: reason.trim().slice(0, 500) } });
+  await historyNote(e.id, user.name, { kind: "void", reason: reason.trim().slice(0, 500) });
 }
 
 export async function restoreEntry(app: LoadedApp, user: CurrentUser, id: string) {
@@ -298,6 +307,78 @@ export async function restoreEntry(app: LoadedApp, user: CurrentUser, id: string
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
   if (!e) throw notFound("No such entry.");
   await prisma.formEntry.update({ where: { id: e.id }, data: { status: "active", voidedAt: null, voidedByName: null, voidReason: null } });
+  await historyNote(e.id, user.name, { kind: "restore" });
+}
+
+// ── Editing and history ──────────────────────────────────────────────────
+
+type HistoryBody =
+  | { kind: "edit"; reason: string | null; changes: { field: string; from: unknown; to: unknown }[] }
+  | { kind: "void"; reason: string }
+  | { kind: "restore" };
+
+/** A code form's entry history: FormEntryNote rows of kind "history", body JSON. */
+async function historyNote(entryId: string, by: string, body: HistoryBody) {
+  await prisma.formEntryNote.create({ data: { entryId, kind: "history", authorName: by, body: JSON.stringify(body).slice(0, 60_000) } });
+}
+
+/** Top-level fields that changed, values cut short so a photo or signature doesn't bloat the history. */
+function changesBetween(before: Record<string, unknown>, after: Record<string, unknown>) {
+  const short = (v: unknown) => {
+    const s = JSON.stringify(v ?? null);
+    return s.length > 500 ? `${s.slice(0, 500)}…` : v ?? null;
+  };
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  return keys.filter((k) => JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null)).map((k) => ({ field: k, from: short(before[k]), to: short(after[k]) }));
+}
+
+export type UpdateOutcome =
+  | { status: "saved"; entry: ReturnType<typeof entryOut>; logs: string[] }
+  | { status: "invalid"; errors: Record<string, string>; message: string; logs: string[] };
+
+/**
+ * Change an entry's data. Allowed for form.json entries.edit roles, or for the
+ * person who made it within entries.editOwnMinutes. The server's beforeUpdate
+ * (if any) can refuse or rewrite; every change is kept in the entry's history.
+ */
+export async function updateEntry(app: LoadedApp, user: CurrentUser, id: string, input: { data: unknown; reason?: string | null }): Promise<UpdateOutcome> {
+  const a = requireOpen(app, user);
+  const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
+  if (!e) throw notFound("No such entry.");
+  const own = e.createdById === user.userId && a.editOwnMinutes > 0 && Date.now() - e.createdAt.getTime() < a.editOwnMinutes * 60_000;
+  if (!a.editAny && !own) throw forbidden("You can't edit this entry.");
+  if (user.siteIds && e.siteId && !user.siteIds.includes(e.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
+  if (e.status !== "active") throw badRequest("Restore the entry before editing it.");
+  if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) throw badRequest("data must be an object.");
+  if (JSON.stringify(input.data).length > 1_000_000) throw new HttpError(413, "That entry is too big (1 MB max).");
+  const before = JSON.parse(e.data) as Record<string, unknown>;
+  let data = input.data as Record<string, unknown>;
+  let logs: string[] = [];
+  if (app.build.server) {
+    const r = await runHook(app, user, "beforeUpdate", { entry: serverEntry(e), data, reason: input.reason?.trim() || null });
+    logs = r.logs;
+    if (!r.ok) {
+      if (r.userError) return { status: "invalid", errors: {}, message: r.error ?? "Refused.", logs };
+      throw new HttpError(500, `The form's server code failed: ${r.error}`, { logs, stack: app.draft ? r.stack : undefined });
+    }
+    const res = (r.value ?? {}) as { errors?: Record<string, string>; data?: Record<string, unknown> };
+    if (res.errors && Object.keys(res.errors).length) return { status: "invalid", errors: res.errors, message: Object.values(res.errors)[0], logs };
+    if (res.data && typeof res.data === "object") data = res.data;
+  }
+  const changes = changesBetween(before, data);
+  if (!changes.length) return { status: "saved", entry: entryOut(e, await siteMap()), logs };
+  const attach = await filesToAttach(app, user, data, e.id);
+  const saved = await prisma.formEntry.update({ where: { id: e.id }, data: { data: JSON.stringify(data), updatedByName: user.name } });
+  await attachFiles(e.id, attach);
+  await historyNote(e.id, user.name, { kind: "edit", reason: input.reason?.trim().slice(0, 500) || null, changes });
+  return { status: "saved", entry: entryOut(saved, await siteMap()), logs };
+}
+
+/** What happened to an entry after it was made: edits (with what changed), voids, restores. */
+export async function entryHistory(app: LoadedApp, user: CurrentUser, id: string) {
+  await getEntry(app, user, id);
+  const notes = await prisma.formEntryNote.findMany({ where: { entryId: id, kind: "history" }, orderBy: { createdAt: "asc" } });
+  return notes.map((n) => ({ at: n.createdAt.toISOString(), byName: n.authorName, ...(JSON.parse(n.body) as HistoryBody) }));
 }
 
 // ── Collections ──────────────────────────────────────────────────────────
@@ -487,7 +568,7 @@ function friendly(r: SandboxResult): SandboxResult {
   return r;
 }
 
-async function runHook(app: LoadedApp, user: CurrentUser | null, hook: "beforeCreate" | "afterCreate", arg: unknown) {
+async function runHook(app: LoadedApp, user: CurrentUser | null, hook: "beforeCreate" | "afterCreate" | "beforeUpdate", arg: unknown) {
   const call = `__settle((async () => { const d = globalThis.__serverDef; if (!d || typeof d.${hook} !== "function") return null; return d.${hook}(${JSON.stringify(arg)}, __makeCtx(${JSON.stringify(baseCtx(app, user))})); })())`;
   return friendly(await runInSandbox({ bundle: app.build.server!, call, onHost: hostFor(app, user) }));
 }

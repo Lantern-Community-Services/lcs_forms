@@ -7,7 +7,8 @@ import { useToast } from "@/components/ui/toast";
 import type { Site, Tenant } from "@/lib/types";
 import { runtimeApi, submitAppEntry, type AppRuntime } from "./api";
 import { forcedDevice } from "@/lib/device";
-import { discard, enqueue, onQueueChange, queueStatus, retryFailed } from "./queue";
+import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
+import { CameraCapture, shrinkImage, type CameraRequest } from "./CameraCapture";
 
 /**
  * One page of a code form, in a sandboxed iframe.
@@ -121,6 +122,9 @@ export function AppFrame({
   const toast = useToast();
   const navigate = useNavigate();
   const [base, setBase] = useState<{ js: string; css: string } | null>(null);
+  // device.takePhoto(): the camera dialog, and who's waiting on it.
+  const [camera, setCamera] = useState<CameraRequest | null>(null);
+  const cameraDone = useRef<((f: File | null) => void) | null>(null);
   const [baseError, setBaseError] = useState(false);
   useEffect(() => {
     runtimeAssets().then(setBase, () => setBaseError(true));
@@ -184,6 +188,40 @@ export function AppFrame({
     const log = (level: ConsoleLine["level"], text: string, source: ConsoleLine["source"] = "page") => latest.current.onConsole?.({ level, text, source, at: Date.now() });
     const serverLogs = (logs?: string[]) => logs?.forEach((l) => log(l.startsWith("error:") ? "error" : l.startsWith("warn:") ? "warn" : "log", l, "server"));
 
+    /**
+     * Upload a photo or file for the page, shrinking photos first. With no
+     * connection it's kept on the device under a "local:" id, and the queue
+     * uploads it ahead of the entry that refers to it.
+     */
+    const storeFile = async (file: Blob, name: string, label?: string, shrink = true) => {
+      const blob = shrink && file.type.startsWith("image/") ? await shrinkImage(file) : file;
+      const mime = blob.type || file.type || "application/octet-stream";
+      const fileName = blob !== file && blob.type === "image/jpeg" ? `${name.replace(/\.[^.]+$/, "") || "photo"}.jpg` : name;
+      const keep = () => saveLocalFile({ slug, draft, userId: latest.current.runtime.user.id, name: fileName, mime, label, data: blob });
+      if (!isOnline()) return keep();
+      try {
+        return await runtimeApi.upload(slug, draft, { name: fileName, mime, label, data: blob });
+      } catch (e) {
+        if (e instanceof ApiError && e.status < 500) throw e;
+        return keep();
+      }
+    };
+    const fileBlob = async (fileId: string) => {
+      if (fileId.startsWith("local:")) {
+        const f = await localFile(fileId);
+        if (!f) throw new Error("That photo is no longer on this device.");
+        return { blob: f.data, name: f.name };
+      }
+      return { blob: await runtimeApi.file(slug, draft, fileId), name: "" };
+    };
+    const asDataUrl = (blob: Blob) =>
+      new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(blob);
+      });
+
     const methods: Record<string, (...args: any[]) => Promise<unknown>> = {
       "app.navigate": async (p: string, prm: Record<string, string>) => latest.current.onNavigate(p, prm ?? {}),
       "app.setParams": async (prm: Record<string, string>) => latest.current.onSetParams(prm ?? {}),
@@ -228,7 +266,39 @@ export function AppFrame({
         serverLogs(out.logs);
         return out;
       },
+      "entries.update": async (id: string, body: { data: unknown; reason?: string }) => {
+        const out = await runtimeApi.update(slug, draft, String(id), { data: body?.data, reason: body?.reason ?? null });
+        serverLogs(out.logs);
+        return { ...out, logs: undefined };
+      },
+      "entries.history": async (id: string) => runtimeApi.history(slug, draft, String(id)),
       "entries.void": async (id: string, reason: string) => runtimeApi.void(slug, draft, id, reason),
+      "files.upload": async (f: { name?: string; mime?: string; label?: string; data: ArrayBuffer; shrink?: boolean }) => {
+        if (!(f?.data instanceof ArrayBuffer)) throw new Error("files.upload takes a File or Blob.");
+        return storeFile(new Blob([f.data], { type: f.mime || "application/octet-stream" }), String(f.name || "file").slice(0, 200), f.label, f.shrink !== false);
+      },
+      "files.read": async (fileId: string) => asDataUrl((await fileBlob(String(fileId))).blob),
+      "files.download": async (fileId: string, filename?: string) => {
+        const { blob, name } = await fileBlob(String(fileId));
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = String(filename || name || "file").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 150);
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      },
+      "device.takePhoto": (opts: { title?: string; facing?: "environment" | "user"; label?: string }) =>
+        new Promise((resolve, reject) => {
+          // One at a time: a second request cancels the first.
+          cameraDone.current?.(null);
+          cameraDone.current = (file) => {
+            cameraDone.current = null;
+            setCamera(null);
+            if (!file) return resolve(null);
+            storeFile(file, file.name || "photo.jpg", opts?.label ?? "photo").then(resolve, reject);
+          };
+          setCamera({ title: opts?.title ? String(opts.title).slice(0, 80) : undefined, facing: opts?.facing === "user" ? "user" : "environment" });
+        }),
       "entries.restore": async (id: string) => runtimeApi.restore(slug, draft, id),
       "collections.list": async (name: string) => runtimeApi.collection(slug, draft, name),
       "collections.get": async (name: string, id: string) => runtimeApi.doc(slug, draft, name, id),
@@ -317,6 +387,8 @@ export function AppFrame({
   if (baseError) return <p className="p-6 text-[13px] text-status-redText">Couldn't load the code-form runtime. Check your connection and reload.</p>;
   if (!base) return null;
   return (
+    <>
+    <CameraCapture request={camera} onDone={(f) => cameraDone.current?.(f)} />
     <iframe
       ref={ref}
       key={`${runtime.hash}:${key}`}
@@ -326,5 +398,6 @@ export function AppFrame({
       // Transparent: the page sits on the app's own background, like any screen.
       className={className ?? "block h-full w-full border-0 bg-transparent"}
     />
+    </>
   );
 }
