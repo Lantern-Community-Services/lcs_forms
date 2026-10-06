@@ -311,6 +311,7 @@ CREATE TABLE [dbo].[BuiltForm] (
     [liveVersion] INT NOT NULL CONSTRAINT [BuiltForm_liveVersion_df] DEFAULT 0,
     [revision] INT NOT NULL CONSTRAINT [BuiltForm_revision_df] DEFAULT 1,
     [catalogLinkId] NVARCHAR(64),
+    [homeAction] BIT NOT NULL CONSTRAINT [BuiltForm_homeAction_df] DEFAULT 0,
     [createdById] NVARCHAR(64),
     [createdByName] NVARCHAR(255) NOT NULL,
     [updatedByName] NVARCHAR(255),
@@ -382,6 +383,7 @@ CREATE TABLE [dbo].[FormFile] (
     [mime] NVARCHAR(255) NOT NULL,
     [size] INT NOT NULL,
     [data] VARBINARY(max) NOT NULL,
+    [createdById] NVARCHAR(64),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormFile_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT [FormFile_pkey] PRIMARY KEY CLUSTERED ([id])
 );

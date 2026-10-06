@@ -102,7 +102,7 @@ export const localFile = (id: string) => tx<LocalFile | undefined>("readonly", (
  * Upload the device-kept files an entry refers to and swap in the server's
  * ids. Throws (leaving the entry queued) if an upload can't go through yet.
  */
-async function uploadLocalFiles(r: QueuedEntry): Promise<QueuedEntry> {
+function localIdsIn(data: unknown): Set<string> {
   const ids = new Set<string>();
   const walk = (v: unknown, depth = 0) => {
     if (depth > 20 || !v || typeof v !== "object") return;
@@ -111,7 +111,12 @@ async function uploadLocalFiles(r: QueuedEntry): Promise<QueuedEntry> {
     if (typeof o.fileId === "string" && o.fileId.startsWith("local:")) ids.add(o.fileId);
     Object.values(o).forEach((x) => walk(x, depth + 1));
   };
-  walk(r.entry.data);
+  walk(data);
+  return ids;
+}
+
+async function uploadLocalFiles(r: QueuedEntry): Promise<QueuedEntry> {
+  const ids = localIdsIn(r.entry.data);
   if (!ids.size) return r;
   const swap = new Map<string, FileRef>();
   for (const id of ids) {
@@ -168,7 +173,10 @@ export async function enqueue(e: Omit<QueuedEntry, "queuedAt" | "attempts">) {
 }
 
 export async function discard(clientId: string) {
+  const row = (await all().catch(() => [] as QueuedEntry[])).find((r) => r.clientId === clientId);
   await del(clientId);
+  // Its photos taken offline go with it.
+  for (const id of row ? localIdsIn(row.entry.data) : []) await tx("readwrite", (s) => s.delete(id), FILES).catch(() => undefined);
   notify();
 }
 

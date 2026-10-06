@@ -267,7 +267,7 @@ function buildServer(key: ResolvedKey): McpServer {
   };
   const server = new McpServer(
     { name: "lantern-forms", version: "1.0.0" },
-    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). Everything you make is a draft until published." }
+    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Everything you make is a draft until published." }
   );
 
   const tool: ToolRegistrar = <S extends z.ZodRawShape>(

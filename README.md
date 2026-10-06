@@ -27,16 +27,26 @@ site.
 
 ### Moving a form off WordPress
 
-1. Build the form as a screen here (route in `frontend/src/App.tsx`, API route in `backend/src/routes/`).
-2. In **Admin → Forms catalog**, change that form's link from its WordPress URL to the app path
-   (for example `/forms/incident-report`). The card, its favorites and its search words stay as
-   they are. An app path shows **→** instead of **↗** and opens in place.
-3. If the new screen needs a permission, add its path to `INTERNAL_NEEDS` in
-   `frontend/src/lib/formIcons.ts`. People without the permission then see a locked card instead
-   of a dead link.
+New forms are built **in the app**, not in this codebase: the form builder (`/f/…`) for plain
+fill-in forms, and **code forms** (`/apps/…`) for anything with its own screens, rules, photos,
+dashboards or reports — in the in-app editor or by an AI over the MCP server. The site's code
+only changes when the platform itself needs something new.
 
-The Roster card (`/roster`, whose search words include "tenant updater") was the first one done
-this way. Hot Foods (`/forms/hot-foods`) was the second.
+1. Build the form (Admin → Form builder, or Admin → Code forms, or the MCP tools) and publish it.
+2. Put it on the Forms screen: the form editor's catalog setting, or MCP `add_to_catalog`. If it
+   replaces a WordPress form, edit that card in **Admin → Forms catalog** instead and change its
+   link to the new path (`/apps/incident-report`): the card, its favorites and search words stay.
+3. A form that lives somewhere else (Microsoft Forms, a vendor's site, WordPress) is just a card
+   with an `https://` link — **Admin → Forms catalog → Add**, or MCP `save_catalog_card`. It
+   shows **↗** and opens in a new tab.
+
+Roster (`/roster`) and Hot Foods (`/forms/hot-foods`) were built into the codebase before code
+forms existed; `INTERNAL_NEEDS` in `frontend/src/lib/formIcons.ts` locks their cards for people
+without the permission.
+
+**Keeping the forms you build:** the database is the real copy (drafts, every published version,
+entries). For history and a backup outside it, pull them into a separate git repo with
+`npm run forms -- app:pull <slug>` and commit; `app:push` sends a folder back.
 
 ---
 
@@ -194,8 +204,26 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   locally; `app:push <dir> [--publish]` sends it back.
 - **With AI:** the MCP server has code tools (scope `apps:build`): `get_code_reference`,
   `create_code_form`, `list_files`, `read_files`, `write_files`, `edit_file` (each returns the build
-  result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, collection read/write.
+  result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, `get_entry_file`
+  (entries:read), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
+  `add_to_catalog`, `save_catalog_card` (links to forms elsewhere), `delete_catalog_card`,
+  `save_catalog_category`.
 - **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).
+- **Photos and files:** `<PhotoInput>` / `device.takePhoto()` open the camera in the app itself (the
+  sandboxed frame has no camera), with a live preview and "Choose a photo". Photos are shrunk to
+  1600px JPEG and stored in `FormFile`; any `{ fileId }` in an entry's data is attached when it saves.
+  Offline, photos wait on the device and upload ahead of their entry (`frontend/src/apps/queue.ts`).
+  `form.json` `"files"` sets size and types.
+- **Editing entries:** `entries.update` for `form.json` `entries.edit` roles (default admins and
+  developers) or the maker within `editOwnMinutes`; server `beforeUpdate` can refuse; every change,
+  void and restore is kept (`<EntryHistory>`).
+- **The rest of the site:** `calendar.*` (read, and write with the person's own calendar rights),
+  `roster.resident()` and `ctx.roster.logActivity()`, and `form.json` `"home"` — a server action whose
+  attention items and stat tiles appear on the Forms home (`backend/src/apps/home.ts`).
+- **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the Hot Foods charts;
+  `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.
+- **Email:** `ctx.email.send()` from server code, queued through the Graph mailbox (see Email below —
+  not set up yet), to Lantern addresses unless `form.json` `"email"` lists others.
 - **Phones, iPads, desktops:** inside a page, Tailwind's `sm:` `md:` `lg:` `xl:` and `portrait:` /
   `landscape:` follow the device's window (not the frame), so markup from the app's own screens lays
   out the same; `phone:` `tablet:` `desktop:` variants and `useDevice()` are there for device-specific

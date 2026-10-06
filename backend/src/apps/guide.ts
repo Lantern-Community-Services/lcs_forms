@@ -26,8 +26,13 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   ],
   "entries": { "read": ["main_office", "site_admin", "site_manager"], "void": ["site_admin", "site_manager"], "undoMinutes": 10 },
   "collections": { "mealTypes": { "read": ["*"], "write": ["admin"] } },
-  "reads": ["other-form-slug"]
+  "reads": ["other-form-slug"],
+  "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
+  "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
+  "email": { "to": ["vendor@example.com", "@partner.org"] }         // who server code may email besides Lantern addresses
 }
+entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
+"editOwnMinutes": N (people can change their own entry for N minutes; default 0).
 Role keys: admin, developer, main_office, site_admin, site_manager, site_staff. "*" = everyone with access.
 Admins and developers pass every role check.
 
@@ -50,6 +55,30 @@ Admins and developers pass every role check.
 - Everything runs as the person using the form. Pages can't reach the network or the app directly —
   only the SDK. Server code can't reach anything but ctx (no fetch, no files); 3 s and 64 MB per call.
 
+## What a form can use
+- Photos: <PhotoInput value={photos} onChange={setPhotos} /> (or device.takePhoto()) opens the camera in the app —
+  live preview plus "Choose a photo" — and gives FileRefs. Put them anywhere in an entry's data; every { fileId }
+  is attached when the entry saves. Show one with <Photo file={ref} />. Files: <FileInput accept=".pdf" />, or
+  files.choose() from a tap. Photos are shrunk to 1600px JPEG and work offline (they upload ahead of the entry).
+- Location: device.location() — with roster.sites() latitude/longitude and distanceMeters() to pick the nearest site.
+- Editing: entries.update(id, data, { reason }) — every change is kept; show it with <EntryHistory entryId={id} />.
+  Server code can check edits in beforeUpdate.
+- Roster: roster.sites(), roster.residents(siteCode) (instant, offline), roster.resident(id) (full record and recent
+  activity), roster.open(id). Server: ctx.roster.*, and ctx.roster.logActivity(tenantId) to reset a resident's review clock.
+- Calendar: calendar.events({ from, to }), categories(), create / update / remove with the person's own calendar rights
+  (the preview won't write). Server: ctx.calendar.events / categories / create (e.g. from afterCreate).
+- Forms home: form.json "home": { "action": "home" }. That action runs as each person when the home screen loads and
+  returns { attention: [{ title, detail, action, page, params, tone: "warn" | "info" }], tiles: [{ label, value, hint, page }] }.
+  Keep it to a count or two (it has 4 s; answers are kept a minute). Return {} when there's nothing to show.
+- Dashboards: @lcs/charts TrendChart, ColumnChart, DonutChart, RankedBars, HeatGrid, StatTile, DailyBars. Colors come
+  from palette slots (slotColor 0-7, null = "Other"); give each thing the same slot everywhere.
+- Reports: app.export({ format: "xlsx" | "pdf" | "csv", filename, title, stats, sheets: [{ name, columns, rows }] }) makes
+  the file on the server in the app's export style. app.print() for the browser's print.
+- Email: ctx.email.send({ to, subject, text | html }) from server code (afterCreate, actions). Queued, Lantern addresses
+  unless form.json "email" lists others, never from the draft.
+- Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
+  (MCP save_catalog_card), not in a code form.
+
 ## Phones, iPads and desktops
 - Tailwind breakpoints (sm: md: lg: xl:) and portrait: / landscape: follow the DEVICE's window, not the
   frame, so markup copied from the app's own screens lays out the same. Also: phone: tablet: desktop:.
@@ -65,7 +94,9 @@ Admins and developers pass every role check.
   as the app does.
 - A dashboard is just a page: list entries with a date range (dates.today(), dates.addDays) and use @lcs/charts.
 - Admin settings tab: a page limited to ["admin"] that reads/writes a collection; server code reads the same.
-- Export: build CSV text in the page and app.download("report.csv", csv).
+- Export: app.export({ format: "xlsx", title, sheets }) for Excel / PDF / CSV, or build text and app.download(name, text).
+- Entry page: a hidden page ("hidden": true) reached with app.navigate("entry", { id }), showing the data, its photos,
+  <EntryHistory>, and Edit / Void buttons for the people form.json allows.
 
 ## SDK (lcs-sdk.d.ts)
 \`\`\`ts

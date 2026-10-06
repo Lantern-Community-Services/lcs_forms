@@ -195,6 +195,7 @@ export function AppFrame({
      */
     const storeFile = async (file: Blob, name: string, label?: string, shrink = true) => {
       const blob = shrink && file.type.startsWith("image/") ? await shrinkImage(file) : file;
+      if (blob.size > 10 * 1024 * 1024) throw new Error("That file is over 10 MB.");
       const mime = blob.type || file.type || "application/octet-stream";
       const fileName = blob !== file && blob.type === "image/jpeg" ? `${name.replace(/\.[^.]+$/, "") || "photo"}.jpg` : name;
       const keep = () => saveLocalFile({ slug, draft, userId: latest.current.runtime.user.id, name: fileName, mime, label, data: blob });
