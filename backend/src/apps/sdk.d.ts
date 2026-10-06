@@ -102,13 +102,33 @@ declare module "@lcs/sdk" {
     lastName: string;
     preferredName: string | null;
     unit: string | null;
+    /** "YYYY-MM-DD", or null. */
+    moveInDate: string | null;
+    /** Last form activity about them (ISO), or null. */
+    lastActivityAt: string | null;
+    /** Quiet past their site's check-in window (the roster's Review queue). */
+    needsAttention: boolean;
+  }
+
+  /** One resident in full, with their recent activity (needs roster access, like their roster page). */
+  export interface ResidentDetail extends Omit<Resident, "needsAttention"> {
+    site: { code: string; name: string } | null;
+    status: "active" | "archived";
+    moveOutDate: string | null;
+    notes: string | null;
+    needsAttention: boolean;
+    /** Newest first, up to 25: forms filled about them, check-ins. */
+    activities: { source: string; label: string | null; occurredAt: string; recordedBy: string | null }[];
   }
 
   export const roster: {
     /** Sites this person can use. */
     sites(): Promise<Site[]>;
-    /** Active residents at a site (code). */
+    /** Active residents at a site (code) — the device's own copy, so it's instant and works offline. */
     residents(siteCode: string): Promise<Resident[]>;
+    resident(id: string): Promise<ResidentDetail>;
+    /** Open the resident's roster page in the app. */
+    open(id: string): void;
   };
 
   export interface Entry<T = Record<string, unknown>> {
@@ -475,7 +495,18 @@ declare module "@lcs/server" {
   }
 
   export interface ServerSite { id: string; code: string; name: string; siteType: string }
-  export interface ServerResident { id: string; siteId: string; name: string; unit: string | null; status: string }
+  export interface ServerResident {
+    id: string;
+    siteId: string;
+    name: string;
+    firstName: string;
+    lastName: string;
+    preferredName: string | null;
+    unit: string | null;
+    status: string;
+    moveInDate: string | null;
+    lastActivityAt: string | null;
+  }
 
   export interface ServerEntry<T = Record<string, unknown>> {
     id: string;
@@ -536,7 +567,14 @@ declare module "@lcs/server" {
       site(idOrCode: string): ServerSite | null;
       sites(): ServerSite[];
       resident(id: string): ServerResident | null;
-      residents(siteIdOrCode: string): ServerResident[];
+      /** Active residents, by last name; includeArchived for everyone who has lived there. */
+      residents(siteIdOrCode: string, opts?: { includeArchived?: boolean }): ServerResident[];
+      /**
+       * Note that the resident was seen (it resets their roster review clock and shows on their page),
+       * labelled with the form's title unless you give one. An entry with tenantId does this already;
+       * use this for anything else. Skipped in the draft.
+       */
+      logActivity(tenantId: string, opts?: { label?: string; occurredAt?: string }): { logged: boolean; reason?: string };
     };
     /** The site calendar, as the person using the form sees it. */
     calendar: {

@@ -243,7 +243,19 @@ export function AppFrame({
       "roster.residents": async (code: string) => {
         // The device's own copy of the roster when it has one: instant, and offline.
         const res = await loadTenants(String(code), { userId: latest.current.runtime.user.id });
-        return res.items.map((t) => ({ id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit }));
+        return res.items.map((t) => ({
+          id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit,
+          moveInDate: t.moveInDate?.slice(0, 10) ?? null, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
+        }));
+      },
+      "roster.resident": async (id: string) => {
+        const t = await api.get<Tenant & { activities: { source: string; label: string | null; occurredAt: string; recordedBy: string | null }[] }>(`/tenants/${encodeURIComponent(String(id))}`);
+        return {
+          id: t.id, siteId: t.siteId, site: t.site ? { code: t.site.code, name: t.site.name } : null, name: t.displayName, firstName: t.firstName, lastName: t.lastName,
+          preferredName: t.preferredName, unit: t.unit, status: t.status, moveInDate: t.moveInDate?.slice(0, 10) ?? null, moveOutDate: t.moveOutDate?.slice(0, 10) ?? null,
+          notes: t.notes, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
+          activities: (t.activities ?? []).map((a) => ({ source: a.source, label: a.label, occurredAt: a.occurredAt, recordedBy: a.recordedBy })),
+        };
       },
       "entries.list": async (query: Record<string, unknown>) => runtimeApi.entries(slug, draft, query ?? {}),
       "entries.get": async (id: string) => runtimeApi.entry(slug, draft, id),

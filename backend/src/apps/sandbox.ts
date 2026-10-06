@@ -129,7 +129,8 @@ globalThis.__makeCtx = (base) => ({
     site: (x) => __h("roster.site", { x }),
     sites: () => __h("roster.sites", {}),
     resident: (id) => __h("roster.resident", { id }),
-    residents: (x) => __h("roster.residents", { x }),
+    residents: (x, opts) => __h("roster.residents", { x, opts: opts || {} }),
+    logActivity: (tenantId, opts) => __h("roster.logActivity", { tenantId, label: opts && opts.label, occurredAt: opts && opts.occurredAt }),
   },
   calendar: {
     events: (q) => __h("calendar.events", { q: q || {} }),

@@ -484,7 +484,10 @@ async function queryForServer(formId: string, q: ServerQuery, includePreview: bo
 function hostFor(app: LoadedApp, user: CurrentUser | null) {
   const canSite = (siteId: string) => !user || user.siteIds === null || user.siteIds.includes(siteId);
   const siteOut = (s: Site) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType });
-  const residentOut = (t: Tenant) => ({ id: t.id, siteId: t.siteId, name: displayName(t), unit: t.unit, status: t.status });
+  const residentOut = (t: Tenant) => ({
+    id: t.id, siteId: t.siteId, name: displayName(t), firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit, status: t.status,
+    moveInDate: t.moveInDate?.toISOString().slice(0, 10) ?? null, lastActivityAt: t.lastActivityAt?.toISOString() ?? null,
+  });
 
   async function otherForm(slug: string) {
     if (!(app.manifest.reads ?? []).includes(slug)) throw new Error(`Add "${slug}" to "reads" in form.json to read its entries.`);
@@ -540,7 +543,19 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
       case "roster.residents": {
         const s = await prisma.site.findFirst({ where: { OR: [{ id: String(args.x) }, { code: String(args.x) }] } });
         if (!s || !canSite(s.id)) return [];
-        return (await prisma.tenant.findMany({ where: { siteId: s.id, status: "active" } })).map(residentOut);
+        const status = args.opts?.includeArchived ? {} : { status: "active" };
+        return (await prisma.tenant.findMany({ where: { siteId: s.id, ...status }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] })).map(residentOut);
+      }
+      case "roster.logActivity": {
+        // Counts as the resident being seen (resets their review clock), like an entry about them does.
+        const t = await prisma.tenant.findUnique({ where: { id: String(args.tenantId) } });
+        if (!t || !canSite(t.siteId)) throw new Error("That resident isn't at one of your sites.");
+        if (app.draft) return { logged: false, reason: "The draft (preview) doesn't log roster activity." };
+        const label = typeof args.label === "string" && args.label.trim() ? args.label.trim().slice(0, 120) : app.manifest.title;
+        const occurredAt = args.occurredAt ? new Date(String(args.occurredAt)) : new Date();
+        if (Number.isNaN(occurredAt.getTime())) throw new Error("occurredAt isn't a time.");
+        await recordActivity({ tenantId: t.id, source: "form", label, occurredAt: occurredAt > new Date() ? new Date() : occurredAt, recordedBy: user?.name ?? "Server code" });
+        return { logged: true };
       }
       case "calendar.events": {
         // The calendar service speaks Express requests; it only reads req.user.

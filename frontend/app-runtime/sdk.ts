@@ -109,6 +109,9 @@ export const app = {
 export const roster = {
   sites: () => call("roster.sites"),
   residents: (siteCode: string) => call("roster.residents", siteCode),
+  resident: (id: string) => call("roster.resident", id),
+  /** Open the resident's roster page in the app. */
+  open: (id: string) => void call("app.openApp", `/tenants/${encodeURIComponent(id)}`),
 };
 
 export const entries = {
