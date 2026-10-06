@@ -3,7 +3,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
 import type {
-  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
+  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeAppCards, HomeData, HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
 } from "./types";
 
@@ -114,6 +114,16 @@ export function useHome() {
     queryKey: ["home"],
     queryFn: () => api.get<HomeData>("/home"),
     staleTime: 60_000,
+  });
+}
+
+/** Code forms' own cards on the Forms home; separate so a slow form can't hold up the rest. */
+export function useHomeApps() {
+  return useQuery({
+    queryKey: ["home", "apps"],
+    queryFn: () => api.get<HomeAppCards>("/home/apps"),
+    staleTime: 60_000,
+    retry: false,
   });
 }
 

@@ -7,6 +7,7 @@ import { attentionHours } from "../services/settings.js";
 import { cutoff, displayName } from "../services/roster.js";
 import { sitesInScope, type ScopedSite } from "../services/siteScope.js";
 import { dayKey, startOfDay } from "../services/hotFoods.js";
+import { appHomeCards } from "../apps/home.js";
 
 export const homeRouter = Router();
 homeRouter.use(requireAuth);
@@ -174,10 +175,10 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null, ho
         })
       : Promise.resolve([]),
     prisma.formEntry.findMany({
-      where: { createdById: me, status: "active" },
+      where: { createdById: me, status: "active", source: { not: "preview" } },
       orderBy: { createdAt: "desc" },
       take,
-      select: { id: true, createdAt: true, siteId: true, form: { select: { title: true, slug: true } } },
+      select: { id: true, createdAt: true, siteId: true, form: { select: { title: true, slug: true, kind: true } } },
     }),
     // Everyone's Hot Foods at your sites if you can read entries; otherwise just your own.
     prisma.hotFoodEntry.findMany({
@@ -224,7 +225,7 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null, ho
       subject: e.form.title,
       detail: site(e.siteId),
       at: e.createdAt,
-      href: `/f/${e.form.slug}`,
+      href: e.form.kind === "code" ? `/apps/${e.form.slug}` : `/f/${e.form.slug}`,
     })),
     ...hotFoods.map((h): ActivityItem => {
       const mine = h.createdById === me;
@@ -256,7 +257,7 @@ homeRouter.get(
       hotFoodSites ? hotFoodOverrides(hotFoodSites) : Promise.resolve([]),
       myDrafts(req),
       recentActivity(req, rosterSites, hotFoodSites),
-      prisma.formEntry.count({ where: { createdById: me, status: "active", createdAt: { gte: weekAgo } } }),
+      prisma.formEntry.count({ where: { createdById: me, status: "active", source: { not: "preview" }, createdAt: { gte: weekAgo } } }),
       prisma.hotFoodEntry.count({ where: { createdById: me, voidedAt: null, createdAt: { gte: weekAgo } } }),
       rosterSites?.length ? prisma.tenant.count({ where: { siteId: { in: rosterSites.map((s) => s.id) }, status: "active" } }) : Promise.resolve(null),
     ]);
@@ -273,5 +274,16 @@ homeRouter.get(
         sites: rosterSites ? rosterSites.map((s) => s.name) : null,
       },
     });
+  })
+);
+
+/**
+ * Cards from code forms (form.json "home"): their own attention items and stat
+ * tiles. A separate request, so a slow form never holds up the rest of the home screen.
+ */
+homeRouter.get(
+  "/apps",
+  asyncHandler(async (req, res) => {
+    res.json(await appHomeCards(req.user!));
   })
 );

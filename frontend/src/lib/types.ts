@@ -235,7 +235,11 @@ export interface FormCatalog {
 /** One card in "Needs your attention" on the Forms home (backend routes/home.ts). */
 export interface HomeAttentionItem {
   id: string;
-  kind: "roster" | "hotfoods" | "draft";
+  /** "app": from a code form's form.json "home" (backend apps/home.ts). */
+  kind: "roster" | "hotfoods" | "draft" | "app";
+  /** For "app" items: the form's icon key and title. */
+  icon?: string | null;
+  formTitle?: string;
   /** "warn" = amber, act soon; "info" = a reminder. */
   tone: "warn" | "info";
   title: string;
@@ -254,6 +258,23 @@ export interface HomeActivityItem {
   detail: string | null;
   at: string;
   href: string | null;
+}
+
+/** A stat tile a code form puts on the Forms home. */
+export interface HomeAppTile {
+  id: string;
+  icon: string | null;
+  formTitle: string;
+  label: string;
+  value: string;
+  hint: string | null;
+  href: string;
+}
+
+/** Cards from code forms (GET /home/apps), loaded beside the rest of the home screen. */
+export interface HomeAppCards {
+  attention: HomeAttentionItem[];
+  tiles: HomeAppTile[];
 }
 
 export interface HomeData {

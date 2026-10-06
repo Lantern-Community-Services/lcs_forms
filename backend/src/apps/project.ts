@@ -83,6 +83,11 @@ export const manifestSchema = z.object({
     .optional(),
   /** The form's own data. Default for a collection not listed: everyone reads, admins write. */
   collections: z.record(z.object({ read: roleList, write: roleList }).strict()).optional(),
+  /**
+   * Cards on the Forms home: the server action run as each person when the home screen loads.
+   * It returns { attention?: [...], tiles?: [...] } (see the guide). `roles`: who gets them (default: everyone who can open the form).
+   */
+  home: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/), roles: roleList }).strict().optional(),
   /** Other forms (slugs) whose entries the server code may read — still only if the person may. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */

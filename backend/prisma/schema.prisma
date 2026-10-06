@@ -542,6 +542,9 @@ model BuiltForm {
   revision    Int      @default(1)
   /// Catalog card that opens this form, when it's been added to Forms.
   catalogLinkId String?
+  /// A code form whose published form.json has "home": its server action adds
+  /// cards to the Forms home. Kept as a column so the home screen needn't open every form.
+  homeAction  Boolean  @default(false)
   createdById   String?
   createdByName String
   updatedByName String?

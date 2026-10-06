@@ -596,6 +596,18 @@ declare module "@lcs/server" {
     actions?: Record<string, (args: any, ctx: Ctx) => unknown>;
   }
 
+  /**
+   * What the action named in form.json "home": { "action": "home" } returns. It runs as each person
+   * when the Forms home loads (args: { home: true }); keep it quick (a count or two). The answer is kept a
+   * minute per person. page / params open that tab of the form. Up to 5 items and 3 tiles; return {} for none.
+   */
+  export interface HomeCards {
+    /** Joins "Needs your attention". warn = amber, act soon; info = a reminder. */
+    attention?: { title: string; detail?: string; action?: string; page?: string; params?: Record<string, string>; tone?: "warn" | "info" }[];
+    /** Stat tiles in a row under the home screen's own. */
+    tiles?: { label: string; value: string | number; hint?: string; page?: string; params?: Record<string, string> }[];
+  }
+
   /** server/index.ts: `export default defineServer({ … })` */
   export function defineServer(def: ServerDefinition): ServerDefinition;
 
