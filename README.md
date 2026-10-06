@@ -44,9 +44,31 @@ Roster (`/roster`) and Hot Foods (`/forms/hot-foods`) were built into the codeba
 forms existed; `INTERNAL_NEEDS` in `frontend/src/lib/formIcons.ts` locks their cards for people
 without the permission.
 
-**Keeping the forms you build:** the database is the real copy (drafts, every published version,
-entries). For history and a backup outside it, pull them into a separate git repo with
-`npm run forms -- app:pull <slug>` and commit; `app:push` sends a folder back.
+**Keeping the forms you build:** the database is the real copy. Every form is also backed up to
+GitHub automatically — see "Form backup" below.
+
+### Form backup
+
+Every form built in the app — form builder forms and code forms — is backed up to
+[Lantern-Community-Services/lcs_forms_form_backup](https://github.com/Lantern-Community-Services/lcs_forms_form_backup)
+(private), `backend/src/services/formBackup.ts`:
+
+- **What's in it:** each form's draft and published definition, every published version, a code
+  form's collections (its settings and lists), and `catalog.json` (the Forms screen, including links
+  to forms on other sites). `basic/<slug>/` for form builder forms, `code/<slug>/` for code forms (the
+  folder is the project, so `app:push` works on it). **Not** in it: entries, uploaded photos, people.
+- **When:** the server checks every 10 minutes and commits only when a form changed, with the changed
+  forms in the commit message. **Back up now** on Admin → Form builder and Admin → Code forms; the same
+  bar shows the last backup or the last error.
+- **Setup:** `FORM_BACKUP_REPO` (in `.env`) and `FORM_BACKUP_TOKEN` in `.env.local` — a fine-grained
+  GitHub token with **Contents: read and write** on that one repository. On a server, set both as
+  app settings. No git is needed on the server; it uses the GitHub API.
+- **From a computer instead** (your own git login): clone the repo, then
+  `npm run forms -- backup --dir <clone> --push`.
+- **Restore:** `npm run forms -- backup:restore <clone> [slug ...] [--publish]` creates missing forms
+  and replaces the drafts of existing ones; `--publish` also publishes the backed-up live version.
+  A code form's settings come back only into a form that has none. Put restored forms back on the
+  Forms screen from their editor (`catalog.json` says where they were).
 
 ---
 

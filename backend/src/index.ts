@@ -6,6 +6,7 @@ import { ensureDefaultHotFoodItems } from "./services/hotFoods.js";
 import { ensureSiteLocations } from "./services/siteLocations.js";
 import { ensureDefaultCalendarCategories } from "./services/calendar.js";
 import { startOutlookSync } from "./services/outlookSync.js";
+import { startFormBackup } from "./services/formBackup.js";
 
 // A fresh database (a new deployment) opens with the forms already listed.
 // Logged, never fatal: the API is still worth serving without a catalog.
@@ -24,6 +25,7 @@ ensureDefaultCalendarCategories()
   .catch((err) => console.error("[calendar] could not write the default categories:", err));
 
 if (startOutlookSync()) console.log("  Calendar: sending events to Outlook.");
+if (startFormBackup()) console.log(`  Forms: backing up built forms to ${env.formBackup.repo}.`);
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

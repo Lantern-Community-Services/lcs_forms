@@ -48,6 +48,17 @@ export const env = {
   calendarOrganizer: (process.env.CALENDAR_ORGANIZER ?? "").trim(),
 
   /**
+   * Backup of every built form to a GitHub repository (services/formBackup.ts).
+   * FORM_BACKUP_REPO is "owner/name"; FORM_BACKUP_TOKEN a token that can write
+   * that repository's contents (put it in .env.local). Either empty = no backup.
+   */
+  formBackup: {
+    repo: (process.env.FORM_BACKUP_REPO ?? "").trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, ""),
+    token: (process.env.FORM_BACKUP_TOKEN ?? "").trim(),
+    branch: (process.env.FORM_BACKUP_BRANCH ?? "main").trim() || "main",
+  },
+
+  /**
    * Email domains always allowed to sign in. Admins add partner / Google
    * Workspace domains at runtime in Admin → Sign-in access; those are unioned
    * with this list. Empty = any account the tenant admits.

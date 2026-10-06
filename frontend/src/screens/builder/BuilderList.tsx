@@ -1,3 +1,4 @@
+import { FormBackupBar } from "@/components/FormBackupBar";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -70,6 +71,7 @@ export function AdminBuilderList() {
           </>
         }
       />
+      <FormBackupBar />
 
       {isLoading ? <LoadingState /> : !forms?.length ? (
         <Card>

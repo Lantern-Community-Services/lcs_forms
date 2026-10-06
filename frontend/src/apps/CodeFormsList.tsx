@@ -1,3 +1,4 @@
+import { FormBackupBar } from "@/components/FormBackupBar";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -72,6 +73,7 @@ export function CodeFormsList() {
           </>
         }
       />
+      <FormBackupBar />
       {isLoading ? <LoadingState /> : !data?.length ? (
         <Card>
           <EmptyState icon={<Code2 className="h-6 w-6" />} title={archived ? "No archived code forms" : "No code forms yet"} hint="Start from a template, or ask the AI form builder to write one." />

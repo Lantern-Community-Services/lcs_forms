@@ -8,6 +8,7 @@ import { getAllSettings, setSetting } from "../services/settings.js";
 import { API_SCOPES, generateKey } from "../services/apiKeys.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
+import { backupStatus, runFormBackup } from "../services/formBackup.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -169,5 +170,21 @@ adminRouter.post(
     if (rows.length === 0) throw badRequest("That file has no rows. Expected columns: Property, Unit, Tenant.");
     const summary = await importTenants(rows, { commit: req.query.commit === "1", actor: actorOf(req) });
     res.json({ committed: req.query.commit === "1", ...summary });
+  })
+);
+
+// ── Form backup (services/formBackup.ts) ─────────────────────────────────
+
+const formBuilders = requirePermission("forms.manage", "apps.develop");
+
+adminRouter.get("/form-backup", formBuilders, (_req, res) => res.json(backupStatus()));
+
+/** Back up now (a commit only if something changed). */
+adminRouter.post(
+  "/form-backup",
+  formBuilders,
+  asyncHandler(async (req, res) => {
+    if (!backupStatus().configured) throw badRequest("The form backup isn't set up on this server (FORM_BACKUP_TOKEN).");
+    res.json(await runFormBackup({ by: actorOf(req).name }));
   })
 );
