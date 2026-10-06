@@ -2,7 +2,8 @@ import express, { Router, type Request } from "express";
 import { z } from "zod";
 import { asyncHandler, badRequest, forbidden } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
-import { actorOf } from "../services/audit.js";
+import { actorOf, audit } from "../services/audit.js";
+import { buildExport, exportSpec } from "../apps/exports.js";
 import { deleteForm, listVersions, setCatalog, setFormStatus } from "../forms/service.js";
 import { buildProject } from "../apps/compile.js";
 import { checkFiles } from "../apps/project.js";
@@ -257,6 +258,20 @@ appsRouter.get(
     // Uploaded content is shown as a file, never as a page of this site.
     res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
     res.type(inline ? file.mime : "application/octet-stream").send(Buffer.from(file.data));
+  })
+);
+
+/** An Excel / PDF / CSV file of what a page is showing (app.export). */
+appsRouter.post(
+  "/:slug/export",
+  asyncHandler(async (req, res) => {
+    const spec = exportSpec.parse(req.body);
+    const app = await appFor(req);
+    requireOpen(app, req.user!);
+    const file = await buildExport(spec, req.user!.name);
+    await audit({ actor: actorOf(req), action: "apps.exported", summary: `Exported “${spec.title}” (${spec.format}) from code form “${app.manifest.title}”` });
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file.filename)}"`);
+    res.type(file.mime).send(file.body);
   })
 );
 

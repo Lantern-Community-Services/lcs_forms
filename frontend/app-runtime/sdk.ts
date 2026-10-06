@@ -103,6 +103,8 @@ export const app = {
   toast: (message: string, tone?: "success" | "error") => void call("app.toast", message, tone ?? "success"),
   download: (filename: string, content: string, opts?: { mime?: string; base64?: boolean }) => void call("app.download", filename, content, opts ?? {}),
   print: () => window.print(),
+  /** Build an Excel, PDF or CSV file on the server from tables (and headline numbers) and hand it over. */
+  export: (spec: Json) => call<void>("app.export", spec),
   openApp: (path: string) => void call("app.openApp", path),
 };
 

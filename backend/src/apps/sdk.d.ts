@@ -80,9 +80,33 @@ declare module "@lcs/sdk" {
     /** Hand the person a file to save. Content is text, or base64 with `base64: true`. */
     download(filename: string, content: string, opts?: { mime?: string; base64?: boolean }): void;
     print(): void;
+    /**
+     * An Excel workbook, a PDF or a CSV of what the page shows, made on the server in the app's own
+     * export style: a title, optional headline numbers, and one or more tables (CSV: the first one).
+     * Up to 12 tables and 20,000 rows each. Every export is recorded in the audit log.
+     */
+    export(spec: ExportSpec): Promise<void>;
     /** Open another part of the Lantern app (e.g. "/tenants/<id>") in the main window. */
     openApp(path: string): void;
   };
+
+  export interface ExportSpec {
+    format: "xlsx" | "pdf" | "csv";
+    filename: string;
+    title: string;
+    subtitle?: string;
+    stats?: { label: string; value: string | number }[];
+    sheets: {
+      /** Sheet tab / section name (31 characters at most). */
+      name: string;
+      /** type: text (default), number, date ("YYYY-MM-DD" or ISO), datetime (ISO, shown in New York time). width: relative. */
+      columns: { key: string; label: string; type?: "text" | "number" | "date" | "datetime"; width?: number }[];
+      /** Objects keyed by column key. Arrays and objects are written as text. */
+      rows: Record<string, unknown>[];
+    }[];
+    /** PDF: landscape (default when a table has more than 5 columns). */
+    landscape?: boolean;
+  }
 
   export interface Site {
     id: string;
@@ -482,6 +506,16 @@ declare module "@lcs/charts" {
   /** 7 rows (Sunday first, to Saturday) × 24 hours of counts. ctx.time.partsOf's weekday counts from Monday: use heat[(weekday + 1) % 7]. */
   export function HeatGrid(props: { heat: number[][] }): React.JSX.Element;
   export function StatTile(props: { label: string; value: string; hint?: string; icon?: React.ReactNode; accent?: string }): React.JSX.Element;
+  /**
+   * Change over time: one line per series (up to 8, each its own palette slot), crosshair + tooltip.
+   * x: a day ("YYYY-MM-DD", shown "Oct 6") or any label. area: shade under a single series. One axis only —
+   * two measures of different size go in two charts.
+   */
+  export function TrendChart(props: { data: { x: string; values: Record<string, number> }[]; series: Series[]; unit?: string; area?: boolean; height?: number }): React.JSX.Element;
+  /** Amounts for a few short categories as columns (many or long names: RankedBars). slot colors a column by what it is. */
+  export function ColumnChart(props: { data: { label: string; value: number; slot?: number | null }[]; unit?: string; height?: number }): React.JSX.Element;
+  /** Parts of a whole, up to 6 (fold the rest into "Other", slot null). Total in the middle; parts named with value and share. */
+  export function DonutChart(props: { data: { label: string; value: number; slot: number | null }[]; unit?: string; totalLabel?: string; size?: number }): React.JSX.Element;
 }
 
 declare module "@lcs/server" {

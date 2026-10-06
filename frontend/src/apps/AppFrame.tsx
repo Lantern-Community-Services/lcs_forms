@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, ApiError } from "@/lib/api";
+import { api, API_BASE, ApiError } from "@/lib/api";
 import { isOnline, onConnectivityChange, storeAnswer, storedAnswer } from "@/lib/offline";
 import { loadTenants } from "@/lib/rosterStore";
 import { useToast } from "@/components/ui/toast";
@@ -235,6 +235,25 @@ export function AppFrame({
         const a = document.createElement("a");
         a.href = url;
         a.download = String(filename).replace(/[\\/:*?"<>|]+/g, "-").slice(0, 150) || "download";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      },
+      "app.export": async (spec: Record<string, unknown>) => {
+        const res = await fetch(`${API_BASE}/apps/${slug}/export${draft ? "?draft=1" : ""}`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(spec),
+        });
+        if (!res.ok) {
+          const out = await res.json().catch(() => ({}));
+          throw new ApiError(res.status, out?.error ?? "The export failed.", out?.details);
+        }
+        const name = decodeURIComponent(/filename="?([^"]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "export");
+        const url = URL.createObjectURL(await res.blob());
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
       },

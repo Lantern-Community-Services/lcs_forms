@@ -11,7 +11,7 @@ import * as ReactDOMClient from "react-dom/client";
 import * as Lucide from "lucide-react";
 import * as sdk from "./sdk";
 import * as ui from "./ui";
-import * as charts from "@/components/hotfoods/Charts";
+import * as charts from "./charts";
 
 declare global {
   interface Window {
