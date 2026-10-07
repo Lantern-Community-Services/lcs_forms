@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { ConditionalEditor } from "./ConditionalEditor";
-import { FORM_ICONS } from "@/lib/formIcons";
+import { IconPicker } from "@/components/IconPicker";
 import { useForms } from "@/lib/queries";
 import type { BuilderReference, BuiltFormDetail } from "@/lib/builder";
 import type { FormDoc, FormSettings, Notification } from "@/lib/formEngine";
@@ -90,13 +90,7 @@ export function SettingsPanel({
         </Row>
         <Row label="Submit button"><Input value={s.submitLabel ?? ""} onChange={(e) => set({ submitLabel: e.target.value })} placeholder="Submit" className="max-w-xs" /></Row>
         <Row label="Icon" hint="On the Forms screen and in the sidebar.">
-          <div className="flex flex-wrap gap-1">
-            {Object.entries(FORM_ICONS).map(([k, { label, Icon }]) => (
-              <button key={k} title={label} onClick={() => set({ icon: k })} className={cn("grid h-8 w-8 place-items-center rounded-input border", s.icon === k ? "border-navy bg-navsel text-accent" : "border-hairline text-muted hover:text-ink")}>
-                <Icon className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
+          <IconPicker value={s.icon ?? null} onChange={(icon) => set({ icon: icon ?? undefined })} />
         </Row>
         <Toggle label="Progress bar" hint="On forms with page breaks." checked={s.progressBar !== false} onChange={(v) => set({ progressBar: v ? undefined : false })} />
         <Toggle label="Keep unfinished answers" hint="Saved on the device, so a reload or a dropped connection doesn't lose them." checked={s.saveDrafts !== false} onChange={(v) => set({ saveDrafts: v ? undefined : false })} />

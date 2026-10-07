@@ -2,7 +2,8 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { HttpError } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
-import { categoryBody, formBody, FORM_ICONS } from "../routes/forms.js";
+import { categoryBody, formBody } from "../routes/forms.js";
+import { LEGACY_FORM_ICON_KEYS } from "./iconKeys.js";
 import { builtSlugOf, linkCatalogCard, unlinkCatalogCard } from "./service.js";
 import type { ToolRegistrar } from "./mcp.js";
 
@@ -26,7 +27,8 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
         include: { forms: { where: includeHidden ? {} : { active: true }, orderBy: { sortOrder: "asc" } } },
       });
       return {
-        icons: FORM_ICONS,
+        // All of Lucide is accepted (about 1,500 keys), too many to list here.
+        icons: `Any Lucide icon name from lucide.dev/icons, e.g. "heart-handshake" or "stethoscope", plus these older short keys: ${LEGACY_FORM_ICON_KEYS.join(", ")}.`,
         categories: cats.map((c) => ({
           id: c.id,
           name: c.name,

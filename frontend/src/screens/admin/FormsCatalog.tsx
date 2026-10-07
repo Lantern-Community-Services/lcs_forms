@@ -14,7 +14,8 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api";
-import { FORM_ICONS, formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
+import { IconPicker } from "@/components/IconPicker";
+import { formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
 import { formsApi, useBuiltFormOptions, useForms, useRoles, type BuiltFormOption } from "@/lib/queries";
 import type { FormCategory, FormLink } from "@/lib/types";
 import { cn, errorMessage } from "@/lib/utils";
@@ -139,7 +140,7 @@ export function AdminFormsCatalog() {
       url: b.url,
       title: keepTitle ? f.title : b.title,
       description: keepDescription ? f.description : b.description ?? "",
-      icon: b.icon && b.icon in FORM_ICONS ? (b.icon as FormIconKey) : f.icon,
+      icon: b.icon ? (b.icon as FormIconKey) : f.icon,
       roles: b.roles,
     };
   }
@@ -185,7 +186,7 @@ export function AdminFormsCatalog() {
                 </p>
                 <IconButton label="Move category up" disabled={busy || ci === 0} onClick={() => moveCategory(ci, -1)}><ArrowUp className="h-4 w-4" /></IconButton>
                 <IconButton label="Move category down" disabled={busy || ci === categories.length - 1} onClick={() => moveCategory(ci, 1)}><ArrowDown className="h-4 w-4" /></IconButton>
-                <IconButton label="Rename category" onClick={() => setCategory({ id: cat.id, name: cat.name, icon: (cat.icon in FORM_ICONS ? cat.icon : "folder") as FormIconKey })}><Pencil className="h-4 w-4" /></IconButton>
+                <IconButton label="Rename category" onClick={() => setCategory({ id: cat.id, name: cat.name, icon: cat.icon || "folder" })}><Pencil className="h-4 w-4" /></IconButton>
                 <IconButton
                   label={cat.forms.length ? "Move or delete its forms first" : "Delete category"}
                   disabled={cat.forms.length > 0}
@@ -245,7 +246,7 @@ export function AdminFormsCatalog() {
                           url: f.url,
                           keywords: f.keywords ?? "",
                           badge: f.badge ?? "",
-                          icon: f.icon && f.icon in FORM_ICONS ? (f.icon as FormIconKey) : null,
+                          icon: f.icon || null,
                           active: f.active,
                           roles: f.roles,
                         })
@@ -440,25 +441,3 @@ function IconButton({ label, onClick, disabled, children }: { label: string; onC
   );
 }
 
-/**
- * The fixed icon set as a grid. With `inherit` (a form), the first choice is
- * the category's icon, drawn dashed, which saves as null.
- */
-function IconPicker({ value, onChange, inherit: Inherit }: { value: FormIconKey | null; onChange: (icon: FormIconKey | null) => void; inherit?: React.ElementType }) {
-  const cell = (on: boolean) =>
-    cn("flex h-10 items-center justify-center rounded-input border transition-colors", on ? "border-navy bg-navsel text-accent dark:text-white" : "border-hairline text-muted hover:bg-rowhover hover:text-ink");
-  return (
-    <div className="grid grid-cols-7 gap-1.5">
-      {Inherit && (
-        <button type="button" title="Category's icon" aria-label="Category's icon" aria-pressed={value === null} onClick={() => onChange(null)} className={cn(cell(value === null), "border-dashed")}>
-          <Inherit className="h-[18px] w-[18px] opacity-70" />
-        </button>
-      )}
-      {(Object.entries(FORM_ICONS) as [FormIconKey, (typeof FORM_ICONS)[FormIconKey]][]).map(([key, { label, Icon }]) => (
-        <button key={key} type="button" title={label} aria-label={label} aria-pressed={value === key} onClick={() => onChange(key)} className={cell(value === key)}>
-          <Icon className="h-[18px] w-[18px]" />
-        </button>
-      ))}
-    </div>
-  );
-}
