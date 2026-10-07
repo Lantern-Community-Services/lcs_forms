@@ -13,7 +13,7 @@
  *   npm run forms -- export intake other-form [--entries] > bundle.json
  *
  * Code forms (a folder per form, e.g. ../forms/hot-foods/):
- *   npm run forms -- app:pull hot-foods [../forms/hot-foods]        files + lcs-sdk.d.ts + tsconfig for type-checking
+ *   npm run forms -- app:pull hot-foods [../forms/hot-foods] [--live] files + lcs-sdk.d.ts + tsconfig (--live: the published version)
  *   npm run forms -- app:push ../forms/hot-foods [--slug x] [--publish] [--note "…"]
  *   npm run forms -- app:build ../forms/hot-foods                        compile locally, print errors
  *
@@ -134,7 +134,10 @@ async function main() {
       const row = await prisma.builtForm.findFirst({ where: { slug, kind: "code" } });
       if (!row) throw new Error(`No code form ${slug}.`);
       const dir = resolve(out ?? `../forms/${slug}`);
-      for (const [path, src] of Object.entries(draftFiles(row))) {
+      // --live: the published files (the draft otherwise).
+      if (flag("live") && !row.liveSchema) throw new Error(`${slug} hasn't been published.`);
+      const files: Record<string, string> = flag("live") ? (JSON.parse(row.liveSchema!) as { files: Record<string, string> }).files : draftFiles(row);
+      for (const [path, src] of Object.entries(files)) {
         mkdirSync(dirname(join(dir, path)), { recursive: true });
         writeFileSync(join(dir, path), src);
       }
