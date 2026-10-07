@@ -10,6 +10,7 @@ import { buildProject, type Build } from "./compile.js";
 import { runInSandbox, type SandboxResult } from "./sandbox.js";
 import { DEFAULT_ENTRY_READERS, readManifest, roleAllowed, type Files, type Manifest } from "./project.js";
 import * as time from "./time.js";
+import { appBaseUrl } from "../env.js";
 import { attachFiles, filesToAttach } from "./files.js";
 import { queueEmail } from "./email.js";
 import type { Request } from "express";
@@ -655,7 +656,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         return s && canSite(s.id) ? siteOut(s) : null;
       }
       case "roster.sites": {
-        const rows = await prisma.site.findMany({ where: { active: true, ...(user?.siteIds ? { id: { in: user.siteIds } } : {}) }, orderBy: { name: "asc" } });
+        // all: every active site's name and code (to choose where something happens), not just the person's own.
+        const rows = await prisma.site.findMany({ where: { active: true, ...(user?.siteIds && !args?.all ? { id: { in: user.siteIds } } : {}) }, orderBy: { name: "asc" } });
         return rows.map(siteOut);
       }
       case "roster.resident": {
@@ -733,6 +735,7 @@ function baseCtx(app: LoadedApp, user: CurrentUser | null) {
     now: new Date().toISOString(),
     today: time.today(),
     draft: app.draft,
+    url: `${appBaseUrl}/apps/${app.form.slug}`,
   };
 }
 

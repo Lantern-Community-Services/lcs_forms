@@ -658,6 +658,8 @@ declare module "@lcs/server" {
     today: string;
     /** Is this the draft (preview) or the published form? */
     draft: boolean;
+    /** The form's address, for links in emails: `${ctx.url}/request?id=…` opens that page. */
+    url: string;
     db: {
       /** This form's entries — all of them, regardless of who's asking. */
       entries: OwnEntriesApi;
@@ -672,7 +674,8 @@ declare module "@lcs/server" {
     };
     roster: {
       site(idOrCode: string): ServerSite | null;
-      sites(): ServerSite[];
+      /** The person's sites; { all: true } for every active site (names and codes, e.g. to choose where an event is). */
+      sites(opts?: { all?: boolean }): ServerSite[];
       resident(id: string): ServerResident | null;
       /** Active residents, by last name; includeArchived for everyone who has lived there. */
       residents(siteIdOrCode: string, opts?: { includeArchived?: boolean }): ServerResident[];

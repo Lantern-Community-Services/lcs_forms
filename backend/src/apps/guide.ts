@@ -77,6 +77,8 @@ Admins and developers pass every role check.
 - Approvals and other server-side changes: ctx.db.entries.update(id, data, { reason, ifUpdatedAt: entry.updatedAt })
   in an action that checks who's asking (ctx.user). It skips entries.edit and beforeUpdate, keeps history, and throws
   "CONFLICT…" if someone saved the entry meanwhile — read it again and retry once.
+- Every site: ctx.roster.sites({ all: true }) (names and codes, to choose where something happens); ctx.url is the form's
+  address for links in emails (\`\${ctx.url}/request?id=…\`).
 - Staff: ctx.directory({ search, roles, site, ids }) lists active staff (name, email, role, sites) to choose approvers
   in a settings page (through an action) or to find a site's managers to email.
 - Forms home: form.json "home": { "action": "home" }. That action runs as each person when the home screen loads and

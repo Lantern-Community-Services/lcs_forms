@@ -249,6 +249,10 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   - In the draft, these calls are simulated (`preview:` ids).
   - `ctx.directory({ search, roles, site })` lists active staff (name, email, role, sites), for choosing
     approvers.
+  - `ctx.roster.sites({ all: true })` lists every active site, not just the person's own, and `ctx.url`
+    is the form's address, for links in emails.
+  - The first form built this way is **Event Requests** (`/apps/events`), built through MCP on
+    2026-10-07.
 - **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the original charts (`DailyBars`, `RankedBars`, `HeatGrid`, `StatTile`);
   `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.
 - **Email:** `ctx.email.send()` from server code, queued through the Graph mailbox (see Email below —
