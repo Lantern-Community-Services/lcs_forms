@@ -105,7 +105,7 @@ declare module "@lcs/sdk" {
     sheets: {
       /** Sheet tab / section name (31 characters at most). */
       name: string;
-      /** type: text (default), number, date ("YYYY-MM-DD" or ISO), datetime (ISO, shown in New York time). width: relative. */
+      /** type: text (default), number, date ("YYYY-MM-DD" or ISO), datetime (ISO, shown in New York time). width: in Excel characters, 2–120 (the PDF splits the page in the same proportions). */
       columns: { key: string; label: string; type?: "text" | "number" | "date" | "datetime"; width?: number }[];
       /** Objects keyed by column key. Arrays and objects are written as text. */
       rows: Record<string, unknown>[];
