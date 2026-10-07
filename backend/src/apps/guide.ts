@@ -27,6 +27,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "entries": { "read": ["main_office", "site_admin", "site_manager"], "void": ["site_admin", "site_manager"], "undoMinutes": 10 },
   "collections": { "mealTypes": { "read": ["*"], "write": ["admin"] } },
   "reads": ["other-form-slug"],
+  "share": { "forms": ["other-form-slug"] },                       // let that form's server code read this one's entries
   "calendar": { "ownEvents": true },                                // server code manages the form's own calendar events
   "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)

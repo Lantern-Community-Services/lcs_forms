@@ -251,7 +251,11 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
     approvers.
   - `ctx.roster.sites({ all: true })` lists every active site, not just the person's own, and `ctx.url`
     is the form's address, for links in emails.
-  - The first form built this way is **Event Requests** (`/apps/events`), built through MCP on
+  - `form.json` `"share": { "forms": ["other-slug"] }` lets another code form's server code read this
+    form's entries whoever is using it (that form lists this one in `"reads"` and decides what to show).
+    Event Requests and Encounter Events share with each other.
+  - The first forms built this way are **Event Requests** (`/apps/events`) and **Encounter Events**
+    (`/apps/encounters`, which records attendance against approved events), built through MCP on
     2026-10-07.
 - **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the original charts (`DailyBars`, `RankedBars`, `HeatGrid`, `StatTile`);
   `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.

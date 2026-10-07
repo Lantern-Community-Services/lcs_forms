@@ -614,12 +614,15 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
 
   async function otherForm(slug: string) {
     if (!(app.manifest.reads ?? []).includes(slug)) throw new Error(`Add "${slug}" to "reads" in form.json to read its entries.`);
-    if (!user) throw new Error("Reading other forms needs a signed-in person.");
     const other = await prisma.builtForm.findUnique({ where: { slug } });
     if (!other) throw new Error(`No form "${slug}".`);
+    const loaded = other.kind === "code" ? await loadApp(other, false).catch(() => null) : null;
+    // A code form that shares with this one ("share": { "forms": [...] }) is readable whoever is asking:
+    // this form's server code decides what of it to show (e.g. only the person's own sites).
+    if (loaded?.manifest.share?.forms?.includes(app.form.slug)) return other.id;
+    if (!user) throw new Error("Reading other forms needs a signed-in person.");
     let allowed = false;
     if (other.kind === "code") {
-      const loaded = await loadApp(other, false).catch(() => null);
       allowed = Boolean(loaded && access(loaded, user).readAll);
     } else allowed = canReadBasicEntries(readDoc(other.liveSchema ?? other.draftSchema), user);
     if (!allowed) throw new Error(`${user.name} can't read the entries of "${slug}".`);

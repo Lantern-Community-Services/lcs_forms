@@ -669,7 +669,11 @@ declare module "@lcs/server" {
         put<T = Record<string, unknown>>(name: string, id: string | null, data: T): { id: string; data: T };
         remove(name: string, id: string): void;
       };
-      /** Another form's entries (listed in form.json "reads"), only if this person may read them. */
+      /**
+       * Another form's entries (listed in form.json "reads"): when this person may read them, or always when
+       * that form shares with this one (its form.json "share": { "forms": ["this-slug"] }) — then this code
+       * decides what to show.
+       */
       form(slug: string): { entries: EntriesApi };
     };
     roster: {

@@ -96,7 +96,13 @@ export const manifestSchema = z.object({
    * waiting on approval. Never events for every site; nobody changes them on the calendar itself.
    */
   calendar: z.object({ ownEvents: z.boolean().optional() }).strict().optional(),
-  /** Other forms (slugs) whose entries the server code may read — still only if the person may. */
+  /**
+   * Code forms (slugs) whose server code may read this form's entries whoever is using them (with the
+   * other form listing this one in "reads"). The other form's server code decides what to show — e.g.
+   * Encounters showing approved event requests at the person's own sites.
+   */
+  share: z.object({ forms: z.array(z.string()).max(20).optional() }).strict().optional(),
+  /** Other forms (slugs) whose entries the server code may read — still only if the person may, or if that form shares with this one. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */
   server: z.string().optional(),
