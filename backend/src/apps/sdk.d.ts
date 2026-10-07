@@ -79,11 +79,16 @@ declare module "@lcs/sdk" {
     toast(message: string, tone?: "success" | "error"): void;
     /** Hand the person a file to save. Content is text, or base64 with `base64: true`. */
     download(filename: string, content: string, opts?: { mime?: string; base64?: boolean }): void;
-    print(): void;
+    /**
+     * Print. With no spec, the browser prints the page as it is (fine for a simple page; charts and
+     * dark mode don't print well). With a spec, the PDF that app.export would make is printed instead —
+     * charts redrawn for paper — in the browser's print dialog, as the app's own reports do.
+     */
+    print(spec?: Omit<ExportSpec, "format">): Promise<void>;
     /**
      * An Excel workbook, a PDF or a CSV of what the page shows, made on the server in the app's own
-     * export style: a title, optional headline numbers, and one or more tables (CSV: the first one).
-     * Up to 12 tables and 20,000 rows each. Every export is recorded in the audit log.
+     * export style: a title, optional headline numbers, charts (PDF), and one or more tables (CSV: the
+     * first one). Up to 12 tables and 20,000 rows each. Every export is recorded in the audit log.
      */
     export(spec: ExportSpec): Promise<void>;
     /** Open another part of the Lantern app (e.g. "/tenants/<id>") in the main window. */
@@ -104,9 +109,28 @@ declare module "@lcs/sdk" {
       /** Objects keyed by column key. Arrays and objects are written as text. */
       rows: Record<string, unknown>[];
     }[];
-    /** PDF: landscape (default when a table has more than 5 columns). */
+    /** PDF: landscape (default when a table has more than 5 columns and there are no charts). */
     landscape?: boolean;
+    /**
+     * PDF only: charts drawn above the tables, in order, in the app's chart style — the same kinds as
+     * @lcs/charts. Colors: a palette slot (0-7, null = "Other" gray, as slotColor), a siteType
+     * ("supportive" | "shelter" | "other", as siteTypeOf), or a hex color ("#2c3453").
+     */
+    charts?: ExportChart[];
+    /** PDF only: false leaves the tables out (a report whose charts say it all). Excel and CSV always have them. */
+    pdfTables?: boolean;
   }
+
+  /** A color for an exported chart: a palette slot, a site type, or a hex color. */
+  export type ExportColor = { slot: number | null } | { siteType: string } | { color: string };
+
+  export type ExportChart =
+    /** DailyBars: stacked bars per day. parts: { [series.key]: count }; meals is the bar's total. */
+    | { type: "dailyBars"; title: string; data: { day: string; meals: number; parts: Record<string, number> }[]; series: { key: string; name: string; slot: number | null }[] }
+    /** RankedBars: horizontal bars, biggest first as given. legend names every color used. */
+    | { type: "rankedBars"; title: string; unit: string; rows: ({ name: string; value: number; note?: string } & Partial<ExportColor>)[]; limit?: number; legend?: ({ label: string } & ExportColor)[] }
+    /** HeatGrid: 7 rows (Sunday first) × 24 hours, as the HeatGrid chart. */
+    | { type: "heatGrid"; title: string; note?: string; unit?: string; heat: number[][] };
 
   export interface Site {
     id: string;
@@ -641,6 +665,11 @@ declare module "@lcs/server" {
       /** New York day, hour (0-23) and weekday (0 = Monday) of an ISO time. */
       partsOf(iso: string): { day: string; hour: number; weekday: number };
     };
+    /**
+     * Staff by user id (an entry's createdById): their name and profile color (null = the app's
+     * default avatar navy, #2c3453). For "who recorded it" charts, colored as their avatars are.
+     */
+    people(ids: string[]): { id: string; name: string; avatarColor: string | null }[];
     /** Goes to the editor's console (and the server log). */
     log(...args: unknown[]): void;
   }

@@ -565,6 +565,14 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         const site = q.site ? (Array.isArray(q.site) ? q.site.join(",") : String(q.site)) : undefined;
         return (await loadOccurrences({ user: asker } as unknown as Request, { from: q.from, to: q.to, site })).items.map(({ canEdit: _c, ...o }) => o);
       }
+      case "people": {
+        // Staff names and profile colors, for charts and lists that show who did what.
+        // Only people who exist; nothing else about them.
+        const ids = [...new Set<string>((Array.isArray(args?.ids) ? (args.ids as unknown[]) : []).map(String))].slice(0, 500);
+        if (!ids.length) return [];
+        const rows = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, avatarColor: true } });
+        return rows.map((u) => ({ id: u.id, name: u.name, avatarColor: u.avatarColor ?? null }));
+      }
       case "email.send":
         return queueEmail(app, user, args ?? {});
       case "calendar.categories":

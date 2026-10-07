@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/toast";
 import type { Site, Tenant } from "@/lib/types";
 import { runtimeApi, submitAppEntry, type AppRuntime } from "./api";
 import { forcedDevice } from "@/lib/device";
+import { mobileBrowser, printPdf } from "@/lib/exportPipeline";
 import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
 import { CameraCapture, shrinkImage, type CameraRequest } from "./CameraCapture";
 
@@ -25,6 +26,23 @@ export interface ConsoleLine {
   text: string;
   source: "page" | "server";
   at: number;
+}
+
+/** A page's app.export / app.print(spec) file, built on the server from what the page sends. */
+async function buildAppExport(slug: string, draft: boolean, spec: Record<string, unknown>, print = false) {
+  const qs = new URLSearchParams({ ...(draft ? { draft: "1" } : {}), ...(print ? { print: "1" } : {}) });
+  const res = await fetch(`${API_BASE}/apps/${slug}/export${qs.size ? `?${qs}` : ""}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(spec),
+  });
+  if (!res.ok) {
+    const out = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, out?.error ?? (print ? "The printout couldn't be made." : "The export failed."), out?.details);
+  }
+  const name = decodeURIComponent(/filename="?([^"]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "export");
+  return { blob: await res.blob(), name };
 }
 
 const nyDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -240,23 +258,28 @@ export function AppFrame({
         setTimeout(() => URL.revokeObjectURL(url), 2000);
       },
       "app.export": async (spec: Record<string, unknown>) => {
-        const res = await fetch(`${API_BASE}/apps/${slug}/export${draft ? "?draft=1" : ""}`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(spec),
-        });
-        if (!res.ok) {
-          const out = await res.json().catch(() => ({}));
-          throw new ApiError(res.status, out?.error ?? "The export failed.", out?.details);
-        }
-        const name = decodeURIComponent(/filename="?([^"]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "export");
-        const url = URL.createObjectURL(await res.blob());
+        const { blob, name } = await buildAppExport(slug, draft, spec);
+        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = name;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
+      },
+      // The page's PDF (charts redrawn for paper) in the browser's print dialog, as the
+      // app's own reports print. A phone or iPad opens the PDF instead (its share sheet
+      // has Print): the tab is opened now, while the tap still counts, and filled after.
+      "app.print": async (spec: Record<string, unknown>) => {
+        const tab = mobileBrowser() ? window.open("", "_blank") : null;
+        try {
+          const { blob } = await buildAppExport(slug, draft, { ...spec, format: "pdf" }, true);
+          if (tab) tab.location.href = URL.createObjectURL(blob);
+          else if (mobileBrowser()) window.open(URL.createObjectURL(blob), "_blank");
+          else await printPdf(blob);
+        } catch (e) {
+          tab?.close();
+          throw e;
+        }
       },
       "roster.sites": async () =>
         (await api.get<Site[]>("/sites")).map((s) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType, latitude: s.latitude ?? null, longitude: s.longitude ?? null, geofenceMeters: s.geofenceMeters ?? null })),

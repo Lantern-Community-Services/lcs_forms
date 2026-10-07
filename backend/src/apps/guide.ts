@@ -72,8 +72,12 @@ Admins and developers pass every role check.
   Keep it to a count or two (it has 4 s; answers are kept a minute). Return {} when there's nothing to show.
 - Dashboards: @lcs/charts TrendChart, ColumnChart, DonutChart, RankedBars, HeatGrid, StatTile, DailyBars. Colors come
   from palette slots (slotColor 0-7, null = "Other"); give each thing the same slot everywhere.
-- Reports: app.export({ format: "xlsx" | "pdf" | "csv", filename, title, stats, sheets: [{ name, columns, rows }] }) makes
-  the file on the server in the app's export style. app.print() for the browser's print.
+- Reports: app.export({ format: "xlsx" | "pdf" | "csv", filename, title, stats, charts, sheets: [{ name, columns, rows }] }) makes
+  the file on the server in the app's export style. charts (PDF): dailyBars, rankedBars, heatGrid — the screen's charts
+  redrawn for paper, same colors. Print a page with charts as app.print(spec) (the same spec, no format): it prints that
+  PDF, as the app's own reports do. Plain app.print() prints the page as the browser sees it (charts don't print well).
+- Who recorded it: ctx.people(ids) in server code gives each person's name and avatarColor, so a "by staff member"
+  chart can color each bar like their avatar (<Avatar color> and the chart row's color; null = #2c3453).
 - Email: ctx.email.send({ to, subject, text | html }) from server code (afterCreate, actions). Queued, Lantern addresses
   unless form.json "email" lists others, never from the draft.
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog

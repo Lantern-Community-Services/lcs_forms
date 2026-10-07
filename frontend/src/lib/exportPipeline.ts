@@ -31,8 +31,40 @@ async function fetchFile(url: string): Promise<{ blob: Blob; name: string }> {
  * iOS and iPadOS can't print a PDF from a hidden frame, and Android's viewer is
  * similar — there, the PDF opens in its own tab, whose share sheet has Print.
  */
-const mobileBrowser = () =>
+export const mobileBrowser = () =>
   /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+/**
+ * The browser's print dialog for a PDF, over the app: the PDF goes into an
+ * invisible frame that's asked to print. Resolves once the dialog has been
+ * asked for. Desktop browsers only (see mobileBrowser).
+ */
+export function printPdf(blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve) => {
+    const frame = document.createElement("iframe");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+    frame.src = url;
+    frame.onload = () => {
+      setTimeout(() => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+        } catch {
+          // Some browsers refuse to script their PDF viewer — show it instead.
+          window.open(url, "_blank");
+        }
+        resolve();
+      }, 250);
+      // Leave the frame long enough for the dialog; it must outlive print().
+      setTimeout(() => {
+        frame.remove();
+        URL.revokeObjectURL(url);
+      }, 60_000);
+    };
+    document.body.appendChild(frame);
+  });
+}
 
 /**
  * Download (CSV / Excel / PDF) and Print for whatever `buildUrl` points at.
@@ -71,30 +103,8 @@ export function useFileExport(buildUrl: (format: ExportFormat, inline?: boolean)
     setBusy("print");
     try {
       const { blob } = await fetchFile(buildUrl("pdf", true));
-      const url = URL.createObjectURL(blob);
-      // Load the PDF into an invisible frame and ask it to print: the browser's
-      // own print dialog opens over the app, with the PDF as the document.
-      const frame = document.createElement("iframe");
-      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-      frame.src = url;
-      frame.onload = () => {
-        setTimeout(() => {
-          try {
-            frame.contentWindow?.focus();
-            frame.contentWindow?.print();
-          } catch {
-            // Some browsers refuse to script their PDF viewer — show it instead.
-            window.open(url, "_blank");
-          }
-          setBusy(null);
-        }, 250);
-        // Leave the frame long enough for the dialog; it must outlive print().
-        setTimeout(() => {
-          frame.remove();
-          URL.revokeObjectURL(url);
-        }, 60_000);
-      };
-      document.body.appendChild(frame);
+      await printPdf(blob);
+      setBusy(null);
     } catch (e) {
       toast(errorMessage(e, "Could not prepare the printout."), "error");
       setBusy(null);
