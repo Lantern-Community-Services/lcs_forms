@@ -180,7 +180,7 @@ export const builderApi = {
   publish: (id: string, note?: string) => api.post<BuiltFormDetail>(`/builder/forms/${id}/publish`, { note }),
   setStatus: (id: string, status: FormStatus) => api.post<BuiltFormDetail>(`/builder/forms/${id}/status`, { status }),
   duplicate: (id: string) => api.post<BuiltFormDetail>(`/builder/forms/${id}/duplicate`),
-  remove: (id: string) => api.delete(`/builder/forms/${id}`),
+  remove: (id: string, withEntries = false) => api.delete(`/builder/forms/${id}`, { withEntries }),
   setCatalog: (id: string, categoryId: string | null) => api.put<BuiltFormDetail>(`/builder/forms/${id}/catalog`, { categoryId }),
   versionDoc: (id: string, v: number) => api.get<FormDoc>(`/builder/forms/${id}/versions/${v}`),
   restoreVersion: (id: string, v: number) => api.post<BuiltFormDetail>(`/builder/forms/${id}/versions/${v}/restore`),

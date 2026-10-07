@@ -147,7 +147,8 @@ appsRouter.delete(
   dev,
   asyncHandler(async (req, res) => {
     const form = await findCodeForm(req.params.id);
-    await deleteForm(form.id, actorOf(req));
+    const { withEntries } = z.object({ withEntries: z.boolean().optional() }).parse(req.body ?? {});
+    await deleteForm(form.id, actorOf(req), { withEntries });
     res.json({ ok: true });
   })
 );
@@ -269,7 +270,8 @@ appsRouter.post(
     const app = await appFor(req);
     requireOpen(app, req.user!);
     const file = await buildExport(spec, req.user!.name);
-    await audit({ actor: actorOf(req), action: "apps.exported", summary: `Exported “${spec.title}” (${spec.format}) from code form “${app.manifest.title}”` });
+    const verb = req.query.print === "1" ? "Printed" : "Exported";
+    await audit({ actor: actorOf(req), action: "apps.exported", summary: `${verb} “${spec.title}” (${spec.format}) from code form “${app.manifest.title}”` });
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file.filename)}"`);
     res.type(file.mime).send(file.body);
   })

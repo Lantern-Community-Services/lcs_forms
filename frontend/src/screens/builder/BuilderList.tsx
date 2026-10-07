@@ -1,4 +1,5 @@
 import { FormBackupBar } from "@/components/FormBackupBar";
+import { DeleteFormDialog } from "@/components/DeleteFormDialog";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -39,6 +40,7 @@ export function AdminBuilderList() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [deleting, setDeleting] = useState<BuiltFormSummary | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
@@ -100,7 +102,7 @@ export function AdminBuilderList() {
                   <Link to={`/f/${f.slug}/entries`} className="hidden w-24 text-right text-[13px] text-muted hover:text-accent md:block">
                     <span className="tabular font-semibold text-ink">{f.entryCount.toLocaleString()}</span> entr{f.entryCount === 1 ? "y" : "ies"}
                   </Link>
-                  <RowMenu form={f} run={run} onOpen={() => navigate(`/admin/builder/${f.id}`)} />
+                  <RowMenu form={f} run={run} onOpen={() => navigate(`/admin/builder/${f.id}`)} onDelete={() => setDeleting(f)} />
                 </li>
               );
             })}
@@ -113,11 +115,21 @@ export function AdminBuilderList() {
 
       <NewFormDialog open={creating} onClose={() => setCreating(false)} onCreated={(id) => { void refresh(); navigate(`/admin/builder/${id}`); }} />
       <ImportDialog open={importing} onClose={() => setImporting(false)} onDone={refresh} />
+      <DeleteFormDialog
+        form={deleting}
+        noun="form"
+        onCancel={() => setDeleting(null)}
+        onConfirm={async () => {
+          const f = deleting!;
+          await run(() => builderApi.remove(f.id, f.entryCount > 0), f.entryCount > 0 ? "Deleted, with its entries." : "Deleted.");
+          setDeleting(null);
+        }}
+      />
     </Page>
   );
 }
 
-function RowMenu({ form: f, run, onOpen }: { form: BuiltFormSummary; run: (fn: () => Promise<unknown>, done: string) => void; onOpen: () => void }) {
+function RowMenu({ form: f, run, onOpen, onDelete }: { form: BuiltFormSummary; run: (fn: () => Promise<unknown>, done: string) => void; onOpen: () => void; onDelete: () => void }) {
   const navigate = useNavigate();
   return (
     <DropdownMenu>
@@ -138,11 +150,9 @@ function RowMenu({ form: f, run, onOpen }: { form: BuiltFormSummary; run: (fn: (
         ) : (
           <DropdownMenuItem onSelect={() => run(() => builderApi.setStatus(f.id, "draft"), "Unarchived.")}>Unarchive</DropdownMenuItem>
         )}
-        {f.entryCount === 0 && (
-          <DropdownMenuItem onSelect={() => { if (confirm(`Delete “${f.title}” for good?`)) run(() => builderApi.remove(f.id), "Deleted."); }}>
-            <span className="text-status-redText">Delete</span>
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem onSelect={onDelete}>
+          <span className="text-status-redText">Delete…</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

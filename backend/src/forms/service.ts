@@ -207,15 +207,25 @@ export async function duplicateForm(id: string, actor: Actor): Promise<BuiltForm
   return createForm({ doc }, actor);
 }
 
-/** Delete outright — only a form nobody has filled in. Otherwise archive it. */
-export async function deleteForm(id: string, actor: Actor): Promise<void> {
+/**
+ * Delete outright. A form people have filled in is only deleted with
+ * `withEntries`, which takes its entries (and their notes and files) with it;
+ * without it the caller is told to archive instead, so they're kept.
+ */
+export async function deleteForm(id: string, actor: Actor, opts: { withEntries?: boolean } = {}): Promise<void> {
   const form = await findAnyForm(id);
   const n = await prisma.formEntry.count({ where: { formId: form.id } });
-  if (n > 0) throw badRequest(`This form has ${n} entr${n === 1 ? "y" : "ies"}. Archive it instead, so they're kept.`);
-  if (form.catalogLinkId) await prisma.formLink.deleteMany({ where: { id: form.catalogLinkId } });
-  await prisma.formFile.deleteMany({ where: { formId: form.id } });
-  await prisma.builtForm.delete({ where: { id: form.id } });
-  await audit({ actor, action: "builder.deleted", summary: `Deleted form “${form.title}” (/f/${form.slug})` });
+  const entries = `${n} entr${n === 1 ? "y" : "ies"}`;
+  if (n > 0 && !opts.withEntries) throw badRequest(`This form has ${entries}. Archive it instead, so they're kept.`);
+  // Files first: a file points at its entry with no cascade, so the entries
+  // can't go while files still name them. The form's delete cascades to its
+  // entries (and their notes), versions and records.
+  await prisma.$transaction([
+    ...(form.catalogLinkId ? [prisma.formLink.deleteMany({ where: { id: form.catalogLinkId } })] : []),
+    prisma.formFile.deleteMany({ where: { formId: form.id } }),
+    prisma.builtForm.delete({ where: { id: form.id } }),
+  ]);
+  await audit({ actor, action: "builder.deleted", summary: `Deleted form “${form.title}” (/f/${form.slug})${n > 0 ? ` and its ${entries}` : ""}` });
 }
 
 export async function listVersions(id: string) {

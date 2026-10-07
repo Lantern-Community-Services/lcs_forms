@@ -74,7 +74,7 @@ export const projectsApi = {
   publish: (id: string, note?: string) => api.post<Project>(`/apps/projects/${id}/publish`, { note }),
   setStatus: (id: string, status: string) => api.post<Project>(`/apps/projects/${id}/status`, { status }),
   duplicate: (id: string) => api.post<Project>(`/apps/projects/${id}/duplicate`),
-  remove: (id: string) => api.delete(`/apps/projects/${id}`),
+  remove: (id: string, withEntries = false) => api.delete(`/apps/projects/${id}`, { withEntries }),
   setCatalog: (id: string, categoryId: string | null) => api.put<Project>(`/apps/projects/${id}/catalog`, { categoryId }),
   versions: (id: string) => api.get<{ version: number; note: string | null; publishedByName: string; createdAt: string }[]>(`/apps/projects/${id}/versions`),
   restore: (id: string, v: number) => api.post<Project>(`/apps/projects/${id}/versions/${v}/restore`),
