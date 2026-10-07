@@ -17,6 +17,7 @@ import type { Request } from "express";
 import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scopeSchema, setEventPending, updateEvent, type FormOwner } from "../services/calendar.js";
 import { noteCalendarChange } from "../services/outlookSync.js";
 import { roleFor } from "../services/permissions.js";
+import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -209,8 +210,10 @@ export type CreateOutcome =
  * Save an entry, after the form's own server rules (beforeCreate) have their say.
  * `user` null = an API key / the MCP server.
  */
-export async function createEntry(app: LoadedApp, user: CurrentUser | null, input: NewEntryInput, opts: { actorName?: string; machineSiteId?: string | null; source?: string } = {}): Promise<CreateOutcome> {
-  if (user) {
+export async function createEntry(app: LoadedApp, user: CurrentUser | null, input: NewEntryInput, opts: { actorName?: string; machineSiteId?: string | null; source?: string; viaForm?: boolean } = {}): Promise<CreateOutcome> {
+  // viaForm: made by another form's server code that this form accepts (apps/jobs.ts) — the person needn't
+  // be able to open this form, but its rules and their sites still apply.
+  if (user && !opts.viaForm) {
     const a = requireOpen(app, user);
     if (!a.create) throw forbidden(app.form.status === "closed" ? "This form isn't taking entries right now." : "You can't add entries to this form.");
   }
@@ -629,6 +632,17 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     return other.id;
   }
 
+  /** Another form's collections, read-only: only a code form that shares with this one. */
+  async function sharedForm(slug: string) {
+    if (!(app.manifest.reads ?? []).includes(slug)) throw new Error(`Add "${slug}" to "reads" in form.json to read its collections.`);
+    const other = await prisma.builtForm.findUnique({ where: { slug } });
+    const loaded = other?.kind === "code" ? await loadApp(other, false).catch(() => null) : null;
+    if (!other || !loaded?.manifest.share?.forms?.includes(app.form.slug)) throw new Error(`"${slug}" doesn't share with this form ("share": { "forms": ["${app.form.slug}"] }).`);
+    return other.id;
+  }
+  // Counts entries queued for other forms in one call.
+  const callKey = {};
+
   return async (name: string, args: any): Promise<unknown> => {
     switch (name) {
       case "entries.find":
@@ -642,9 +656,9 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         return e ? serverEntry(e) : null;
       }
       case "collections.list":
-        return (await collectionList(app.form.id, args.name)).map((d) => ({ id: d.id, data: d.data }));
+        return (await collectionList(args.form ? await sharedForm(args.form) : app.form.id, args.name)).map((d) => ({ id: d.id, data: d.data }));
       case "collections.get": {
-        const d = await collectionGet(app.form.id, args.name, args.id);
+        const d = await collectionGet(args.form ? await sharedForm(args.form) : app.form.id, args.name, args.id);
         return d && { id: d.id, data: d.data };
       }
       case "collections.put": {
@@ -710,6 +724,20 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
       }
       case "entries.update":
         return serverUpdate(app, user, args ?? {});
+      case "entries.create":
+        return enqueueJob(app, user, { form: args?.form, entry: args?.entry, sourceEntryId: args?.entry?.sourceEntryId, callKey });
+      case "jobs.list":
+        return jobsFor(app.form.id, String(args?.entryId ?? ""));
+      case "jobs.retry":
+        return retryJob(app.form.id, String(args?.id ?? ""), typeof args?.override === "string" ? args.override : null);
+      case "files.read": {
+        // One of this form's own files, as a data: URL (e.g. a signature another form wants inline).
+        const id = String(args?.fileId ?? args?.ref?.fileId ?? "");
+        const f = await prisma.formFile.findFirst({ where: { id, formId: app.form.id } });
+        if (!f) throw new Error("No such file on this form.");
+        if (f.size > 600_000) throw new Error("That file is too big to read here (600 KB max).");
+        return `data:${f.mime};base64,${Buffer.from(f.data).toString("base64")}`;
+      }
       case "calendar.form.list":
       case "calendar.form.create":
       case "calendar.form.update":

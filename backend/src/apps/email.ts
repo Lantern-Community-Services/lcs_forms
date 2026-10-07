@@ -1,5 +1,6 @@
 import { audit } from "../services/audit.js";
-import { mailConfigured, sendMail } from "../services/mailer.js";
+import { mailConfigured, sendMail, type MailAttachment } from "../services/mailer.js";
+import { buildExport, exportSpec, type ExportSpec } from "./exports.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import type { LoadedApp } from "./runtime.js";
 
@@ -17,6 +18,9 @@ import type { LoadedApp } from "./runtime.js";
 const ORG_DOMAINS = ["lanterncommunity.org"];
 const MAX_RECIPIENTS = 10;
 const PER_FORM_HOURLY = 200;
+const MAX_ATTACHMENTS = 3;
+/** Graph's sendMail takes about 4 MB in all; base64 adds a third. */
+const MAX_ATTACH_BYTES = 2.8 * 1024 * 1024;
 const EMAIL_RE = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]+$/;
 
 const sentLastHour = new Map<string, number[]>();
@@ -33,7 +37,7 @@ function allowed(app: LoadedApp, address: string) {
   });
 }
 
-export function queueEmail(app: LoadedApp, user: CurrentUser | null, args: { to?: unknown; subject?: unknown; html?: unknown; text?: unknown; replyTo?: unknown }) {
+export function queueEmail(app: LoadedApp, user: CurrentUser | null, args: { to?: unknown; subject?: unknown; html?: unknown; text?: unknown; replyTo?: unknown; attachments?: unknown }) {
   const to = (Array.isArray(args.to) ? args.to : [args.to]).filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean);
   if (!to.length) throw new Error("email.send needs at least one address in `to`.");
   if (to.length > MAX_RECIPIENTS) throw new Error(`At most ${MAX_RECIPIENTS} recipients per email.`);
@@ -52,6 +56,16 @@ export function queueEmail(app: LoadedApp, user: CurrentUser | null, args: { to?
   if (!body) throw new Error("email.send needs html or text.");
   if (body.length > 200_000) throw new Error("That email is too big (200 KB max).");
   const replyTo = typeof args.replyTo === "string" && EMAIL_RE.test(args.replyTo.trim()) ? args.replyTo.trim() : user?.email;
+  // Files made like app.export makes them (an Excel report, a PDF), built on the server when it sends.
+  const specs: ExportSpec[] = [];
+  if (args.attachments !== undefined) {
+    if (!Array.isArray(args.attachments) || args.attachments.length > MAX_ATTACHMENTS) throw new Error(`attachments is a list of up to ${MAX_ATTACHMENTS} export specs.`);
+    for (const a of args.attachments) {
+      const parsed = exportSpec.safeParse(a);
+      if (!parsed.success) throw new Error(`An attachment isn't a valid export spec: ${parsed.error.issues[0]?.message ?? "check it"}.`);
+      specs.push(parsed.data);
+    }
+  }
 
   if (app.draft) return { queued: false, reason: `The draft (preview) doesn't send email. It would have gone to ${to.join(", ")}: “${subject}”.` };
   if (!mailConfigured()) return { queued: false, reason: "Email isn't set up on this server yet (MAIL_FROM and the Mail.Send permission)." };
@@ -63,7 +77,15 @@ export function queueEmail(app: LoadedApp, user: CurrentUser | null, args: { to?
   sentLastHour.set(app.form.id, recent);
 
   const actor = user ? { id: user.userId, name: user.name } : { id: null, name: `Code form “${app.manifest.title}”` };
-  void sendMail({ to, subject, html: body, replyTo })
+  const by = user?.name ?? app.manifest.title;
+  void Promise.all(specs.map((s) => buildExport(s, by)))
+    .then((files): MailAttachment[] => {
+      const atts = files.map((f) => ({ name: f.filename, contentType: f.mime, body: Buffer.isBuffer(f.body) ? f.body : Buffer.from(f.body) }));
+      const size = atts.reduce((n, a) => n + a.body.length, 0);
+      if (size > MAX_ATTACH_BYTES) throw new Error(`The attachments come to ${(size / 1048576).toFixed(1)} MB; email takes under 3 MB. Send a link instead.`);
+      return atts;
+    })
+    .then((attachments) => sendMail({ to, subject, html: body, replyTo, attachments }))
     .then(() => audit({ actor, action: "apps.email_sent", summary: `“${app.manifest.title}” emailed ${to.join(", ")}: ${subject}` }))
     .catch((err) => {
       console.error(`[apps] ${app.form.slug} email to ${to.join(", ")} failed:`, err);

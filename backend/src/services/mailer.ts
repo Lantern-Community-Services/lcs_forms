@@ -28,7 +28,13 @@ export async function graphToken(): Promise<string> {
   return res.accessToken;
 }
 
-export async function sendMail(opts: { to: string[]; subject: string; html: string; replyTo?: string }): Promise<void> {
+export interface MailAttachment {
+  name: string;
+  contentType: string;
+  body: Buffer;
+}
+
+export async function sendMail(opts: { to: string[]; subject: string; html: string; replyTo?: string; attachments?: MailAttachment[] }): Promise<void> {
   if (!mailConfigured()) throw new Error("Email isn't set up on this server (MAIL_FROM).");
   const token = await graphToken();
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(env.mailFrom)}/sendMail`, {
@@ -41,6 +47,16 @@ export async function sendMail(opts: { to: string[]; subject: string; html: stri
         body: { contentType: "HTML", content: opts.html },
         toRecipients: opts.to.map((address) => ({ emailAddress: { address } })),
         ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
+        ...(opts.attachments?.length
+          ? {
+              attachments: opts.attachments.map((a) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: a.name,
+                contentType: a.contentType,
+                contentBytes: a.body.toString("base64"),
+              })),
+            }
+          : {}),
       },
       saveToSentItems: false,
     }),

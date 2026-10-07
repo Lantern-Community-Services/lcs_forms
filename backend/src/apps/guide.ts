@@ -31,7 +31,8 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "calendar": { "ownEvents": true },                                // server code manages the form's own calendar events
   "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
-  "email": { "to": ["vendor@example.com", "@partner.org"] }         // who server code may email besides Lantern addresses
+  "email": { "to": ["vendor@example.com", "@partner.org"] },        // who server code may email besides Lantern addresses
+  "schedule": [{ "action": "digest", "at": "08:00", "on": "weekdays" }, { "action": "monthly", "at": "08:00", "on": "monthly", "day": 3 }]
 }
 entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
 "editOwnMinutes": N (people can change their own entry for N minutes; default 0).
@@ -80,6 +81,11 @@ Admins and developers pass every role check.
   "CONFLICT…" if someone saved the entry meanwhile — read it again and retry once.
 - Every site: ctx.roster.sites({ all: true }) (names and codes, to choose where something happens); ctx.url is the form's
   address for links in emails (\`\${ctx.url}/request?id=…\`).
+- Entries in other forms: ctx.db.form("hot-foods").entries.create({ data, site, tenantId, override, sourceEntryId, label }) from
+  server code (e.g. afterCreate) queues an entry that's saved through that form's own rules, as the person; that form's
+  form.json must have "share": { "create": ["this-slug"] }. Files are copied over. ctx.jobs.list(entryId) shows how each
+  went; ctx.jobs.retry(id, reason) sends a failed one again. ctx.db.form(slug).collections reads a sharing form's lists,
+  and ctx.files.read(ref) gives one of this form's files as a data: URL.
 - Staff: ctx.directory({ search, roles, site, ids }) lists active staff (name, email, role, sites) to choose approvers
   in a settings page (through an action) or to find a site's managers to email.
 - Forms home: form.json "home": { "action": "home" }. That action runs as each person when the home screen loads and
@@ -93,8 +99,13 @@ Admins and developers pass every role check.
   PDF, as the app's own reports do. Plain app.print() prints the page as the browser sees it (charts don't print well).
 - Who recorded it: ctx.people(ids) in server code gives each person's name and avatarColor, so a "by staff member"
   chart can color each bar like their avatar (<Avatar color> and the chart row's color; null = #2c3453).
-- Email: ctx.email.send({ to, subject, text | html }) from server code (afterCreate, actions). Queued, Lantern addresses
-  unless form.json "email" lists others, never from the draft.
+- Email: ctx.email.send({ to, subject, text | html, attachments? }) from server code (afterCreate, actions). Queued, Lantern
+  addresses unless form.json "email" lists others, never from the draft. attachments: up to 3 ExportSpecs (as app.export),
+  built into files when it sends — e.g. a monthly Excel report.
+- Scheduled actions: form.json "schedule" runs an action once a New York day at "at" (daily, weekdays, or monthly on
+  "day"), as nobody: ctx.user is null and args is { scheduled: true, day }. Check args.scheduled, read across everyone
+  (ctx.db, ctx.directory), and email. Only the published form runs them; a run missed while the server was down happens
+  later that day. Test one with MCP run_action (also as nobody).
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
   (MCP save_catalog_card), not in a code form.
 

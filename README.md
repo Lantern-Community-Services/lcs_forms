@@ -254,6 +254,16 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   - `form.json` `"share": { "forms": ["other-slug"] }` lets another code form's server code read this
     form's entries whoever is using it (that form lists this one in `"reads"` and decides what to show).
     Event Requests and Encounter Events share with each other.
+- **Bundling and schedules** (`backend/src/apps/jobs.ts`, `schedule.ts`):
+  - `ctx.db.form(slug).entries.create(...)` queues an entry in another code form that accepts this one
+    (`"share": { "create": [...] }`). A worker saves it through that form's own rules, as the person who
+    caused it (`currentUserById`), copying files over. Jobs are kept in `FormJob`; see them with `ctx.jobs.list`
+    and resend one with `ctx.jobs.retry`. Doing it after the call keeps one sandbox from waiting on another.
+  - `ctx.db.form(slug).collections` reads a sharing form's lists, and `ctx.files.read` returns a form's own file
+    as a data: URL.
+  - `form.json` `"schedule"` runs actions once a New York day: daily, on weekdays, or monthly. They run as nobody,
+    with args `{ scheduled: true, day }`. `SCHEDULE_DISABLED=true` turns the timer off.
+  - `ctx.email.send` can attach export specs (Excel/PDF/CSV, built when it sends).
   - The first forms built this way are **Event Requests** (`/apps/events`) and **Encounter Events**
     (`/apps/encounters`, which records attendance against approved events), built through MCP on
     2026-10-07.

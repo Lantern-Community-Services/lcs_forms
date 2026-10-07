@@ -651,7 +651,7 @@ declare module "@lcs/server" {
   }
 
   export interface Ctx {
-    /** Who's using the form (null when called by an API key or the MCP server). */
+    /** Who's using the form (null when called by an API key, the MCP server, or form.json "schedule"). */
     user: ServerUser | null;
     /** ISO time now, and today's New York day. */
     now: string;
@@ -674,7 +674,23 @@ declare module "@lcs/server" {
        * that form shares with this one (its form.json "share": { "forms": ["this-slug"] }) — then this code
        * decides what to show.
        */
-      form(slug: string): { entries: EntriesApi };
+      form(slug: string): {
+        entries: EntriesApi & {
+          /**
+           * Make an entry in that form (it must accept this one: its form.json "share": { "create": ["this-slug"] }).
+           * Queued and saved a moment later through that form's own rules (beforeCreate, limits — pass `override`
+           * when it'll want a reason), as the person using this form. Photos and files in `data` from this form are
+           * copied over. sourceEntryId ties it to this form's entry (ctx.jobs.list); label names it there.
+           * Not from the draft (returns { queued: false }).
+           */
+          create(entry: { data: Record<string, unknown>; site?: string; tenantId?: string; occurredAt?: string; override?: string; sourceEntryId?: string; label?: string }): { queued: boolean; jobId?: string; reason?: string };
+        };
+        /** That form's collections, read-only — when it shares with this one ("share": { "forms": [...] }). */
+        collections: {
+          list<T = Record<string, unknown>>(name: string): { id: string; data: T }[];
+          get<T = Record<string, unknown>>(name: string, id: string): { id: string; data: T } | null;
+        };
+      };
     };
     roster: {
       site(idOrCode: string): ServerSite | null;
@@ -697,7 +713,11 @@ declare module "@lcs/server" {
      * Give html, or text (sent as-is). replyTo defaults to the person using the form. Results go to the audit log.
      */
     email: {
-      send(message: { to: string | string[]; subject: string; html?: string; text?: string; replyTo?: string }): { queued: boolean; reason?: string };
+      /**
+       * attachments: up to 3 files made exactly as app.export makes them (an ExportSpec: xlsx, pdf or csv), built
+       * when the email goes; under 3 MB in all. E.g. a monthly report as Excel.
+       */
+      send(message: { to: string | string[]; subject: string; html?: string; text?: string; replyTo?: string; attachments?: import("@lcs/sdk").ExportSpec[] }): { queued: boolean; reason?: string };
     };
     /** The site calendar, as the person using the form sees it. */
     calendar: {
@@ -747,6 +767,16 @@ declare module "@lcs/server" {
      * default avatar navy, #2c3453). For "who recorded it" charts, colored as their avatars are.
      */
     people(ids: string[]): { id: string; name: string; avatarColor: string | null }[];
+    /** This form's own files: read one back as a data: URL (600 KB at most) — e.g. a signature another form keeps inline. */
+    files: {
+      read(ref: import("@lcs/sdk").FileRef | string): string;
+    };
+    /** Entries this form asked other forms to make (db.form(slug).entries.create), by the entry they came from. */
+    jobs: {
+      list(sourceEntryId: string): { id: string; form: string; status: "queued" | "running" | "done" | "failed"; error: string | null; entryId: string | null; label: string | null; at: string }[];
+      /** Send a failed one again, with a reason when that form's rules asked for one. */
+      retry(jobId: string, override?: string): { queued: boolean };
+    };
     /** Goes to the editor's console (and the server log). */
     log(...args: unknown[]): void;
   }

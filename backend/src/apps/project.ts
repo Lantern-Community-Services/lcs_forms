@@ -88,6 +88,22 @@ export const manifestSchema = z.object({
    * It returns { attention?: [...], tiles?: [...] } (see the guide). `roles`: who gets them (default: everyone who can open the form).
    */
   home: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/), roles: roleList }).strict().optional(),
+  /**
+   * Server actions run on a timer, once a New York day at `at` ("HH:MM"): daily (default), on weekdays,
+   * or monthly on `day` (1–28). They run as nobody (ctx.user null) with args { scheduled: true, day }:
+   * reminders, digests, a monthly report email. Only the published form runs them.
+   */
+  schedule: z
+    .array(
+      z.object({
+        action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/),
+        at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "at is HH:MM (24-hour, New York)."),
+        on: z.enum(["daily", "weekdays", "monthly"]).optional(),
+        day: z.number().int().min(1).max(28).optional(),
+      }).strict()
+    )
+    .max(10)
+    .optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
   email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
   /**
@@ -101,7 +117,14 @@ export const manifestSchema = z.object({
    * other form listing this one in "reads"). The other form's server code decides what to show — e.g.
    * Encounters showing approved event requests at the person's own sites.
    */
-  share: z.object({ forms: z.array(z.string()).max(20).optional() }).strict().optional(),
+  share: z
+    .object({
+      forms: z.array(z.string()).max(20).optional(),
+      /** Code forms whose server code may add entries here (ctx.db.form(slug).entries.create), through this form's own rules. */
+      create: z.array(z.string()).max(20).optional(),
+    })
+    .strict()
+    .optional(),
   /** Other forms (slugs) whose entries the server code may read — still only if the person may, or if that form shares with this one. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */

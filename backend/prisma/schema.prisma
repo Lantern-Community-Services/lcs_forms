@@ -482,6 +482,7 @@ model BuiltForm {
   files          FormFile[]
   records        FormRecord[]
   calendarEvents CalendarEvent[]
+  FormJob        FormJob[]
 
   @@index([status])
 }
@@ -729,4 +730,36 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// An entry one code form's server code asked to be made in another form
+/// (ctx.db.form(slug).entries.create) — e.g. an encounter's bundled Hot Foods
+/// meals. Queued, then saved through the other form's own rules, as the person
+/// who caused it, by services in apps/jobs.ts. Kept as the record of what was
+/// made from what; a failed one can be retried.
+model FormJob {
+  id            String    @id @default(cuid())
+  /// The form whose server code asked.
+  form          BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId        String
+  /// The source form's entry it belongs to (e.g. the encounter), if any.
+  sourceEntryId String?
+  /// The form the entry goes into.
+  targetSlug    String
+  /// JSON text: { data, site, tenantId, occurredAt, override, label }.
+  input         String
+  /// Whose request it was; null = scheduled or an API key.
+  userId        String?
+  userName      String
+  /// "queued" | "running" | "done" | "failed"
+  status        String    @default("queued")
+  error         String?
+  /// The entry made in the target form.
+  resultEntryId String?
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([formId, sourceEntryId])
 }

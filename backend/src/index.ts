@@ -6,6 +6,8 @@ import { ensureSiteLocations } from "./services/siteLocations.js";
 import { ensureDefaultCalendarCategories } from "./services/calendar.js";
 import { startOutlookSync } from "./services/outlookSync.js";
 import { startFormBackup } from "./services/formBackup.js";
+import { startScheduler } from "./apps/schedule.js";
+import { startJobs } from "./apps/jobs.js";
 
 // The catalog starts empty and forms are added as they're rebuilt here; a
 // database seeded with the old WordPress links has them taken out, once.
@@ -20,6 +22,8 @@ ensureDefaultCalendarCategories()
 
 if (startOutlookSync()) console.log("  Calendar: sending events to Outlook.");
 if (startFormBackup()) console.log(`  Forms: backing up built forms to ${env.formBackup.repo}.`);
+if (startScheduler()) console.log("  Code forms: running scheduled actions.");
+startJobs();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

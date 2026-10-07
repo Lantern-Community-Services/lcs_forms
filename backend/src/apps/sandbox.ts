@@ -101,6 +101,10 @@ const __entriesApi = (form) => ({
   count: (q) => __h("entries.count", { form, q: q || {} }),
   get: (id) => __h("entries.get", { form, id }),
 });
+const __otherForm = (form) => ({
+  entries: { ...__entriesApi(form), create: (entry) => __h("entries.create", { form, entry: entry || {} }) },
+  collections: { list: (name) => __h("collections.list", { form, name }), get: (name, id) => __h("collections.get", { form, name, id }) },
+});
 // New York time without Intl time zones (QuickJS has none): US daylight saving
 // runs from 2:00 on the second Sunday of March to 2:00 on the first Sunday of November.
 const __sunday = (y, m, n) => { const first = (7 - new Date(Date.UTC(y, m, 1)).getUTCDay()) % 7; return 1 + first + (n - 1) * 7; };
@@ -123,7 +127,7 @@ globalThis.__makeCtx = (base) => ({
       put: (name, id, data) => __h("collections.put", { name, id, data }),
       remove: (name, id) => __h("collections.remove", { name, id }),
     },
-    form: (slug) => ({ entries: __entriesApi(slug) }),
+    form: (slug) => __otherForm(slug),
   },
   roster: {
     site: (x) => __h("roster.site", { x }),
@@ -149,6 +153,8 @@ globalThis.__makeCtx = (base) => ({
     },
   },
   directory: (q) => __h("directory", { q: q || {} }),
+  files: { read: (ref) => __h("files.read", typeof ref === "string" ? { fileId: ref } : { ref }) },
+  jobs: { list: (entryId) => __h("jobs.list", { entryId }), retry: (id, override) => __h("jobs.retry", { id, override }) },
   time: __time,
   log: (...a) => __log(a.map(__fmt).join(" ")),
 });

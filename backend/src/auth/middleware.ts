@@ -34,6 +34,25 @@ declare global {
  * the database on every request, so a change in Admin → People applies on the
  * person's next tap rather than when their week-long session expires.
  */
+/** An active person as the request would see them (role, permissions, sites), or null. Also used for work queued on their behalf. */
+export async function currentUserById(id: string): Promise<CurrentUser | null> {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, sites: { select: { siteId: true } } },
+  });
+  if (!user || user.status !== "active") return null;
+  const role = roleFor(user.roleKey);
+  return {
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    roleKey: role.key,
+    roleName: role.name,
+    permissions: permissionsFor(role, user),
+    siteIds: role.allSites ? null : user.sites.map((s) => s.siteId),
+  } as CurrentUser;
+}
+
 export async function loadUser(req: Request, _res: Response, next: NextFunction) {
   try {
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "");
@@ -50,22 +69,8 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
     const payload = verifySession(token);
     if (!payload) return next();
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, sites: { select: { siteId: true } } },
-    });
-    if (!user || user.status !== "active") return next();
-
-    const role = roleFor(user.roleKey);
-    req.user = {
-      userId: user.id,
-      name: user.name,
-      email: user.email,
-      roleKey: role.key,
-      roleName: role.name,
-      permissions: permissionsFor(role, user),
-      siteIds: role.allSites ? null : user.sites.map((s) => s.siteId),
-    };
+    const user = await currentUserById(payload.userId);
+    if (user) req.user = user;
     next();
   } catch (err) {
     next(err);
