@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Settings, Home, CalendarDays, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
+  Settings, Home, Contact, CalendarDays, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
@@ -15,7 +15,7 @@ import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useNavMode } from "@/lib/shellNav";
 import { readStorage, writeStorage } from "@/lib/storage";
-import { isFormPath, searchForms, useIsLit, useNavCatalog, useReviewCount, type NavCategory } from "./navData";
+import { isFormPath, ROSTER_URL, searchForms, useIsLit, useNavCatalog, useReviewCount, type NavCategory } from "./navData";
 
 const EXPANDED_WIDTH = 240;
 const COLLAPSED_WIDTH = 64;
@@ -82,13 +82,30 @@ const iconBox = (active: boolean, collapsed: boolean) =>
 const wrapRow = (collapsed: boolean) =>
   cn("h-auto min-h-10 items-start transition-[max-height,background-color,color] duration-[240ms] motion-reduce:transition-none", EASE, collapsed ? "max-h-10" : "max-h-[96px]");
 
-function NavItem({ to, label, Icon, collapsed, end }: { to: string; label: string; Icon: React.ElementType; collapsed: boolean; end?: boolean }) {
+function NavItem({ to, label, Icon, collapsed, end, lit, count }: {
+  to: string;
+  label: string;
+  Icon: React.ElementType;
+  collapsed: boolean;
+  end?: boolean;
+  /** Overrides the link's own idea of "here", e.g. the Roster is also lit on a resident's page. */
+  lit?: boolean;
+  /** Amber count, e.g. people waiting in the Roster's review queue. */
+  count?: number;
+}) {
+  const waiting = (count ?? 0) > 0;
   return (
-    <NavLink to={to} end={end} title={collapsed ? label : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
+    <NavLink to={to} end={end} title={collapsed ? label : undefined} className={({ isActive }) => itemClass(lit ?? isActive, collapsed)}>
       {({ isActive }) => (
         <>
-          <span className={iconBox(isActive, collapsed)}><Icon className="h-[18px] w-[18px]" /></span>
-          <span className={cn("truncate", TAIL_W, fade(collapsed))}>{label}</span>
+          <span className={iconBox(lit ?? isActive, collapsed)}>
+            <Icon className="h-[18px] w-[18px]" />
+            {waiting && <WaitingDot collapsed={collapsed} />}
+          </span>
+          <span className={cn("flex items-center gap-2 pr-2", TAIL_W, fade(collapsed))}>
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {waiting && <CountBadge count={count!} max={999} label={`${count} to review`} className="shrink-0" />}
+          </span>
         </>
       )}
     </NavLink>
@@ -262,7 +279,7 @@ export function Sidebar() {
   const focusSearch = useRef(false);
   const isAdmin = ADMIN_AREA.some(can);
 
-  const countFor = (form: FormLink) => (form.url === "/roster" ? reviewCount : 0);
+  const countFor = (form: FormLink) => (form.url === ROSTER_URL ? reviewCount : 0);
   const hereId = categories.find((c) => c.forms.some((f) => isInternalForm(f.url) && lit(f.url)))?.category.id;
 
   // Arriving at a form opens its category, so the forms beside it are in view.
@@ -394,6 +411,7 @@ export function Sidebar() {
         ) : (
           <>
             <NavItem to="/forms" label="Home" Icon={Home} collapsed={collapsed} end />
+            {can("roster.view") && <NavItem to={ROSTER_URL} label="Roster" Icon={Contact} collapsed={collapsed} lit={lit(ROSTER_URL)} count={reviewCount} />}
             <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} />
 
             {pinned.length > 0 && (

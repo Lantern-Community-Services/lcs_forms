@@ -8,13 +8,13 @@ import { CountBadge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
-import { searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
+import { ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
 
 /**
  * Phone and tablet navigation: a floating dock at the bottom, within thumb
- * reach, holding Home, the Roster, (on a tablet) the Calendar and your pinned
- * forms; "All forms" opens the Launcher above it. A phone's five slots are
- * full, so its Calendar is at the top of the Launcher. The desktop gets the sidebar instead (Sidebar.tsx).
+ * reach, holding Home, the Roster, the Calendar and your pinned forms (a phone
+ * has room for one only without the Roster); "All forms" opens the Launcher
+ * above it. The desktop gets the sidebar instead (Sidebar.tsx).
  *
  * The dock sits in a band that is a flex sibling of <main>, not an overlay,
  * so <main>'s scroll region ends where the band begins and screens with their
@@ -58,17 +58,18 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
     []
   );
   // The account slot is always last: your avatar, opening the account menu.
-  // A phone has five slots. A tablet fits as many pins as its width allows:
-  // ~6 on a portrait iPad, ~10 in landscape.
-  const fixed = (roster ? 3 : 2) + 1 + (phone ? 0 : 1); // Home, Roster, All forms, the account slot, and on a tablet the Calendar
+  // A phone has five slots: Home, Roster, Calendar, All forms and the account
+  // slot leave room for a pin only when there's no Roster. A tablet fits as
+  // many pins as its width allows: ~6 on a portrait iPad, ~10 in landscape.
+  const fixed = (roster ? 5 : 4); // Home, Roster, Calendar, All forms, the account slot
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
-  const pins = pinned.filter((p) => p.form.url !== "/roster").slice(0, phone ? (roster ? 1 : 2) : tabletPins);
+  const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
   const home = <DockLink key="home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} />;
   const rosterItem = roster && (
-    <DockLink key="roster" to="/roster" label="Roster" Icon={Contact} active={!launcherOpen && lit("/roster")} count={reviewCount} phone={phone} />
+    <DockLink key="roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} />
   );
-  const calendarItem = !phone && (
+  const calendarItem = (
     <DockLink key="calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} />
   );
   const all = (
@@ -95,10 +96,11 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
       {phone ? (
         <div
           className="relative z-[45] grid w-full max-w-[480px] gap-0.5 rounded-[24px] border border-hairline bg-surface p-1.5 shadow-panel"
-          style={{ gridTemplateColumns: `repeat(${[home, rosterItem, all, ...pinItems, account].filter(Boolean).length}, minmax(0, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${[home, rosterItem, calendarItem, all, ...pinItems, account].filter(Boolean).length}, minmax(0, 1fr))` }}
         >
           {home}
           {rosterItem}
+          {calendarItem}
           {all}
           {pinItems}
           {account}
@@ -300,7 +302,7 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   const results = searchForms(categories, q);
   const searching = q.trim() !== "";
   const chip = (form: FormLink, key: string) => (
-    <FormChip key={key} form={form} lit={isInternalForm(form.url) && lit(form.url)} count={form.url === "/roster" ? reviewCount : 0} onPick={onClose} />
+    <FormChip key={key} form={form} lit={isInternalForm(form.url) && lit(form.url)} count={form.url === ROSTER_URL ? reviewCount : 0} onPick={onClose} />
   );
 
   return (
@@ -349,21 +351,6 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
             </div>
           ) : (
             <div className={cn("grid gap-x-6 gap-y-5 pt-1", !phone && "grid-cols-2")}>
-              {/* The phone dock has no room for the Calendar; it's here instead. */}
-              {phone && (
-                <Group title="Go to">
-                  <NavLink
-                    to="/calendar"
-                    onClick={onClose}
-                    className={cn(
-                      "flex min-h-[44px] items-center gap-2 rounded-[12px] border px-3.5 py-2 text-[14px] font-bold leading-[18px] transition-colors",
-                      lit("/calendar") ? "border-navy bg-navy text-white dark:border-navsel dark:bg-navsel" : "border-hairline bg-surface text-ink hover:bg-navsel/60"
-                    )}
-                  >
-                    <CalendarDays className="h-4 w-4" /> Calendar
-                  </NavLink>
-                </Group>
-              )}
               {pinned.length > 0 && (
                 <Group title="Pinned" className={cn(!phone && "col-span-2")}>
                   {pinned.map((p) => chip(p.form, `pin-${p.form.id}`))}
