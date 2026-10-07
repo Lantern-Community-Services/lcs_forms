@@ -15,7 +15,6 @@
     "seed": "tsx prisma/seed.ts",
     "import:tenants": "tsx scripts/import-tenants.ts",
     "sql:azure": "tsx scripts/export-azure-sql.ts",
-    "demo:hot-foods": "tsx scripts/demo-hot-foods.ts",
     "sync:engine": "node scripts/sync-engine.mjs",
     "check:engine": "node scripts/sync-engine.mjs --check",
     "forms": "tsx scripts/forms.ts"

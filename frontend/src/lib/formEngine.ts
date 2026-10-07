@@ -212,7 +212,7 @@ export interface FormSettings {
   saveDrafts?: boolean;
   /** CSS applied to this form only (selectors are scoped to the form). */
   customCss?: string;
-  /** Catalog icon key (see lib/formIcons.ts). */
+  /** Catalog icon key (see FORM_ICONS). */
   icon?: string;
 }
 

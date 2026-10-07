@@ -22,7 +22,7 @@ import {
   DropdownMenu as MenuRoot, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SignaturePad } from "@/components/attendance/SignaturePad";
-import { DateRangeBar as AppDateRangeBar, PRESETS, presetRange, type Preset } from "@/components/hotfoods/DateRange";
+import { DateRangeBar as AppDateRangeBar, PRESETS, presetRange, type Preset } from "@/components/charts/DateRange";
 import { useState } from "react";
 import { Camera, FileText, Paperclip, X } from "lucide-react";
 import { dates, device, entries, files, useApp, useData, useFileUrl, type FileRef } from "./sdk";

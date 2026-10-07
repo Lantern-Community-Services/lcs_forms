@@ -236,7 +236,7 @@ export interface FormCatalog {
 export interface HomeAttentionItem {
   id: string;
   /** "app": from a code form's form.json "home" (backend apps/home.ts). */
-  kind: "roster" | "hotfoods" | "draft" | "app";
+  kind: "roster" | "draft" | "app";
   /** For "app" items: the form's icon key and title. */
   icon?: string | null;
   formTitle?: string;
@@ -299,77 +299,6 @@ export interface ImportSummary {
   alreadyPresent: number;
   bySite: { site: string; added: number; alreadyPresent: number }[];
   samples: { site: string; unit: string; raw: string; parsed: { firstName: string; lastName: string; preferredName: string | null } }[];
-}
-
-// ── Hot Foods ────────────────────────────────────────────────────────────
-
-export interface HotFoodItem {
-  id: string;
-  name: string;
-  imageUrl: string | null;
-  active: boolean;
-  sortOrder: number;
-  /** Report color: slot 0-7 of the chart palette; null = "Other" gray. */
-  colorSlot: number | null;
-}
-
-export interface HotFoodToday {
-  /** Meals of each meal type one resident may get today before a reason is needed. */
-  limit: number;
-  /** Minutes between two meals of the same type (shelters); 0 = none. */
-  cooldownMinutes: number;
-  isShelter: boolean;
-  /** tenantId → non-void entries today at this site. */
-  counts: Record<string, number>;
-  /** tenantId → itemId → one timestamp (ms) per meal of that type today. */
-  meals: Record<string, Record<string, number[]>>;
-  /** tenantId → meals at this site over the `regularsDays` days before today. */
-  regulars: Record<string, number>;
-  regularsDays: number;
-}
-
-/** Admin → Hot Foods. */
-export interface HotFoodConfig {
-  supportiveLimit: number;
-  shelterLimit: number;
-  cooldownMinutes: number;
-}
-
-export interface HotFoodEntryRow {
-  id: string;
-  site: SiteRef;
-  tenantId: string;
-  tenantName: string;
-  unit: string | null;
-  mealCount: number;
-  notes: string | null;
-  overrideReason: string | null;
-  occurredAt: string;
-  createdByName: string;
-  voidedAt: string | null;
-  voidReason: string | null;
-  source: string;
-  items: { itemName: string; quantity: number }[];
-}
-
-export interface HotFoodEntryDetail extends HotFoodEntryRow {
-  signature: string;
-  voidedByName: string | null;
-}
-
-export interface HotFoodReport {
-  from: string;
-  to: string;
-  sites: SiteRef[];
-  totals: { entries: number; meals: number; residents: number; overrides: number; voided: number; days: number; avgMealsPerDay: number };
-  /** Meal types present in range, in fixed color-slot order. */
-  series: { key: string; name: string; slot: number | null }[];
-  byDay: { day: string; entries: number; meals: number; parts: Record<string, number> }[];
-  bySite: { code: string; name: string; siteType: string; entries: number; meals: number; residents: number }[];
-  byItem: { key: string; name: string; slot: number | null; quantity: number }[];
-  heat: number[][];
-  /** avatarColor = their profile color; null = none chosen (the avatar default navy). */
-  byStaff: { name: string; entries: number; userId: string | null; avatarColor: string | null }[];
 }
 
 // ── Calendar ─────────────────────────────────────────────────────────────

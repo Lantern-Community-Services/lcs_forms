@@ -1,13 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { api } from "./api";
 import { appIsQuiet, isOnline, offlineEnabled } from "./offline";
-import { calendarPath, hotFoodParams } from "./queries";
+import { calendarPath } from "./queries";
 import { addMonths, fetchRange, nyToday } from "./calendar";
 import { keepAllSites, keptResidentIds } from "./rosterStore";
 import { rememberedSiteParam } from "./site";
-import { readStorage, readStoredJson, writeStorage } from "./storage";
-import { presetRange } from "@/components/hotfoods/DateRange";
-import type { FormCatalog, HotFoodItem, Site, User } from "./types";
+import { readStoredJson, writeStorage } from "./storage";
+import type { FormCatalog, Site, User } from "./types";
 
 /**
  * A copy of the whole site on the device, built a little at a time while it's
@@ -16,11 +15,10 @@ import type { FormCatalog, HotFoodItem, Site, User } from "./types";
  * public/sw.js keeps every answer the app reads, so whatever someone opens is
  * there offline later. This makes sure of the rest. In the background it works
  * through every screen this person can open and reads each one: the residents
- * at all of their sites, the forms and their definitions, meal types and their
- * pictures, today's counts at every site, each resident's page (at the sites
- * this device is used at), Review, Overview and Activity, attendance, this month's
- * and next month's calendar, and the entries
- * and reports the person may see. The worker stores each answer exactly as if
+ * at all of their sites, the forms and their definitions, each resident's page
+ * (at the sites this device is used at), Review, Overview and Activity,
+ * attendance, this month's and next month's calendar, and the entries the
+ * person may see. (A code form keeps its own offline reads: form.json "offline".) The worker stores each answer exactly as if
  * the screen had asked, because each read here uses the screen's own URL,
  * default filters included.
  *
@@ -32,7 +30,7 @@ import type { FormCatalog, HotFoodItem, Site, User } from "./types";
  *   charge (there's nowhere to keep the copy otherwise);
  * - with "Low Data Mode" on, only what forms need to be filled in.
  *
- * Each item is refreshed on its own schedule, from minutes (today's counts) to
+ * Each item is refreshed on its own schedule, from half an hour (entries) to
  * a day (a resident's page). The schedule is per person and per device
  * (localStorage), so a reload doesn't start over.
  */
@@ -109,29 +107,11 @@ const isFresh = (t: Target) => Date.now() - (stamps[t.key] ?? 0) < t.ttlMs;
 
 const get = (path: string) => () => api.getInBackground(path);
 
-/** A picture the app shows (a meal type's). Loaded as an image so the worker keeps it like one the screen drew. */
-function image(url: string) {
-  return () =>
-    new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      const t = setTimeout(() => reject(new Error("timeout")), 15_000);
-      img.onload = () => {
-        clearTimeout(t);
-        resolve();
-      };
-      img.onerror = () => {
-        clearTimeout(t);
-        reject(new Error("image failed"));
-      };
-      img.src = url;
-    });
-}
-
 const siteQs = (site: string | undefined) => (site ? `site=${encodeURIComponent(site)}` : "");
 
 /**
  * Everything this person can open, most needed first. Built from the lists the
- * app already has (catalog, sites, meal types), read here in the background.
+ * app already has (catalog, sites), read here in the background.
  */
 async function buildTargets(user: User): Promise<Target[]> {
   const can = (p: string) => user.permissions.includes(p as never);
@@ -140,10 +120,9 @@ async function buildTargets(user: User): Promise<Target[]> {
     { key: "home", label: "Home", tier: 0, ttlMs: 30 * MIN, run: get("/home") },
   ];
 
-  const [catalog, sites, items] = await Promise.all([
+  const [catalog, sites] = await Promise.all([
     api.getInBackground<FormCatalog>("/forms").catch(() => null),
     api.getInBackground<Site[]>("/sites").catch(() => [] as Site[]),
-    api.getInBackground<HotFoodItem[]>("/hot-foods/items").catch(() => [] as HotFoodItem[]),
   ]);
   const urls = (catalog?.categories ?? []).flatMap((c) => c.forms.map((f) => f.url));
   const slugs = (prefix: string) => [...new Set(urls.filter((u) => u.startsWith(prefix)).map((u) => u.slice(prefix.length).split(/[/?#]/)[0]).filter(Boolean))];
@@ -155,26 +134,14 @@ async function buildTargets(user: User): Promise<Target[]> {
   for (const slug of [...slugs("/f/"), ...slugs("/p/")]) targets.push({ key: `form:${slug}`, label: "Forms", tier: 0, ttlMs: HOUR, run: get(`/f/${slug}`) });
   for (const slug of slugs("/apps/")) targets.push({ key: `app:${slug}`, label: "Forms", tier: 0, ttlMs: HOUR, run: get(`/apps/${slug}/runtime`) });
 
-  // The sites this device is used at: the Record site, the person's default, (unless they have every site) their
+  // The sites this device is used at: the person's default, (unless they have every site) their
   // own, and those picked on the roster screens here.
-  const recordSite = readStorage("ln.hotfoods.site");
   const mine = [
-    ...(recordSite ? [recordSite] : []),
     ...(user.defaultSiteCode ? [user.defaultSiteCode] : []),
     ...(user.allSites ? [] : user.sites.map((s) => s.code)),
     // The sites picked on the roster screens here.
     ...(rememberedSiteParam(sites)?.split(",") ?? []),
   ].filter((c, i, all) => all.indexOf(c) === i && sites.some((s) => s.code === c));
-
-  if (urls.some((u) => u.startsWith("/forms/hot-foods")) && can("roster.edit")) {
-    targets.push({ key: "hf:items", label: "Meal types", tier: 0, ttlMs: 2 * HOUR, run: get("/hot-foods/items") });
-    for (const it of items) if (it.active && it.imageUrl) targets.push({ key: `img:${it.imageUrl}`, label: "Meal pictures", tier: 0, ttlMs: 24 * HOUR, run: image(it.imageUrl) });
-    // Today's counts (for the limits) at every site: every 10 minutes where this device is used, half-hourly elsewhere.
-    for (const s of sites) {
-      const here = mine.includes(s.code);
-      targets.push({ key: `hf:today:${s.code}`, label: "Today's meals", tier: here ? 0 : 1, ttlMs: (here ? 10 : 30) * MIN, run: get(`/hot-foods/today?site=${encodeURIComponent(s.code)}`) });
-    }
-  }
 
   // ── The roster's screens ──
   const selection = rememberedSiteParam(sites);
@@ -199,15 +166,6 @@ async function buildTargets(user: User): Promise<Target[]> {
 
   // ── Reading entries back ──
   if (can("entries.view")) {
-    if (urls.some((u) => u.startsWith("/forms/hot-foods"))) {
-      // The Entries and Reports tabs as they open: the remembered sites, the last 7 and 30 days.
-      const week = presetRange("7d");
-      const month = presetRange("30d");
-      targets.push(
-        { key: `hf:entries:${selection ?? "all"}:${week.from}`, label: "Hot Foods entries", tier: 2, ttlMs: 30 * MIN, run: get(`/hot-foods?${hotFoodParams({ site: selection, from: week.from, to: week.to, q: "", status: "active" })}`) },
-        { key: `hf:report:${selection ?? "all"}:${month.from}`, label: "Hot Foods reports", tier: 2, ttlMs: HOUR, run: get(`/hot-foods/report?${hotFoodParams({ site: selection, from: month.from, to: month.to })}`) }
-      );
-    }
     for (const slug of slugs("/f/")) targets.push({ key: `entries:${slug}`, label: "Form entries", tier: 2, ttlMs: 30 * MIN, run: get(`/f/${slug}/entries?status=active&take=50&skip=0`) });
   }
 

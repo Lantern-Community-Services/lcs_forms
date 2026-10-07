@@ -30,9 +30,9 @@ model Site {
   /// Unique in practice (enforced in code) — not a DB unique index, because
   /// SQL Server permits only one NULL in a unique index.
   entityName String?
-  /// "shelter" sites turn over fast; "supportive" housing is stable. Decides
-  /// the Hot Foods limits (shelters: more meals a day, with a cooldown; see
-  /// services/hotFoods.ts rulesFor). Anything but "shelter" follows supportive.
+  /// "shelter" sites turn over fast; "supportive" housing is stable. Code forms
+  /// read it (Hot Foods: shelters get more meals a day, with a cooldown).
+  /// Anything but "shelter" counts as supportive.
   siteType   String  @default("supportive")
   address    String?
   /// Where the building is (WGS84). Forms use it to pick the site a staff
@@ -50,7 +50,6 @@ model Site {
   userSites        UserSite[]
   apiKeys          ApiKey[]
   attendanceEvents AttendanceEvent[]
-  hotFoodEntries   HotFoodEntry[]
   calendarEvents   CalendarEventSite[]
   calendarFollows  CalendarFollow[]
 
@@ -109,7 +108,6 @@ model Tenant {
   activities        TenantActivity[]
   audit             AuditEvent[]
   attendanceEntries AttendanceEntry[]
-  hotFoodEntries    HotFoodEntry[]
 
   @@index([siteId, status, attentionClockAt])
   @@index([siteId, status, unit])
@@ -200,90 +198,6 @@ model AttendanceEntry {
 
   @@unique([eventId, tenantId])
   @@index([tenantId])
-}
-
-// ───────────────────────── Hot Foods ─────────────────────────
-
-/// A kind of meal the Hot Foods form hands out ("Individual Meals", "Holiday
-/// Meals"). Replaces WordPress's hotfood.csv. Hidden rather than deleted once
-/// used, so past entries keep their meaning.
-model HotFoodItem {
-  id        String   @id @default(cuid())
-  name      String
-  imageUrl  String?
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  /// Report color: a slot 0-7 of the validated chart palette (frontend
-  /// index.css --viz-1…8), fixed per meal type so a color means the same meal
-  /// on every chart and range. Null = drawn as "Other" gray.
-  colorSlot Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  entryItems HotFoodEntryItem[]
-}
-
-/// One hot food distribution to one resident, signed for on the device.
-/// Never edited: a mistake is voided (with a reason) and recorded again, so the
-/// count staff reported on a given day can always be reconstructed.
-model HotFoodEntry {
-  id         String   @id @default(cuid())
-  site       Site     @relation(fields: [siteId], references: [id])
-  siteId     String
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  tenantId   String
-  /// Snapshots at the time of the distribution — a later roster edit (a room
-  /// move, a name fix) shouldn't rewrite history.
-  tenantName String
-  unit       String?
-  /// Total of every item's quantity, denormalised so reports can sum one column.
-  mealCount  Int
-  notes      String?
-  /// Required when this resident was already at the day's limit.
-  overrideReason String?
-  /// PNG data URL of the resident's signature.
-  signature  String
-  /// "app" | "demo" | "wordpress" — where the row came from.
-  source     String   @default("app")
-  /// When the meal was handed over. The recording device saves entries locally
-  /// and uploads them when it can, so this is the device's time of signing
-  /// (clamped to now); `createdAt` is when the server received it.
-  occurredAt DateTime @default(now())
-  /// The recording device's id for this entry, so a retried upload returns the
-  /// entry it already made instead of recording the meal twice. Unique in
-  /// practice (enforced in code) — not a DB unique index, because SQL Server
-  /// permits only one NULL in a unique index.
-  clientId   String?
-  createdById   String?
-  createdByName String
-
-  voidedAt     DateTime?
-  voidedById   String?
-  voidedByName String?
-  voidReason   String?
-
-  createdAt DateTime @default(now())
-
-  items HotFoodEntryItem[]
-
-  @@index([siteId, occurredAt])
-  @@index([tenantId, occurredAt])
-  @@index([occurredAt])
-  @@index([clientId])
-}
-
-model HotFoodEntryItem {
-  id       String       @id @default(cuid())
-  entry    HotFoodEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  entryId  String
-  item     HotFoodItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  itemId   String?
-  /// Snapshot of the item's name, so renaming a meal type keeps old reports honest.
-  itemName String
-  quantity Int
-
-  @@index([entryId])
-  @@index([itemId])
 }
 
 // ───────────────────────── Calendar ─────────────────────────

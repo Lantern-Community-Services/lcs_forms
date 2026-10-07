@@ -12,10 +12,10 @@
  *   npm run forms -- import gravityforms-export.json [--publish]
  *   npm run forms -- export intake other-form [--entries] > bundle.json
  *
- * Code forms (a folder per form, e.g. ../forms/hot-foods-code/):
- *   npm run forms -- app:pull hot-foods-code [../forms/hot-foods-code]   files + lcs-sdk.d.ts + tsconfig for type-checking
- *   npm run forms -- app:push ../forms/hot-foods-code [--slug x] [--publish] [--note "…"]
- *   npm run forms -- app:build ../forms/hot-foods-code                   compile locally, print errors
+ * Code forms (a folder per form, e.g. ../forms/hot-foods/):
+ *   npm run forms -- app:pull hot-foods [../forms/hot-foods]        files + lcs-sdk.d.ts + tsconfig for type-checking
+ *   npm run forms -- app:push ../forms/hot-foods [--slug x] [--publish] [--note "…"]
+ *   npm run forms -- app:build ../forms/hot-foods                        compile locally, print errors
  *
  * Backup (services/formBackup.ts) — every built form, both kinds, plus the catalog:
  *   npm run forms -- backup                       push to FORM_BACKUP_REPO through the GitHub API (FORM_BACKUP_TOKEN)

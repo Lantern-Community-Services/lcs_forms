@@ -3,7 +3,8 @@ import { CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * The date range the Hot Foods Entries and Reports tabs are looking at, kept
+ * The date range an entries list or report is looking at (code forms get it as
+ * DateRangeBar in @lcs/ui), kept
  * in the URL (?from=2026-09-01&to=2026-09-25) so a link or a refresh opens the
  * same view. Days are New York calendar days — the server counts them the same
  * way, whatever the device's time zone.

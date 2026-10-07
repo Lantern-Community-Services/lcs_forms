@@ -13,8 +13,8 @@ export default {
     "./app-runtime/**/*.{ts,tsx}",
     "./src/components/ui/**/*.{ts,tsx}",
     "./src/components/attendance/SignaturePad.tsx",
-    "./src/components/hotfoods/Charts.tsx",
-    "./src/components/hotfoods/DateRange.tsx",
+    "./src/components/charts/Charts.tsx",
+    "./src/components/charts/DateRange.tsx",
     // The design kit gallery (src/apps/design.ts) renders with this stylesheet too.
     "./src/apps/design.ts",
   ],

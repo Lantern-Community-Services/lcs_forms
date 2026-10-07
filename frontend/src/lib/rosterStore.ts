@@ -7,7 +7,7 @@ import type { Tenant } from "./types";
  * The roster, kept on the device for the sites it uses.
  *
  * An iPad at a site opens the same couple of hundred residents all day. They
- * live here in IndexedDB, so the list (Roster, Hot Foods Record, a form's
+ * live here in IndexedDB, so the list (Roster, a code form's resident list, a form's
  * resident picker, attendance) shows at once, online or offline, and after the
  * first load only changes travel: GET /api/tenants/sync?since= returns who
  * changed at any of my sites since the last pull, usually nobody.

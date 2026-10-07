@@ -16,7 +16,6 @@ import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
 import { publicApiRouter } from "./routes/publicApi.js";
 import { formsRouter } from "./routes/forms.js";
-import { hotFoodsRouter } from "./routes/hotFoods.js";
 import { builderRouter } from "./routes/builder.js";
 import { fillRouter } from "./routes/fill.js";
 import { handleMcp } from "./forms/mcp.js";
@@ -49,8 +48,6 @@ export function createApp() {
   // A session may contain many PNG signatures. Accept the larger body only
   // for an authenticated attendance write; all other JSON keeps the 1 MB cap.
   app.post("/api/attendance", requireAuth, express.json({ limit: "20mb" }));
-  // One Hot Foods entry carries one signature PNG (capped at 400 KB in the route).
-  app.post("/api/hot-foods", requireAuth, express.json({ limit: "2mb" }));
   // A built form's entry can hold signatures and custom-code data; the MCP
   // server receives whole form documents.
   app.post("/api/f/:slug/submit", submitLimiter, express.json({ limit: "5mb" }));
@@ -73,7 +70,6 @@ export function createApp() {
   app.use("/api/forms", formsRouter);
   app.use("/api/home", homeRouter);
   app.use("/api/calendar", calendarRouter);
-  app.use("/api/hot-foods", hotFoodsRouter);
   app.use("/api/tenants", tenantsRouter);
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/sites", sitesRouter);

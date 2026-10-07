@@ -6,16 +6,18 @@ built to be extended with LLM help.
 
 **v1 is:**
 
-- **Forms**, the home screen. Every form from the WordPress site, in the groups staff already
-  know, with search, per-person favorites (synced across devices) and a category filter. The forms
-  themselves still live on WordPress: each card opens the WordPress form in a new tab. The desktop
-  sidebar lists the same forms by type, as groups that expand to show their forms.
+- **Forms**, the home screen: the forms catalog, with search, per-person pins (synced across
+  devices) and a category filter. The catalog starts empty. Forms are rebuilt here one at a time
+  (form builder or code forms) and added to it as they're ready; a form that lives elsewhere is a
+  card linking out. The desktop sidebar lists the same forms by category. (The old WordPress
+  links the catalog used to start with are taken out once on startup:
+  `retireLegacyCatalog` in `backend/src/services/formCatalog.ts`.)
 - **Roster**, which replaces the **Tenant Updater** form. This is the Lantern Roster app
   (`LCS_TenentManagement`) carried over whole: roster, 48-hour review queue, attendance, activity
   log, exports, public API and the WordPress connector. It is one sidebar entry with tabs:
   Residents (`/roster`), Review, Attendance, Activity and Overview (`/roster/review`, …). The
   roster app's old paths (`/review`, `/dashboard`, `/attendance`, `/activity`) redirect to the tabs.
-- **Hot Foods** (`/forms/hot-foods`), which replaces Gravity Forms form 21. See below.
+- **Hot Foods** (`/apps/hot-foods`), which replaces Gravity Forms form 21: a code form. See below.
 - **Admin → Forms catalog**, where admins add, edit, hide, reorder and recategorize the links
   without a deploy.
 - **Calendar** (`/calendar`): events for every site or for chosen sites, with repeat rules. Admins
@@ -40,9 +42,9 @@ only changes when the platform itself needs something new.
    with an `https://` link — **Admin → Forms catalog → Add**, or MCP `save_catalog_card`. It
    shows **↗** and opens in a new tab.
 
-Roster (`/roster`) and Hot Foods (`/forms/hot-foods`) were built into the codebase before code
-forms existed; `INTERNAL_NEEDS` in `frontend/src/lib/formIcons.ts` locks their cards for people
-without the permission.
+The Roster (`/roster`) was built into the codebase before code forms existed and sits beside Home
+and Calendar in the navigation rather than in the catalog. `INTERNAL_NEEDS` in
+`frontend/src/lib/formIcons.ts` locks a card for an app path that needs a permission.
 
 **Keeping the forms you build:** the database is the real copy. Every form is also backed up to
 GitHub automatically — see "Form backup" below.
@@ -74,46 +76,35 @@ Every form built in the app — form builder forms and code forms — is backed 
 
 ## Hot Foods
 
-Replaces the WordPress **Hot Foods Form** (Gravity Forms form 21). One sidebar entry with three tabs:
+Replaces the WordPress **Hot Foods Form** (Gravity Forms form 21). It is a **code form**
+(`/apps/hot-foods`), built with the AI form builder (MCP) and kept in the database like any other
+form — edit it in **Admin → Code forms**; its source is backed up with the rest (see "Form backup").
+It replaced a version that was built into this codebase (`/forms/hot-foods`, its own tables and
+Admin → Hot Foods), which was removed with its data on 2026-10-07.
 
 | Tab | Who | What |
 |---|---|---|
-| **Record** (`/forms/hot-foods`) | anyone with `roster.edit` at a site | Resident → meal → signature, one step per phone screen. "Next resident" keeps the site and the meal for the next person in line. |
-| **Entries** (`/forms/hot-foods/entries`) | `entries.view` (not Site Staff) | Filter by sites, dates and search; Print and Export (CSV, Excel, PDF) of exactly what's shown. Each entry opens with its signature, a printable receipt, and **Void** (`entries.void`: Admin, Site Admin, Site Manager). |
-| **Reports** (`/forms/hot-foods/reports`) | `entries.view` | Meals served, residents, meals per day, by site, by meal type, a weekday × hour grid and entries by staff member. Print, or export as a **PDF report** (charts drawn in) or an **Excel workbook** (one sheet per breakdown). |
+| **Record** | Admin, Developer, Site Admin, Site Manager, Site Staff | Meal → Resident → Sign, then Saved with Next resident and Undo. The meal is picked once per shift; most frequent residents first. Works offline: entries queue on the device and upload behind the scenes. |
+| **Entries** | Main Office, Site Admin, Site Manager, Developer | Filter by sites, dates, status and search; Print, and Export (CSV, Excel, PDF) of everything the filters match. Each entry opens with its signature, Print, and **Void** (Site Admin, Site Manager). |
+| **Reports** | same as Entries | Meals served, residents, meals per day (with a table), by site, by meal type, a weekday × hour grid and entries by staff member. Print, or export as a PDF report (charts drawn in) or an Excel workbook (one sheet per breakdown). |
+| **Settings** | Admin | Meals per day (supportive, shelter), the shelter cooldown, and the meal types with their report colors. |
 
-- **Daily limit, per meal type.** At supportive housing a resident gets 1 meal of each meal type a
-  day; at a shelter 3, with a 60-minute cooldown between two meals of the same type. Going over
-  either is allowed with a reason, which is stored and counted in Reports. The numbers, the meal
-  types and which sites are shelters are all set in **Admin → Hot Foods**. The check lives in
-  `ruleProblems` (backend `services/hotFoods.ts`, mirrored in frontend `lib/hotFoodRules.ts`, so
-  staff are asked for a reason before Save). Days are New York calendar days.
-- **Nothing is edited or deleted.** A mistake is voided with a reason; voided entries stop counting
-  toward the limit and every report but stay on record (Entries → Status → Voided).
-- **Report colors mean something.** Each meal type has its own color (Manage meal types → Report
-  color), used on every chart, range and export: Meals per day is stacked by meal type, Meals by
-  type uses the same colors, Meals by site is colored by site type (supportive / shelter), and the
-  weekday × hour grid is a light-to-dark blue scale with a key. The eight colors are a palette
-  checked for colorblind safety in light and dark mode (`--viz-*` in `frontend/src/index.css`;
-  the PDF uses the same values). Everyday meals sit on the first three colors, which stay
-  distinguishable in any combination, and the holiday ones on the next two; give two meals the
-  same color and they'll look the same on the charts.
-- **Meal types** replace `wp-content/uploads/CSVs/hotfood.csv`. Admins with `forms.manage` edit
-  them from **Manage meal types** on the Record screen. Hidden, never deleted; entries keep the name
-  they were recorded under. The pictures still point at the WordPress media library.
-- **Site from location.** For someone with more than one site, Record asks the browser for its
-  location and picks the site they're standing at (within the site's radius, 200 m by default);
-  the site list is sorted nearest-first either way. It never overrides a site picked by hand, and if
-  location is off it falls back to the last site used. The position is compared on the device and
-  never sent to the server. Reusable for other forms: `components/forms/SiteLocator.tsx`.
-- **The roster hears about it.** Each entry is logged as activity on the resident, so being served a
-  meal resets their review clock.
-- **Demo data:** `npm run demo:hot-foods` (backend) writes ~60 days of made-up entries (`source =
-  "demo"`) so Entries and Reports have something in them; `-- --clear` removes them. Never run it
-  against production.
-- **Not done yet:** the ~18,600 historical WordPress entries are not imported. Their tenant is free
-  text, so each has to be matched to a roster ID (site from the `LP` entity name, then name and
-  room); unmatched ones would need a review step.
+- **Daily limit, per meal type.** At supportive housing 1 meal of each type a day; at a shelter 3,
+  with a 60-minute cooldown between two of the same type. Going over is allowed with a reason, kept
+  on the entry and counted in Reports. The rule is one file (`lib/rules.ts` in the form) used by the
+  Record page and the server's `beforeCreate`, which has the final word. A site's type is set in
+  Admin → Sites.
+- **Over-limit entries** today show on the Forms home under "Needs your attention" for the roles that
+  read entries (the form's `home` action).
+- **Meal types** live in the form's `mealTypes` collection, seeded with the WordPress set on first
+  use. Hidden, never deleted; entries keep the name and color they were recorded with. The pictures
+  still point at the WordPress media library.
+- **Site from location**, as before: the site you're standing at, never overriding one picked by hand.
+- **The roster hears about it**: each entry is logged as activity on the resident.
+- **Print and the PDF report draw the charts** on the server (app.print / app.export with `charts`),
+  in the same colors as the screen; "Entries by staff member" wears each person's avatar color
+  (`ctx.people`). Not carried over: a per-entry PDF receipt with the signature (the entry page prints
+  from the browser). The ~18,600 historical WordPress entries were never imported.
 
 ---
 
@@ -216,7 +207,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **Data:** entries (free-form JSON plus site, resident, when, who; void and undo built in) and
   **collections** (the form's own lists and settings). `beforeCreate` can refuse an entry, ask for an
   override reason, or rewrite it. **Offline:** `entries.create(entry, { offline: true })` queues on the
-  device (`frontend/src/apps/queue.ts`) and uploads in the background, like Hot Foods.
+  device (`frontend/src/apps/queue.ts`) and uploads in the background.
 - **Building:** the in-app editor has a file tree, a code editor, a live preview of the draft, a
   console (page and server logs), problems with file:line, versions, and the SDK reference. Drafts
   can be previewed; entries made in preview are marked `preview` and hidden from the live form.
@@ -242,7 +233,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **The rest of the site:** `calendar.*` (read, and write with the person's own calendar rights),
   `roster.resident()` and `ctx.roster.logActivity()`, and `form.json` `"home"` — a server action whose
   attention items and stat tiles appear on the Forms home (`backend/src/apps/home.ts`).
-- **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the Hot Foods charts;
+- **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the original charts (`DailyBars`, `RankedBars`, `HeatGrid`, `StatTile`);
   `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.
 - **Email:** `ctx.email.send()` from server code, queued through the Graph mailbox (see Email below —
   not set up yet), to Lantern addresses unless `form.json` `"email"` lists others.
@@ -272,13 +263,6 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   CSS is compiled with the app's tokens) and the SDK types to where the editor, the CLI and the AI
   read them. The runtime bundle (`public/app-runtime/`) is built by `npm run build:runtime` (frontend),
   which also runs before `dev` and `build`.
-
-**Hot Foods, as a code form:** `forms/hot-foods-code/` is Hot Foods rebuilt this way, at
-`/apps/hot-foods-code`, beside the real one. It has the same guided Meal → Resident → Sign screen for
-iPad, the same per-meal-type limits and shelter cooldown with override reasons (one `lib/rules.ts`
-shared by the page and the server), offline recording, site-from-location, most-frequent-first
-sorting, Entries, Reports and an admin Settings tab. Locally it holds a copy of the Hot Foods demo
-entries (`source = "demo"`) so Reports has data. The real Hot Foods is untouched.
 
 ## Calendar
 
@@ -326,7 +310,7 @@ top of the phone's **All forms** sheet.
   there, carrying over that day's changes; a series that ran a number of times keeps its total.
   Removing one day has an Undo.
 - **Categories** (Meeting, Training, Resident event, Inspection, Deadline, Holiday to start) give each
-  event its color, from the same colorblind-checked palette as the Hot Foods reports. Admins edit them
+  event its color, from the same colorblind-checked palette as the charts. Admins edit them
   from the tag button beside New event; deleting one leaves its events uncategorized. Anyone can hide
   categories from view (remembered per device).
 - **Times are New York wall-clock times.** Days and times are stored as text (`"2026-10-06"`,
@@ -441,26 +425,26 @@ on any device.
   (`lib/snapshot.ts`). In the background, one request about every second, and only while no screen is
   waiting on one of its own, the app reads every screen the person can open. That covers the
   residents at all of the person's sites first (so any form's resident picker works offline,
-  whichever site is chosen), then the forms and their definitions, meal types and their pictures,
-  today's Hot Foods counts at every site, each resident's page at the device's sites, Review, Overview, Activity and attendance, this month's and next month's calendar, plus Hot Foods entries, reports and form
-  entries for roles that can read them. Each read uses the screen's own URL and default filters, so
-  the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (today's
-  counts every 10 minutes, a resident's page daily). The pill at the top shows the first download as it
+  whichever site is chosen), then the forms and their definitions, each resident's page at the device's sites, Review, Overview,
+  Activity and attendance, this month's and next month's calendar, plus form entries for roles that
+  can read them. (A code form lists its own offline reads in form.json "offline".) Each read uses the screen's own URL and default filters, so
+  the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (entries
+  every half hour, a resident's page daily). The pill at the top shows the first download as it
 runs ("Saving for offline use · 34 of 120", with a progress line), then "Ready to work offline".
 Profile → Offline shows it too. With Low
   Data Mode on, only what's needed to fill in forms is read.
-- **Lists that rarely change are answered from the device first:** meal types, the forms list, sites
+- **Lists that rarely change are answered from the device first:** the forms list, sites
   and archive reasons (`DEVICE_FIRST` in `sw.js`). They show instantly, are checked with the server
   behind the scenes, and the screen refreshes itself if the server's copy differs. A save to one of
   them drops the device's copy, so an admin's edit is never hidden behind it.
 - **The roster is kept on the device** (`lib/rosterStore.ts`, IndexedDB) for every site the device
-  opens, so Roster, Hot Foods Record, a form's resident picker and attendance show the list at once,
+  opens, so Roster, a code form's resident list, a form's resident picker and attendance show the list at once,
   online or offline. After the first load only changes travel: `GET /api/tenants/sync?since=` returns
   who changed at any of the person's sites (archived and moved people included, so they drop off),
   pulled every 20 s while the app is open, on focus, on reconnect and right after any roster edit. A
   full reload every 12 hours catches anything a delta can't see. The Archived tab still asks the server.
 - **Entries are queued on the device** and upload by themselves when the connection is back, from
-  whichever screen is open: Hot Foods (`lib/hotFoodsQueue.ts`), built forms (`lib/fillQueue.ts`,
+  whichever screen is open: built forms (`lib/fillQueue.ts`,
   files attached offline included) and code forms (`apps/queue.ts`). Each carries a `clientId`, so a
   retry never saves twice.
 - **The offline pill** floating over the top of every screen (`components/shell/OfflineBar.tsx`;
@@ -705,7 +689,7 @@ To enable it, register an app in Entra (single tenant, Web redirect
 ## Database
 
 - `backend/prisma/schema.prisma` is the source of truth. Tables: `FormCategory`, `FormLink`, `FormFavorite`,
-  `HotFoodItem`, `HotFoodEntry`, `HotFoodEntryItem`, `CalendarCategory`, `CalendarEvent`,
+  `CalendarCategory`, `CalendarEvent`,
   `CalendarEventSite`, `CalendarException`, `Site`, `Tenant`,
   `TenantActivity`, `AuditEvent`, `User`, `UserSite`, `ApiKey`, `Webhook`, `WebhookDelivery`,
   `Setting`.
@@ -746,12 +730,12 @@ rather than removed automatically.
 ```
 backend/    Express + Prisma API (port 4200)
   prisma/schema.prisma, seed.ts
-  src/routes/     forms, hotFoods, calendar, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
+  src/routes/     forms, calendar, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
   src/calendar/   recurrence.ts (repeat rules; shared with the frontend)
-  src/services/   formCatalog (default forms), hotFoods + hotFoodsExport, calendar, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
-  scripts/        import-tenants.ts, export-azure-sql.ts, demo-hot-foods.ts
+  src/services/   formCatalog (retires the old default catalog), calendar, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
+  scripts/        import-tenants.ts, export-azure-sql.ts, forms.ts (forms as code, backups)
 frontend/   Next.js-hosted React SPA (port 5200, proxies /api → backend)
-  src/screens/    Forms (home), calendar/*, hotfoods/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
+  src/screens/    Forms (home), calendar/*, builder/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
   src/components/ shell (from lcs_invoices), ui (from lcs_invoices), roster/*
 integrations/wordpress/lantern-roster-connector.php
 database/azure-sql-schema.sql
@@ -760,8 +744,6 @@ data/            (git-ignored) local tenant list CSV — resident data, never co
 
 ## Known gaps (prototype)
 
-- The form descriptions in the default catalog are one-line placeholders written from each form's
-  title. Review them in Admin → Forms catalog.
 - The WordPress Tenant Updater page still works. Once this site is live, point it (or redirect it)
   at the Roster here so nobody keeps using the old one.
 

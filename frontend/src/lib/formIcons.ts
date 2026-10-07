@@ -130,7 +130,6 @@ const INTERNAL_NEEDS: { prefix: string; anyOf: PermissionKey[]; hint: string }[]
   { prefix: "/roster", anyOf: ["roster.view"], hint: ROSTER_HINT },
   { prefix: "/tenants", anyOf: ["roster.view"], hint: ROSTER_HINT },
   // Recording needs roster.edit; Main Office can still read entries and reports.
-  { prefix: "/forms/hot-foods", anyOf: ["roster.edit", "entries.view"], hint: "You need a site role to record Hot Foods. Ask an administrator." },
 ];
 
 export function formNeeds(url: string) {

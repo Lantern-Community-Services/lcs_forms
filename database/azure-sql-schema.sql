@@ -106,53 +106,6 @@ CREATE TABLE [dbo].[AttendanceEntry] (
 );
 
 -- CreateTable
-CREATE TABLE [dbo].[HotFoodItem] (
-    [id] NVARCHAR(64) NOT NULL,
-    [name] NVARCHAR(255) NOT NULL,
-    [imageUrl] NVARCHAR(max),
-    [active] BIT NOT NULL CONSTRAINT [HotFoodItem_active_df] DEFAULT 1,
-    [sortOrder] INT NOT NULL CONSTRAINT [HotFoodItem_sortOrder_df] DEFAULT 0,
-    [colorSlot] INT,
-    [createdAt] DATETIME2 NOT NULL CONSTRAINT [HotFoodItem_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
-    [updatedAt] DATETIME2 NOT NULL,
-    CONSTRAINT [HotFoodItem_pkey] PRIMARY KEY CLUSTERED ([id])
-);
-
--- CreateTable
-CREATE TABLE [dbo].[HotFoodEntry] (
-    [id] NVARCHAR(64) NOT NULL,
-    [siteId] NVARCHAR(64) NOT NULL,
-    [tenantId] NVARCHAR(64) NOT NULL,
-    [tenantName] NVARCHAR(255) NOT NULL,
-    [unit] NVARCHAR(255),
-    [mealCount] INT NOT NULL,
-    [notes] NVARCHAR(max),
-    [overrideReason] NVARCHAR(max),
-    [signature] NVARCHAR(max) NOT NULL,
-    [source] NVARCHAR(255) NOT NULL CONSTRAINT [HotFoodEntry_source_df] DEFAULT 'app',
-    [occurredAt] DATETIME2 NOT NULL CONSTRAINT [HotFoodEntry_occurredAt_df] DEFAULT CURRENT_TIMESTAMP,
-    [clientId] NVARCHAR(64),
-    [createdById] NVARCHAR(64),
-    [createdByName] NVARCHAR(255) NOT NULL,
-    [voidedAt] DATETIME2,
-    [voidedById] NVARCHAR(64),
-    [voidedByName] NVARCHAR(255),
-    [voidReason] NVARCHAR(max),
-    [createdAt] DATETIME2 NOT NULL CONSTRAINT [HotFoodEntry_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT [HotFoodEntry_pkey] PRIMARY KEY CLUSTERED ([id])
-);
-
--- CreateTable
-CREATE TABLE [dbo].[HotFoodEntryItem] (
-    [id] NVARCHAR(64) NOT NULL,
-    [entryId] NVARCHAR(64) NOT NULL,
-    [itemId] NVARCHAR(64),
-    [itemName] NVARCHAR(255) NOT NULL,
-    [quantity] INT NOT NULL,
-    CONSTRAINT [HotFoodEntryItem_pkey] PRIMARY KEY CLUSTERED ([id])
-);
-
--- CreateTable
 CREATE TABLE [dbo].[CalendarCategory] (
     [id] NVARCHAR(64) NOT NULL,
     [name] NVARCHAR(255) NOT NULL,
@@ -526,24 +479,6 @@ CREATE NONCLUSTERED INDEX [AttendanceEvent_siteId_occurredAt_idx] ON [dbo].[Atte
 CREATE NONCLUSTERED INDEX [AttendanceEntry_tenantId_idx] ON [dbo].[AttendanceEntry]([tenantId]);
 
 -- CreateIndex
-CREATE NONCLUSTERED INDEX [HotFoodEntry_siteId_occurredAt_idx] ON [dbo].[HotFoodEntry]([siteId], [occurredAt]);
-
--- CreateIndex
-CREATE NONCLUSTERED INDEX [HotFoodEntry_tenantId_occurredAt_idx] ON [dbo].[HotFoodEntry]([tenantId], [occurredAt]);
-
--- CreateIndex
-CREATE NONCLUSTERED INDEX [HotFoodEntry_occurredAt_idx] ON [dbo].[HotFoodEntry]([occurredAt]);
-
--- CreateIndex
-CREATE NONCLUSTERED INDEX [HotFoodEntry_clientId_idx] ON [dbo].[HotFoodEntry]([clientId]);
-
--- CreateIndex
-CREATE NONCLUSTERED INDEX [HotFoodEntryItem_entryId_idx] ON [dbo].[HotFoodEntryItem]([entryId]);
-
--- CreateIndex
-CREATE NONCLUSTERED INDEX [HotFoodEntryItem_itemId_idx] ON [dbo].[HotFoodEntryItem]([itemId]);
-
--- CreateIndex
 CREATE NONCLUSTERED INDEX [CalendarCategoryMute_categoryId_idx] ON [dbo].[CalendarCategoryMute]([categoryId]);
 
 -- CreateIndex
@@ -623,18 +558,6 @@ ALTER TABLE [dbo].[AttendanceEntry] ADD CONSTRAINT [AttendanceEntry_eventId_fkey
 
 -- AddForeignKey
 ALTER TABLE [dbo].[AttendanceEntry] ADD CONSTRAINT [AttendanceEntry_tenantId_fkey] FOREIGN KEY ([tenantId]) REFERENCES [dbo].[Tenant]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE [dbo].[HotFoodEntry] ADD CONSTRAINT [HotFoodEntry_siteId_fkey] FOREIGN KEY ([siteId]) REFERENCES [dbo].[Site]([id]) ON DELETE NO ACTION ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE [dbo].[HotFoodEntry] ADD CONSTRAINT [HotFoodEntry_tenantId_fkey] FOREIGN KEY ([tenantId]) REFERENCES [dbo].[Tenant]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE [dbo].[HotFoodEntryItem] ADD CONSTRAINT [HotFoodEntryItem_entryId_fkey] FOREIGN KEY ([entryId]) REFERENCES [dbo].[HotFoodEntry]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE [dbo].[HotFoodEntryItem] ADD CONSTRAINT [HotFoodEntryItem_itemId_fkey] FOREIGN KEY ([itemId]) REFERENCES [dbo].[HotFoodItem]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarCategoryMute] ADD CONSTRAINT [CalendarCategoryMute_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE CASCADE ON UPDATE CASCADE;

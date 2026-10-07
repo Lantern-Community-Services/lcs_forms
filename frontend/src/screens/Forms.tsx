@@ -544,7 +544,7 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
 
 // ── Dashboard panels ─────────────────────────────────────────────────────
 
-const ATTENTION_ICON = { roster: Users, hotfoods: AlertTriangle, draft: PencilLine } as const;
+const ATTENTION_ICON = { roster: Users, draft: PencilLine } as const;
 
 function AttentionIcon({ item, size = "md" }: { item: HomeAttentionItem; size?: "sm" | "md" }) {
   const Icon = item.kind === "app" ? formIcon(item.icon ?? "clipboard") : ATTENTION_ICON[item.kind] ?? AlertTriangle;

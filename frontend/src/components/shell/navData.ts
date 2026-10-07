@@ -56,13 +56,13 @@ export function useNavCatalog(): { categories: NavCategory[]; pinned: NavForm[] 
 
 export const isRosterPath = (pathname: string) => pathname.startsWith("/roster") || pathname.startsWith("/tenants");
 
-/** Inside a form rather than on the catalog or an admin screen: built-in forms, the Roster, built forms and code forms. */
+/** Inside a form rather than on the catalog or an admin screen: the Roster, built forms and code forms. */
 export const isFormPath = (pathname: string) =>
-  pathname.startsWith("/forms/") || pathname.startsWith("/f/") || pathname.startsWith("/apps/") || isRosterPath(pathname);
+  pathname.startsWith("/f/") || pathname.startsWith("/apps/") || isRosterPath(pathname);
 
 /**
  * Whether a catalog URL is the screen on show. A form stays lit on its own tabs
- * (/forms/hot-foods/entries), and the Roster on every roster tab and resident page.
+ * (/apps/hot-foods/entries), and the Roster on every roster tab and resident page.
  */
 export function useIsLit(): (url: string) => boolean {
   const { pathname } = useLocation();

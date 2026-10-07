@@ -275,7 +275,7 @@ h6 {
   will-change: transform, opacity;
 }
 
-/* Elements arriving when a screen opens (home, Hot Foods). Their order down the
+/* Elements arriving when a screen opens (home, the calendar). Their order down the
    screen is set by useCascade (lib/cascade), which writes each one's
    animation-delay from its position; don't set one by hand.
 

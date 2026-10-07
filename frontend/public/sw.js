@@ -8,16 +8,16 @@
  *
  *   the app itself   — the page and its scripts, so it starts with no signal.
  *   what it last read — every GET /api answer, so screens opened before still
- *                       show their data (the roster, the form, the meal types).
+ *                       show their data (the roster, a form, its entries).
  *                       Kept for the signed-in person only; the app clears it
  *                       on sign-out or when someone else signs in.
- *   (Lists that rarely change — meal types, the forms list, sites — are
+ *   (Lists that rarely change — the forms list, sites — are
  *   answered from that copy first and refreshed behind it; see DEVICE_FIRST.)
- *   fonts and images — Archivo from Google, and meal pictures (still on the
- *                       WordPress media library).
+ *   fonts and images — Archivo from Google, and pictures forms show from other
+ *                       sites (Hot Foods' meal pictures, on the WordPress media library).
  *
- * Saving entries offline is not done here: the app's own queues (Hot Foods,
- * built forms, code forms) hold them in IndexedDB and upload them. POSTs pass
+ * Saving entries offline is not done here: the app's own queues (built
+ * forms, code forms) hold them in IndexedDB and upload them. POSTs pass
  * straight through.
  *
  * Everything is network-first: online, the app always gets the server's answer
@@ -62,7 +62,7 @@ const PRECACHE = ["/manifest.webmanifest", "/lcs_logo_color.svg", "/lcs_logo_whi
  * PATCH, PUT, DELETE) drops its copies first, so an admin's edit is never
  * hidden behind them.
  */
-const DEVICE_FIRST = ["/api/hot-foods/items", "/api/forms", "/api/sites", "/api/tenants/meta/archive-reasons", "/api/auth/roles"];
+const DEVICE_FIRST = ["/api/forms", "/api/sites", "/api/tenants/meta/archive-reasons", "/api/auth/roles"];
 
 /** API paths that must always reach the server, or can't be replayed from a copy. */
 function bypassApi(url) {
@@ -136,7 +136,7 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin !== self.location.origin) {
     if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") event.respondWith(staleWhileRevalidate(event, req, FONTS));
-    // Meal pictures still come from the WordPress media library.
+    // Pictures from other sites (Hot Foods' meal pictures are on the WordPress media library).
     else if (req.destination === "image") event.respondWith(staleWhileRevalidate(event, req, IMAGES, IMAGES_MAX_ENTRIES));
     return;
   }
@@ -243,7 +243,7 @@ async function deviceFirst(event, req) {
   return new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers });
 }
 
-/** Drop the stored copies of one device-first family (e.g. every /api/hot-foods/items… answer). */
+/** Drop the stored copies of one device-first family (e.g. every /api/forms… answer). */
 async function forget(prefix) {
   const cache = await caches.open(API);
   for (const req of await cache.keys()) if (new URL(req.url).pathname.startsWith(prefix)) await cache.delete(req);

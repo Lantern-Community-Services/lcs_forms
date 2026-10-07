@@ -15,8 +15,8 @@ import { isMobileDevice } from "./device";
  * endpoint is polled, so the app notices the connection coming back without a
  * person having to do anything.
  *
- * Entries themselves are kept by the queues (lib/hotFoodsQueue.ts,
- * lib/fillQueue.ts, apps/queue.ts); `onReconnect` is how they hear it's time to
+ * Entries themselves are kept by the queues (lib/fillQueue.ts,
+ * apps/queue.ts); `onReconnect` is how they hear it's time to
  * upload.
  */
 

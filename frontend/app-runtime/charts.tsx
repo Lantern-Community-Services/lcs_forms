@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Legend, slotColor, type Series } from "@/components/hotfoods/Charts";
+import { Legend, slotColor, type Series } from "@/components/charts/Charts";
 
 /**
  * @lcs/charts — the Reports tab's charts (re-exported) plus general ones for
@@ -9,7 +9,7 @@ import { Legend, slotColor, type Series } from "@/components/hotfoods/Charts";
  * thin marks, a hover tooltip on every chart and a legend wherever two or more
  * colors appear.
  */
-export * from "@/components/hotfoods/Charts";
+export * from "@/components/charts/Charts";
 
 const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", { maximumFractionDigits: 1 }));
 

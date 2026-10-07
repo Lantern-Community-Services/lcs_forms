@@ -2,14 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "../src/prisma.js";
 import { decodeCsv, importTenants, readRows } from "../src/services/tenantImport.js";
-import { ensureDefaultCatalog } from "../src/services/formCatalog.js";
-import { ensureDefaultHotFoodItems } from "../src/services/hotFoods.js";
 import { ensureSiteLocations } from "../src/services/siteLocations.js";
 
 /**
  * Seed for the local prototype:
  *   1. demo staff accounts for the dev sign-in screen (at least one per role)
- *   2. the default forms catalog (services/formCatalog.ts), if not already written
+ *   2. (the forms catalog starts empty: forms are added as they're built)
  *   3. the real tenant list from data/tenant_list.csv
  *   4. DEMO ONLY — backdates the attention clock on a slice of residents so the
  *      48-hour review queue has something in it on day one. Nothing is written
@@ -30,9 +28,6 @@ async function main() {
     await prisma.user.upsert({ where: { email: u.email }, create: { ...u, status: "active" }, update: {} });
   }
   const admin = await prisma.user.findUniqueOrThrow({ where: { email: DEMO_USERS[0].email } });
-
-  if (await ensureDefaultCatalog()) console.log("Wrote the default forms catalog.");
-  if (await ensureDefaultHotFoodItems()) console.log("Wrote the default Hot Foods meal types.");
 
   const csvPath = path.resolve(process.cwd(), process.env.TENANT_CSV ?? "../data/tenant_list.csv");
   if (fs.existsSync(csvPath)) {
