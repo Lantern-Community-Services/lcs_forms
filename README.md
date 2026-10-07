@@ -288,7 +288,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **Design handoff** (a code form's editor → *Export for Claude Design*): one HTML file with every page
   of that form, clickable, on phone / iPad portrait / iPad landscape / desktop, running the form's real
   code on sample data only — `design/fixtures.json` in the project (method → answer, e.g.
-  `"actions.call:today"`), or made-up defaults. Never real residents. It includes the brief and the source.
+  `"actions.call:today"`; `"params:entry": { "id": "…" }` opens a hidden page on a record), or made-up defaults. Never real residents. It includes the brief and the source.
 - **Back into code:** Claude Design's hand-off to Claude Code, with the MCP server connected
   (`apps:build`), goes straight into the form's pages as a draft. The MCP tool `get_design_kit` (and
   `/api/apps/design-brief`) gives the assistant the tokens, components and layout rules

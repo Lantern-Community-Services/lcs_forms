@@ -198,11 +198,14 @@ const HANDOFF_SCRIPT = String.raw`
   var F = window.__FIXTURES__, P = window.__PROJECT__, store = {}, frames = [];
   var DEVICES = { phone: { w: 390, h: 844, kind: "phone", label: "Phone" }, ipadP: { w: 820, h: 1180, kind: "tablet", label: "iPad portrait" }, ipadL: { w: 1180, h: 820, kind: "tablet", label: "iPad landscape" }, desktop: { w: 1280, h: 800, kind: "desktop", label: "Desktop" } };
   var BP = [["sm", 640], ["md", 768], ["lg", 1024], ["xl", 1280], ["2xl", 1536]];
-  var state = { page: P.pages[0].id, device: "ipadP", dark: false };
+  var state = { page: P.pages[0].id, params: {}, device: "ipadP", dark: false };
+  // A page opened from the tabs gets the fixtures' "params:<page>" (e.g. { id } for an entry page).
+  function paramsFor(page) { return clone(F["params:" + page] || {}) || {}; }
+  state.params = paramsFor(state.page);
   function clone(v) { return v === undefined ? null : JSON.parse(JSON.stringify(v)); }
   function device() { var d = DEVICES[state.device]; return { kind: d.kind, orientation: d.h >= d.w ? "portrait" : "landscape", width: d.w, height: d.h, touch: d.kind !== "desktop", breakpoints: BP.filter(function (b) { return d.w >= b[1]; }).map(function (b) { return b[0]; }) }; }
   function today() { return new Date().toISOString().slice(0, 10); }
-  function context() { return { user: { id: "demo", name: "Demo Staff", email: "demo@example.org", roleKey: "admin", roleName: "Admin", permissions: ["forms.manage", "entries.view", "entries.void", "roster.view", "roster.edit"], siteIds: null }, form: { id: "demo", slug: P.slug, title: P.title, version: 1, draft: true }, page: state.page, params: {}, pages: P.pages.filter(function (p) { return !p.hidden; }).map(function (p) { return { id: p.id, label: p.label }; }), online: true, today: today(), device: device() }; }
+  function context() { return { user: { id: "demo", name: "Demo Staff", email: "demo@example.org", roleKey: "admin", roleName: "Admin", permissions: ["forms.manage", "entries.view", "entries.void", "roster.view", "roster.edit"], siteIds: null }, form: { id: "demo", slug: P.slug, title: P.title, version: 1, draft: true }, page: state.page, params: state.params, pages: P.pages.filter(function (p) { return !p.hidden; }).map(function (p) { return { id: p.id, label: p.label }; }), online: true, today: today(), device: device() }; }
   function answer(m, args) {
     var k = m + ":" + (typeof args[0] === "string" ? args[0] : "");
     if (Object.prototype.hasOwnProperty.call(F, k)) return clone(F[k]);
@@ -222,7 +225,8 @@ const HANDOFF_SCRIPT = String.raw`
       case "collections.put": return { id: args[1] || "demo", data: args[2], updatedAt: now, updatedByName: "Demo Staff" };
       case "queue.status": return { pending: 0, pendingIds: [], failed: [], online: true, syncing: false, lastSyncedAt: null };
       case "app.toast": toast(String(args[0])); return null;
-      case "app.navigate": state.page = args[0]; render(); return null;
+      case "app.navigate": state.page = args[0]; state.params = args[1] && typeof args[1] === "object" ? args[1] : paramsFor(args[0]); render(); return null;
+      case "app.setParams": state.params = args[0] || {}; return null;
       default: return null;
     }
   }
@@ -253,7 +257,7 @@ const HANDOFF_SCRIPT = String.raw`
     document.getElementById("which").textContent = d.label + " · " + d.w + "×" + d.h + (P.code[state.page + "@" + d.kind] ? " · its own " + d.kind + " view" : "");
   }
   var tabs = document.getElementById("pages");
-  P.pages.forEach(function (p) { var b = document.createElement("button"); b.textContent = p.label + (p.hidden ? " (hidden)" : ""); b.setAttribute("data-page", p.id); b.onclick = function () { state.page = p.id; render(); }; tabs.appendChild(b); });
+  P.pages.forEach(function (p) { var b = document.createElement("button"); b.textContent = p.label + (p.hidden ? " (hidden)" : ""); b.setAttribute("data-page", p.id); b.onclick = function () { state.page = p.id; state.params = paramsFor(p.id); render(); }; tabs.appendChild(b); });
   var devs = document.getElementById("devices");
   Object.keys(DEVICES).forEach(function (k) { var b = document.createElement("button"); b.textContent = DEVICES[k].label; b.setAttribute("data-device", k); b.onclick = function () { state.device = k; render(); }; devs.appendChild(b); });
   document.getElementById("dark").onclick = function () { state.dark = !state.dark; document.documentElement.classList.toggle("dark", state.dark); render(); };
