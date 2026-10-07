@@ -340,6 +340,10 @@ export interface CalendarOccurrence {
   canEdit: boolean;
   /** The Teams link Outlook made for it. */
   teamsJoinUrl: string | null;
+  /** Waiting on approval in the form that put it there; not in Outlook yet. */
+  pending: boolean;
+  /** The code form that owns it (changes happen there) and its reference, e.g. a request's entry id. */
+  source: { slug: string; title: string; ref: string | null } | null;
 }
 
 /** A whole event (or series) as the editor loads it. */

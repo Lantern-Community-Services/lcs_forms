@@ -300,6 +300,10 @@ declare module "@lcs/sdk" {
     /** This person may change or remove it. */
     canEdit: boolean;
     teamsJoinUrl: string | null;
+    /** Waiting on approval in the form that put it there (shown "Needs approval"; not in Outlook yet). */
+    pending: boolean;
+    /** The code form that owns it (open /apps/<slug>) and that form's reference for it, e.g. a request's entry id. */
+    source: { slug: string; title: string; ref: string | null } | null;
   }
 
   /** A repeat rule. Weekdays: 0 = Sunday … 6 = Saturday. */
@@ -341,7 +345,7 @@ declare module "@lcs/sdk" {
     /** Event kinds, with their chart palette slot (slotColor in @lcs/charts). */
     categories(): Promise<{ id: string; name: string; colorSlot: number }[]>;
     /** One whole series (its repeat rule, sites, who made it). */
-    event(id: string): Promise<CalendarEventInput & { id: string; canEdit: boolean; repeatText: string | null; createdByName: string }>;
+    event(id: string): Promise<CalendarEventInput & { id: string; canEdit: boolean; repeatText: string | null; createdByName: string; pending: boolean; source: CalendarOccurrence["source"] }>;
     create(event: CalendarEventInput): Promise<{ id: string }>;
     /** scope "this" / "following" change one day (or it and the rest) of a repeating event; give its `date`. */
     update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event: CalendarEventInput }): Promise<{ id: string }>;
@@ -579,6 +583,8 @@ declare module "@lcs/server" {
     createdByName: string;
     status: "active" | "voided";
     overrideReason: string | null;
+    /** Pass to entries.update's ifUpdatedAt so a change made meanwhile isn't overwritten. */
+    updatedAt: string;
   }
 
   export interface ServerEntryQuery {
@@ -603,6 +609,46 @@ declare module "@lcs/server" {
     get<T = Record<string, unknown>>(id: string): ServerEntry<T> | null;
   }
 
+  /** This form's own entries: read, and change from server code. */
+  export interface OwnEntriesApi extends EntriesApi {
+    /**
+     * Replace an entry's data — e.g. record an approval in an action that has checked who's asking.
+     * The server is trusted: entries.edit roles and beforeUpdate don't apply. Kept in the entry's
+     * history under the person's name. ifUpdatedAt (the entry's updatedAt as read) refuses the change
+     * with an error starting "CONFLICT" if someone saved the entry since: read it again and retry.
+     */
+    update<T = Record<string, unknown>>(id: string, data: T, opts?: { reason?: string; ifUpdatedAt?: string }): ServerEntry<T>;
+  }
+
+  /** One of the form's own calendar events (ctx.calendar.form). */
+  export interface FormCalendarEvent {
+    id: string;
+    ref: string | null;
+    pending: boolean;
+    title: string;
+    allDay: boolean;
+    startDate: string;
+    startTime: string | null;
+    endDate: string;
+    endTime: string | null;
+    /** The day its last occurrence ends; null = repeats forever. */
+    lastDate: string | null;
+    repeats: boolean;
+    sites: { code: string; name: string }[];
+  }
+
+  /** A member of staff, from ctx.directory. */
+  export interface StaffMember {
+    id: string;
+    name: string;
+    email: string;
+    roleKey: string;
+    roleName: string;
+    avatarColor: string | null;
+    /** Site codes they're assigned to; null = every site (Admin, Main Office). */
+    sites: string[] | null;
+  }
+
   export interface Ctx {
     /** Who's using the form (null when called by an API key or the MCP server). */
     user: ServerUser | null;
@@ -613,7 +659,7 @@ declare module "@lcs/server" {
     draft: boolean;
     db: {
       /** This form's entries — all of them, regardless of who's asking. */
-      entries: EntriesApi;
+      entries: OwnEntriesApi;
       collections: {
         list<T = Record<string, unknown>>(name: string): { id: string; data: T }[];
         get<T = Record<string, unknown>>(name: string, id: string): { id: string; data: T } | null;
@@ -654,7 +700,30 @@ declare module "@lcs/server" {
        * when an event request is approved. Not from the draft or an API key.
        */
       create(event: import("@lcs/sdk").CalendarEventInput): { id: string };
+      /**
+       * The form's own events (form.json "calendar": { "ownEvents": true }): added, changed and removed
+       * by the form for any site, whatever the person's calendar rights — e.g. an event request goes on
+       * the calendar as pending when it's made and is confirmed when the last approver says yes.
+       * Pending events show on the calendar marked "Needs approval" and stay out of Outlook. Nobody can
+       * change these on the calendar itself. Never for every site. In the draft nothing reaches the real
+       * calendar: create returns a "preview:" id and the rest do nothing.
+       */
+      form: {
+        /** Its events, or only those with this ref. */
+        list(ref?: string): FormCalendarEvent[];
+        create(event: import("@lcs/sdk").CalendarEventInput, opts?: { ref?: string; pending?: boolean }): { id: string };
+        /** Change it (scope/date as calendar.update), and/or mark it pending or approved. */
+        update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event?: import("@lcs/sdk").CalendarEventInput; pending?: boolean }): { id: string };
+        setPending(id: string, pending: boolean): void;
+        remove(id: string, opts?: { scope?: "all" | "this" | "following"; date?: string }): void;
+      };
     };
+    /**
+     * Active staff: to choose approvers or find who to email (e.g. a site's managers: roles
+     * ["site_manager", "site_admin"], site "AUD"). site matches people assigned to it and those who
+     * see every site. Up to 500, by name.
+     */
+    directory(q?: { search?: string; roles?: string[]; site?: string; ids?: string[]; limit?: number }): StaffMember[];
     time: {
       /** New York "YYYY-MM-DD" of an ISO time. */
       dayOf(iso: string): string;

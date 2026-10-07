@@ -92,14 +92,15 @@ function AgendaRow({ occ, day, colors, onOpen }: { occ: CalendarOccurrence; day:
           {time}
           {multi && <span className="block text-micro font-medium">Day {daysApart(occ.startDate, day) + 1} of {daysApart(occ.startDate, occ.endDate) + 1}</span>}
         </span>
-        <span className="w-1 shrink-0 rounded-pill" style={{ background: color.solid }} />
+        <span className={cn("w-1 shrink-0 rounded-pill", occ.pending && "opacity-50")} style={{ background: color.solid }} />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5 text-[14.5px] font-semibold text-ink">
             <span className="truncate">{occ.title}</span>
             {occ.repeats && <Repeat className="h-3.5 w-3.5 shrink-0 text-muted" aria-label="Repeats" />}
           </span>
-          {(occ.location || where || color.name) && (
+          {(occ.location || where || color.name || occ.pending) && (
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-micro text-muted">
+              {occ.pending && <span className="font-semibold text-status-amberText">Needs approval</span>}
               {color.name && <span>{color.name}</span>}
               {occ.location && (
                 <span className="inline-flex items-center gap-0.5">

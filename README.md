@@ -233,6 +233,22 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **The rest of the site:** `calendar.*` (read, and write with the person's own calendar rights),
   `roster.resident()` and `ctx.roster.logActivity()`, and `form.json` `"home"` — a server action whose
   attention items and stat tiles appear on the Forms home (`backend/src/apps/home.ts`).
+- **Approvals and the form's own calendar events** (for workflows like event requests):
+  - `ctx.db.entries.update(id, data, { reason, ifUpdatedAt })` lets server code change its own entries
+    (e.g. record an approval after checking `ctx.user`). It skips `entries.edit` and `beforeUpdate`, keeps
+    history, and refuses with `CONFLICT…` if the entry was saved since it was read.
+  - `form.json` `"calendar": { "ownEvents": true }` turns on `ctx.calendar.form`. Server code can then
+    add, change and remove the form's own events for any site, without the person's calendar rights,
+    but never for every site.
+  - `pending: true` shows an event on the calendar striped and outlined, marked "Needs approval", and
+    keeps it out of Outlook (`syncEvent` gives it no recipients, which also takes back anything already
+    sent).
+  - The calendar shows these events read-only, with "Open in <form>" linking to `/apps/<slug>?ref=<ref>`.
+    `CalendarEvent.sourceFormId`, `sourceRef` and `pending` record the owner, its reference and the
+    approval state.
+  - In the draft, these calls are simulated (`preview:` ids).
+  - `ctx.directory({ search, roles, site })` lists active staff (name, email, role, sites), for choosing
+    approvers.
 - **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the original charts (`DailyBars`, `RankedBars`, `HeatGrid`, `StatTile`);
   `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.
 - **Email:** `ctx.email.send()` from server code, queued through the Graph mailbox (see Email below —

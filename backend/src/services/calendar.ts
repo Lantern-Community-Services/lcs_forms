@@ -24,6 +24,10 @@ import {
  *     an Admin turns on): events whose sites are all their own. Never an event
  *     for every site, never one that also reaches a site they aren't at, never
  *     the categories.
+ * A third: a code form's server code (ctx.calendar.form), for the events that
+ * form owns, e.g. an event request put on the calendar while it waits for
+ * approval (`pending`). Nobody changes those on the calendar itself; they
+ * change with the form.
  * Days and times are New York wall-clock text; see schema.prisma.
  */
 
@@ -182,6 +186,7 @@ async function seriesFields(input: EventInput) {
 
 const SERIES_INCLUDE = {
   category: true,
+  sourceForm: { select: { slug: true, title: true } },
   sites: { include: { site: { select: { id: true, code: true, name: true } } } },
   exceptions: true,
 } satisfies Prisma.CalendarEventInclude;
@@ -203,21 +208,49 @@ const managesAll = (req: Request) => Boolean(req.user?.permissions.includes("cal
 /**
  * May this person change an event that's for these sites (or create one)?
  * Admins: any. A calendar editor: only one for chosen sites, every one of
- * them theirs, so they can't touch what other sites see.
+ * them theirs, so they can't touch what other sites see. Nobody, for an event
+ * a code form owns: it changes with the form (see FormOwner).
  */
-export function canChangeEvent(req: Request, ev: { allSites: boolean; siteIds: string[] }): boolean {
+export function canChangeEvent(req: Request, ev: { allSites: boolean; siteIds: string[]; sourceFormId?: string | null }): boolean {
+  if (ev.sourceFormId) return false;
   if (managesAll(req)) return true;
   if (!req.user?.permissions.includes("calendar.edit")) return false;
   return !ev.allSites && ev.siteIds.length > 0 && ev.siteIds.every((id) => canAccessSite(req, id));
 }
 
-function assertCanChange(req: Request, ev: { allSites: boolean; siteIds: string[] }) {
+function assertCanChange(req: Request, ev: { allSites: boolean; siteIds: string[]; sourceFormId?: string | null }) {
   if (canChangeEvent(req, ev)) return;
+  if (ev.sourceFormId) throw forbidden("This event belongs to a form: change it there.");
   if (ev.allSites) throw forbidden("Only an Admin can add or change events for every site.");
   throw forbidden("You can only add or change events for your own sites.");
 }
 
-const sitesOf = (ev: { allSites: boolean; sites: { siteId: string }[] }) => ({ allSites: ev.allSites, siteIds: ev.sites.map((s) => s.siteId) });
+const sitesOf = (ev: { allSites: boolean; sites: { siteId: string }[]; sourceFormId?: string | null }) => ({
+  allSites: ev.allSites,
+  siteIds: ev.sites.map((s) => s.siteId),
+  sourceFormId: ev.sourceFormId ?? null,
+});
+
+/**
+ * A code form acting on its own events (its server code's ctx.calendar.form),
+ * on behalf of whoever is using it. It needs no calendar rights of theirs, but
+ * it touches only events it made, and never ones for every site.
+ */
+export interface FormOwner {
+  formId: string;
+  /** The form's reference (an entry id); kept on the event. */
+  ref?: string | null;
+  /** Mark it waiting on approval (true) or approved (false); omit to leave it. */
+  pending?: boolean;
+}
+
+function assertOwns(owner: FormOwner, ev: { sourceFormId: string | null }) {
+  if (ev.sourceFormId !== owner.formId) throw forbidden("That calendar event doesn't belong to this form.");
+}
+
+function assertFormSites(input: { allSites: boolean }) {
+  if (input.allSites) throw forbidden("A form's own events are for chosen sites, not every site.");
+}
 
 /** Can this person see this event: it's for every site, or for one of theirs. */
 function canSee(req: Request, ev: { allSites: boolean; sites: { siteId: string }[] }): boolean {
@@ -245,6 +278,10 @@ export interface Occurrence extends When {
   canEdit: boolean;
   /** The Teams link Outlook made for it, when it has one. */
   teamsJoinUrl: string | null;
+  /** Waiting on approval in the form that made it; not in Outlook yet. */
+  pending: boolean;
+  /** The code form that owns it (open /apps/<slug>), with its reference. */
+  source: { slug: string; title: string; ref: string | null } | null;
 }
 type Occ = Omit<Occurrence, "canEdit">;
 
@@ -270,8 +307,13 @@ function occurrenceOf(ev: SeriesRow, rule: Recurrence | null, date: string, ex: 
     repeatText: rule ? describeRule(ev.startDate, rule) : null,
     changed: Boolean(ex),
     teamsJoinUrl: ev.teamsJoinUrl,
+    pending: ev.pending,
+    source: sourceOf(ev),
   };
 }
+
+const sourceOf = (ev: Pick<SeriesRow, "sourceForm" | "sourceRef">) =>
+  ev.sourceForm ? { slug: ev.sourceForm.slug, title: ev.sourceForm.title, ref: ev.sourceRef } : null;
 
 /** Every occurrence of one series that touches `from`–`to`. */
 function expand(ev: SeriesRow, from: string, to: string): Occ[] {
@@ -363,6 +405,8 @@ export async function loadSeries(req: Request, id: string) {
     canEdit: canChangeEvent(req, sitesOf(ev)),
     teamsMeeting: ev.teamsMeeting,
     teamsJoinUrl: ev.teamsJoinUrl,
+    pending: ev.pending,
+    source: sourceOf(ev),
     // How it stands in Outlook, for the people who can change it.
     outlook: canChangeEvent(req, sitesOf(ev))
       ? { sent: Boolean(ev.outlookEventId), waiting: ev.outlookDirty, error: ev.outlookError, syncedAt: ev.outlookSyncedAt }
@@ -391,14 +435,16 @@ async function siteNames(ids: string[]) {
   return (await prisma.site.findMany({ where: { id: { in: ids } }, select: { name: true }, orderBy: { name: "asc" } })).map((s) => s.name);
 }
 
-export async function createEvent(req: Request, input: EventInput) {
-  assertCanChange(req, input);
+export async function createEvent(req: Request, input: EventInput, owner?: FormOwner) {
+  if (owner) assertFormSites(input);
+  else assertCanChange(req, input);
   const { data, rule, siteIds } = await seriesFields(input);
   const ev = await prisma.calendarEvent.create({
     data: {
       ...data,
-      createdById: req.user!.userId,
-      createdByName: req.user!.name,
+      ...(owner ? { sourceFormId: owner.formId, sourceRef: owner.ref ?? null, pending: owner.pending ?? false } : {}),
+      createdById: req.user?.userId ?? null,
+      createdByName: req.user?.name ?? "A form",
       sites: { create: siteIds.map((siteId) => ({ siteId })) },
     },
   });
@@ -406,7 +452,7 @@ export async function createEvent(req: Request, input: EventInput) {
     actor: actorOf(req),
     action: "calendar.event_created",
     siteId: siteIds.length === 1 ? siteIds[0] : null,
-    summary: `Added "${ev.title}" to the calendar for ${whereLabel(ev.allSites, await siteNames(siteIds))}${rule ? ` (${describeRule(ev.startDate, rule)})` : ` on ${ev.startDate}`}`,
+    summary: `Added "${ev.title}" to the calendar for ${whereLabel(ev.allSites, await siteNames(siteIds))}${rule ? ` (${describeRule(ev.startDate, rule)})` : ` on ${ev.startDate}`}${ev.pending ? ", waiting on approval" : ""}`,
     changes: { eventId: ev.id },
   });
   await noteCalendarChange([ev.id]);
@@ -420,7 +466,7 @@ async function updateSeries(req: Request, ev: SeriesRow, input: EventInput) {
   if (ev.teamsJoinUrl) data.teamsMeeting = true;
   const stale = ev.exceptions.filter((x) => !rule || !isOccurrence(data.startDate, rule, x.originalDate)).map((x) => x.id);
   await prisma.$transaction([
-    prisma.calendarEvent.update({ where: { id: ev.id }, data: { ...data, updatedByName: req.user!.name } }),
+    prisma.calendarEvent.update({ where: { id: ev.id }, data: { ...data, updatedByName: req.user?.name ?? "A form" } }),
     prisma.calendarEventSite.deleteMany({ where: { eventId: ev.id } }),
     prisma.calendarEventSite.createMany({ data: siteIds.map((siteId) => ({ eventId: ev.id, siteId })) }),
     prisma.calendarException.deleteMany({ where: { id: { in: stale } } }),
@@ -445,7 +491,7 @@ async function updateOne(req: Request, ev: SeriesRow, date: string, input: Event
     startTime: moved ? when.startTime : null,
     endDate: moved ? when.endDate : null,
     endTime: moved ? when.endTime : null,
-    updatedByName: req.user!.name,
+    updatedByName: req.user?.name ?? "A form",
   };
   const same = !moved && fields.title === null && fields.description === null && fields.location === null;
   if (same) {
@@ -457,7 +503,7 @@ async function updateOne(req: Request, ev: SeriesRow, date: string, input: Event
       update: fields,
     });
   }
-  await prisma.calendarEvent.update({ where: { id: ev.id }, data: { updatedByName: req.user!.name } });
+  await prisma.calendarEvent.update({ where: { id: ev.id }, data: { updatedByName: req.user?.name ?? "A form" } });
   return ev.id;
 }
 
@@ -482,9 +528,9 @@ async function updateFollowing(req: Request, ev: SeriesRow, rule: Recurrence, da
   const carried = later.filter((x) => isOccurrence(data.startDate, nextRule, x.originalDate)).map((x) => x.id);
   const dropped = later.filter((x) => !carried.includes(x.id)).map((x) => x.id);
   const next = await prisma.$transaction(async (tx) => {
-    await tx.calendarEvent.update({ where: { id: ev.id }, data: { ...truncate(ev, rule, date), updatedByName: req.user!.name } });
+    await tx.calendarEvent.update({ where: { id: ev.id }, data: { ...truncate(ev, rule, date), updatedByName: req.user?.name ?? "A form" } });
     const created = await tx.calendarEvent.create({
-      data: { ...data, createdById: req.user!.userId, createdByName: req.user!.name, sites: { create: siteIds.map((siteId) => ({ siteId })) } },
+      data: { ...data, createdById: req.user?.userId ?? null, createdByName: req.user?.name ?? "A form", sites: { create: siteIds.map((siteId) => ({ siteId })) } },
     });
     await tx.calendarException.updateMany({ where: { id: { in: carried } }, data: { eventId: created.id } });
     await tx.calendarException.deleteMany({ where: { id: { in: dropped } } });
@@ -493,12 +539,17 @@ async function updateFollowing(req: Request, ev: SeriesRow, rule: Recurrence, da
   return next.id;
 }
 
-export async function updateEvent(req: Request, id: string, scope: Scope, date: string | undefined, input: EventInput) {
+export async function updateEvent(req: Request, id: string, scope: Scope, date: string | undefined, input: EventInput, owner?: FormOwner) {
   const ev = await loadForWrite(id);
   const rule = ruleOf(ev);
-  assertCanChange(req, sitesOf(ev));
-  // Changing one day keeps the series' sites; anything else may move it, and it must stay within reach.
-  if (!rule || scope !== "this") assertCanChange(req, input);
+  if (owner) {
+    assertOwns(owner, ev);
+    assertFormSites(input);
+  } else {
+    assertCanChange(req, sitesOf(ev));
+    // Changing one day keeps the series' sites; anything else may move it, and it must stay within reach.
+    if (!rule || scope !== "this") assertCanChange(req, input);
+  }
   let result: string;
   if (!rule || scope === "all") {
     result = await updateSeries(req, ev, input);
@@ -507,6 +558,13 @@ export async function updateEvent(req: Request, id: string, scope: Scope, date: 
     if (scope === "this") result = await updateOne(req, ev, date, input);
     else if (date <= ev.firstDate) result = await updateSeries(req, ev, input);
     else result = await updateFollowing(req, ev, rule, date, input);
+  }
+  if (owner) {
+    // The part that takes over "from this one on" belongs to the form as well.
+    await prisma.calendarEvent.updateMany({
+      where: { id: { in: [...new Set([id, result])] } },
+      data: { sourceFormId: owner.formId, sourceRef: owner.ref === undefined ? ev.sourceRef : owner.ref, ...(owner.pending === undefined ? {} : { pending: owner.pending }) },
+    });
   }
   const what = !rule || scope === "all" ? "" : scope === "this" ? ` on ${date}` : ` from ${date} on`;
   await audit({
@@ -519,9 +577,10 @@ export async function updateEvent(req: Request, id: string, scope: Scope, date: 
   return result;
 }
 
-export async function deleteEvent(req: Request, id: string, scope: Scope, date: string | undefined) {
+export async function deleteEvent(req: Request, id: string, scope: Scope, date: string | undefined, owner?: FormOwner) {
   const ev = await loadForWrite(id);
-  assertCanChange(req, sitesOf(ev));
+  if (owner) assertOwns(owner, ev);
+  else assertCanChange(req, sitesOf(ev));
   const rule = ruleOf(ev);
   if (rule && scope !== "all" && (!date || !isOccurrence(ev.startDate, rule, date))) throw badRequest("That day isn't one of this event's.");
 
@@ -532,12 +591,12 @@ export async function deleteEvent(req: Request, id: string, scope: Scope, date: 
   } else if (scope === "this") {
     await prisma.calendarException.upsert({
       where: { eventId_originalDate: { eventId: id, originalDate: date! } },
-      create: { eventId: id, originalDate: date!, cancelled: true, updatedByName: req.user!.name },
-      update: { cancelled: true, updatedByName: req.user!.name },
+      create: { eventId: id, originalDate: date!, cancelled: true, updatedByName: req.user?.name ?? "A form" },
+      update: { cancelled: true, updatedByName: req.user?.name ?? "A form" },
     });
   } else {
     await prisma.$transaction([
-      prisma.calendarEvent.update({ where: { id }, data: { ...truncate(ev, rule, date!), updatedByName: req.user!.name } }),
+      prisma.calendarEvent.update({ where: { id }, data: { ...truncate(ev, rule, date!), updatedByName: req.user?.name ?? "A form" } }),
       prisma.calendarException.deleteMany({ where: { eventId: id, originalDate: { gte: date! } } }),
     ]);
   }
@@ -558,8 +617,47 @@ export async function restoreOccurrence(req: Request, id: string, date: string) 
   const ex = ev.exceptions.find((x) => x.originalDate === date && x.cancelled);
   if (!ex) return;
   const reworded = ex.title !== null || ex.description !== null || ex.location !== null || ex.startDate !== null;
-  if (reworded) await prisma.calendarException.update({ where: { id: ex.id }, data: { cancelled: false, updatedByName: req.user!.name } });
+  if (reworded) await prisma.calendarException.update({ where: { id: ex.id }, data: { cancelled: false, updatedByName: req.user?.name ?? "A form" } });
   else await prisma.calendarException.delete({ where: { id: ex.id } });
   await audit({ actor: actorOf(req), action: "calendar.event_updated", summary: `Put "${ev.title}" back on the calendar on ${date}`, changes: { eventId: id, date } });
   await noteCalendarChange([id]);
+}
+
+/** Mark a form's own event approved (pending false) or waiting again (true). Outlook follows. */
+export async function setEventPending(req: Request, id: string, pending: boolean, owner: FormOwner) {
+  const ev = await loadForWrite(id);
+  assertOwns(owner, ev);
+  if (ev.pending === pending) return;
+  await prisma.calendarEvent.update({ where: { id }, data: { pending, updatedByName: req.user?.name ?? "A form" } });
+  await audit({
+    actor: actorOf(req),
+    action: "calendar.event_updated",
+    summary: pending ? `"${ev.title}" is waiting on approval again (taken out of Outlook)` : `"${ev.title}" was approved (goes to Outlook)`,
+    changes: { eventId: id, pending },
+  });
+  await noteCalendarChange([id]);
+}
+
+/** A form's own events, all of them or those with one reference. */
+export async function formEvents(formId: string, ref?: string | null) {
+  const rows = await prisma.calendarEvent.findMany({
+    where: { sourceFormId: formId, ...(ref ? { sourceRef: ref } : {}) },
+    include: { sites: { include: { site: { select: { code: true, name: true } } } } },
+    orderBy: { firstDate: "asc" },
+    take: 2000,
+  });
+  return rows.map((ev) => ({
+    id: ev.id,
+    ref: ev.sourceRef,
+    pending: ev.pending,
+    title: ev.title,
+    allDay: ev.allDay,
+    startDate: ev.startDate,
+    startTime: ev.startTime,
+    endDate: ev.endDate,
+    endTime: ev.endTime,
+    lastDate: ev.lastDate,
+    repeats: Boolean(ev.recurrence),
+    sites: ev.sites.map((x) => ({ code: x.site.code, name: x.site.name })),
+  }));
 }

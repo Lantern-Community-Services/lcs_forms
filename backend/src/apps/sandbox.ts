@@ -116,7 +116,7 @@ const __time = {
 globalThis.__makeCtx = (base) => ({
   ...base,
   db: {
-    entries: __entriesApi(null),
+    entries: { ...__entriesApi(null), update: (id, data, opts) => __h("entries.update", { id, data, opts: opts || {} }) },
     collections: {
       list: (name) => __h("collections.list", { name }),
       get: (name, id) => __h("collections.get", { name, id }),
@@ -140,7 +140,15 @@ globalThis.__makeCtx = (base) => ({
     events: (q) => __h("calendar.events", { q: q || {} }),
     categories: () => __h("calendar.categories", {}),
     create: (event) => __h("calendar.create", { event }),
+    form: {
+      list: (ref) => __h("calendar.form.list", { ref }),
+      create: (event, opts) => __h("calendar.form.create", { event, opts: opts || {} }),
+      update: (id, change) => __h("calendar.form.update", { id, change: change || {} }),
+      setPending: (id, pending) => __h("calendar.form.setPending", { id, pending }),
+      remove: (id, opts) => __h("calendar.form.remove", { id, opts: opts || {} }),
+    },
   },
+  directory: (q) => __h("directory", { q: q || {} }),
   time: __time,
   log: (...a) => __log(a.map(__fmt).join(" ")),
 });

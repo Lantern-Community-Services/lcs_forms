@@ -146,12 +146,13 @@ function AllDayBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onO
     <button
       type="button"
       onClick={() => onOpen(occ)}
-      title={occ.title}
+      title={occ.pending ? `${occ.title} (needs approval)` : occ.title}
       style={{ gridColumn: `${seg.start + 1} / ${seg.end + 2}`, gridRow: seg.lane + 1, background: color.tint, borderLeftColor: seg.fromBefore ? "transparent" : color.solid }}
       className={cn(
         "pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1 border-l-[3px] px-1.5 text-left text-[12px] font-semibold leading-none text-ink hover:brightness-95",
         seg.fromBefore ? "rounded-l-none" : "rounded-l-[4px]",
-        seg.toAfter ? "rounded-r-none" : "rounded-r-[4px]"
+        seg.toAfter ? "rounded-r-none" : "rounded-r-[4px]",
+        occ.pending && "cal-pending"
       )}
     >
       {!occ.allDay && !seg.fromBefore && <span className="shrink-0 font-bold tabular text-muted">{formatTime(occ.startTime!)}</span>}
@@ -197,7 +198,7 @@ function DayColumn({
               e.stopPropagation();
               onOpen(p.occ);
             }}
-            title={`${p.occ.title}, ${formatTime(p.occ.startTime!)} – ${formatTime(p.occ.endTime!)}`}
+            title={`${p.occ.title}, ${formatTime(p.occ.startTime!)} – ${formatTime(p.occ.endTime!)}${p.occ.pending ? " (needs approval)" : ""}`}
             style={{
               top: (p.top / 60) * HOUR_PX + 1,
               height,
@@ -206,7 +207,7 @@ function DayColumn({
               background: `color-mix(in srgb, ${color.solid} 18%, rgb(var(--c-surface)))`,
               borderLeftColor: color.solid,
             }}
-            className="absolute overflow-hidden rounded-[5px] border-l-[3px] px-1.5 py-1 text-left text-[12px] leading-[15px] text-ink shadow-card hover:brightness-95"
+            className={cn("absolute overflow-hidden rounded-[5px] border-l-[3px] px-1.5 py-1 text-left text-[12px] leading-[15px] text-ink shadow-card hover:brightness-95", p.occ.pending && "cal-pending")}
           >
             {short ? (
               <span className="block truncate font-semibold">
@@ -219,6 +220,7 @@ function DayColumn({
                   {p.occ.repeats && <Repeat className="h-3 w-3 shrink-0 opacity-50" aria-label="Repeats" />}
                 </span>
                 <span className="block truncate text-[11px] font-medium text-muted">
+                  {p.occ.pending && "Needs approval · "}
                   {formatTime(p.occ.startTime!)} – {formatTime(p.occ.endTime!)}
                   {p.occ.location ? ` · ${p.occ.location}` : ""}
                 </span>

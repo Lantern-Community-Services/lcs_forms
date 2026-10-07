@@ -13,7 +13,9 @@ import * as time from "./time.js";
 import { attachFiles, filesToAttach } from "./files.js";
 import { queueEmail } from "./email.js";
 import type { Request } from "express";
-import { createEvent, eventInput, loadOccurrences } from "../services/calendar.js";
+import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scopeSchema, setEventPending, updateEvent, type FormOwner } from "../services/calendar.js";
+import { noteCalendarChange } from "../services/outlookSync.js";
+import { roleFor } from "../services/permissions.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -456,7 +458,39 @@ function serverEntry(e: FormEntry, fields?: string[]) {
     createdByName: e.createdByName,
     status: e.status,
     overrideReason: e.overrideReason,
+    updatedAt: e.updatedAt.toISOString(),
   };
+}
+
+/**
+ * Server code replacing one of its own form's entries' data (ctx.db.entries.update), e.g. to record
+ * an approval. The server is the authority, so entries.edit roles and beforeUpdate don't apply; the
+ * change is kept in the entry's history like any edit. `ifUpdatedAt` refuses it if someone saved the
+ * entry since it was read, so two approvers at once can't overwrite each other.
+ */
+async function serverUpdate(app: LoadedApp, user: CurrentUser | null, args: { id?: unknown; data?: unknown; opts?: { reason?: unknown; ifUpdatedAt?: unknown } }) {
+  const e = await prisma.formEntry.findFirst({ where: { id: String(args.id), formId: app.form.id } });
+  if (!e) throw new Error("No such entry.");
+  if (e.status !== "active") throw new Error("That entry is voided; restore it before changing it.");
+  if (!app.draft && e.source === "preview") throw new Error("That entry was made in the preview.");
+  const data = args.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("data must be an object.");
+  const json = JSON.stringify(data);
+  if (json.length > 1_000_000) throw new Error("That entry is too big (1 MB max).");
+  const changes = changesBetween(JSON.parse(e.data), data as Record<string, unknown>);
+  if (!changes.length) return serverEntry(e);
+  const by = user?.name ?? app.manifest.title;
+  const attach = await filesToAttach(app, user, data, e.id);
+  const since = typeof args.opts?.ifUpdatedAt === "string" ? new Date(args.opts.ifUpdatedAt) : null;
+  const res = await prisma.formEntry.updateMany({
+    where: { id: e.id, ...(since && !Number.isNaN(since.getTime()) ? { updatedAt: since } : {}) },
+    data: { data: json, updatedByName: by },
+  });
+  if (!res.count) throw new Error("CONFLICT: someone else changed this entry a moment ago. Read it again and retry.");
+  await attachFiles(e.id, attach);
+  const reason = typeof args.opts?.reason === "string" ? args.opts.reason.trim().slice(0, 500) || null : null;
+  await historyNote(e.id, by, { kind: "edit", reason, changes });
+  return serverEntry((await prisma.formEntry.findUnique({ where: { id: e.id } }))!);
 }
 
 async function queryForServer(formId: string, q: ServerQuery, includePreview: boolean, mode: "find" | "count") {
@@ -479,6 +513,93 @@ async function queryForServer(formId: string, q: ServerQuery, includePreview: bo
   const rows = await prisma.formEntry.findMany({ where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" }, take: filters.length ? 20_000 : limit });
   const hits = rows.filter(matches);
   return mode === "count" ? hits.length : hits.slice(0, limit).map((e) => serverEntry(e, q.fields));
+}
+
+/**
+ * ctx.calendar.form: the form's own calendar events (form.json "calendar": { "ownEvents": true }).
+ * In the draft nothing reaches the real calendar: creates hand back a "preview:" id and the rest
+ * do nothing, so a whole approval can be tried out in the preview.
+ */
+async function formCalendar(app: LoadedApp, user: CurrentUser | null, op: string, args: any) {
+  if (!app.manifest.calendar?.ownEvents) throw new Error(`Add "calendar": { "ownEvents": true } to form.json to use ctx.calendar.form.`);
+  const req = { user: user ?? undefined } as unknown as Request;
+  const owner = (extra: Partial<FormOwner> = {}): FormOwner => ({ formId: app.form.id, ...extra });
+  const preview = (id: unknown) => typeof id === "string" && id.startsWith("preview:");
+  const scope = scopeSchema.parse(args.change?.scope ?? args.opts?.scope ?? "all");
+  const pendingOpt = (v: unknown) => (typeof v === "boolean" ? v : undefined);
+  switch (op) {
+    case "list":
+      return app.draft ? [] : formEvents(app.form.id, typeof args.ref === "string" ? args.ref : null);
+    case "create": {
+      const input = eventInput.parse(args.event ?? {});
+      const ref = typeof args.opts?.ref === "string" ? args.opts.ref.slice(0, 200) : null;
+      if (app.draft) return { id: `preview:${crypto.randomUUID()}`, preview: true };
+      return { id: await createEvent(req, input, owner({ ref, pending: pendingOpt(args.opts?.pending) ?? false })) };
+    }
+    case "update": {
+      if (preview(args.id) || app.draft) return { id: String(args.id), preview: true };
+      const change = args.change ?? {};
+      const pending = pendingOpt(change.pending);
+      if (!change.event) {
+        if (pending === undefined) throw new Error("Give the event (and scope/date), or pending.");
+        await setEventPending(req, String(args.id), pending, owner());
+        return { id: String(args.id) };
+      }
+      const id = await updateEvent(req, String(args.id), scope, change.date, eventInput.parse(change.event), owner({ pending }));
+      if (pending !== undefined) await noteCalendarChange([id]);
+      return { id };
+    }
+    case "setPending":
+      if (preview(args.id) || app.draft) return null;
+      await setEventPending(req, String(args.id), Boolean(args.pending), owner());
+      return null;
+    case "remove":
+      if (preview(args.id) || app.draft) return null;
+      await deleteEvent(req, String(args.id), scope, args.opts?.date, owner());
+      return null;
+  }
+  throw new Error(`Unknown call calendar.form.${op}.`);
+}
+
+/** ctx.directory: active staff, for choosing approvers and emailing them. Names, emails, roles and sites only. */
+async function directory(q: { search?: unknown; roles?: unknown; site?: unknown; ids?: unknown; limit?: unknown }) {
+  const and: Prisma.UserWhereInput[] = [{ status: "active" }];
+  if (typeof q.search === "string" && q.search.trim()) {
+    const s = q.search.trim();
+    and.push({ OR: [{ name: { contains: s } }, { email: { contains: s } }] });
+  }
+  if (Array.isArray(q.roles) && q.roles.length) and.push({ roleKey: { in: q.roles.map(String) } });
+  if (Array.isArray(q.ids)) and.push({ id: { in: q.ids.map(String).slice(0, 500) } });
+  let siteId: string | null = null;
+  if (typeof q.site === "string" && q.site) {
+    const site = await prisma.site.findFirst({ where: { OR: [{ id: q.site }, { code: q.site }] }, select: { id: true } });
+    if (!site) return [];
+    siteId = site.id;
+  }
+  const rows = await prisma.user.findMany({
+    where: { AND: and },
+    select: { id: true, name: true, email: true, roleKey: true, avatarColor: true, sites: { select: { site: { select: { id: true, code: true } } } } },
+    orderBy: { name: "asc" },
+    take: 2000,
+  });
+  const out = rows
+    .map((u) => {
+      const role = roleFor(u.roleKey);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        roleKey: role.key,
+        roleName: role.name,
+        avatarColor: u.avatarColor ?? null,
+        /** Null = every site (their role sees them all). */
+        sites: role.allSites ? null : u.sites.map((s) => s.site.code),
+        siteIds: role.allSites ? null : u.sites.map((s) => s.site.id),
+      };
+    })
+    .filter((u) => !siteId || u.siteIds === null || u.siteIds.includes(siteId))
+    .map(({ siteIds: _s, ...u }) => u);
+  return out.slice(0, Math.min(500, Math.max(1, Number(q.limit) || 200)));
 }
 
 /** Answers the server code's ctx.* calls, on behalf of `user` (null = an API key / MCP). */
@@ -582,6 +703,16 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         if (app.draft) throw new Error("The draft (preview) doesn't add calendar events — publish to try it for real.");
         return { id: await createEvent({ user } as unknown as Request, eventInput.parse(args?.event ?? {})) };
       }
+      case "entries.update":
+        return serverUpdate(app, user, args ?? {});
+      case "calendar.form.list":
+      case "calendar.form.create":
+      case "calendar.form.update":
+      case "calendar.form.remove":
+      case "calendar.form.setPending":
+        return formCalendar(app, user, name.slice("calendar.form.".length), args ?? {});
+      case "directory":
+        return directory(args?.q ?? {});
       case "time.dayOf":
         return time.dayOf(String(args.iso));
       case "time.startOfDay":

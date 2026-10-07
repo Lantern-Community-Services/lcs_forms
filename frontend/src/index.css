@@ -792,3 +792,10 @@ html.lcs-resizing iframe { pointer-events: none; }
     font-size: 16px !important;
   }
 }
+
+/* A calendar event waiting on approval in the form that put it there: striped, dashed outline. */
+.cal-pending {
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgb(var(--c-surface) / 0.65) 5px 10px);
+  outline: 1.5px dashed rgb(var(--c-muted) / 0.75);
+  outline-offset: -1.5px;
+}

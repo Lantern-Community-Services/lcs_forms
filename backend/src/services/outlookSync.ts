@@ -196,7 +196,8 @@ export async function syncEvent(id: string): Promise<void> {
     recurrence = mapped.value;
   }
 
-  const people = await recipientsFor(ev);
+  // Waiting on approval: nobody gets it yet, which also takes back anything sent before.
+  const people = ev.pending ? [] : await recipientsFor(ev);
   const fallback = new Set(copies.filter((c) => c.fallbackInvite).map((c) => c.userId));
   const wantsInvite = (p: Recipient) => fallback.has(p.userId) || (ev.teamsMeeting ? p.emailTeams : p.emailOther);
   const invitees = people.filter(wantsInvite);

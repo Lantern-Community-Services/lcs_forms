@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlignLeft, Building2, MapPin, Pencil, Repeat, Tag as TagIcon, Trash2, Video } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlignLeft, Building2, ExternalLink, Hourglass, MapPin, Pencil, Repeat, Tag as TagIcon, Trash2, Video } from "lucide-react";
 import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { relativeDayName, whenText } from "@/lib/calendar";
@@ -8,10 +9,17 @@ import { cn } from "@/lib/utils";
 import { colorOf, type ColorOf } from "./colors";
 
 /**
+ * A code form's own event opens there: the form's first page, with ?ref= (its
+ * reference, e.g. a request's entry id) for the form to show.
+ */
+const sourceLink = (s: { slug: string; ref: string | null }) => `/apps/${encodeURIComponent(s.slug)}${s.ref ? `?ref=${encodeURIComponent(s.ref)}` : ""}`;
+
+/**
  * One occurrence: when, how it repeats, who it's for, where, and the notes.
  * Edit and Delete show when the server says this person may change it (an
  * Admin, or a calendar editor at all of its sites); for a repeating event both
- * ask which of its occurrences they mean first.
+ * ask which of its occurrences they mean first. An event a code form owns
+ * (an event request) changes there instead: one button opens it.
  */
 export function EventDetail({
   occ, today, colors, onClose, onEdit, onDelete,
@@ -23,6 +31,7 @@ export function EventDetail({
   onEdit: (o: CalendarOccurrence) => void;
   onDelete: (o: CalendarOccurrence) => void;
 }) {
+  const navigate = useNavigate();
   const color = occ ? colorOf(colors, occ.categoryId) : null;
   const relative = occ ? relativeDayName(occ.startDate, today) : null;
   return (
@@ -31,7 +40,11 @@ export function EventDetail({
       onOpenChange={(open) => !open && onClose()}
       title={occ?.title ?? ""}
       footer={
-        occ?.canEdit ? (
+        occ?.source ? (
+          <Button variant="secondary" onClick={() => navigate(sourceLink(occ.source!))} className="min-h-[44px] flex-1 md:min-h-0 md:flex-none">
+            <ExternalLink className="h-4 w-4" /> Open in {occ.source.title}
+          </Button>
+        ) : occ?.canEdit ? (
           <>
             <Button variant="outlineDanger" onClick={() => onDelete(occ)} className="min-h-[44px] flex-1 md:min-h-0 md:flex-none">
               <Trash2 className="h-4 w-4" /> Delete
@@ -45,6 +58,15 @@ export function EventDetail({
     >
       {occ && color && (
         <div className="space-y-3.5 pb-1 text-[14px] text-ink">
+          {occ.pending && (
+            <div className="flex items-start gap-2.5 rounded-card bg-status-amberBg px-3 py-2.5 text-[13px] text-status-amberText">
+              <Hourglass className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                <span className="font-semibold">Needs approval.</span> It goes to Outlook once it's approved
+                {occ.source ? ` in ${occ.source.title}` : ""}.
+              </span>
+            </div>
+          )}
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3.5 w-3.5 shrink-0 rounded-[4px]" style={{ background: color.solid }} />
             <div>

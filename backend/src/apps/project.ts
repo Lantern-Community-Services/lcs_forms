@@ -90,6 +90,12 @@ export const manifestSchema = z.object({
   home: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/), roles: roleList }).strict().optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
   email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
+  /**
+   * The form's own calendar events. ownEvents: server code may add, change and remove events it
+   * owns (ctx.calendar.form) for any site, without the person's calendar rights, and mark them
+   * waiting on approval. Never events for every site; nobody changes them on the calendar itself.
+   */
+  calendar: z.object({ ownEvents: z.boolean().optional() }).strict().optional(),
   /** Other forms (slugs) whose entries the server code may read — still only if the person may. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */

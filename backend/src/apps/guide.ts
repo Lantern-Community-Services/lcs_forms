@@ -27,6 +27,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "entries": { "read": ["main_office", "site_admin", "site_manager"], "void": ["site_admin", "site_manager"], "undoMinutes": 10 },
   "collections": { "mealTypes": { "read": ["*"], "write": ["admin"] } },
   "reads": ["other-form-slug"],
+  "calendar": { "ownEvents": true },                                // server code manages the form's own calendar events
   "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
   "email": { "to": ["vendor@example.com", "@partner.org"] }         // who server code may email besides Lantern addresses
@@ -67,6 +68,17 @@ Admins and developers pass every role check.
   activity), roster.open(id). Server: ctx.roster.*, and ctx.roster.logActivity(tenantId) to reset a resident's review clock.
 - Calendar: calendar.events({ from, to }), categories(), create / update / remove with the person's own calendar rights
   (the preview won't write). Server: ctx.calendar.events / categories / create (e.g. from afterCreate).
+- The form's own calendar events: form.json "calendar": { "ownEvents": true } lets server code use ctx.calendar.form
+  (list / create / update / setPending / remove) for any site, whatever the person's calendar rights. create(event,
+  { ref: entryId, pending: true }) puts a request on the calendar marked "Needs approval" (kept out of Outlook);
+  setPending(id, false) confirms it and sends it to Outlook. Occurrences carry pending and source { slug, ref }. Nobody
+  edits these on the calendar itself; its "Open in <form>" button opens /apps/<slug>?ref=<ref>, so the form's first page
+  should read params.ref and show that record. In the preview they're simulated ("preview:" ids).
+- Approvals and other server-side changes: ctx.db.entries.update(id, data, { reason, ifUpdatedAt: entry.updatedAt })
+  in an action that checks who's asking (ctx.user). It skips entries.edit and beforeUpdate, keeps history, and throws
+  "CONFLICT…" if someone saved the entry meanwhile — read it again and retry once.
+- Staff: ctx.directory({ search, roles, site, ids }) lists active staff (name, email, role, sites) to choose approvers
+  in a settings page (through an action) or to find a site's managers to email.
 - Forms home: form.json "home": { "action": "home" }. That action runs as each person when the home screen loads and
   returns { attention: [{ title, detail, action, page, params, tone: "warn" | "info" }], tiles: [{ label, value, hint, page }] }.
   Keep it to a count or two (it has 4 s; answers are kept a minute). Return {} when there's nothing to show.
