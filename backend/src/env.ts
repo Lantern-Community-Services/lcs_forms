@@ -123,6 +123,11 @@ export const isProd = env.nodeEnv === "production";
 /** Running in Azure App Service (it sets WEBSITE_SITE_NAME in every app). */
 export const onAppService = Boolean(process.env.WEBSITE_SITE_NAME);
 
+// Sessions are signed with JWT_SECRET: production never runs on the development default.
+if ((isProd || onAppService) && (!process.env.JWT_SECRET || process.env.JWT_SECRET === "dev-only-change-me")) {
+  throw new Error("JWT_SECRET must be set in production (a long random string).");
+}
+
 export const ssoConfigured = Boolean(
   env.microsoft.tenantId && env.microsoft.clientId && env.microsoft.clientSecret
 );
