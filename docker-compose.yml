@@ -10,6 +10,9 @@
 #
 # Just the database, for `npm run dev`:   docker compose up -d db
 
+# The same project (and database volume) whichever folder this runs from.
+name: lcs-forms
+
 x-database-url: &database-url "sqlserver://db:1433;database=lcs_forms;user=sa;password={${MSSQL_SA_PASSWORD}};encrypt=true;trustServerCertificate=true"
 
 services:

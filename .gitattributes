@@ -1,2 +1,5 @@
 # Shell scripts run inside Linux containers; CRLF breaks the shebang.
 *.sh text eol=lf
+
+# Windows batch files need CRLF: cmd misreads labels and goto in LF files.
+*.bat text eol=crlf
