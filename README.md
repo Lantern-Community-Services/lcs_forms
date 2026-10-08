@@ -506,16 +506,18 @@ Once per iPad, open the setup page in Safari:
    need this address added as a redirect URI in Entra), then Share → **Add to Home Screen**. Delete
    the old http icon first: it's a different site to iOS, with its own storage.
 
-**Offline needs the production build.** The dev server can't be tested offline: a `next dev` page
-waits on the dev server to compile and send it code, so with no connection it stays blank.
-`npm run preview:https` (in `frontend/`, with the backend running) builds the app, starts it, and
-serves it at **https://&lt;LAN address&gt;:5444** with the same certificate. iOS treats 5444 as a
-separate app from the dev server on 5443, with its own icon and stored copies. Code changes need a
-rebuild: stop it and run it again.
+**Offline works on both.** The dev server on 5443 reopens offline too. Next 16's dev-only React debug
+channel used to stop that: a `next dev` page waited on the dev server's websocket before it rendered,
+so with no connection it stayed blank with no error. `experimental.reactDebugChannel: false` in
+`next.config.mjs` turns it off. The production build is still the faithful test, since it's what the
+iPads will run. `npm run preview:https` (in `frontend/`, with the backend running) builds the app,
+starts it, and serves it at **https://&lt;LAN address&gt;:5444** with the same certificate. iOS treats
+5444 as a separate app from the dev server on 5443, with its own icon and stored copies. Code
+changes need a rebuild: stop it and run it again.
 
-To test offline, add **:5444** to the home screen and open it from the icon online once. That installs
-the service worker and starts the snapshot. Wait for Profile → Offline to say the site is saved, then
-turn on Airplane Mode, swipe the app closed, and open it from the icon again.
+To test offline, open the home-screen icon (5443 or 5444) online once. That installs the service
+worker and starts the snapshot. Wait for Profile → Offline to say the site is saved, then turn on
+Airplane Mode, swipe the app closed, and open it from the icon again.
 
 Pages served through the https proxy report the device's errors to its window (a remote console for
 iPads, which have no dev tools without a Mac), and a device that doesn't trust the certificate shows
