@@ -15,7 +15,9 @@ export type PermissionKey =
   | "forms.manage"
   | "apps.develop"
   | "calendar.manage"
-  | "calendar.edit";
+  | "calendar.edit"
+  /** Make, change and remove Admins: Global Admins only. */
+  | "admins.manage";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";
@@ -51,6 +53,8 @@ export interface User {
   lastSignInAt?: string | null;
   /** The "Can edit the calendar" switch: events for their own sites, whatever their role. */
   calendarEditor?: boolean;
+  /** An Admin who can also make, change and remove Admins. */
+  globalAdmin?: boolean;
 }
 
 export interface Site extends SiteRef {

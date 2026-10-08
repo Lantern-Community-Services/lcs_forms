@@ -605,7 +605,7 @@ pipeline and infrastructure live in `infra/` and `.github/workflows/`.
 | **Health** | `/api/health` answers 200 while the process is up, with `database: "up"` or `"unreachable"`, so a database blip doesn't restart-loop the container. `/api/health/live` never touches the database; `/api/health/ready` is 503 while the database doesn't answer (for a deploy check, not the restart probe). The web app's `/` answers 200. |
 | **Migrations** | Before swapping in a release: the api image with `RUN_MIGRATIONS=true` and `DATABASE_URL` (or `npx prisma migrate deploy` from `backend/`). New schema changes: `npx prisma migrate dev --name <what>` locally, and commit the migration. |
 | **web settings** | Build arg `BACKEND_URL` = the api app's URL (one web image per environment). |
-| **api settings** | `DATABASE_URL`, `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `MICROSOFT_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` (`https://<web host>/api/auth/microsoft/callback`), `APP_BASE_URL` and `CORS_ORIGIN` (`https://<web host>`), `TRUST_PROXY=2`, `AZURE_STORAGE_ACCOUNT_URL`, optional `MAIL_FROM`, `FORM_BACKUP_REPO` / `FORM_BACKUP_TOKEN`. Never `DEV_AUTH`, `ALLOW_DEMO_DATA` or `SEED_DEMO_QUEUE`. |
+| **api settings** | `DATABASE_URL`, `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `MICROSOFT_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` (`https://<web host>/api/auth/microsoft/callback`), `APP_BASE_URL` and `CORS_ORIGIN` (`https://<web host>`), `TRUST_PROXY=2`, `AZURE_STORAGE_ACCOUNT_URL`, `GLOBAL_ADMINS`, optional `MAIL_FROM`, `FORM_BACKUP_REPO` / `FORM_BACKUP_TOKEN`. Never `DEV_AUTH`, `ALLOW_DEMO_DATA` or `SEED_DEMO_QUEUE`. |
 | **Proxies** | The browser reaches the api through the web app's `/api` proxy, so there are two App Service front ends in the way: `TRUST_PROXY=2` makes the rate limiters see the browser's address rather than the web app's. (1 if browsers call the api app directly; then lock the api app to the web app.) |
 | **Files** | `AZURE_STORAGE_ACCOUNT_URL` (`https://<account>.blob.core.windows.net`) and the api app's managed identity with **Storage Blob Data Contributor**; container `form-files` (`AZURE_STORAGE_CONTAINER`), private. A user-assigned identity also needs `AZURE_CLIENT_ID`. |
 | **Entra app** | Redirect URI `https://<web host>/api/auth/microsoft/callback`; delegated User.Read, Calendars.ReadWrite, offline_access with admin consent. Mail.Send (application) only if `MAIL_FROM` is used. |
@@ -617,6 +617,7 @@ pipeline and infrastructure live in `infra/` and `.github/workflows/`.
 
 | Role | Can |
 |---|---|
+| Global Admin | Administrator + makes people Admins, and changes or removes Admins. An Admin with the Global Admin switch on (`User.globalAdmin`); only a Global Admin turns it on. The addresses in `GLOBAL_ADMINS` become active Global Admins at their Microsoft sign-in, which is how a new environment gets its first Admins. The last active Global Admin can't be removed. |
 | Staff member | Use the Forms screen. No rosters. **Every new Lantern account starts here.** |
 | Viewer | Staff member + see rosters at their sites |
 | Site staff | Add, edit, keep, remove at their sites |

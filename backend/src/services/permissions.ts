@@ -40,6 +40,12 @@ export const PERMISSIONS = [
    * which only an Admin can turn on. See permissionsFor().
    */
   "calendar.edit",
+  /**
+   * Make people Admins (or Global Admins), and change or remove an Admin. Not
+   * part of any role: it comes with User.globalAdmin, which only a Global Admin
+   * (or the GLOBAL_ADMINS setting) can give. See permissionsFor().
+   */
+  "admins.manage",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number];
@@ -60,8 +66,8 @@ export const ROLES: RoleDef[] = [
   {
     key: "admin",
     name: "Admin",
-    description: "Full control on every site — the forms catalog, people, sites, integrations and settings.",
-    permissions: [...PERMISSIONS],
+    description: "Full control on every site — the forms catalog, people, sites, integrations and settings. Only a Global Admin can make someone an Admin.",
+    permissions: PERMISSIONS.filter((p) => p !== "admins.manage"),
     allSites: true,
   },
   {
@@ -125,10 +131,22 @@ export function roleFor(key: string): RoleDef {
 /**
  * What a person may do: their role's permissions, plus the ones switched on
  * for them alone. Everything that works out permissions goes through here, so
- * the switch can't be honored in one place and missed in another.
+ * a switch can't be honored in one place and missed in another.
+ *
+ * A Global Admin is an Admin (roleKey "admin", so every "admin" role list in a
+ * form or code form includes them) with User.globalAdmin on, which adds
+ * admins.manage: only they make, change or remove Admins.
  */
-export function permissionsFor(role: RoleDef, person: { calendarEditor?: boolean | null }): PermissionKey[] {
-  return person.calendarEditor && !role.permissions.includes("calendar.edit") ? [...role.permissions, "calendar.edit"] : role.permissions;
+export function permissionsFor(role: RoleDef, person: { calendarEditor?: boolean | null; globalAdmin?: boolean | null }): PermissionKey[] {
+  const extra: PermissionKey[] = [];
+  if (person.calendarEditor && !role.permissions.includes("calendar.edit")) extra.push("calendar.edit");
+  if (person.globalAdmin && role.key === "admin") extra.push("admins.manage");
+  return extra.length ? [...role.permissions, ...extra] : role.permissions;
+}
+
+/** "Global Admin" for a Global Admin, otherwise the role's name. */
+export function roleNameFor(role: RoleDef, person: { globalAdmin?: boolean | null }): string {
+  return person.globalAdmin && role.key === "admin" ? "Global Admin" : role.name;
 }
 
 export function isRoleKey(key: string): boolean {

@@ -5,10 +5,10 @@ import { asyncHandler, forbidden, notFound, unauthorized } from "../http.js";
 import { AUTH_COOKIE, signSession } from "../auth/auth.js";
 import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, isStaffDomain, safeReturnTo } from "../auth/entra.js";
 import { requireAuth } from "../auth/middleware.js";
-import { appBaseUrl, devAuthEnabled, isProd, ssoConfigured } from "../env.js";
+import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured } from "../env.js";
 import { autoApproveStaff, guestDomains } from "../services/settings.js";
 import { audit } from "../services/audit.js";
-import { DEFAULT_ROLE_KEY, ROLES, SITE_ROLE_KEYS, roleFor } from "../services/permissions.js";
+import { DEFAULT_ROLE_KEY, ROLES, SITE_ROLE_KEYS, roleFor, roleNameFor } from "../services/permissions.js";
 import { dropGraphToken, saveGraphToken } from "../services/graphTokens.js";
 import { noteGraphTokenArrived } from "../services/outlookSync.js";
 
@@ -85,9 +85,13 @@ authRouter.get(
       let user = identity.oid ? await prisma.user.findFirst({ where: { entraObjectId: identity.oid } }) : null;
       if (!user) user = await prisma.user.findUnique({ where: { email: identity.email } });
 
+      // Listed in GLOBAL_ADMINS: an active Global Admin whatever else is true,
+      // which is how a new environment gets its first Admins.
+      const listedGlobal = env.globalAdmins.includes(identity.email);
+
       // Domain gate — skipped for an address an admin has already put in the
       // system (invited partner staff), which is the whole point of inviting.
-      if (!user && !isAllowedDomain(identity.email, await guestDomains())) {
+      if (!user && !listedGlobal && !isAllowedDomain(identity.email, await guestDomains())) {
         return failTo(res, `${identity.email} is not from an organisation that uses Lantern Forms.`);
       }
 
@@ -98,6 +102,12 @@ authRouter.get(
         identityProvider: identity.idp ?? "microsoft",
         ...(identity.profileLoaded ? { title: identity.jobTitle } : {}),
       };
+
+      if (listedGlobal && (!user || !user.globalAdmin || user.roleKey !== "admin" || user.status !== "active")) {
+        const data = { roleKey: "admin", globalAdmin: true, status: "active" };
+        user = user ? await prisma.user.update({ where: { id: user.id }, data }) : await prisma.user.create({ data: { ...fromDirectory, ...data } });
+        await audit({ actor: { id: user.id, name: user.name }, action: "user.global_admin", summary: `${user.name} (${user.email}) signed in as a Global Admin (GLOBAL_ADMINS)` });
+      }
 
       if (!user && isStaffDomain(identity.email) && (await autoApproveStaff())) {
         user = await prisma.user.create({ data: { ...fromDirectory, roleKey: DEFAULT_ROLE_KEY, status: "active" } });
@@ -198,7 +208,7 @@ authRouter.get(
     res.json({
       ...user,
       sites: user.sites.map((s) => s.site),
-      role: { key: role.key, name: role.name, description: role.description, allSites: role.allSites },
+      role: { key: role.key, name: roleNameFor(role, user), description: role.description, allSites: role.allSites },
       permissions: req.user!.permissions,
       allSites: req.user!.siteIds === null,
     });
@@ -211,7 +221,8 @@ authRouter.get("/roles", requireAuth, (req, res) => {
   res.json(
     ROLES.map((r) => ({
       ...r,
-      assignable: perms.includes("users.manage") || (perms.includes("users.manageSite") && SITE_ROLE_KEYS.includes(r.key)),
+      // Admin is a Global Admin's to give.
+      assignable: r.key === "admin" ? perms.includes("admins.manage") : perms.includes("users.manage") || (perms.includes("users.manageSite") && SITE_ROLE_KEYS.includes(r.key)),
     }))
   );
 });
