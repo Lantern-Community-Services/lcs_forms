@@ -114,6 +114,14 @@ export const env = {
    */
   devAuth: (process.env.DEV_AUTH ?? "false").toLowerCase() === "true",
 
+  /**
+   * Global Admins (comma-separated emails). Each becomes an active Global Admin
+   * when they sign in with Microsoft: how a new environment gets its first
+   * Admins, since nothing else creates one there. Remove an address to stop
+   * that; it doesn't demote anyone already made.
+   */
+  globalAdmins: list(process.env.GLOBAL_ADMINS).map((s) => s.toLowerCase()),
+
   /** Demo rows (demo accounts, a backdated review queue) in production: never, unless this is "true". */
   allowDemoData: (process.env.ALLOW_DEMO_DATA ?? "false").toLowerCase() === "true",
 };

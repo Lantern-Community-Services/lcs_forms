@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AUTH_COOKIE, verifySession, type SessionPayload } from "./auth.js";
 import { prisma } from "../prisma.js";
 import { forbidden, unauthorized } from "../http.js";
-import { permissionsFor, roleFor, type PermissionKey } from "../services/permissions.js";
+import { permissionsFor, roleFor, roleNameFor, type PermissionKey } from "../services/permissions.js";
 import { looksLikeApiKey, resolveApiKey, type ApiScope, type ResolvedKey } from "../services/apiKeys.js";
 
 /** The signed-in person, with what their role currently grants. */
@@ -38,7 +38,7 @@ declare global {
 export async function currentUserById(id: string): Promise<CurrentUser | null> {
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, sites: { select: { siteId: true } } },
+    select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, globalAdmin: true, sites: { select: { siteId: true } } },
   });
   if (!user || user.status !== "active") return null;
   const role = roleFor(user.roleKey);
@@ -47,7 +47,7 @@ export async function currentUserById(id: string): Promise<CurrentUser | null> {
     name: user.name,
     email: user.email,
     roleKey: role.key,
-    roleName: role.name,
+    roleName: roleNameFor(role, user),
     permissions: permissionsFor(role, user),
     siteIds: role.allSites ? null : user.sites.map((s) => s.siteId),
   } as CurrentUser;

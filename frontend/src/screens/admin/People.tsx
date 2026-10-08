@@ -38,6 +38,8 @@ type Draft = {
   canEditRole: boolean;
   /** "Can edit the calendar": events for their own sites. Only an Admin changes it. */
   calendarEditor: boolean;
+  /** A Global Admin: also makes, changes and removes Admins. Only a Global Admin changes it. */
+  globalAdmin: boolean;
 };
 
 /**
@@ -52,6 +54,8 @@ type Draft = {
 export function AdminPeople() {
   const { can } = useAuth();
   const everyone = can("users.manage");
+  // Admins are a Global Admin's to make, change or remove; the server refuses anyone else.
+  const managesAdmins = can("admins.manage");
   const { data: users, isLoading } = useUsers();
   const { data: roles } = useRoles();
   // Everyone but an Admin gets exactly their assigned sites back.
@@ -70,8 +74,9 @@ export function AdminPeople() {
     try {
       // Only an Admin may send the calendar switch; the server refuses it from anyone else.
       const calendar = everyone ? { calendarEditor: draft.calendarEditor } : {};
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar });
-      else await api.post("/users", { name: draft.name, email: draft.email, roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar });
+      const global = managesAdmins ? { globalAdmin: draft.roleKey === "admin" && draft.globalAdmin } : {};
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar, ...global });
+      else await api.post("/users", { name: draft.name, email: draft.email, roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar, ...global });
       toast(draft.id ? "Saved." : `Invited ${draft.name}. They'll be active on first sign-in.`);
       setDraft(null);
       await qc.invalidateQueries({ queryKey: ["admin", "users"] });
@@ -86,8 +91,9 @@ export function AdminPeople() {
       id: u.id, name: u.name, email: u.email, roleKey: u.roleKey, status: u.status,
       siteIds: u.sites.filter((s) => mine.has(s.id)).map((s) => s.id),
       otherSites: u.sites.filter((s) => !mine.has(s.id)).length,
-      canEditRole: u.canEditRole,
+      canEditRole: u.canEditRole && (u.roleKey !== "admin" || managesAdmins),
       calendarEditor: Boolean(u.calendarEditor),
+      globalAdmin: Boolean(u.globalAdmin),
     });
   };
   const role = roles?.find((r) => r.key === draft?.roleKey);
@@ -102,7 +108,7 @@ export function AdminPeople() {
           ? "Invite Lantern and partner staff. Partner staff can sign in with Google Workspace once their domain or address is admitted."
           : "People at your sites, and new sign-ins waiting to be placed. You can give out the site roles for your own sites."}
         actions={
-          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false })}>
+          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, globalAdmin: false })}>
             <UserPlus className="h-4 w-4" /> Invite
           </Button>
         }
@@ -151,7 +157,9 @@ export function AdminPeople() {
               )}
               {!draft.canEditRole && (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
-                  {draft.name} also works at a site you don't manage, so only an Admin can change their role or status. You can still change which of your sites they're on.
+                  {draft.roleKey === "admin"
+                    ? `Only a Global Admin can change ${draft.name}'s role or status.`
+                    : `${draft.name} also works at a site you don't manage, so only an Admin can change their role or status. You can still change which of your sites they're on.`}
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3">
@@ -172,8 +180,19 @@ export function AdminPeople() {
                   </Field>
                 )}
               </div>
+              {draft.roleKey === "admin" && managesAdmins && (
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
+                  <span>
+                    <span className="block text-[13.5px] font-semibold text-ink">Global Admin</span>
+                    <span className="block text-micro text-muted">Can also make people Admins, and change or remove Admins.</span>
+                  </span>
+                  <Switch checked={draft.globalAdmin} onCheckedChange={(globalAdmin) => setDraft({ ...draft, globalAdmin })} className="mt-0.5" />
+                </label>
+              )}
               {draft.roleKey === "admin" ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Admins can always edit the calendar and its categories.</p>
+                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                  {draft.globalAdmin && !managesAdmins ? "A Global Admin. " : ""}Admins can always edit the calendar and its categories.
+                </p>
               ) : everyone ? (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
                   <span>
