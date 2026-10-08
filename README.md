@@ -509,8 +509,9 @@ Once per iPad, open the setup page in Safari:
 **Offline works on both.** The dev server on 5443 reopens offline too. Next 16's dev-only React debug
 channel used to stop that: a `next dev` page waited on the dev server's websocket before it rendered,
 so with no connection it stayed blank with no error. `experimental.reactDebugChannel: false` in
-`next.config.mjs` turns it off. The production build is still the faithful test, since it's what the
-iPads will run. `npm run preview:https` (in `frontend/`, with the backend running) builds the app,
+`next.config.mjs` turns it off. The dev hot-reload client also reloaded the page about every 40 s
+while it couldn't reach the dev server; `src/instrumentation-client.ts` keeps it retrying quietly
+instead. The production build is still the faithful test, since it's what the iPads will run. `npm run preview:https` (in `frontend/`, with the backend running) builds the app,
 starts it, and serves it at **https://&lt;LAN address&gt;:5444** with the same certificate. iOS treats
 5444 as a separate app from the dev server on 5443, with its own icon and stored copies. Code
 changes need a rebuild: stop it and run it again.
