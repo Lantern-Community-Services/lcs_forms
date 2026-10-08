@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, ApiError } from "@/lib/api";
+import { api, API_BASE, ApiError } from "@/lib/api";
 import { isOnline, onConnectivityChange, storeAnswer, storedAnswer } from "@/lib/offline";
 import { loadTenants } from "@/lib/rosterStore";
 import { useToast } from "@/components/ui/toast";
 import type { Site, Tenant } from "@/lib/types";
 import { runtimeApi, submitAppEntry, type AppRuntime } from "./api";
 import { forcedDevice } from "@/lib/device";
-import { discard, enqueue, onQueueChange, queueStatus, retryFailed } from "./queue";
+import { mobileBrowser, printPdf } from "@/lib/exportPipeline";
+import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
+import { CameraCapture, shrinkImage, type CameraRequest } from "./CameraCapture";
 
 /**
  * One page of a code form, in a sandboxed iframe.
@@ -24,6 +26,23 @@ export interface ConsoleLine {
   text: string;
   source: "page" | "server";
   at: number;
+}
+
+/** A page's app.export / app.print(spec) file, built on the server from what the page sends. */
+async function buildAppExport(slug: string, draft: boolean, spec: Record<string, unknown>, print = false) {
+  const qs = new URLSearchParams({ ...(draft ? { draft: "1" } : {}), ...(print ? { print: "1" } : {}) });
+  const res = await fetch(`${API_BASE}/apps/${slug}/export${qs.size ? `?${qs}` : ""}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(spec),
+  });
+  if (!res.ok) {
+    const out = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, out?.error ?? (print ? "The printout couldn't be made." : "The export failed."), out?.details);
+  }
+  const name = decodeURIComponent(/filename="?([^"]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "export");
+  return { blob: await res.blob(), name };
 }
 
 const nyDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -121,6 +140,9 @@ export function AppFrame({
   const toast = useToast();
   const navigate = useNavigate();
   const [base, setBase] = useState<{ js: string; css: string } | null>(null);
+  // device.takePhoto(): the camera dialog, and who's waiting on it.
+  const [camera, setCamera] = useState<CameraRequest | null>(null);
+  const cameraDone = useRef<((f: File | null) => void) | null>(null);
   const [baseError, setBaseError] = useState(false);
   useEffect(() => {
     runtimeAssets().then(setBase, () => setBaseError(true));
@@ -184,6 +206,41 @@ export function AppFrame({
     const log = (level: ConsoleLine["level"], text: string, source: ConsoleLine["source"] = "page") => latest.current.onConsole?.({ level, text, source, at: Date.now() });
     const serverLogs = (logs?: string[]) => logs?.forEach((l) => log(l.startsWith("error:") ? "error" : l.startsWith("warn:") ? "warn" : "log", l, "server"));
 
+    /**
+     * Upload a photo or file for the page, shrinking photos first. With no
+     * connection it's kept on the device under a "local:" id, and the queue
+     * uploads it ahead of the entry that refers to it.
+     */
+    const storeFile = async (file: Blob, name: string, label?: string, shrink = true) => {
+      const blob = shrink && file.type.startsWith("image/") ? await shrinkImage(file) : file;
+      if (blob.size > 10 * 1024 * 1024) throw new Error("That file is over 10 MB.");
+      const mime = blob.type || file.type || "application/octet-stream";
+      const fileName = blob !== file && blob.type === "image/jpeg" ? `${name.replace(/\.[^.]+$/, "") || "photo"}.jpg` : name;
+      const keep = () => saveLocalFile({ slug, draft, userId: latest.current.runtime.user.id, name: fileName, mime, label, data: blob });
+      if (!isOnline()) return keep();
+      try {
+        return await runtimeApi.upload(slug, draft, { name: fileName, mime, label, data: blob });
+      } catch (e) {
+        if (e instanceof ApiError && e.status < 500) throw e;
+        return keep();
+      }
+    };
+    const fileBlob = async (fileId: string) => {
+      if (fileId.startsWith("local:")) {
+        const f = await localFile(fileId);
+        if (!f) throw new Error("That photo is no longer on this device.");
+        return { blob: f.data, name: f.name };
+      }
+      return { blob: await runtimeApi.file(slug, draft, fileId), name: "" };
+    };
+    const asDataUrl = (blob: Blob) =>
+      new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(blob);
+      });
+
     const methods: Record<string, (...args: any[]) => Promise<unknown>> = {
       "app.navigate": async (p: string, prm: Record<string, string>) => latest.current.onNavigate(p, prm ?? {}),
       "app.setParams": async (prm: Record<string, string>) => latest.current.onSetParams(prm ?? {}),
@@ -200,12 +257,48 @@ export function AppFrame({
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
       },
+      "app.export": async (spec: Record<string, unknown>) => {
+        const { blob, name } = await buildAppExport(slug, draft, spec);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      },
+      // The page's PDF (charts redrawn for paper) in the browser's print dialog, as the
+      // app's own reports print. A phone or iPad opens the PDF instead (its share sheet
+      // has Print): the tab is opened now, while the tap still counts, and filled after.
+      "app.print": async (spec: Record<string, unknown>) => {
+        const tab = mobileBrowser() ? window.open("", "_blank") : null;
+        try {
+          const { blob } = await buildAppExport(slug, draft, { ...spec, format: "pdf" }, true);
+          if (tab) tab.location.href = URL.createObjectURL(blob);
+          else if (mobileBrowser()) window.open(URL.createObjectURL(blob), "_blank");
+          else await printPdf(blob);
+        } catch (e) {
+          tab?.close();
+          throw e;
+        }
+      },
       "roster.sites": async () =>
         (await api.get<Site[]>("/sites")).map((s) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType, latitude: s.latitude ?? null, longitude: s.longitude ?? null, geofenceMeters: s.geofenceMeters ?? null })),
       "roster.residents": async (code: string) => {
         // The device's own copy of the roster when it has one: instant, and offline.
         const res = await loadTenants(String(code), { userId: latest.current.runtime.user.id });
-        return res.items.map((t) => ({ id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit }));
+        return res.items.map((t) => ({
+          id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit,
+          moveInDate: t.moveInDate?.slice(0, 10) ?? null, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
+        }));
+      },
+      "roster.resident": async (id: string) => {
+        const t = await api.get<Tenant & { activities: { source: string; label: string | null; occurredAt: string; recordedBy: string | null }[] }>(`/tenants/${encodeURIComponent(String(id))}`);
+        return {
+          id: t.id, siteId: t.siteId, site: t.site ? { code: t.site.code, name: t.site.name } : null, name: t.displayName, firstName: t.firstName, lastName: t.lastName,
+          preferredName: t.preferredName, unit: t.unit, status: t.status, moveInDate: t.moveInDate?.slice(0, 10) ?? null, moveOutDate: t.moveOutDate?.slice(0, 10) ?? null,
+          notes: t.notes, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
+          activities: (t.activities ?? []).map((a) => ({ source: a.source, label: a.label, occurredAt: a.occurredAt, recordedBy: a.recordedBy })),
+        };
       },
       "entries.list": async (query: Record<string, unknown>) => runtimeApi.entries(slug, draft, query ?? {}),
       "entries.get": async (id: string) => runtimeApi.entry(slug, draft, id),
@@ -228,7 +321,39 @@ export function AppFrame({
         serverLogs(out.logs);
         return out;
       },
+      "entries.update": async (id: string, body: { data: unknown; reason?: string }) => {
+        const out = await runtimeApi.update(slug, draft, String(id), { data: body?.data, reason: body?.reason ?? null });
+        serverLogs(out.logs);
+        return { ...out, logs: undefined };
+      },
+      "entries.history": async (id: string) => runtimeApi.history(slug, draft, String(id)),
       "entries.void": async (id: string, reason: string) => runtimeApi.void(slug, draft, id, reason),
+      "files.upload": async (f: { name?: string; mime?: string; label?: string; data: ArrayBuffer; shrink?: boolean }) => {
+        if (!(f?.data instanceof ArrayBuffer)) throw new Error("files.upload takes a File or Blob.");
+        return storeFile(new Blob([f.data], { type: f.mime || "application/octet-stream" }), String(f.name || "file").slice(0, 200), f.label, f.shrink !== false);
+      },
+      "files.read": async (fileId: string) => asDataUrl((await fileBlob(String(fileId))).blob),
+      "files.download": async (fileId: string, filename?: string) => {
+        const { blob, name } = await fileBlob(String(fileId));
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = String(filename || name || "file").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 150);
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      },
+      "device.takePhoto": (opts: { title?: string; facing?: "environment" | "user"; label?: string }) =>
+        new Promise((resolve, reject) => {
+          // One at a time: a second request cancels the first.
+          cameraDone.current?.(null);
+          cameraDone.current = (file) => {
+            cameraDone.current = null;
+            setCamera(null);
+            if (!file) return resolve(null);
+            storeFile(file, file.name || "photo.jpg", opts?.label ?? "photo").then(resolve, reject);
+          };
+          setCamera({ title: opts?.title ? String(opts.title).slice(0, 80) : undefined, facing: opts?.facing === "user" ? "user" : "environment" });
+        }),
       "entries.restore": async (id: string) => runtimeApi.restore(slug, draft, id),
       "collections.list": async (name: string) => runtimeApi.collection(slug, draft, name),
       "collections.get": async (name: string, id: string) => runtimeApi.doc(slug, draft, name, id),
@@ -284,6 +409,29 @@ export function AppFrame({
           /* ignore */
         }
       },
+      // The calendar, as this person sees it (and can change it) on /calendar.
+      "calendar.events": async (q: { from?: string; to?: string; site?: string | string[] }) => {
+        const p = new URLSearchParams({ from: String(q?.from ?? ""), to: String(q?.to ?? "") });
+        if (q?.site) p.set("site", Array.isArray(q.site) ? q.site.join(",") : String(q.site));
+        return (await api.get<{ items: Record<string, unknown>[] }>(`/calendar?${p}`)).items;
+      },
+      "calendar.categories": async () =>
+        (await api.get<{ id: string; name: string; colorSlot: number }[]>("/calendar/categories")).map((c) => ({ id: c.id, name: c.name, colorSlot: c.colorSlot })),
+      "calendar.event": async (id: string) => api.get(`/calendar/events/${encodeURIComponent(String(id))}`),
+      "calendar.create": async (event: unknown) => {
+        if (draft) throw new Error("The preview doesn't add calendar events — publish to try it for real.");
+        return api.post<{ id: string }>("/calendar/events", event);
+      },
+      "calendar.update": async (id: string, change: { scope?: string; date?: string; event: unknown }) => {
+        if (draft) throw new Error("The preview doesn't change calendar events — publish to try it for real.");
+        return api.patch<{ id: string }>(`/calendar/events/${encodeURIComponent(String(id))}`, { scope: change?.scope ?? "all", date: change?.date, event: change?.event });
+      },
+      "calendar.remove": async (id: string, opts: { scope?: string; date?: string }) => {
+        if (draft) throw new Error("The preview doesn't remove calendar events — publish to try it for real.");
+        const p = new URLSearchParams({ scope: opts?.scope ?? "all" });
+        if (opts?.date) p.set("date", opts.date);
+        await api.delete(`/calendar/events/${encodeURIComponent(String(id))}?${p}`);
+      },
       "queue.status": async () => queueStatus(slug),
       "queue.retry": async () => retryFailed(slug),
       "queue.discard": async (clientId: string) => discard(clientId),
@@ -317,6 +465,8 @@ export function AppFrame({
   if (baseError) return <p className="p-6 text-[13px] text-status-redText">Couldn't load the code-form runtime. Check your connection and reload.</p>;
   if (!base) return null;
   return (
+    <>
+    <CameraCapture request={camera} onDone={(f) => cameraDone.current?.(f)} />
     <iframe
       ref={ref}
       key={`${runtime.hash}:${key}`}
@@ -326,5 +476,6 @@ export function AppFrame({
       // Transparent: the page sits on the app's own background, like any screen.
       className={className ?? "block h-full w-full border-0 bg-transparent"}
     />
+    </>
   );
 }

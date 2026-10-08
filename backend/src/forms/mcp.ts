@@ -19,6 +19,7 @@ import {
 } from "./service.js";
 import { docForEntry, entryRow, entryWhere, submitEntry } from "./entries.js";
 import { registerCodeTools } from "../apps/mcpTools.js";
+import { registerCatalogTools } from "./catalogTools.js";
 
 /**
  * MCP server for building forms with an LLM — Claude Code, Claude Desktop,
@@ -88,7 +89,9 @@ entriesRoles: [role keys that can read entries; Admin always can];
 requireSite: true to ask which site the entry is for (entries are then limited to that site's staff);
 limits: { maxEntries, perUser: { count, period: day|week|month|ever }, opensAt, closesAt (ISO), closedMessage };
 confirmation: { type: "message"|"redirect", message (HTML, merge tags), url, showSummary };
-notifications: [{ id, name, enabled, kind: "email"|"webhook", to, subject, body, url, secret, conditional }].
+notifications: [{ id, name, enabled, kind: "email"|"webhook", to, subject, url, secret, conditional }].
+  Emails are link-only: a line and a link to the entry, never the answers. The subject may use {form:title},
+  {site:name}, {user:name}, {date:today}…; answer tags ({field_id}, {all_fields}) are dropped from it. No body.
 Role keys: admin, main_office, site_admin, site_manager, site_staff.
 
 ## Example
@@ -113,7 +116,7 @@ const EXAMPLE: FormDoc = {
     submitLabel: "Send request",
     access: { mode: "signed_in" },
     confirmation: { type: "message", message: "<p>Thanks, {user:name}. We've logged it.</p>" },
-    notifications: [{ id: "urgent", name: "Urgent to facilities", enabled: true, kind: "email", to: "facilities@lanterncommunity.org", subject: "URGENT: {area} at {site}", body: "{all_fields}", conditional: { action: "show", match: "all", rules: [{ field: "urgent", op: "is", value: "yes" }] } }],
+    notifications: [{ id: "urgent", name: "Urgent to facilities", enabled: true, kind: "email", to: "facilities@lanterncommunity.org", subject: "Urgent maintenance request: {site:name}", conditional: { action: "show", match: "all", rules: [{ field: "urgent", op: "is", value: "yes" }] } }],
   },
 };
 
@@ -125,9 +128,15 @@ export type ToolRegistrar = <S extends z.ZodRawShape>(
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean }
 ) => unknown;
 
-type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+type ToolResult = { content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[]; isError?: boolean };
 
-const ok = (data: unknown): ToolResult => ({ content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] });
+/** A tool's answer as MCP content blocks (an image, say) rather than JSON text. */
+export class McpContent {
+  constructor(public content: ToolResult["content"]) {}
+}
+
+const ok = (data: unknown): ToolResult =>
+  data instanceof McpContent ? { content: data.content } : { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 
 function fail(err: unknown): ToolResult {
   if (err instanceof DocError) {
@@ -260,7 +269,7 @@ function buildServer(key: ResolvedKey): McpServer {
   };
   const server = new McpServer(
     { name: "lantern-forms", version: "1.0.0" },
-    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). Everything you make is a draft until published." }
+    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Everything you make is a draft until published." }
   );
 
   const tool: ToolRegistrar = <S extends z.ZodRawShape>(
@@ -398,12 +407,12 @@ function buildServer(key: ResolvedKey): McpServer {
     }
   );
 
-  tool("list_catalog_categories", "Categories on the Forms screen, for add_to_catalog.", {}, async () => {
+  tool("list_catalog_categories", "Categories on the Forms screen, for add_to_catalog (list_catalog shows the cards too).", {}, async () => {
     need("forms:build");
     return prisma.formCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } });
   }, { readOnlyHint: true });
 
-  tool("add_to_catalog", "Show the form on the Forms screen and sidebar under a category (null category removes it).", { form: formRef, categoryId: z.string().nullable() }, async ({ form, categoryId }) => {
+  tool("add_to_catalog", "Show a form built here (a basic form or a code form) on the Forms screen and sidebar under a category; null category removes it. The card then follows the form (its title, URL and roles). For a link to a form on another site use save_catalog_card.", { form: formRef, categoryId: z.string().nullable() }, async ({ form, categoryId }) => {
     need("forms:build");
     const row = await findAnyForm(form);
     await setCatalog(row.id, categoryId, actor);
@@ -455,6 +464,7 @@ function buildServer(key: ResolvedKey): McpServer {
   );
 
   registerCodeTools(tool, need, actor, key);
+  registerCatalogTools(tool, need, actor);
   return server;
 }
 

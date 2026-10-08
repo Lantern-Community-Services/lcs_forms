@@ -2,8 +2,18 @@
 setlocal
 cd /d "%~dp0"
 
+echo Starting SQL Server (docker compose service "db", port 1433)...
+docker compose up -d db
+if errorlevel 1 (
+  echo.
+  echo   Couldn't start SQL Server. Is Docker Desktop running? Is MSSQL_SA_PASSWORD set in .env?
+  echo.
+  pause
+  exit /b 1
+)
+
 echo Starting Lantern Forms backend (port 4200)...
-start "Lantern Forms - Backend" cmd /k "cd /d "%~dp0backend" && npm run dev"
+start "Lantern Forms - Backend" cmd /k "cd /d "%~dp0backend" && npx prisma migrate deploy && npm run dev"
 
 echo Starting Lantern Forms frontend (port 5200)...
 start "Lantern Forms - Frontend" cmd /k "cd /d "%~dp0frontend" && npm run dev"

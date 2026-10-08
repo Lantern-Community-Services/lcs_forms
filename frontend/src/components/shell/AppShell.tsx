@@ -8,7 +8,6 @@ import { PullToRefresh } from "./PullToRefresh";
 import { useDeviceKind } from "@/lib/device";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
-import { kick as kickHotFoods, startHotFoodsSync } from "@/lib/hotFoodsQueue";
 import { startAppQueue, syncNow as syncAppQueue } from "@/apps/queue";
 import { startFillQueue, syncFills } from "@/lib/fillQueue";
 import { startRosterSync } from "@/lib/rosterStore";
@@ -30,7 +29,6 @@ import { cn } from "@/lib/utils";
  */
 /** public/sw.js DEVICE_FIRST paths (under /api), and the queries that read them. */
 const DEVICE_FIRST_KEYS: [string, readonly unknown[]][] = [
-  ["/hot-foods/items", ["hotfoods", "items"]],
   ["/forms", ["forms"]],
   ["/sites", ["roster", "sites"]],
   ["/tenants/meta/archive-reasons", ["meta", "reasons"]],
@@ -38,18 +36,16 @@ const DEVICE_FIRST_KEYS: [string, readonly unknown[]][] = [
 ];
 
 export function AppShell() {
-  // Hot Foods entries saved on this device keep uploading whichever screen
-  // is open, not only while Record is.
+  // Entries saved on this device keep uploading whichever screen is open,
+  // not only while their form is.
   const qc = useQueryClient();
   const { user } = useAuth();
   useEffect(() => {
-    startHotFoodsSync(qc, user?.id ?? null);
     startAppQueue(user?.id ?? null);
     startFillQueue(user?.id ?? null);
     // The roster kept on this device, and its changes pulled from the server.
     startRosterSync(qc, user?.id ?? null);
     return () => {
-      startHotFoodsSync(qc, null);
       startAppQueue(null);
       startFillQueue(null);
       startRosterSync(qc, null);
@@ -67,14 +63,13 @@ export function AppShell() {
   useEffect(
     () =>
       onReconnect(() => {
-        void kickHotFoods();
         void syncFills();
         void syncAppQueue();
         void qc.invalidateQueries();
       }),
     [qc]
   );
-  // A device-first list (meal types, the forms list, sites) changed on the
+  // A device-first list (the forms list, sites) changed on the
   // server: the screens showing it refetch, and get the new copy.
   useEffect(
     () =>

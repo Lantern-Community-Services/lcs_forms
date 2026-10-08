@@ -21,9 +21,11 @@ can be built exactly; anything else has to be invented, so flag it.
 - Components: @lcs/ui — Button (primary, secondary, ghost, danger, outlineDanger, success; sm/md/lg/icon),
   Card, Input, Textarea, SearchInput, Select, Field, Label, Checkbox, Switch, Chip, ToneBadge (amber, blue,
   green, red, violet, neutral), Badge, Avatar, Spinner, LoadingState, EmptyState, Page, PageHeader, Modal,
-  Sheet (bottom sheet on phones), DropdownMenu, SignaturePad, DateRangeBar.
-- Charts: @lcs/charts — DailyBars (stacked per day), RankedBars (horizontal, with avatar or note),
-  HeatGrid (weekday × hour), StatTile, Legend. Categorical colors come from an 8-slot palette checked for
+  Sheet (bottom sheet on phones), DropdownMenu, SignaturePad, DateRangeBar, PhotoInput (camera thumbnails),
+  FileInput, Photo, FileChip, EntryHistory.
+- Charts: @lcs/charts — TrendChart (lines over time), ColumnChart, DonutChart (parts of a whole, up to 6),
+  DailyBars (stacked per day), RankedBars (horizontal, with avatar or note), HeatGrid (weekday × hour),
+  StatTile, Legend. Categorical colors come from an 8-slot palette checked for
   color blindness in light and dark (slotColor(0-7)); never pick chart colors by hand.
 - Icons: lucide-react (any icon, 1.5–2px stroke, 16–20px in UI, 24px+ for touch-first actions).
 

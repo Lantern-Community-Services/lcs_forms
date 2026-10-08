@@ -2,8 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
-import { env } from "../env.js";
-import { markUpcomingDirty, organizerMeetingProviders, outlookConfigured, runQueue } from "../services/outlookSync.js";
+import { markUpcomingDirty, meetingProvidersFor, outlookConfigured, runQueue } from "../services/outlookSync.js";
+import { withGraphToken } from "../services/graphTokens.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { isDay } from "../calendar/recurrence.js";
@@ -179,6 +179,12 @@ calendarRouter.get(
     res.json({
       /** False until the server is set up to send to Outlook; choices are kept for then. */
       enabled: outlookConfigured(),
+      /**
+       * Whether the app can write to their own calendar: they've signed in with
+       * Microsoft since Outlook was set up, and haven't signed out. Without it,
+       * events come as invites, whatever they picked.
+       */
+      canWriteMine: (await withGraphToken([req.user!.userId])).has(req.user!.userId),
       email: me?.email ?? "",
       answered: Boolean(me?.calendarSyncSetAt),
       everySite: Boolean(me?.calendarSyncEverySite),
@@ -249,20 +255,25 @@ calendarRouter.put(
 calendarRouter.get(
   "/outlook/status",
   MANAGE,
-  asyncHandler(async (_req, res) => {
-    const [waiting, failing, sent, people, trash] = await Promise.all([
+  asyncHandler(async (req, res) => {
+    const [waiting, failing, sent, people, signedIn, trash] = await Promise.all([
       prisma.calendarEvent.count({ where: { outlookDirty: true } }),
       prisma.calendarEvent.findMany({ where: { outlookError: { not: null } }, select: { id: true, title: true, outlookError: true }, take: 20 }),
       prisma.calendarEvent.count({ where: { outlookEventId: { not: null } } }),
       prisma.user.count({ where: { status: "active", calendarSyncSetAt: { not: null }, OR: [{ calendarSyncEverySite: true }, { calendarFollows: { some: {} } }] } }),
+      prisma.userGraphToken.count(),
       prisma.calendarOutlookTrash.count(),
     ]);
-    const providers = await organizerMeetingProviders().catch((e: Error) => e.message);
+    // Can the person asking host Teams meetings from their own Outlook (as an organizer would)?
+    const mine = (await withGraphToken([req.user!.userId])).has(req.user!.userId)
+      ? await meetingProvidersFor(req.user!.userId).catch((e: Error) => e.message)
+      : null;
     res.json({
       enabled: outlookConfigured(),
-      organizer: env.calendarOrganizer || null,
-      // ["teamsForBusiness"] when the organizer can host Teams meetings; [] when it can't.
-      organizerMeetingProviders: providers,
+      // People whose own Outlook the app can write to (signed in with Microsoft, not signed out).
+      signedIn,
+      // ["teamsForBusiness"] when your Outlook can host Teams meetings; null when the app has no sign-in of yours.
+      myMeetingProviders: mine,
       waiting, sent, people, cancelsWaiting: trash, failing,
     });
   })

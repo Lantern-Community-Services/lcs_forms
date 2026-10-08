@@ -12,12 +12,17 @@
  *   npm run forms -- import gravityforms-export.json [--publish]
  *   npm run forms -- export intake other-form [--entries] > bundle.json
  *
- * Code forms (a folder per form, e.g. ../forms/hot-foods-code/):
- *   npm run forms -- app:pull hot-foods-code [../forms/hot-foods-code]   files + lcs-sdk.d.ts + tsconfig for type-checking
- *   npm run forms -- app:push ../forms/hot-foods-code [--slug x] [--publish] [--note "…"]
- *   npm run forms -- app:build ../forms/hot-foods-code                   compile locally, print errors
+ * Code forms (a folder per form, e.g. ../forms/hot-foods/):
+ *   npm run forms -- app:pull hot-foods [../forms/hot-foods] [--live] files + lcs-sdk.d.ts + tsconfig (--live: the published version)
+ *   npm run forms -- app:push ../forms/hot-foods [--slug x] [--publish] [--note "…"]
+ *   npm run forms -- app:build ../forms/hot-foods                        compile locally, print errors
+ *
+ * Backup (services/formBackup.ts) — every built form, both kinds, plus the catalog:
+ *   npm run forms -- backup                       push to FORM_BACKUP_REPO through the GitHub API (FORM_BACKUP_TOKEN)
+ *   npm run forms -- backup --dir <clone> [--commit] [--push]   write into a local clone of the repo; commit / push with your git login
+ *   npm run forms -- backup:restore <clone> [slug ...] [--publish]   load forms back (creates missing ones, replaces drafts)
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import os from "node:os";
 import { prisma } from "../src/prisma.js";
@@ -26,6 +31,9 @@ import { DocError, createForm, exportForms, importPayload, listForms, publishFor
 import { ProjectError, createProject, draftFiles, publishProject, saveProject } from "../src/apps/service.js";
 import { buildProject } from "../src/apps/compile.js";
 import { SDK_TYPES } from "../src/apps/sdkText.js";
+import { execFileSync } from "node:child_process";
+import { backupConfigured, backupSnapshot, commitMessage, pushToGitHub } from "../src/services/formBackup.js";
+import { collectionPut } from "../src/apps/runtime.js";
 
 /** Files in a code form folder that are tooling, not the form. */
 const LOCAL_ONLY = new Set(["lcs-sdk.d.ts", "tsconfig.json"]);
@@ -54,7 +62,7 @@ const option = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 /** Everything that isn't a flag or the value of --slug / --note. */
-const positional = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--slug" && args[i - 1] !== "--note");
+const positional = args.filter((a, i) => !a.startsWith("--") && !["--slug", "--note", "--dir"].includes(args[i - 1]));
 const actor = { id: null, name: `CLI (${os.userInfo().username})` };
 
 function readJson(file: string) {
@@ -126,7 +134,10 @@ async function main() {
       const row = await prisma.builtForm.findFirst({ where: { slug, kind: "code" } });
       if (!row) throw new Error(`No code form ${slug}.`);
       const dir = resolve(out ?? `../forms/${slug}`);
-      for (const [path, src] of Object.entries(draftFiles(row))) {
+      // --live: the published files (the draft otherwise).
+      if (flag("live") && !row.liveSchema) throw new Error(`${slug} hasn't been published.`);
+      const files: Record<string, string> = flag("live") ? (JSON.parse(row.liveSchema!) as { files: Record<string, string> }).files : draftFiles(row);
+      for (const [path, src] of Object.entries(files)) {
         mkdirSync(dirname(join(dir, path)), { recursive: true });
         writeFileSync(join(dir, path), src);
       }
@@ -167,6 +178,102 @@ async function main() {
         row = await publishProject(row.id, actor, option("note"));
         console.log(`Published version ${row.liveVersion}.`);
       }
+      return;
+    }
+    case "backup": {
+      const snap = await backupSnapshot();
+      const dirOpt = option("dir");
+      if (!dirOpt) {
+        if (!backupConfigured()) throw new Error("Set FORM_BACKUP_REPO and FORM_BACKUP_TOKEN (in .env.local), or pass --dir <a clone of the backup repo>.");
+        const r = await pushToGitHub(snap, commitMessage(null, snap));
+        console.log(r.changed ? `Backed up ${Object.keys(snap).length} files: ${r.url}` : "Nothing changed since the last backup.");
+        return;
+      }
+      const dir = resolve(dirOpt);
+      if (!existsSync(join(dir, ".git"))) throw new Error(`${dir} isn't a git clone. git clone the backup repository there first.`);
+      // The folder ends up holding exactly the snapshot (apart from .git).
+      const old: string[] = [];
+      const walk = (d: string) => {
+        for (const name of readdirSync(d)) {
+          if (d === dir && name === ".git") continue;
+          const full = join(d, name);
+          if (statSync(full).isDirectory()) walk(full);
+          else old.push(relative(dir, full).split("\\").join("/"));
+        }
+      };
+      walk(dir);
+      for (const rel of old) if (!(rel in snap)) rmSync(join(dir, rel));
+      for (const [rel, text] of Object.entries(snap)) {
+        mkdirSync(dirname(join(dir, rel)), { recursive: true });
+        const full = join(dir, rel);
+        if (!existsSync(full) || readFileSync(full, "utf8") !== text) writeFileSync(full, text);
+      }
+      console.log(`Wrote ${Object.keys(snap).length} files to ${dir}.`);
+      if (flag("commit") || flag("push")) {
+        const git = (...a: string[]) => execFileSync("git", ["-C", dir, ...a], { encoding: "utf8" });
+        git("add", "-A");
+        if (!git("status", "--porcelain").trim()) console.log("Nothing changed since the last backup.");
+        else {
+          git("commit", "-q", "-m", commitMessage(null, snap));
+          console.log("Committed.");
+        }
+        if (flag("push")) {
+          execFileSync("git", ["-C", dir, "push", "-q", "origin", "HEAD"], { stdio: "inherit" });
+          console.log("Pushed.");
+        }
+      }
+      return;
+    }
+    case "backup:restore": {
+      const [dirArg, ...only] = rest;
+      if (!dirArg) throw new Error("backup:restore needs the backup folder.");
+      const dir = resolve(dirArg);
+      const want = (slug: string) => !only.length || only.includes(slug);
+      let n = 0;
+      for (const kind of ["basic", "code"] as const) {
+        const root = join(dir, kind);
+        if (!existsSync(root)) continue;
+        for (const slug of readdirSync(root)) {
+          if (!want(slug)) continue;
+          const base = join(root, slug);
+          const existing = await prisma.builtForm.findUnique({ where: { slug } });
+          if (existing && existing.kind !== kind) {
+            console.warn(`! ${slug}: on the site it's a ${existing.kind} form — skipped.`);
+            continue;
+          }
+          if (kind === "basic") {
+            const doc = readJson(join(base, "form.json"));
+            let row = existing ? await saveDraft(existing.id, { doc }, actor) : await createForm({ doc, slug }, actor);
+            if (flag("publish")) {
+              // Publish what was live, then put the draft back on top.
+              if (existsSync(join(base, "live.json"))) row = await saveDraft(row.id, { doc: readJson(join(base, "live.json")) }, actor);
+              row = await publishForm(row.id, actor, "Restored from backup");
+              if (existsSync(join(base, "live.json"))) row = await saveDraft(row.id, { doc }, actor);
+            }
+            console.log(`${existing ? "Restored the draft of" : "Created"} /f/${row.slug}${flag("publish") ? ` and published v${row.liveVersion}` : ""}.`);
+          } else {
+            const files = readProjectDir(base);
+            const liveDir = join(base, ".backup", "live");
+            let row = existing ? await saveProject(existing.id, { files }, actor) : await createProject({ files, slug }, actor);
+            if (flag("publish")) {
+              if (existsSync(liveDir)) row = await saveProject(row.id, { files: readProjectDir(liveDir) }, actor);
+              row = await publishProject(row.id, actor, "Restored from backup");
+              if (existsSync(liveDir)) row = await saveProject(row.id, { files }, actor);
+            }
+            // A form's own data (settings, lists) comes back only into a form that has none.
+            const colDir = join(base, ".backup", "collections");
+            const hasData = await prisma.formRecord.count({ where: { formId: row.id } });
+            if (existsSync(colDir) && !hasData) {
+              for (const file of readdirSync(colDir)) {
+                for (const d of readJson(join(colDir, file)) as { id: string; data: unknown }[]) await collectionPut(row.id, file.replace(/\.json$/, ""), d.id, d.data, actor.name);
+              }
+            }
+            console.log(`${existing ? "Restored the draft of" : "Created"} /apps/${row.slug}${flag("publish") ? ` and published v${row.liveVersion}` : ""}.`);
+          }
+          n++;
+        }
+      }
+      console.log(n ? `Restored ${n} forms. Put new ones on the Forms screen from their editor (catalog.json lists where they were).` : "No forms found to restore.");
       return;
     }
     default:

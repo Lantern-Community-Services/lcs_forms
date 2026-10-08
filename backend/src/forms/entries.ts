@@ -2,11 +2,12 @@ import crypto from "node:crypto";
 import type { BuiltForm, FormEntry, Prisma } from "@prisma/client";
 import ExcelJS from "exceljs";
 import { prisma } from "../prisma.js";
+import { createFormFile, sweepUnattachedFiles } from "../services/fileStore.js";
 import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { appBaseUrl } from "../env.js";
 import { displayName, recordActivity } from "../services/roster.js";
-import { mailConfigured, sendMail } from "../services/mailer.js";
+import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
@@ -235,6 +236,16 @@ export async function submitEntry(input: SubmitInput) {
 
 export const entryUrl = (slug: string, id: string) => `${appBaseUrl}/f/${slug}/entries/${id}`;
 
+/** Merge tags a subject may use: the form, entry, site, person and date. Answers ({field_id}, {all_fields}) are left out. */
+const SUBJECT_TAGS = new Set(["form", "entry", "user", "site", "date"]);
+
+function linkOnlySubject(tpl: string | undefined, ctx: Parameters<typeof renderTemplate>[1]) {
+  const noAnswers = (tpl || "New entry: {form:title}").replace(/\{([a-z][a-z0-9_]*)(?:([.:])([a-z0-9_]+))?\}/gi, (whole, key: string, sep?: string, sub?: string) =>
+    sep === ":" && SUBJECT_TAGS.has(key.toLowerCase()) && sub !== "value" ? whole : ""
+  );
+  return renderTemplate(noAnswers, { ...ctx, html: false }).replace(/\s{2,}/g, " ").trim().slice(0, 200) || `New entry: ${ctx.doc.title}`;
+}
+
 async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry, values: Values, user: Viewer) {
   const site = entry.siteId ? await prisma.site.findUnique({ where: { id: entry.siteId }, select: { name: true, code: true } }) : null;
   for (const n of doc.settings.notifications ?? []) {
@@ -265,10 +276,11 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
         if (!to.length) note = `Email “${n.name}” not sent: no valid address in “${n.to}”.`;
         else if (!mailConfigured()) note = `Email “${n.name}” to ${to.join(", ")} not sent: email isn't set up on this server (MAIL_FROM).`;
         else {
+          // Link-only: the entry's answers never go in an email (a saved body is ignored).
           await sendMail({
             to,
-            subject: renderTemplate(n.subject || "New entry: {form:title}", { ...ctx, html: false }),
-            html: renderTemplate(n.body || "{all_fields}", { ...ctx, html: true }),
+            subject: linkOnlySubject(n.subject, ctx),
+            html: linkOnlyHtml(`There's a new entry in “${form.title}”${site ? ` for ${site.name}` : ""}.`, ctx.entryUrl),
             replyTo: user?.email,
           });
           note = `Email “${n.name}” sent to ${to.join(", ")}.`;
@@ -291,12 +303,8 @@ export async function saveUpload(form: BuiltForm, doc: FormDoc, fieldId: string,
   if (file.data.length > cap) throw new HttpError(413, `Files can be at most ${Math.round(cap / 1024 / 1024)} MB.`);
   if (f.accept && !acceptOk(f.accept, file.name, file.mime)) throw badRequest(`This field takes ${f.accept} files.`);
   // Anything uploaded but never submitted, after a day, is swept here — cheap and needs no scheduler.
-  await prisma.formFile.deleteMany({ where: { entryId: null, createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
-  const row = await prisma.formFile.create({
-    data: { formId: form.id, fieldId, name: file.name.slice(0, 200), mime: file.mime.slice(0, 100) || "application/octet-stream", size: file.data.length, data: file.data },
-    select: { id: true, name: true, size: true, mime: true },
-  });
-  return row;
+  await sweepUnattachedFiles();
+  return createFormFile({ formId: form.id, fieldId, name: file.name.slice(0, 200), mime: file.mime.slice(0, 100) || "application/octet-stream", data: file.data });
 }
 
 function acceptOk(accept: string, name: string, mime: string) {

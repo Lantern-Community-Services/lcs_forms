@@ -27,11 +27,6 @@ import { AdminPeople } from "./screens/admin/People";
 import { AdminSettings, AdminSignInAccess } from "./screens/admin/Settings";
 import { AdminApiKeys, AdminWebhooks, AdminWordPress } from "./screens/admin/Integrations";
 import { AdminFormsCatalog } from "./screens/admin/FormsCatalog";
-import { AdminHotFoods } from "./screens/admin/HotFoods";
-import { HotFoodsRecordPage } from "./screens/hotfoods/Record";
-import { HotFoodsEntriesPage } from "./screens/hotfoods/Entries";
-import { HotFoodsEntryDetailPage } from "./screens/hotfoods/EntryDetail";
-import { HotFoodsReportsPage } from "./screens/hotfoods/Reports";
 import { AdminBuilderList } from "./screens/builder/BuilderList";
 import { FormEditorPage } from "./screens/builder/Editor";
 import { AdminAiBuilder } from "./screens/builder/AiBuilder";
@@ -115,27 +110,6 @@ function RosterSection() {
   );
 }
 
-/**
- * Hot Foods: Record for anyone who can name a resident at their site; Entries
- * and Reports for roles that may read form submissions back (not Site Staff).
- */
-function HotFoodsSection() {
-  const { can } = useAuth();
-  const tabs = [
-    ...(can("roster.edit") ? [{ to: "/forms/hot-foods", label: "Record", end: true }] : []),
-    ...(can("entries.view")
-      ? [{ to: "/forms/hot-foods/entries", label: "Entries" }, { to: "/forms/hot-foods/reports", label: "Reports" }]
-      : []),
-  ];
-  return <SectionTabsLayout title="Hot Foods" tabs={tabs} enter />;
-}
-
-/** /forms/hot-foods: the Record tab, or Entries for someone who can only read. */
-function HotFoodsHome() {
-  const { can } = useAuth();
-  return can("roster.edit") ? <HotFoodsRecordPage /> : <Navigate to="/forms/hot-foods/entries" replace />;
-}
-
 /** A retired path: same query string (the site selection), new home. */
 function Moved({ to }: { to: string }) {
   const { search } = useLocation();
@@ -181,18 +155,6 @@ export function App() {
         </Route>
         {/* Code forms: access comes from each form's own form.json. */}
         <Route path="/apps/:slug/:page?" element={<AppHostPage />} />
-        <Route element={<RequirePermission anyOf={["roster.edit", "entries.view"]} />}>
-          <Route element={<HotFoodsSection />}>
-            <Route path="/forms/hot-foods" element={<HotFoodsHome />} />
-            <Route element={<RequirePermission anyOf={["entries.view"]} />}>
-              <Route path="/forms/hot-foods/entries" element={<HotFoodsEntriesPage />} />
-              <Route path="/forms/hot-foods/reports" element={<HotFoodsReportsPage />} />
-            </Route>
-          </Route>
-          <Route element={<RequirePermission anyOf={["entries.view"]} />}>
-            <Route path="/forms/hot-foods/entries/:id" element={<HotFoodsEntryDetailPage />} />
-          </Route>
-        </Route>
         <Route element={<RequirePermission anyOf={["roster.view"]} />}>
           <Route element={<RosterSection />}>
             <Route path="/roster" element={<RosterPage />} />
@@ -227,7 +189,6 @@ export function App() {
           <Route element={<ConfigLayout />}>
             <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
-              <Route path="/admin/hot-foods" element={<AdminHotFoods />} />
               <Route path="/admin/builder" element={<AdminBuilderList />} />
               <Route path="/admin/ai" element={<AdminAiBuilder />} />
             </Route>

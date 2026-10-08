@@ -74,7 +74,7 @@ export const projectsApi = {
   publish: (id: string, note?: string) => api.post<Project>(`/apps/projects/${id}/publish`, { note }),
   setStatus: (id: string, status: string) => api.post<Project>(`/apps/projects/${id}/status`, { status }),
   duplicate: (id: string) => api.post<Project>(`/apps/projects/${id}/duplicate`),
-  remove: (id: string) => api.delete(`/apps/projects/${id}`),
+  remove: (id: string, withEntries = false) => api.delete(`/apps/projects/${id}`, { withEntries }),
   setCatalog: (id: string, categoryId: string | null) => api.put<Project>(`/apps/projects/${id}/catalog`, { categoryId }),
   versions: (id: string) => api.get<{ version: number; note: string | null; publishedByName: string; createdAt: string }[]>(`/apps/projects/${id}/versions`),
   restore: (id: string, v: number) => api.post<Project>(`/apps/projects/${id}/versions/${v}/restore`),
@@ -124,6 +124,44 @@ export const runtimeApi = {
     return api.get<{ items: unknown[]; total: number }>(`/apps/${slug}/entries${q(draft, params)}`);
   },
   entry: (slug: string, draft: boolean, id: string) => api.get(`/apps/${slug}/entries/${id}${q(draft)}`),
+  update: async (slug: string, draft: boolean, id: string, body: { data: unknown; reason?: string | null }) => {
+    const res = await fetch(`${API_BASE}/apps/${slug}/entries/${encodeURIComponent(id)}${q(draft)}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const out = await res.json().catch(() => ({}));
+    // 422 with a status is the server's rules saying no: an outcome, not an error.
+    if (res.ok || (res.status === 422 && out.status === "invalid")) return out as { status: "saved" | "invalid"; logs?: string[] };
+    throw new ApiError(res.status, out?.error ?? res.statusText, out?.details, out?.requestId);
+  },
+  history: (slug: string, draft: boolean, id: string) => api.get(`/apps/${slug}/entries/${encodeURIComponent(id)}/history${q(draft)}`),
+  /** Upload a photo or file; the server answers with its FileRef. */
+  upload: async (slug: string, draft: boolean, file: { name: string; mime: string; label?: string; data: Blob }) => {
+    const res = await fetch(`${API_BASE}/apps/${slug}/files${q(draft)}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Type": encodeURIComponent(file.mime),
+        "X-File-Label": encodeURIComponent(file.label ?? ""),
+      },
+      body: file.data,
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, out?.error ?? res.statusText, out?.details, out?.requestId);
+    return out as { fileId: string; name: string; mime: string; size: number };
+  },
+  file: async (slug: string, draft: boolean, fileId: string) => {
+    const res = await fetch(`${API_BASE}/apps/${slug}/files/${encodeURIComponent(fileId)}${q(draft)}`, { credentials: "include" });
+    if (!res.ok) {
+      const out = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, out?.error ?? res.statusText);
+    }
+    return res.blob();
+  },
   void: (slug: string, draft: boolean, id: string, reason: string) => api.post(`/apps/${slug}/entries/${id}/void${q(draft)}`, { reason }),
   restore: (slug: string, draft: boolean, id: string) => api.post(`/apps/${slug}/entries/${id}/restore${q(draft)}`),
   collection: (slug: string, draft: boolean, name: string) => api.get(`/apps/${slug}/collections/${encodeURIComponent(name)}${q(draft)}`),

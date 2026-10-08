@@ -36,7 +36,7 @@ export function SectionTabsLayout({ title, tabs, enter = false }: { title: strin
     navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [pathname]);
 
-  // A screen marked data-fit-screen (Hot Foods Record) is held to the viewport
+  // A screen marked data-fit-screen (the calendar) is held to the viewport
   // and scrolls inside itself, so the section stops at the viewport too.
   return (
     <div className="flex min-h-full flex-col has-[[data-fit-screen]]:h-full">

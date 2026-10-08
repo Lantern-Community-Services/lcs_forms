@@ -48,12 +48,13 @@ mkdirSync(dir, { recursive: true });
 // ── OpenSSL ──────────────────────────────────────────────────────────────
 
 function findOpenssl() {
-  const candidates = [
-    "openssl",
-    "C:\\Program Files\\Git\\usr\\bin\\openssl.exe",
-    "C:\\Program Files\\Git\\mingw64\\bin\\openssl.exe",
-    "C:\\Program Files (x86)\\Git\\usr\\bin\\openssl.exe",
-  ];
+  // Git for Windows installs machine-wide (Program Files) or just for the user (AppData\Local\Programs).
+  const gitRoots = [
+    process.env.ProgramFiles && join(process.env.ProgramFiles, "Git"),
+    process.env["ProgramFiles(x86)"] && join(process.env["ProgramFiles(x86)"], "Git"),
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Programs", "Git"),
+  ].filter(Boolean);
+  const candidates = ["openssl", ...gitRoots.flatMap((root) => [join(root, "usr", "bin", "openssl.exe"), join(root, "mingw64", "bin", "openssl.exe")])];
   for (const c of candidates) {
     try {
       execFileSync(c, ["version"], { stdio: "ignore" });

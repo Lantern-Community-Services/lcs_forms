@@ -74,7 +74,7 @@ function selectedCodes(raw: string[], sites: Site[]) {
 }
 
 /**
- * The `site` parameter the roster and Hot Foods screens would send on this
+ * The `site` parameter the roster screens would send on this
  * device with no ?site= in the URL (undefined = all my sites), for reading
  * them ahead of time (lib/snapshot.ts).
  */

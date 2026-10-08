@@ -123,7 +123,14 @@ export async function publishProject(id: string, actor: Actor, note?: string): P
   const [row] = await prisma.$transaction([
     prisma.builtForm.update({
       where: { id: form.id },
-      data: { liveSchema: JSON.stringify({ files, build: res.build }), liveVersion: version, status: form.status === "closed" ? "closed" : "published", publishedAt: new Date(), updatedByName: actor.name },
+      data: {
+        liveSchema: JSON.stringify({ files, build: res.build }),
+        liveVersion: version,
+        status: form.status === "closed" ? "closed" : "published",
+        publishedAt: new Date(),
+        updatedByName: actor.name,
+        homeAction: Boolean(readManifest(files).manifest?.home),
+      },
     }),
     prisma.builtFormVersion.create({ data: { formId: form.id, version, schema: JSON.stringify({ files }), note: note?.slice(0, 300) ?? null, publishedByName: actor.name } }),
   ]);

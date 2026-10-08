@@ -2,19 +2,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "../src/prisma.js";
 import { decodeCsv, importTenants, readRows } from "../src/services/tenantImport.js";
-import { ensureDefaultCatalog } from "../src/services/formCatalog.js";
-import { ensureDefaultHotFoodItems } from "../src/services/hotFoods.js";
 import { ensureSiteLocations } from "../src/services/siteLocations.js";
+import { assertDemoDataAllowed } from "../src/env.js";
 
 /**
  * Seed for the local prototype:
  *   1. demo staff accounts for the dev sign-in screen (at least one per role)
- *   2. the default forms catalog (services/formCatalog.ts), if not already written
+ *   2. (the forms catalog starts empty: forms are added as they're built)
  *   3. the real tenant list from data/tenant_list.csv
- *   4. DEMO ONLY — backdates the attention clock on a slice of residents so the
- *      48-hour review queue has something in it on day one. Nothing is written
- *      to the activity log; these people simply look "not seen since import".
- *      Skip with SEED_DEMO_QUEUE=false.
+ *   4. DEMO ONLY, with SEED_DEMO_QUEUE=true — backdates the attention clock on a
+ *      slice of residents so the 48-hour review queue has something in it on day
+ *      one. Nothing is written to the activity log; these people simply look
+ *      "not seen since import".
+ *
+ * The demo accounts are demo rows, so in production (NODE_ENV=production) the
+ * seed refuses to run unless ALLOW_DEMO_DATA=true. Production starts with no
+ * accounts: people are created by their first Microsoft sign-in.
  */
 const DEMO_USERS = [
   { name: "Collin Falkowski", email: "cfalkowski@lanterncommunity.org", roleKey: "admin", avatarColor: "#1d4ed8", title: "Systems" },
@@ -26,13 +29,11 @@ const DEMO_USERS = [
 ];
 
 async function main() {
+  assertDemoDataAllowed("The seed");
   for (const u of DEMO_USERS) {
     await prisma.user.upsert({ where: { email: u.email }, create: { ...u, status: "active" }, update: {} });
   }
   const admin = await prisma.user.findUniqueOrThrow({ where: { email: DEMO_USERS[0].email } });
-
-  if (await ensureDefaultCatalog()) console.log("Wrote the default forms catalog.");
-  if (await ensureDefaultHotFoodItems()) console.log("Wrote the default Hot Foods meal types.");
 
   const csvPath = path.resolve(process.cwd(), process.env.TENANT_CSV ?? "../data/tenant_list.csv");
   if (fs.existsSync(csvPath)) {
@@ -58,7 +59,7 @@ async function main() {
     }
   }
 
-  if ((process.env.SEED_DEMO_QUEUE ?? "true") !== "false") {
+  if ((process.env.SEED_DEMO_QUEUE ?? "false") === "true") {
     const active = await prisma.tenant.findMany({ where: { status: "active", lastActivityAt: null, lastKeptAt: null }, select: { id: true } });
     let aged = 0;
     for (const t of active) {

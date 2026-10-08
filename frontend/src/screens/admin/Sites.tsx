@@ -123,7 +123,7 @@ export function AdminSites() {
               <Field label="Code" hint={draft.id ? "Changing this breaks integrations that use the old code." : "Used in URLs and the API."}>
                 <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: slug(e.target.value) })} className="font-mono" />
               </Field>
-              <Field label="Type" hint="Sets the Hot Foods limits: shelters get more meals a day, with a cooldown (Admin → Hot Foods).">
+              <Field label="Type" hint="Forms read it: Hot Foods gives shelters more meals a day, with a cooldown.">
                 <Select value={draft.siteType} onChange={(e) => setDraft({ ...draft, siteType: e.target.value })}
                   options={[{ value: "supportive", label: "Supportive housing" }, { value: "shelter", label: "Shelter (high turnover)" }, { value: "other", label: "Other" }]} />
               </Field>

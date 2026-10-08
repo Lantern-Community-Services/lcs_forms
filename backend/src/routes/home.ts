@@ -6,7 +6,7 @@ import { requireAuth } from "../auth/middleware.js";
 import { attentionHours } from "../services/settings.js";
 import { cutoff, displayName } from "../services/roster.js";
 import { sitesInScope, type ScopedSite } from "../services/siteScope.js";
-import { dayKey, startOfDay } from "../services/hotFoods.js";
+import { appHomeCards } from "../apps/home.js";
 
 export const homeRouter = Router();
 homeRouter.use(requireAuth);
@@ -15,15 +15,15 @@ homeRouter.use(requireAuth);
  * The Forms home dashboard: what needs the person's attention, what happened
  * recently, and a few counts. One round trip, and everything in it is limited
  * the same way the screen it links to is, so a card never leads to a 403:
- * roster items need roster.view and stay inside the person's sites, Hot Foods
- * overrides need entries.view, drafts belong to whoever started them.
+ * roster items need roster.view and stay inside the person's sites, drafts
+ * belong to whoever started them. Code forms add their own cards (apps/home.ts).
  */
 
 type Tone = "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "roster" | "hotfoods" | "draft";
+  kind: "roster" | "draft";
   tone: Tone;
   title: string;
   detail: string;
@@ -97,31 +97,6 @@ async function rosterAttention(sites: ScopedSite[]): Promise<{ items: AttentionI
   return { items, total: items.length };
 }
 
-async function hotFoodOverrides(sites: ScopedSite[]): Promise<AttentionItem[]> {
-  if (!sites.length) return [];
-  const where: Prisma.HotFoodEntryWhereInput = {
-    siteId: { in: sites.map((s) => s.id) },
-    voidedAt: null,
-    overrideReason: { not: null },
-    occurredAt: { gte: startOfDay(dayKey(new Date())) },
-  };
-  const [count, latest] = await Promise.all([
-    prisma.hotFoodEntry.count({ where }),
-    prisma.hotFoodEntry.findFirst({ where, orderBy: { occurredAt: "desc" }, select: { id: true, tenantName: true, overrideReason: true } }),
-  ]);
-  if (!count || !latest) return [];
-  const reason = (latest.overrideReason ?? "").replace(/\s+/g, " ").slice(0, 120);
-  return [{
-    id: "hotfoods:overrides",
-    kind: "hotfoods",
-    tone: "warn",
-    title: count === 1 ? "Hot Foods limit overridden today" : `${count} Hot Foods limits overridden today`,
-    detail: count === 1 ? `${latest.tenantName}. Reason: ${reason}` : `Latest: ${latest.tenantName}. Reason: ${reason}`,
-    action: count === 1 ? "View entry" : "View entries",
-    href: count === 1 ? `/forms/hot-foods/entries/${latest.id}` : "/forms/hot-foods/entries",
-  }];
-}
-
 async function myDrafts(req: Request): Promise<AttentionItem[]> {
   if (!has(req, "forms.manage") && !has(req, "apps.develop")) return [];
   const drafts = await prisma.builtForm.findMany({
@@ -149,13 +124,13 @@ const VERBS: Record<string, string> = {
   "tenant.kept": "checked in",
 };
 
-async function recentActivity(req: Request, rosterSites: ScopedSite[] | null, hotFoodSites: ScopedSite[] | null): Promise<ActivityItem[]> {
+async function recentActivity(req: Request, rosterSites: ScopedSite[] | null): Promise<ActivityItem[]> {
   const me = req.user!.userId;
   const take = 15;
-  const siteName = new Map([...(rosterSites ?? []), ...(hotFoodSites ?? [])].map((s) => [s.id, s.name]));
+  const siteName = new Map((rosterSites ?? []).map((s) => [s.id, s.name]));
   const rosterIds = rosterSites?.map((s) => s.id) ?? [];
 
-  const [audits, gfActivity, myEntries, hotFoods] = await Promise.all([
+  const [audits, gfActivity, myEntries] = await Promise.all([
     rosterIds.length
       ? prisma.auditEvent.findMany({
           where: { siteId: { in: rosterIds }, action: { in: Object.keys(VERBS) } },
@@ -174,20 +149,10 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null, ho
         })
       : Promise.resolve([]),
     prisma.formEntry.findMany({
-      where: { createdById: me, status: "active" },
+      where: { createdById: me, status: "active", source: { not: "preview" } },
       orderBy: { createdAt: "desc" },
       take,
-      select: { id: true, createdAt: true, siteId: true, form: { select: { title: true, slug: true } } },
-    }),
-    // Everyone's Hot Foods at your sites if you can read entries; otherwise just your own.
-    prisma.hotFoodEntry.findMany({
-      where: {
-        voidedAt: null,
-        ...(hotFoodSites ? { siteId: { in: hotFoodSites.map((s) => s.id) } } : { createdById: me }),
-      },
-      orderBy: { occurredAt: "desc" },
-      take,
-      select: { id: true, createdById: true, createdByName: true, tenantName: true, mealCount: true, siteId: true, occurredAt: true },
+      select: { id: true, createdAt: true, siteId: true, form: { select: { title: true, slug: true, kind: true } } },
     }),
   ]);
 
@@ -224,21 +189,8 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null, ho
       subject: e.form.title,
       detail: site(e.siteId),
       at: e.createdAt,
-      href: `/f/${e.form.slug}`,
+      href: e.form.kind === "code" ? `/apps/${e.form.slug}` : `/f/${e.form.slug}`,
     })),
-    ...hotFoods.map((h): ActivityItem => {
-      const mine = h.createdById === me;
-      return {
-        id: `hotfood:${h.id}`,
-        actorName: h.createdByName,
-        mine,
-        verb: `${mine ? "You" : h.createdByName.split(" ")[0]} recorded`,
-        subject: `Hot Foods for ${h.tenantName}`,
-        detail: [site(h.siteId), plural(h.mealCount, "meal")].filter(Boolean).join(" · "),
-        at: h.occurredAt,
-        href: hotFoodSites ? `/forms/hot-foods/entries/${h.id}` : "/forms/hot-foods",
-      };
-    }),
   ];
   return items.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 20);
 }
@@ -249,29 +201,37 @@ homeRouter.get(
     const me = req.user!.userId;
     const weekAgo = new Date(Date.now() - 7 * 86400_000);
     const rosterSites = has(req, "roster.view") ? await sitesInScope(req, undefined) : null;
-    const hotFoodSites = has(req, "entries.view") ? rosterSites ?? (await sitesInScope(req, undefined)) : null;
 
-    const [roster, overrides, drafts, activity, entriesWeek, hotFoodsWeek, residents] = await Promise.all([
+    const [roster, drafts, activity, entriesWeek, residents] = await Promise.all([
       rosterSites ? rosterAttention(rosterSites) : Promise.resolve({ items: [], total: 0 }),
-      hotFoodSites ? hotFoodOverrides(hotFoodSites) : Promise.resolve([]),
       myDrafts(req),
-      recentActivity(req, rosterSites, hotFoodSites),
-      prisma.formEntry.count({ where: { createdById: me, status: "active", createdAt: { gte: weekAgo } } }),
-      prisma.hotFoodEntry.count({ where: { createdById: me, voidedAt: null, createdAt: { gte: weekAgo } } }),
+      recentActivity(req, rosterSites),
+      prisma.formEntry.count({ where: { createdById: me, status: "active", source: { not: "preview" }, createdAt: { gte: weekAgo } } }),
       rosterSites?.length ? prisma.tenant.count({ where: { siteId: { in: rosterSites.map((s) => s.id) }, status: "active" } }) : Promise.resolve(null),
     ]);
 
-    const attention = [...roster.items, ...overrides, ...drafts];
+    const attention = [...roster.items, ...drafts];
     res.json({
       attention,
       activity,
       stats: {
         attention: attention.length,
         urgent: attention.filter((a) => a.tone === "warn").length,
-        submissionsWeek: entriesWeek + hotFoodsWeek,
+        submissionsWeek: entriesWeek,
         residents,
         sites: rosterSites ? rosterSites.map((s) => s.name) : null,
       },
     });
+  })
+);
+
+/**
+ * Cards from code forms (form.json "home"): their own attention items and stat
+ * tiles. A separate request, so a slow form never holds up the rest of the home screen.
+ */
+homeRouter.get(
+  "/apps",
+  asyncHandler(async (req, res) => {
+    res.json(await appHomeCards(req.user!));
   })
 );

@@ -6,16 +6,18 @@ built to be extended with LLM help.
 
 **v1 is:**
 
-- **Forms**, the home screen. Every form from the WordPress site, in the groups staff already
-  know, with search, per-person favorites (synced across devices) and a category filter. The forms
-  themselves still live on WordPress: each card opens the WordPress form in a new tab. The desktop
-  sidebar lists the same forms by type, as groups that expand to show their forms.
+- **Forms**, the home screen: the forms catalog, with search, per-person pins (synced across
+  devices) and a category filter. The catalog starts empty. Forms are rebuilt here one at a time
+  (form builder or code forms) and added to it as they're ready; a form that lives elsewhere is a
+  card linking out. The desktop sidebar lists the same forms by category. (The old WordPress
+  links the catalog used to start with are taken out once on startup:
+  `retireLegacyCatalog` in `backend/src/services/formCatalog.ts`.)
 - **Roster**, which replaces the **Tenant Updater** form. This is the Lantern Roster app
   (`LCS_TenentManagement`) carried over whole: roster, 48-hour review queue, attendance, activity
   log, exports, public API and the WordPress connector. It is one sidebar entry with tabs:
   Residents (`/roster`), Review, Attendance, Activity and Overview (`/roster/review`, …). The
   roster app's old paths (`/review`, `/dashboard`, `/attendance`, `/activity`) redirect to the tabs.
-- **Hot Foods** (`/forms/hot-foods`), which replaces Gravity Forms form 21. See below.
+- **Hot Foods** (`/apps/hot-foods`), which replaces Gravity Forms form 21: a code form. See below.
 - **Admin → Forms catalog**, where admins add, edit, hide, reorder and recategorize the links
   without a deploy.
 - **Calendar** (`/calendar`): events for every site or for chosen sites, with repeat rules. Admins
@@ -27,61 +29,82 @@ site.
 
 ### Moving a form off WordPress
 
-1. Build the form as a screen here (route in `frontend/src/App.tsx`, API route in `backend/src/routes/`).
-2. In **Admin → Forms catalog**, change that form's link from its WordPress URL to the app path
-   (for example `/forms/incident-report`). The card, its favorites and its search words stay as
-   they are. An app path shows **→** instead of **↗** and opens in place.
-3. If the new screen needs a permission, add its path to `INTERNAL_NEEDS` in
-   `frontend/src/lib/formIcons.ts`. People without the permission then see a locked card instead
-   of a dead link.
+New forms are built **in the app**, not in this codebase: the form builder (`/f/…`) for plain
+fill-in forms, and **code forms** (`/apps/…`) for anything with its own screens, rules, photos,
+dashboards or reports — in the in-app editor or by an AI over the MCP server. The site's code
+only changes when the platform itself needs something new.
 
-The Roster card (`/roster`, whose search words include "tenant updater") was the first one done
-this way. Hot Foods (`/forms/hot-foods`) was the second.
+1. Build the form (Admin → Form builder, or Admin → Code forms, or the MCP tools) and publish it.
+2. Put it on the Forms screen: the form editor's catalog setting, or MCP `add_to_catalog`. If it
+   replaces a WordPress form, edit that card in **Admin → Forms catalog** instead and change its
+   link to the new path (`/apps/incident-report`): the card, its favorites and search words stay.
+3. A form that lives somewhere else (Microsoft Forms, a vendor's site, WordPress) is just a card
+   with an `https://` link — **Admin → Forms catalog → Add**, or MCP `save_catalog_card`. It
+   shows **↗** and opens in a new tab.
+
+The Roster (`/roster`) was built into the codebase before code forms existed and sits beside Home
+and Calendar in the navigation rather than in the catalog. `INTERNAL_NEEDS` in
+`frontend/src/lib/formIcons.ts` locks a card for an app path that needs a permission.
+
+**Keeping the forms you build:** the database is the real copy. Every form is also backed up to
+GitHub automatically — see "Form backup" below.
+
+### Form backup
+
+Every form built in the app — form builder forms and code forms — is backed up to
+[Lantern-Community-Services/lcs_forms_form_backup](https://github.com/Lantern-Community-Services/lcs_forms_form_backup)
+(private), `backend/src/services/formBackup.ts`:
+
+- **What's in it:** each form's draft and published definition, every published version, a code
+  form's collections (its settings and lists), and `catalog.json` (the Forms screen, including links
+  to forms on other sites). `basic/<slug>/` for form builder forms, `code/<slug>/` for code forms (the
+  folder is the project, so `app:push` works on it). **Not** in it: entries, uploaded photos, people.
+- **When:** the server checks every 10 minutes and commits only when a form changed, with the changed
+  forms in the commit message. **Back up now** on Admin → Form builder and Admin → Code forms; the same
+  bar shows the last backup or the last error.
+- **Setup:** `FORM_BACKUP_REPO` (in `.env`) and `FORM_BACKUP_TOKEN` in `.env.local` — a fine-grained
+  GitHub token with **Contents: read and write** on that one repository. On a server, set both as
+  app settings. No git is needed on the server; it uses the GitHub API.
+- **From a computer instead** (your own git login): clone the repo, then
+  `npm run forms -- backup --dir <clone> --push`.
+- **Restore:** `npm run forms -- backup:restore <clone> [slug ...] [--publish]` creates missing forms
+  and replaces the drafts of existing ones; `--publish` also publishes the backed-up live version.
+  A code form's settings come back only into a form that has none. Put restored forms back on the
+  Forms screen from their editor (`catalog.json` says where they were).
 
 ---
 
 ## Hot Foods
 
-Replaces the WordPress **Hot Foods Form** (Gravity Forms form 21). One sidebar entry with three tabs:
+Replaces the WordPress **Hot Foods Form** (Gravity Forms form 21). It is a **code form**
+(`/apps/hot-foods`), built with the AI form builder (MCP) and kept in the database like any other
+form — edit it in **Admin → Code forms**; its source is backed up with the rest (see "Form backup").
+It replaced a version that was built into this codebase (`/forms/hot-foods`, its own tables and
+Admin → Hot Foods), which was removed with its data on 2026-10-07.
 
 | Tab | Who | What |
 |---|---|---|
-| **Record** (`/forms/hot-foods`) | anyone with `roster.edit` at a site | Resident → meal → signature, one step per phone screen. "Next resident" keeps the site and the meal for the next person in line. |
-| **Entries** (`/forms/hot-foods/entries`) | `entries.view` (not Site Staff) | Filter by sites, dates and search; Print and Export (CSV, Excel, PDF) of exactly what's shown. Each entry opens with its signature, a printable receipt, and **Void** (`entries.void`: Admin, Site Admin, Site Manager). |
-| **Reports** (`/forms/hot-foods/reports`) | `entries.view` | Meals served, residents, meals per day, by site, by meal type, a weekday × hour grid and entries by staff member. Print, or export as a **PDF report** (charts drawn in) or an **Excel workbook** (one sheet per breakdown). |
+| **Record** | Admin, Developer, Site Admin, Site Manager, Site Staff | Meal → Resident → Sign, then Saved with Next resident and Undo. The meal is picked once per shift; most frequent residents first. Works offline: entries queue on the device and upload behind the scenes. |
+| **Entries** | Main Office, Site Admin, Site Manager, Developer | Filter by sites, dates, status and search; Print, and Export (CSV, Excel, PDF) of everything the filters match. Each entry opens with its signature, Print, and **Void** (Site Admin, Site Manager). |
+| **Reports** | same as Entries | Meals served, residents, meals per day (with a table), by site, by meal type, a weekday × hour grid and entries by staff member. Print, or export as a PDF report (charts drawn in) or an Excel workbook (one sheet per breakdown). |
+| **Settings** | Admin | Meals per day (supportive, shelter), the shelter cooldown, and the meal types with their report colors. |
 
-- **Daily limit, per meal type.** At supportive housing a resident gets 1 meal of each meal type a
-  day; at a shelter 3, with a 60-minute cooldown between two meals of the same type. Going over
-  either is allowed with a reason, which is stored and counted in Reports. The numbers, the meal
-  types and which sites are shelters are all set in **Admin → Hot Foods**. The check lives in
-  `ruleProblems` (backend `services/hotFoods.ts`, mirrored in frontend `lib/hotFoodRules.ts`, so
-  staff are asked for a reason before Save). Days are New York calendar days.
-- **Nothing is edited or deleted.** A mistake is voided with a reason; voided entries stop counting
-  toward the limit and every report but stay on record (Entries → Status → Voided).
-- **Report colors mean something.** Each meal type has its own color (Manage meal types → Report
-  color), used on every chart, range and export: Meals per day is stacked by meal type, Meals by
-  type uses the same colors, Meals by site is colored by site type (supportive / shelter), and the
-  weekday × hour grid is a light-to-dark blue scale with a key. The eight colors are a palette
-  checked for colorblind safety in light and dark mode (`--viz-*` in `frontend/src/index.css`;
-  the PDF uses the same values). Everyday meals sit on the first three colors, which stay
-  distinguishable in any combination, and the holiday ones on the next two; give two meals the
-  same color and they'll look the same on the charts.
-- **Meal types** replace `wp-content/uploads/CSVs/hotfood.csv`. Admins with `forms.manage` edit
-  them from **Manage meal types** on the Record screen. Hidden, never deleted; entries keep the name
-  they were recorded under. The pictures still point at the WordPress media library.
-- **Site from location.** For someone with more than one site, Record asks the browser for its
-  location and picks the site they're standing at (within the site's radius, 200 m by default);
-  the site list is sorted nearest-first either way. It never overrides a site picked by hand, and if
-  location is off it falls back to the last site used. The position is compared on the device and
-  never sent to the server. Reusable for other forms: `components/forms/SiteLocator.tsx`.
-- **The roster hears about it.** Each entry is logged as activity on the resident, so being served a
-  meal resets their review clock.
-- **Demo data:** `npm run demo:hot-foods` (backend) writes ~60 days of made-up entries (`source =
-  "demo"`) so Entries and Reports have something in them; `-- --clear` removes them. Never run it
-  against production.
-- **Not done yet:** the ~18,600 historical WordPress entries are not imported. Their tenant is free
-  text, so each has to be matched to a roster ID (site from the `LP` entity name, then name and
-  room); unmatched ones would need a review step.
+- **Daily limit, per meal type.** At supportive housing 1 meal of each type a day; at a shelter 3,
+  with a 60-minute cooldown between two of the same type. Going over is allowed with a reason, kept
+  on the entry and counted in Reports. The rule is one file (`lib/rules.ts` in the form) used by the
+  Record page and the server's `beforeCreate`, which has the final word. A site's type is set in
+  Admin → Sites.
+- **Over-limit entries** today show on the Forms home under "Needs your attention" for the roles that
+  read entries (the form's `home` action).
+- **Meal types** live in the form's `mealTypes` collection, seeded with the WordPress set on first
+  use. Hidden, never deleted; entries keep the name and color they were recorded with. The pictures
+  still point at the WordPress media library.
+- **Site from location**, as before: the site you're standing at, never overriding one picked by hand.
+- **The roster hears about it**: each entry is logged as activity on the resident.
+- **Print and the PDF report draw the charts** on the server (app.print / app.export with `charts`),
+  in the same colors as the screen; "Entries by staff member" wears each person's avatar color
+  (`ctx.people`). Not carried over: a per-entry PDF receipt with the signature (the entry page prints
+  from the browser). The ~18,600 historical WordPress entries were never imported.
 
 ---
 
@@ -156,6 +179,12 @@ Notifications send through Microsoft Graph as the mailbox in `MAIL_FROM`, which 
 Exchange application access policy). Until it's set, each email is noted on the entry as "not
 sent"; webhooks work regardless.
 
+**Every email is link-only** (`linkOnlyHtml` in `services/mailer.ts`): one line naming the form
+and a link to the entry. Answers, form contents and resident details never go in an email, and
+nothing is attached. A notification's subject keeps the form, site, person and date merge tags
+(`{form:title}`, `{site:name}`…) and drops any answer tags; a body saved on an older form is
+ignored. Code forms' `ctx.email.send` works the same way (below).
+
 ## Code forms
 
 When a form needs more than fields and rules (custom screens, server-side logic, offline recording,
@@ -184,7 +213,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **Data:** entries (free-form JSON plus site, resident, when, who; void and undo built in) and
   **collections** (the form's own lists and settings). `beforeCreate` can refuse an entry, ask for an
   override reason, or rewrite it. **Offline:** `entries.create(entry, { offline: true })` queues on the
-  device (`frontend/src/apps/queue.ts`) and uploads in the background, like Hot Foods.
+  device (`frontend/src/apps/queue.ts`) and uploads in the background.
 - **Building:** the in-app editor has a file tree, a code editor, a live preview of the draft, a
   console (page and server logs), problems with file:line, versions, and the SDK reference. Drafts
   can be previewed; entries made in preview are marked `preview` and hidden from the live form.
@@ -194,8 +223,62 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   locally; `app:push <dir> [--publish]` sends it back.
 - **With AI:** the MCP server has code tools (scope `apps:build`): `get_code_reference`,
   `create_code_form`, `list_files`, `read_files`, `write_files`, `edit_file` (each returns the build
-  result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, collection read/write.
+  result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, `get_entry_file`
+  (entries:read), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
+  `add_to_catalog`, `save_catalog_card` (links to forms elsewhere), `delete_catalog_card`,
+  `save_catalog_category`.
 - **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).
+- **Photos and files:** `<PhotoInput>` / `device.takePhoto()` open the camera in the app itself (the
+  sandboxed frame has no camera), with a live preview and "Choose a photo". Photos are shrunk to
+  1600px JPEG and stored as a `FormFile` (bytes in Blob Storage, see "Uploaded files"); any `{ fileId }` in an entry's data is attached when it saves.
+  Offline, photos wait on the device and upload ahead of their entry (`frontend/src/apps/queue.ts`).
+  `form.json` `"files"` sets size and types.
+- **Editing entries:** `entries.update` for `form.json` `entries.edit` roles (default admins and
+  developers) or the maker within `editOwnMinutes`; server `beforeUpdate` can refuse; every change,
+  void and restore is kept (`<EntryHistory>`).
+- **The rest of the site:** `calendar.*` (read, and write with the person's own calendar rights),
+  `roster.resident()` and `ctx.roster.logActivity()`, and `form.json` `"home"` — a server action whose
+  attention items and stat tiles appear on the Forms home (`backend/src/apps/home.ts`).
+- **Approvals and the form's own calendar events** (for workflows like event requests):
+  - `ctx.db.entries.update(id, data, { reason, ifUpdatedAt })` lets server code change its own entries
+    (e.g. record an approval after checking `ctx.user`). It skips `entries.edit` and `beforeUpdate`, keeps
+    history, and refuses with `CONFLICT…` if the entry was saved since it was read.
+  - `form.json` `"calendar": { "ownEvents": true }` turns on `ctx.calendar.form`. Server code can then
+    add, change and remove the form's own events for any site, without the person's calendar rights,
+    but never for every site.
+  - `pending: true` shows an event on the calendar striped and outlined, marked "Needs approval", and
+    keeps it out of Outlook (`syncEvent` gives it no recipients, which also takes back anything already
+    sent).
+  - The calendar shows these events read-only, with "Open in <form>" linking to `/apps/<slug>?ref=<ref>`.
+    `CalendarEvent.sourceFormId`, `sourceRef` and `pending` record the owner, its reference and the
+    approval state.
+  - In the draft, these calls are simulated (`preview:` ids).
+  - `ctx.directory({ search, roles, site })` lists active staff (name, email, role, sites), for choosing
+    approvers.
+  - `ctx.roster.sites({ all: true })` lists every active site, not just the person's own, and `ctx.url`
+    is the form's address, for links in emails.
+  - `form.json` `"share": { "forms": ["other-slug"] }` lets another code form's server code read this
+    form's entries whoever is using it (that form lists this one in `"reads"` and decides what to show).
+    Event Requests and Encounter Events share with each other.
+- **Bundling and schedules** (`backend/src/apps/jobs.ts`, `schedule.ts`):
+  - `ctx.db.form(slug).entries.create(...)` queues an entry in another code form that accepts this one
+    (`"share": { "create": [...] }`). A worker saves it through that form's own rules, as the person who
+    caused it (`currentUserById`), copying files over. Jobs are kept in `FormJob`; see them with `ctx.jobs.list`
+    and resend one with `ctx.jobs.retry`. Doing it after the call keeps one sandbox from waiting on another.
+  - `ctx.db.form(slug).collections` reads a sharing form's lists, and `ctx.files.read` returns a form's own file
+    as a data: URL.
+  - `form.json` `"schedule"` runs actions once a New York day: daily, on weekdays, or monthly. They run as nobody,
+    with args `{ scheduled: true, day }`. `SCHEDULE_DISABLED=true` turns the timer off.
+  - The first forms built this way are **Event Requests** (`/apps/events`) and **Encounter Events**
+    (`/apps/encounters`, which records attendance against approved events), built through MCP on
+    2026-10-07.
+- **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the original charts (`DailyBars`, `RankedBars`, `HeatGrid`, `StatTile`);
+  `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.
+- **Email:** `ctx.email.send({ to, subject, link })` from server code, queued through the Graph mailbox
+  (see Email above), to Lantern addresses unless `form.json` `"email"` lists others. **Link-only:** the
+  email is the subject and a link to `link` (a page of the form, e.g. `${ctx.url}/request?id=…`).
+  `html`, `text` and `attachments` are accepted for old code but not sent; the result lists them in
+  `dropped`. A monthly report is a link to the Reports page, where the reader exports it.
 - **Phones, iPads, desktops:** inside a page, Tailwind's `sm:` `md:` `lg:` `xl:` and `portrait:` /
   `landscape:` follow the device's window (not the frame), so markup from the app's own screens lays
   out the same; `phone:` `tablet:` `desktop:` variants and `useDevice()` are there for device-specific
@@ -213,7 +296,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **Design handoff** (a code form's editor → *Export for Claude Design*): one HTML file with every page
   of that form, clickable, on phone / iPad portrait / iPad landscape / desktop, running the form's real
   code on sample data only — `design/fixtures.json` in the project (method → answer, e.g.
-  `"actions.call:today"`), or made-up defaults. Never real residents. It includes the brief and the source.
+  `"actions.call:today"`; `"params:entry": { "id": "…" }` opens a hidden page on a record), or made-up defaults. Never real residents. It includes the brief and the source.
 - **Back into code:** Claude Design's hand-off to Claude Code, with the MCP server connected
   (`apps:build`), goes straight into the form's pages as a draft. The MCP tool `get_design_kit` (and
   `/api/apps/design-brief`) gives the assistant the tokens, components and layout rules
@@ -222,13 +305,6 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   CSS is compiled with the app's tokens) and the SDK types to where the editor, the CLI and the AI
   read them. The runtime bundle (`public/app-runtime/`) is built by `npm run build:runtime` (frontend),
   which also runs before `dev` and `build`.
-
-**Hot Foods, as a code form:** `forms/hot-foods-code/` is Hot Foods rebuilt this way, at
-`/apps/hot-foods-code`, beside the real one. It has the same guided Meal → Resident → Sign screen for
-iPad, the same per-meal-type limits and shelter cooldown with override reasons (one `lib/rules.ts`
-shared by the page and the server), offline recording, site-from-location, most-frequent-first
-sorting, Entries, Reports and an admin Settings tab. Locally it holds a copy of the Hot Foods demo
-entries (`source = "demo"`) so Reports has data. The real Hot Foods is untouched.
 
 ## Calendar
 
@@ -276,7 +352,7 @@ top of the phone's **All forms** sheet.
   there, carrying over that day's changes; a series that ran a number of times keeps its total.
   Removing one day has an Undo.
 - **Categories** (Meeting, Training, Resident event, Inspection, Deadline, Holiday to start) give each
-  event its color, from the same colorblind-checked palette as the Hot Foods reports. Admins edit them
+  event its color, from the same colorblind-checked palette as the charts. Admins edit them
   from the tag button beside New event; deleting one leaves its events uncategorized. Anyone can hide
   categories from view (remembered per device).
 - **Times are New York wall-clock times.** Days and times are stored as text (`"2026-10-06"`,
@@ -297,81 +373,66 @@ Events go into each person's **own** Outlook calendar. The app is still where ev
 changed; Outlook is told about each change (one way: edits made in Outlook aren't brought back).
 Nobody sets anything up in Outlook.
 
+**The app has no Outlook access of its own.** Everything is written with one person's own Microsoft
+sign-in: delegated **Calendars.ReadWrite** + **offline_access** on the app registration, consented
+for the organization, so nobody sees a consent screen. Each Microsoft sign-in keeps that person's
+refresh token, encrypted with `TOKEN_ENCRYPTION_KEY` (`UserGraphToken`, `services/graphTokens.ts`),
+so the calendar can write to *their* calendar later. It's deleted when they sign out, when an admin
+denies or deactivates them, and when Microsoft stops honouring it; their next sign-in brings it back.
+
+- **Who sends what.**
+  - The **meeting** (with everyone who wants an invite as attendees) is in the calendar of whoever
+    last changed the event when it's first sent, or who made it. Exchange sends the invites from them.
+    Later changes are written to that meeting with their sign-in.
+  - A **quiet copy** is written into each person's own calendar with their own sign-in.
+  - Someone the app has no sign-in for (never signed in with Microsoft since this was turned on, or
+    signed out) gets an invite instead; a quiet copy they already have stays as it is and catches up
+    when they sign in again.
+  - If a meeting's organizer has signed out, the next person to change the event sends a new one
+    from their calendar, and the old one is cancelled once the organizer signs in again
+    (`CalendarOutlookTrash`). Until then the event says why Outlook isn't up to date.
+- **Only its own events.** Every event the app writes carries an open extension
+  (`org.lanterncommunity.forms`, with the calendar event's id). Before changing, cancelling or
+  deleting anything, the app checks for it, and leaves anything without it alone.
+- **Link-only.** Invites and copies carry the title, times (New York), location, the repeat rule
+  and single days changed or cancelled, and a body that's just a link back here (plus the Teams link
+  on a quiet copy). No description, no form contents, nothing about residents.
 - **What each person gets.** The first time someone opens the calendar, a popup asks (the Outlook
   button reopens it):
   - **Sites:** "Events for every site" and any of their own sites (all ticked to start).
   - **Categories:** untick one (Training, say) and its events stay out of their Outlook; "No
     category" too. New categories are in by default.
-  - **How they arrive:** an **invite** from the **Lantern Calendar** mailbox, which emails them, or
-    added **quietly**, written straight into their calendar with no email. By default Teams
-    meetings come as invites and everything else quietly.
+  - **How they arrive:** an **invite** (an email from whoever added the event), or added
+    **quietly**, written straight into their calendar with no email. By default Teams meetings come
+    as invites and everything else quietly.
   - **For quiet ones:** their reminder (none to a day before, default 15 minutes) and whether
     all-day events show as free (default yes).
   "None for me" is an answer too. Someone with no mailbox in this organization (a partner account)
   gets invites whatever they chose.
-- **Colors.** Quiet copies are tagged with the event's category, and the app creates that category
-  in the person's Outlook in the calendar's color (the nearest of Outlook's colors), so it shows
-  colored with no setup. Invites can't carry a category (Outlook doesn't send one with a meeting),
-  so invites arrive uncolored.
-- **Can't be changed in Outlook for everyone.** Invites are Lantern Calendar's meetings: attendees
-  can't edit them, and "propose new time" is off. A quiet copy belongs to the person, so they could
-  edit their own copy; it changes nothing for anyone else, and it's put back the next time the event
-  changes here.
-- **Teams.** An event with **Teams meeting** on always has Lantern Calendar's meeting, since that's
-  where the Teams link comes from; invites carry it and quiet copies get the join link in their
-  notes, and the calendar shows "Join the Teams meeting". Once Outlook has made the link it can't be
-  removed, so the switch then stays on. A Teams meeting's notes aren't updated in Outlook after it's
-  sent (a new body would wipe out the join details). If the organizer can't host Teams meetings,
-  the event says so and gets the link once it can.
+- **Categories.** Quiet copies carry the event's category name. The app can't create Outlook
+  categories (that needs mailbox-settings access it doesn't ask for), so a copy shows colored when
+  the person has an Outlook category of that name. Invites can't carry a category.
+- **Teams.** An event with **Teams meeting** on always has a meeting, since that's where the Teams
+  link comes from; invites carry it, quiet copies get the join link, and the calendar shows "Join the
+  Teams meeting". Once Outlook has made the link it can't be removed, so the switch then stays on.
+  If the organizer can't host Teams meetings, the event says so and gets the link once they can.
 - **Few emails.** The meeting is only re-sent (an "updated" email to invitees) when the meeting
-  itself changed: not when a quiet copy, a category color or someone else's choices change.
-- **What's sent.** Title, times (New York), location, notes with a link back here, the repeat rule,
-  and single days changed or cancelled. Deleting an event cancels the meeting and removes the quiet
-  copies. Repeat patterns Outlook can't express (a "fifth" or "second-to-last" day, yearly in several
-  months, every few days on some weekdays only, days 29–31 of the month) stay on this calendar only;
-  the editor says so.
+  itself changed: not when a quiet copy or someone else's choices change. Repeat patterns Outlook
+  can't express (a "fifth" or "second-to-last" day, yearly in several months, every few days on some
+  weekdays only, days 29–31 of the month) stay on this calendar only; the editor says so.
 - **How.** `backend/src/services/outlookSync.ts`. A save marks the event; about 15 seconds later (so
-  an Undo cancels out) the server sends it through Microsoft Graph, app-only. Unchanged events aren't
-  re-sent. Failures are retried every 5 minutes, and every 6 hours each upcoming event's recipients
-  are checked again, since people's sites change. Admins can see where it stands at
-  `GET /api/calendar/outlook/status` and re-check everything now with `POST /api/calendar/outlook/run`.
+  an Undo cancels out) the server sends it. Unchanged events aren't re-sent. Failures are retried
+  every 5 minutes, and every 6 hours each upcoming event's recipients are checked again, since
+  people's sites change. Admins can see where it stands at `GET /api/calendar/outlook/status` and
+  re-check everything now with `POST /api/calendar/outlook/run`. One backend instance only.
 - **Restoring a cancelled day** after Outlook already cancelled it doesn't bring it back in Outlook.
 
-**Setting it up (once).** The app uses its existing Entra app registration and client secret (the
-ones sign-in uses).
-
-1. **Create the organizer.** In the Microsoft 365 admin center, create a user
-   `calendar@lanterncommunity.org`, display name **Lantern Calendar**, with a license that includes
-   Exchange Online and Teams (Teams is needed for it to organize Teams meetings). Nobody needs to
-   sign in as it.
-2. **Find the app's two IDs.** Entra admin center → **Enterprise applications** (not App
-   registrations, which shows different values) → the Lantern Forms app → Overview. Copy the
-   **Application ID** and the **Object ID**.
-3. **Give the app its Exchange access** by running
-   `powershell -ExecutionPolicy Bypass -File .\backend\scripts\setup-outlook-calendar.ps1` as an
-   Exchange admin (Organization Management). It grants Calendars.ReadWrite on Lantern Calendar and on
-   staff mailboxes (for quiet copies), and MailboxSettings.ReadWrite on staff mailboxes (for the
-   colored categories); "staff" is every user mailbox unless you pass `-StaffFilter`. The commands it
-   runs, for reference (organizer part): Don't add Calendars.ReadWrite under API permissions in
-   Entra: an Entra grant reaches every mailbox in the organization, and Exchange can't fence it.
-
-   ```powershell
-   Connect-ExchangeOnline
-   New-ServicePrincipal -AppId <Application ID> -ObjectId <Object ID> -DisplayName "Lantern Forms"
-   New-ManagementScope -Name "Lantern Calendar only" -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'calendar@lanterncommunity.org'"
-   New-ManagementRoleAssignment -App <Object ID> -Role "Application Calendars.ReadWrite" -CustomResourceScope "Lantern Calendar only"
-   Test-ServicePrincipalAuthorization -Identity <Object ID> -Resource calendar@lanterncommunity.org
-   ```
-
-   The test should list Application Calendars.ReadWrite with InScope True. Exchange can take 30
-   minutes to 2 hours to apply it.
-4. **Tell the server.** Set `CALENDAR_ORGANIZER=calendar@lanterncommunity.org` (with the
-   `MICROSOFT_*` values sign-in already uses) and restart. The log says
-   "Calendar: sending events to Outlook."
-5. **Check it.** Turn on Teams for a test event, save, and wait about 15 seconds. The invite arrives
-   from Lantern Calendar, and `GET /api/calendar/outlook/status` shows it sent. If the Teams link
-   doesn't appear, check Teams admin center → Meetings → Meeting policies → the Outlook add-in is on
-   for Lantern Calendar's policy.
+**Setting it up.** On the app registration sign-in uses: delegated Microsoft Graph
+**Calendars.ReadWrite** and **offline_access**, with admin consent. Set `TOKEN_ENCRYPTION_KEY` (32
+random bytes, base64; Key Vault in Azure). That's all: it's on whenever Microsoft sign-in is
+configured, and each person's calendar starts working at their next Microsoft sign-in.
+`OUTLOOK_SYNC=false` turns it off, and then sign-in asks for identity only (for an app
+registration without that consent). No mailbox, Exchange setup or application permission is needed.
 
 ## Offline mode
 
@@ -391,26 +452,26 @@ on any device.
   (`lib/snapshot.ts`). In the background, one request about every second, and only while no screen is
   waiting on one of its own, the app reads every screen the person can open. That covers the
   residents at all of the person's sites first (so any form's resident picker works offline,
-  whichever site is chosen), then the forms and their definitions, meal types and their pictures,
-  today's Hot Foods counts at every site, each resident's page at the device's sites, Review, Overview, Activity and attendance, this month's and next month's calendar, plus Hot Foods entries, reports and form
-  entries for roles that can read them. Each read uses the screen's own URL and default filters, so
-  the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (today's
-  counts every 10 minutes, a resident's page daily). The pill at the top shows the first download as it
+  whichever site is chosen), then the forms and their definitions, each resident's page at the device's sites, Review, Overview,
+  Activity and attendance, this month's and next month's calendar, plus form entries for roles that
+  can read them. (A code form lists its own offline reads in form.json "offline".) Each read uses the screen's own URL and default filters, so
+  the worker's copy is what the screen will ask for. Each item is refreshed on its own schedule (entries
+  every half hour, a resident's page daily). The pill at the top shows the first download as it
 runs ("Saving for offline use · 34 of 120", with a progress line), then "Ready to work offline".
 Profile → Offline shows it too. With Low
   Data Mode on, only what's needed to fill in forms is read.
-- **Lists that rarely change are answered from the device first:** meal types, the forms list, sites
+- **Lists that rarely change are answered from the device first:** the forms list, sites
   and archive reasons (`DEVICE_FIRST` in `sw.js`). They show instantly, are checked with the server
   behind the scenes, and the screen refreshes itself if the server's copy differs. A save to one of
   them drops the device's copy, so an admin's edit is never hidden behind it.
 - **The roster is kept on the device** (`lib/rosterStore.ts`, IndexedDB) for every site the device
-  opens, so Roster, Hot Foods Record, a form's resident picker and attendance show the list at once,
+  opens, so Roster, a code form's resident list, a form's resident picker and attendance show the list at once,
   online or offline. After the first load only changes travel: `GET /api/tenants/sync?since=` returns
   who changed at any of the person's sites (archived and moved people included, so they drop off),
   pulled every 20 s while the app is open, on focus, on reconnect and right after any roster edit. A
   full reload every 12 hours catches anything a delta can't see. The Archived tab still asks the server.
 - **Entries are queued on the device** and upload by themselves when the connection is back, from
-  whichever screen is open: Hot Foods (`lib/hotFoodsQueue.ts`), built forms (`lib/fillQueue.ts`,
+  whichever screen is open: built forms (`lib/fillQueue.ts`,
   files attached offline included) and code forms (`apps/queue.ts`). Each carries a `clientId`, so a
   retry never saves twice.
 - **The offline pill** floating over the top of every screen (`components/shell/OfflineBar.tsx`;
@@ -464,62 +525,91 @@ If the PC's LAN address changes, the server certificate is remade on the next st
 keeps working (it trusts the authority, not the address). `npm run dev:https -- --target 5300` puts
 the same https in front of something else, such as a production build.
 
-## Quick start (local prototype)
+## Quick start (local)
 
-Needs Node 20+. No database server: the prototype runs on SQLite.
+Needs Node 20+ and Docker (for SQL Server).
 
 ```bash
-cd backend && npm install && npx prisma db push && npm run seed && npm run dev
+cp .env.example .env    # set MSSQL_SA_PASSWORD
+docker compose up -d db
+```
+
+```bash
+cd backend && cp .env.example .env && npm install && npx prisma migrate dev && npm run seed && npm run dev
 ```
 
 ```bash
 cd frontend && npm install && npm run dev
 ```
 
-Or run `start-site.bat` to start both. Open **http://localhost:5200**. The ports are 4200/5200 so
-this can run next to the old roster app on 4100/5273. Until Entra is configured, the sign-in screen
-offers **Prototype sign-in** with six demo accounts: admin, site manager, staff, a partner "Google
-Workspace" staff member, viewer, and a forms-only **Staff member**. Prototype sign-in is always off
-when `NODE_ENV=production` or `DEV_AUTH=false`.
+Put the same password in `backend/.env`'s `DATABASE_URL`, and the Dev app registration's
+`MICROSOFT_*` values in `backend/.env.local`. `npx prisma migrate dev` creates the database and
+applies `prisma/migrations`. Or run `start-site.bat` (it starts the database container too). Open
+**http://localhost:5200**. The ports are 4200/5200 so this can run next to the old roster app on
+4100/5273.
 
-The seed writes the default forms catalog (`backend/src/services/formCatalog.ts`). The backend also
-writes it on first start against an empty database, so a new deployment opens with the forms
-listed. It is written **once**. After that the catalog belongs to admins and nothing overwrites it.
+With `DEV_AUTH=true` (local only) the sign-in screen also offers **Prototype sign-in** with the
+seed's demo accounts. It's always off when `NODE_ENV=production`, on App Service, or when
+`DEV_AUTH` isn't `true`.
 
-The seed imports the tenant list from `data/tenant_list.csv` if it's there, or from the path in
-`TENANT_CSV`. **That file is not in the repository** and must never be committed: it's real
-resident data, and `data/` is git-ignored. Without it, the seed still creates the demo accounts and
-the forms catalog, and you can import later from Admin → Import tenant list. **Demo only:** it also
-backdates the review clock on ~7% of residents so the 48-hour queue has people in it on day one.
-Set `SEED_DEMO_QUEUE=false` to skip that. `npm run db:reset` starts over.
+**From SQLite.** Before this moved to SQL Server the local database was `backend/prisma/dev.db`.
+To bring it over: `npx prisma migrate deploy` against an empty database, then
+`npm run db:copy-sqlite -- prisma/dev.db`. It checks every value fits before writing anything, and
+marks every calendar event to be sent to Outlook afresh (see "Calendar in Outlook").
+
+**The seed** (`npm run seed`) writes demo accounts, so it refuses to run in production
+(`NODE_ENV=production` or App Service) unless `ALLOW_DEMO_DATA=true`. It imports the tenant list
+from `data/tenant_list.csv` if it's there, or from the path in `TENANT_CSV`. **That file is not in
+the repository** and must never be committed: it's real resident data, and `data/` is git-ignored.
+Without it, the seed still creates the demo accounts, and you can import later from Admin → Import
+tenant list. With `SEED_DEMO_QUEUE=true` it also backdates the review clock on ~7% of residents so
+the 48-hour queue has people in it. `npm run db:reset` starts over (drops the database, re-applies
+the migrations, runs the seed).
 
 ---
 
 ## Running in Docker
 
-Two images, one per service: `backend/Dockerfile` (Express + Prisma) and `frontend/Dockerfile`
-(Next.js standalone build). Both run as a non-root user and have health checks.
+Two images, one per service: `backend/Dockerfile` (Express + Prisma, port 4200) and
+`frontend/Dockerfile` (Next.js standalone build, port 5200). Both listen on 0.0.0.0, run as a
+non-root user and have health checks. `docker-compose.yml` runs the whole site the way Azure does:
+SQL Server, Azurite (Blob Storage), a one-shot `migrate` service, the API and the web app.
 
 ```bash
-cp .env.example .env     # set JWT_SECRET and the MICROSOFT_* values
+cp .env.example .env     # MSSQL_SA_PASSWORD, JWT_SECRET, TOKEN_ENCRYPTION_KEY, the MICROSOFT_* values
 docker compose up --build
 ```
 
-Open **http://localhost:5200**. Only the frontend is published; it proxies `/api/*` to the backend
-over the compose network, so the browser sees one origin (no CORS, cookies stay first-party).
+Open **http://localhost:5200**. Only the web app is published (and SQL Server, for your tools); it
+proxies `/api/*` to the API over the compose network, so the browser sees one origin.
 
 - **Sign-in.** The containers run with `NODE_ENV=production`, where prototype sign-in is refused, so
   Entra has to be configured. For a local smoke test set `NODE_ENV=development` and `DEV_AUTH=true`
-  in `.env`. If 5200 is taken (for example by `npm run dev`), set `FRONTEND_PORT`.
-- **Database.** SQLite in the `lantern-data` volume (`/data`), created and brought up to date by
-  `prisma db push` each time the backend starts. That command refuses changes that would lose data,
-  so a bad schema change stops the container instead of dropping a column. Back up the volume.
-  The seed and importers work in the container: `docker compose exec backend npm run seed`.
-- **`BACKEND_URL` is a build argument.** Next bakes the `/api` rewrite into the build, so changing
-  where the backend lives means rebuilding the frontend image (`build.args` in `docker-compose.yml`).
-- **Before production:** move to Azure SQL (see Database), set `DB_PUSH_ON_START=false` and deploy
-  schema changes with `prisma migrate deploy`, and uncomment `app.set("trust proxy", 1)` in
-  `backend/src/app.ts` so the rate limiters see the real client IP behind the proxy.
+  in `.env`. If 5200 is taken, set `FRONTEND_PORT`.
+- **Migrations** run as their own step: the API image with `RUN_MIGRATIONS=true` applies
+  `prisma/migrations` (`prisma migrate deploy`) and exits. Starting the API never changes the schema.
+- **`BACKEND_URL` is a build argument.** Next bakes the `/api` rewrite into the build, so each
+  environment gets its own web image, built with that environment's API address.
+
+---
+
+## Deploying to Azure
+
+Two Web Apps for Containers (Linux App Service): **web** (`frontend/Dockerfile`) and **api**
+(`backend/Dockerfile`), images from the registry, Azure SQL, Blob Storage, secrets in Key Vault. The
+pipeline and infrastructure live in `infra/` and `.github/workflows/`.
+
+| | |
+|---|---|
+| **Ports** | api listens on 0.0.0.0:4200, web on 0.0.0.0:5200 (`WEBSITES_PORT`). |
+| **Health** | `/api/health` answers 200 while the process is up, with `database: "up"` or `"unreachable"`, so a database blip doesn't restart-loop the container. `/api/health/live` never touches the database; `/api/health/ready` is 503 while the database doesn't answer (for a deploy check, not the restart probe). The web app's `/` answers 200. |
+| **Migrations** | Before swapping in a release: the api image with `RUN_MIGRATIONS=true` and `DATABASE_URL` (or `npx prisma migrate deploy` from `backend/`). New schema changes: `npx prisma migrate dev --name <what>` locally, and commit the migration. |
+| **web settings** | Build arg `BACKEND_URL` = the api app's URL (one web image per environment). |
+| **api settings** | `DATABASE_URL`, `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `MICROSOFT_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` (`https://<web host>/api/auth/microsoft/callback`), `APP_BASE_URL` and `CORS_ORIGIN` (`https://<web host>`), `TRUST_PROXY=2`, `AZURE_STORAGE_ACCOUNT_URL`, optional `MAIL_FROM`, `FORM_BACKUP_REPO` / `FORM_BACKUP_TOKEN`. Never `DEV_AUTH`, `ALLOW_DEMO_DATA` or `SEED_DEMO_QUEUE`. |
+| **Proxies** | The browser reaches the api through the web app's `/api` proxy, so there are two App Service front ends in the way: `TRUST_PROXY=2` makes the rate limiters see the browser's address rather than the web app's. (1 if browsers call the api app directly; then lock the api app to the web app.) |
+| **Files** | `AZURE_STORAGE_ACCOUNT_URL` (`https://<account>.blob.core.windows.net`) and the api app's managed identity with **Storage Blob Data Contributor**; container `form-files` (`AZURE_STORAGE_CONTAINER`), private. A user-assigned identity also needs `AZURE_CLIENT_ID`. |
+| **Entra app** | Redirect URI `https://<web host>/api/auth/microsoft/callback`; delegated User.Read, Calendars.ReadWrite, offline_access with admin consent. Mail.Send (application) only if `MAIL_FROM` is used. |
+| **Instances** | **One api instance.** The Outlook queue, the form backup, code forms' scheduled actions and the cross-form job worker are timers in the process; a second instance would run them twice. The web app can scale out. |
 
 ---
 
@@ -654,22 +744,13 @@ To enable it, register an app in Entra (single tenant, Web redirect
 
 ## Database
 
-- `backend/prisma/schema.prisma` is the source of truth. Tables: `FormCategory`, `FormLink`, `FormFavorite`,
-  `HotFoodItem`, `HotFoodEntry`, `HotFoodEntryItem`, `CalendarCategory`, `CalendarEvent`,
-  `CalendarEventSite`, `CalendarException`, `Site`, `Tenant`,
-  `TenantActivity`, `AuditEvent`, `User`, `UserSite`, `ApiKey`, `Webhook`, `WebhookDelivery`,
-  `Setting`.
-- `database/azure-sql-schema.sql` is the same schema as T-SQL for Azure SQL, regenerated with
-  `npm run sql:azure`. String columns are sized so every index fits SQL Server's key limit.
-- The schema avoids enums, scalar lists and JSON columns, and has no nullable unique columns
-  (SQL Server allows only one NULL per unique index), so it runs unchanged on SQLite and SQL Server.
-
-### Moving to Azure SQL
-
-1. In `schema.prisma`, set `provider = "sqlserver"` and add `@db.NVarChar(n)` sizes matching
-   `scripts/export-azure-sql.ts`.
-2. Set `DATABASE_URL="sqlserver://<server>.database.windows.net:1433;database=lantern-roster;…;encrypt=true"`.
-3. Run `npx prisma migrate dev --name init`, then `npm run seed` (or the importer below).
+- `backend/prisma/schema.prisma` is the source of truth, on SQL Server (Azure SQL). Every string
+  column has an explicit size, so every index fits SQL Server's 1,700-byte key limit, and anything
+  long is NVARCHAR(MAX). No enums, scalar lists or JSON columns; JSON is text.
+- `backend/prisma/migrations` is the schema's history, applied with `prisma migrate deploy`.
+  `20261008133532_init` is the whole schema as it moved to SQL Server; its `migration.sql` is the T-SQL.
+- No nullable unique columns (SQL Server allows only one NULL per unique index), and no cascade
+  paths SQL Server refuses (a file points at its entry with no cascade).
 
 ### Importing a tenant list
 
@@ -696,22 +777,20 @@ rather than removed automatically.
 ```
 backend/    Express + Prisma API (port 4200)
   prisma/schema.prisma, seed.ts
-  src/routes/     forms, hotFoods, calendar, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
+  src/routes/     forms, calendar, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
   src/calendar/   recurrence.ts (repeat rules; shared with the frontend)
-  src/services/   formCatalog (default forms), hotFoods + hotFoodsExport, calendar, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
-  scripts/        import-tenants.ts, export-azure-sql.ts, demo-hot-foods.ts
+  src/services/   formCatalog (retires the old default catalog), calendar, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
+  prisma/migrations  the schema's history (prisma migrate)
+  scripts/        import-tenants.ts, forms.ts (forms as code, backups), copy-sqlite.ts, files-to-blob.ts
 frontend/   Next.js-hosted React SPA (port 5200, proxies /api → backend)
-  src/screens/    Forms (home), calendar/*, hotfoods/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
+  src/screens/    Forms (home), calendar/*, builder/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
   src/components/ shell (from lcs_invoices), ui (from lcs_invoices), roster/*
 integrations/wordpress/lantern-roster-connector.php
-database/azure-sql-schema.sql
 data/            (git-ignored) local tenant list CSV — resident data, never committed
 ```
 
 ## Known gaps (prototype)
 
-- The form descriptions in the default catalog are one-line placeholders written from each form's
-  title. Review them in Admin → Forms catalog.
 - The WordPress Tenant Updater page still works. Once this site is live, point it (or redirect it)
   at the Roster here so nobody keeps using the old one.
 
@@ -721,4 +800,4 @@ data/            (git-ignored) local tenant list CSV — resident data, never co
   Test it on a staging copy of forms.lanterncommunity.org first.
 - Only a few forms produce activity until the connector is on them. Until then, expect the
   review queue to be busy and rely on **Keep**.
-- Hosting: the intended target is Azure App Service + Azure SQL. No deployment scripts yet.
+- Hosting: Azure App Service + Azure SQL + Blob Storage; see "Deploying to Azure".

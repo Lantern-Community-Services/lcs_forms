@@ -235,7 +235,11 @@ export interface FormCatalog {
 /** One card in "Needs your attention" on the Forms home (backend routes/home.ts). */
 export interface HomeAttentionItem {
   id: string;
-  kind: "roster" | "hotfoods" | "draft";
+  /** "app": from a code form's form.json "home" (backend apps/home.ts). */
+  kind: "roster" | "draft" | "app";
+  /** For "app" items: the form's icon key and title. */
+  icon?: string | null;
+  formTitle?: string;
   /** "warn" = amber, act soon; "info" = a reminder. */
   tone: "warn" | "info";
   title: string;
@@ -254,6 +258,23 @@ export interface HomeActivityItem {
   detail: string | null;
   at: string;
   href: string | null;
+}
+
+/** A stat tile a code form puts on the Forms home. */
+export interface HomeAppTile {
+  id: string;
+  icon: string | null;
+  formTitle: string;
+  label: string;
+  value: string;
+  hint: string | null;
+  href: string;
+}
+
+/** Cards from code forms (GET /home/apps), loaded beside the rest of the home screen. */
+export interface HomeAppCards {
+  attention: HomeAttentionItem[];
+  tiles: HomeAppTile[];
 }
 
 export interface HomeData {
@@ -278,77 +299,6 @@ export interface ImportSummary {
   alreadyPresent: number;
   bySite: { site: string; added: number; alreadyPresent: number }[];
   samples: { site: string; unit: string; raw: string; parsed: { firstName: string; lastName: string; preferredName: string | null } }[];
-}
-
-// ── Hot Foods ────────────────────────────────────────────────────────────
-
-export interface HotFoodItem {
-  id: string;
-  name: string;
-  imageUrl: string | null;
-  active: boolean;
-  sortOrder: number;
-  /** Report color: slot 0-7 of the chart palette; null = "Other" gray. */
-  colorSlot: number | null;
-}
-
-export interface HotFoodToday {
-  /** Meals of each meal type one resident may get today before a reason is needed. */
-  limit: number;
-  /** Minutes between two meals of the same type (shelters); 0 = none. */
-  cooldownMinutes: number;
-  isShelter: boolean;
-  /** tenantId → non-void entries today at this site. */
-  counts: Record<string, number>;
-  /** tenantId → itemId → one timestamp (ms) per meal of that type today. */
-  meals: Record<string, Record<string, number[]>>;
-  /** tenantId → meals at this site over the `regularsDays` days before today. */
-  regulars: Record<string, number>;
-  regularsDays: number;
-}
-
-/** Admin → Hot Foods. */
-export interface HotFoodConfig {
-  supportiveLimit: number;
-  shelterLimit: number;
-  cooldownMinutes: number;
-}
-
-export interface HotFoodEntryRow {
-  id: string;
-  site: SiteRef;
-  tenantId: string;
-  tenantName: string;
-  unit: string | null;
-  mealCount: number;
-  notes: string | null;
-  overrideReason: string | null;
-  occurredAt: string;
-  createdByName: string;
-  voidedAt: string | null;
-  voidReason: string | null;
-  source: string;
-  items: { itemName: string; quantity: number }[];
-}
-
-export interface HotFoodEntryDetail extends HotFoodEntryRow {
-  signature: string;
-  voidedByName: string | null;
-}
-
-export interface HotFoodReport {
-  from: string;
-  to: string;
-  sites: SiteRef[];
-  totals: { entries: number; meals: number; residents: number; overrides: number; voided: number; days: number; avgMealsPerDay: number };
-  /** Meal types present in range, in fixed color-slot order. */
-  series: { key: string; name: string; slot: number | null }[];
-  byDay: { day: string; entries: number; meals: number; parts: Record<string, number> }[];
-  bySite: { code: string; name: string; siteType: string; entries: number; meals: number; residents: number }[];
-  byItem: { key: string; name: string; slot: number | null; quantity: number }[];
-  heat: number[][];
-  /** avatarColor = their profile color; null = none chosen (the avatar default navy). */
-  byStaff: { name: string; entries: number; userId: string | null; avatarColor: string | null }[];
 }
 
 // ── Calendar ─────────────────────────────────────────────────────────────
@@ -390,6 +340,10 @@ export interface CalendarOccurrence {
   canEdit: boolean;
   /** The Teams link Outlook made for it. */
   teamsJoinUrl: string | null;
+  /** Waiting on approval in the form that put it there; not in Outlook yet. */
+  pending: boolean;
+  /** The code form that owns it (changes happen there) and its reference, e.g. a request's entry id. */
+  source: { slug: string; title: string; ref: string | null } | null;
 }
 
 /** A whole event (or series) as the editor loads it. */
@@ -445,6 +399,11 @@ export interface CalendarEventInput {
 export interface OutlookPrefs {
   /** The server is set up to send to Outlook. Choices are kept either way. */
   enabled: boolean;
+  /**
+   * The app can write to their own calendar (they signed in with Microsoft and
+   * haven't signed out). Without it everything comes as an invite.
+   */
+  canWriteMine: boolean;
   email: string;
   answered: boolean;
   everySite: boolean;

@@ -16,7 +16,7 @@ import { errorMessage } from "./utils";
  * and uploaded just before the entry; the answers are then rewritten with the
  * server's file ids.
  *
- * Like the Hot Foods queue, an entry only uploads as the person who filled it
+ * Like the code forms' queue, an entry only uploads as the person who filled it
  * in. Public forms (userId null) upload under whoever is here, or no one.
  */
 

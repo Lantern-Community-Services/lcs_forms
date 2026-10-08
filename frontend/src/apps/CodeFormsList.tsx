@@ -1,3 +1,5 @@
+import { FormBackupBar } from "@/components/FormBackupBar";
+import { DeleteFormDialog } from "@/components/DeleteFormDialog";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,6 +25,7 @@ export function CodeFormsList() {
   const [archived, setArchived] = useState(false);
   const { data, isLoading } = useProjects(archived);
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
@@ -72,6 +75,7 @@ export function CodeFormsList() {
           </>
         }
       />
+      <FormBackupBar />
       {isLoading ? <LoadingState /> : !data?.length ? (
         <Card>
           <EmptyState icon={<Code2 className="h-6 w-6" />} title={archived ? "No archived code forms" : "No code forms yet"} hint="Start from a template, or ask the AI form builder to write one." />
@@ -91,7 +95,7 @@ export function CodeFormsList() {
                   </Link>
                   <div className="hidden sm:block"><StatusBadge status={p.status} unpublished={p.unpublishedChanges} /></div>
                   <span className="hidden w-24 text-right text-[13px] text-muted md:block"><span className="tabular font-semibold text-ink">{p.entryCount.toLocaleString()}</span> entries</span>
-                  <RowMenu p={p} run={run} />
+                  <RowMenu p={p} run={run} onDelete={() => setDeleting(p)} />
                 </li>
               );
             })}
@@ -102,11 +106,21 @@ export function CodeFormsList() {
         <button onClick={() => setArchived(!archived)} className="text-[13px] font-semibold text-accent">{archived ? "Hide archived" : "Show archived"}</button>
       </div>
       <NewDialog open={creating} onClose={() => setCreating(false)} onCreated={(id) => { void refresh(); navigate(`/admin/apps/${id}`); }} />
+      <DeleteFormDialog
+        form={deleting}
+        noun="code form"
+        onCancel={() => setDeleting(null)}
+        onConfirm={async () => {
+          const p = deleting!;
+          await run(() => projectsApi.remove(p.id, p.entryCount > 0), p.entryCount > 0 ? "Deleted, with its entries and data." : "Deleted.");
+          setDeleting(null);
+        }}
+      />
     </Page>
   );
 }
 
-function RowMenu({ p, run }: { p: ProjectSummary; run: (fn: () => Promise<unknown>, done: string) => void }) {
+function RowMenu({ p, run, onDelete }: { p: ProjectSummary; run: (fn: () => Promise<unknown>, done: string) => void; onDelete: () => void }) {
   const navigate = useNavigate();
   return (
     <DropdownMenu>
@@ -126,11 +140,9 @@ function RowMenu({ p, run }: { p: ProjectSummary; run: (fn: () => Promise<unknow
         ) : (
           <DropdownMenuItem onSelect={() => run(() => projectsApi.setStatus(p.id, "draft"), "Unarchived.")}>Unarchive</DropdownMenuItem>
         )}
-        {p.entryCount === 0 && (
-          <DropdownMenuItem onSelect={() => { if (confirm(`Delete “${p.title}” and its data for good?`)) run(() => projectsApi.remove(p.id), "Deleted."); }}>
-            <span className="text-status-redText">Delete</span>
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem onSelect={onDelete}>
+          <span className="text-status-redText">Delete…</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

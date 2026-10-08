@@ -10,8 +10,8 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { canOpenForm, formIcon, formLinkIcon, formNeeds, isInternalForm } from "@/lib/formIcons";
-import { formsApi, useForms, useHome } from "@/lib/queries";
-import type { FormCatalog, FormCategory, FormLink, HomeActivityItem, HomeAttentionItem, HomeData } from "@/lib/types";
+import { formsApi, useForms, useHome, useHomeApps } from "@/lib/queries";
+import type { FormCatalog, FormCategory, FormLink, HomeActivityItem, HomeAppTile, HomeAttentionItem, HomeData } from "@/lib/types";
 import { useSearchParam } from "@/lib/useSearchParam";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -38,7 +38,16 @@ type Selection = string | null;
 export function FormsPage() {
   const { user, can } = useAuth();
   const { data, isLoading, isError } = useForms();
-  const home = useHome();
+  const homeOnly = useHome();
+  const homeApps = useHomeApps();
+  // Code forms' attention items join the list; their tiles get a row of their own.
+  const home = useMemo(() => {
+    if (!homeOnly.data || !homeApps.data?.attention.length) return homeOnly;
+    const attention = [...homeOnly.data.attention, ...homeApps.data.attention];
+    const data: HomeData = { ...homeOnly.data, attention, stats: { ...homeOnly.data.stats, attention: attention.length, urgent: attention.filter((a) => a.tone === "warn").length } };
+    return { ...homeOnly, data };
+  }, [homeOnly, homeApps.data]);
+  const appTiles = homeApps.data?.tiles ?? [];
   const [q, setQ] = useState("");
   const [askedRaw, setPick] = useSearchParam("category");
   // "favorites" was this group's name before it became Pinned; old links still land on it.
@@ -113,6 +122,7 @@ export function FormsPage() {
 
       <div className="flex flex-col gap-4 px-4 py-4 md:hidden">
         <PhoneAttention home={home.data} />
+        <AppTiles tiles={appTiles} />
         {formsBody ?? (
           searching || pick ? (
             <PhoneFormList
@@ -192,6 +202,7 @@ export function FormsPage() {
         </div>
 
         <StatStrip home={home.data} totalForms={totalForms} />
+        <AppTiles tiles={appTiles} className="mb-5" />
 
         <div className="mb-7 grid gap-3.5 md:grid-cols-2 xl:grid-cols-[7fr_5fr] xl:gap-5">
           <AttentionPanel home={home.data} loading={home.isLoading} failed={home.isError} />
@@ -533,10 +544,10 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
 
 // ── Dashboard panels ─────────────────────────────────────────────────────
 
-const ATTENTION_ICON = { roster: Users, hotfoods: AlertTriangle, draft: PencilLine } as const;
+const ATTENTION_ICON = { roster: Users, draft: PencilLine } as const;
 
 function AttentionIcon({ item, size = "md" }: { item: HomeAttentionItem; size?: "sm" | "md" }) {
-  const Icon = ATTENTION_ICON[item.kind] ?? AlertTriangle;
+  const Icon = item.kind === "app" ? formIcon(item.icon ?? "clipboard") : ATTENTION_ICON[item.kind] ?? AlertTriangle;
   return (
     <span
       className={cn(
@@ -758,6 +769,31 @@ function StatStrip({ home, totalForms }: { home?: HomeData; totalForms: number }
           <a key={t.label} href={t.href} className={cn(cls, "hover:border-strongline")}>{body}</a>
         ) : (
           <div key={t.label} className={cls}>{body}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Stat tiles from code forms (form.json "home"), each opening its form. */
+function AppTiles({ tiles, className }: { tiles: HomeAppTile[]; className?: string }) {
+  if (!tiles.length) return null;
+  return (
+    <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-3 xl:gap-4", className)}>
+      {tiles.map((t) => {
+        const Icon = formIcon(t.icon ?? "clipboard");
+        return (
+          <Link key={t.id} to={t.href} className="enter-up flex min-w-0 flex-col gap-1 rounded-card border border-hairline bg-surface px-4 py-3.5 shadow-card hover:border-strongline xl:px-5 xl:py-4">
+            <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-muted">
+              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{t.formTitle}</span>
+            </span>
+            <span className="truncate text-[13px] font-semibold text-ink">{t.label}</span>
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="text-[24px] font-heading font-extrabold leading-tight text-ink xl:text-[28px]">{t.value}</span>
+              {t.hint && <span className="truncate text-[12.5px] text-muted">{t.hint}</span>}
+            </span>
+          </Link>
         );
       })}
     </div>

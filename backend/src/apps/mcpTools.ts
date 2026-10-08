@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { fileBytes } from "../services/fileStore.js";
 import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
 import type { Actor } from "../services/audit.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
-import type { ToolRegistrar } from "../forms/mcp.js";
+import { McpContent, type ToolRegistrar } from "../forms/mcp.js";
 import { APP_GUIDE } from "./guide.js";
 import { DESIGN_BRIEF } from "./designBrief.js";
 import { buildProject } from "./compile.js";
@@ -148,6 +149,28 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       });
       const sites = new Map((await prisma.site.findMany({ select: { id: true, code: true, name: true } })).map((s) => [s.id, s]));
       return rows.map((e) => entryOut(e, sites));
+    },
+    { readOnlyHint: true }
+  );
+
+  tool(
+    "get_entry_file",
+    "A photo or file attached to a code form's entry (a { fileId } in its data). Images come back as images; other files as their name, type and size, plus base64 when asked.",
+    { form: ref, fileId: z.string(), base64: z.boolean().optional() },
+    async ({ form, fileId, base64 }) => {
+      need("entries:read");
+      const row = await findCodeForm(form);
+      const file = await prisma.formFile.findFirst({ where: { id: fileId, formId: row.id }, include: { entry: { select: { siteId: true } } } });
+      if (!file || !file.entryId) throw new HttpError(404, "No such file on a saved entry of this form.");
+      if (key.siteId && file.entry?.siteId !== key.siteId) throw new HttpError(403, "That entry is for another site.");
+      const info = { fileId: file.id, name: file.name, mime: file.mime, size: file.size, entryId: file.entryId };
+      if (/^image\/(png|jpe?g|gif|webp)$/.test(file.mime) && file.size <= 5 * 1024 * 1024) {
+        return new McpContent([
+          { type: "text", text: JSON.stringify(info) },
+          { type: "image", data: (await fileBytes(file)).toString("base64"), mimeType: file.mime },
+        ]);
+      }
+      return base64 ? { ...info, base64: (await fileBytes(file)).toString("base64") } : info;
     },
     { readOnlyHint: true }
   );

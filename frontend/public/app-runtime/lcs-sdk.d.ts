@@ -80,10 +80,58 @@ declare module "@lcs/sdk" {
     toast(message: string, tone?: "success" | "error"): void;
     /** Hand the person a file to save. Content is text, or base64 with `base64: true`. */
     download(filename: string, content: string, opts?: { mime?: string; base64?: boolean }): void;
-    print(): void;
+    /**
+     * Print. With no spec, the browser prints the page as it is (fine for a simple page; charts and
+     * dark mode don't print well). With a spec, the PDF that app.export would make is printed instead —
+     * charts redrawn for paper — in the browser's print dialog, as the app's own reports do.
+     */
+    print(spec?: Omit<ExportSpec, "format">): Promise<void>;
+    /**
+     * An Excel workbook, a PDF or a CSV of what the page shows, made on the server in the app's own
+     * export style: a title, optional headline numbers, charts (PDF), and one or more tables (CSV: the
+     * first one). Up to 12 tables and 20,000 rows each. Every export is recorded in the audit log.
+     */
+    export(spec: ExportSpec): Promise<void>;
     /** Open another part of the Lantern app (e.g. "/tenants/<id>") in the main window. */
     openApp(path: string): void;
   };
+
+  export interface ExportSpec {
+    format: "xlsx" | "pdf" | "csv";
+    filename: string;
+    title: string;
+    subtitle?: string;
+    stats?: { label: string; value: string | number }[];
+    sheets: {
+      /** Sheet tab / section name (31 characters at most). */
+      name: string;
+      /** type: text (default), number, date ("YYYY-MM-DD" or ISO), datetime (ISO, shown in New York time). width: in Excel characters, 2–120 (the PDF splits the page in the same proportions). */
+      columns: { key: string; label: string; type?: "text" | "number" | "date" | "datetime"; width?: number }[];
+      /** Objects keyed by column key. Arrays and objects are written as text. */
+      rows: Record<string, unknown>[];
+    }[];
+    /** PDF: landscape (default when a table has more than 5 columns and there are no charts). */
+    landscape?: boolean;
+    /**
+     * PDF only: charts drawn above the tables, in order, in the app's chart style — the same kinds as
+     * @lcs/charts. Colors: a palette slot (0-7, null = "Other" gray, as slotColor), a siteType
+     * ("supportive" | "shelter" | "other", as siteTypeOf), or a hex color ("#2c3453").
+     */
+    charts?: ExportChart[];
+    /** PDF only: false leaves the tables out (a report whose charts say it all). Excel and CSV always have them. */
+    pdfTables?: boolean;
+  }
+
+  /** A color for an exported chart: a palette slot, a site type, or a hex color. */
+  export type ExportColor = { slot: number | null } | { siteType: string } | { color: string };
+
+  export type ExportChart =
+    /** DailyBars: stacked bars per day. parts: { [series.key]: count }; meals is the bar's total. */
+    | { type: "dailyBars"; title: string; data: { day: string; meals: number; parts: Record<string, number> }[]; series: { key: string; name: string; slot: number | null }[] }
+    /** RankedBars: horizontal bars, biggest first as given. legend names every color used. */
+    | { type: "rankedBars"; title: string; unit: string; rows: ({ name: string; value: number; note?: string } & Partial<ExportColor>)[]; limit?: number; legend?: ({ label: string } & ExportColor)[] }
+    /** HeatGrid: 7 rows (Sunday first) × 24 hours, as the HeatGrid chart. */
+    | { type: "heatGrid"; title: string; note?: string; unit?: string; heat: number[][] };
 
   export interface Site {
     id: string;
@@ -103,13 +151,33 @@ declare module "@lcs/sdk" {
     lastName: string;
     preferredName: string | null;
     unit: string | null;
+    /** "YYYY-MM-DD", or null. */
+    moveInDate: string | null;
+    /** Last form activity about them (ISO), or null. */
+    lastActivityAt: string | null;
+    /** Quiet past their site's check-in window (the roster's Review queue). */
+    needsAttention: boolean;
+  }
+
+  /** One resident in full, with their recent activity (needs roster access, like their roster page). */
+  export interface ResidentDetail extends Omit<Resident, "needsAttention"> {
+    site: { code: string; name: string } | null;
+    status: "active" | "archived";
+    moveOutDate: string | null;
+    notes: string | null;
+    needsAttention: boolean;
+    /** Newest first, up to 25: forms filled about them, check-ins. */
+    activities: { source: string; label: string | null; occurredAt: string; recordedBy: string | null }[];
   }
 
   export const roster: {
     /** Sites this person can use. */
     sites(): Promise<Site[]>;
-    /** Active residents at a site (code). */
+    /** Active residents at a site (code) — the device's own copy, so it's instant and works offline. */
     residents(siteCode: string): Promise<Resident[]>;
+    resident(id: string): Promise<ResidentDetail>;
+    /** Open the resident's roster page in the app. */
+    open(id: string): void;
   };
 
   export interface Entry<T = Record<string, unknown>> {
@@ -128,7 +196,22 @@ declare module "@lcs/sdk" {
     voidedAt: string | null;
     source: string;
     clientId: string | null;
+    updatedAt: string;
+    /** Who last edited it (entries.update), or null. */
+    updatedByName: string | null;
   }
+
+  /** One thing that happened to an entry after it was made. `changes` values are cut short past 500 characters. */
+  export type EntryHistoryItem = { at: string; byName: string } & (
+    | { kind: "edit"; reason: string | null; changes: { field: string; from: unknown; to: unknown }[] }
+    | { kind: "void"; reason: string }
+    | { kind: "restore" }
+  );
+
+  export type UpdateResult<T> =
+    | { status: "saved"; entry: Entry<T> }
+    /** The server's beforeUpdate refused it. */
+    | { status: "invalid"; errors: Record<string, string>; message: string };
 
   export interface EntryQuery {
     /** Site code(s). Omit for every site this person can see. */
@@ -180,9 +263,94 @@ declare module "@lcs/sdk" {
      * then wants an override, `offlineOverride` is used as the reason.
      */
     create<T = Record<string, unknown>>(entry: NewEntry<T>, opts?: { offline?: boolean; offlineOverride?: string }): Promise<CreateResult<T>>;
+    /**
+     * Replace an entry's data (online only). Allowed for form.json entries.edit roles (default: admins and
+     * developers), or for its maker within entries.editOwnMinutes. Every change is kept: see history().
+     * New photos in the data are attached; the server's beforeUpdate can refuse or rewrite.
+     */
+    update<T = Record<string, unknown>>(id: string, data: T, opts?: { reason?: string }): Promise<UpdateResult<T>>;
+    /** Edits (with what changed), voids and restores, oldest first. */
+    history(id: string): Promise<EntryHistoryItem[]>;
     /** Void with a reason (roles in form.json entries.void, or your own entry within the undo window). */
     void(id: string, reason: string): Promise<void>;
     restore(id: string): Promise<void>;
+  };
+
+  /** One day's showing of a calendar event (a repeating event has one per day it falls on). */
+  export interface CalendarOccurrence {
+    /** Unique per occurrence. */
+    key: string;
+    eventId: string;
+    /** The day the series puts it on — pass it as `date` to change just this one. */
+    date: string;
+    title: string;
+    description: string | null;
+    location: string | null;
+    categoryId: string | null;
+    allSites: boolean;
+    sites: { code: string; name: string }[];
+    allDay: boolean;
+    startDate: string;
+    /** "HH:MM", New York; null when all day. */
+    startTime: string | null;
+    endDate: string;
+    endTime: string | null;
+    repeats: boolean;
+    repeatText: string | null;
+    changed: boolean;
+    /** This person may change or remove it. */
+    canEdit: boolean;
+    teamsJoinUrl: string | null;
+    /** Waiting on approval in the form that put it there (shown "Needs approval"; not in Outlook yet). */
+    pending: boolean;
+    /** The code form that owns it (open /apps/<slug>) and that form's reference for it, e.g. a request's entry id. */
+    source: { slug: string; title: string; ref: string | null } | null;
+  }
+
+  /** A repeat rule. Weekdays: 0 = Sunday … 6 = Saturday. */
+  export interface CalendarRepeat {
+    freq: "daily" | "weekly" | "monthly" | "yearly";
+    interval: number;
+    weekdays?: number[];
+    monthDay?: { kind: "day"; day: number } | { kind: "nth"; nth: 1 | 2 | 3 | 4 | 5 | -1 | -2; of: number | "day" | "weekday" | "weekend" };
+    months?: number[];
+    end: { kind: "never" } | { kind: "count"; count: number } | { kind: "until"; date: string };
+  }
+
+  export interface CalendarEventInput {
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    categoryId?: string | null;
+    /** For every site (Admins only), or for siteIds (site ids from roster.sites(), every one the person's). */
+    allSites: boolean;
+    siteIds?: string[];
+    allDay: boolean;
+    startDate: string;
+    startTime?: string | null;
+    endDate: string;
+    endTime?: string | null;
+    recurrence?: CalendarRepeat | null;
+    /** Give it a Teams link in Outlook. */
+    teamsMeeting?: boolean;
+  }
+
+  /**
+   * The site calendar (/calendar), as this person sees it: events for every site plus their own sites'.
+   * Adding, changing and removing need the person's own calendar rights (Admin, or the calendar editor
+   * switch for their own sites) and don't work in the draft preview. Changes go to Outlook like any other.
+   */
+  export const calendar: {
+    /** Occurrences from `from` to `to` (days, inclusive, at most a year). `site`: codes; omit for all of theirs. */
+    events(q: { from: string; to: string; site?: string | string[] }): Promise<CalendarOccurrence[]>;
+    /** Event kinds, with their chart palette slot (slotColor in @lcs/charts). */
+    categories(): Promise<{ id: string; name: string; colorSlot: number }[]>;
+    /** One whole series (its repeat rule, sites, who made it). */
+    event(id: string): Promise<CalendarEventInput & { id: string; canEdit: boolean; repeatText: string | null; createdByName: string; pending: boolean; source: CalendarOccurrence["source"] }>;
+    create(event: CalendarEventInput): Promise<{ id: string }>;
+    /** scope "this" / "following" change one day (or it and the rest) of a repeating event; give its `date`. */
+    update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event: CalendarEventInput }): Promise<{ id: string }>;
+    remove(id: string, opts?: { scope?: "all" | "this" | "following"; date?: string }): Promise<void>;
   };
 
   export interface Doc<T = Record<string, unknown>> {
@@ -223,7 +391,42 @@ declare module "@lcs/sdk" {
   export const device: {
     /** The device's position (asked for by the app on the form's behalf), or null if unavailable. */
     location(opts?: { timeoutMs?: number }): Promise<{ latitude: number; longitude: number; accuracy: number } | null>;
+    /**
+     * Open the camera (a live preview with a shutter, plus "Choose a photo") and upload the photo.
+     * Resolves to its FileRef, or null if the person closes it. Works offline: the photo is kept on the
+     * device and uploads ahead of the entry that holds it. Photos are shrunk to 1600px JPEG.
+     */
+    takePhoto(opts?: { title?: string; facing?: "environment" | "user"; label?: string }): Promise<FileRef | null>;
   };
+
+  /**
+   * An uploaded photo or file. Put refs anywhere in an entry's data (a field, an array, a nested object):
+   * every { fileId } is attached to the entry when it's saved. A ref whose fileId starts with "local:" was
+   * taken offline and is still on the device.
+   */
+  export interface FileRef {
+    fileId: string;
+    name: string;
+    mime: string;
+    size: number;
+  }
+
+  /** Photos and files. Allowed types and size: form.json "files" (default 10 MB; images, PDF, office files). */
+  export const files: {
+    /** Upload a File or Blob (e.g. from a canvas). Images are shrunk unless shrink: false. */
+    upload(file: Blob, opts?: { name?: string; label?: string; shrink?: boolean }): Promise<FileRef>;
+    /** The device's file picker. Call it from a tap (a click handler), or the browser won't open it. */
+    pick(opts?: { accept?: string; capture?: "environment" | "user"; multiple?: boolean }): Promise<File[]>;
+    /** pick() then upload() each. [] if the person cancels. */
+    choose(opts?: { accept?: string; capture?: "environment" | "user"; multiple?: boolean; label?: string }): Promise<FileRef[]>;
+    /** A data: URL of the file, for <img src> (only for people who can read its entry, or who uploaded it). */
+    url(ref: FileRef | string): Promise<string>;
+    /** Hand the person the file to save. */
+    download(ref: FileRef, filename?: string): Promise<void>;
+  };
+
+  /** files.url as a hook: undefined while loading. */
+  export function useFileUrl(ref: FileRef | string | null | undefined): string | undefined;
 
   export interface QueueStatus {
     pending: number;
@@ -288,6 +491,16 @@ declare module "@lcs/ui" {
   export function Modal(props: { open: boolean; onOpenChange: (open: boolean) => void; title: string; subtitle?: string; footer?: React.ReactNode; children?: React.ReactNode; wide?: boolean }): React.JSX.Element;
   /** A bottom sheet on phones, a side sheet on wider screens. */
   export function Sheet(props: { open: boolean; onOpenChange: (open: boolean) => void; title: string; footer?: React.ReactNode; children?: React.ReactNode }): React.JSX.Element;
+  /** An entry's history (entries.history): each edit with what changed, voids, restores. labels: data key → name. */
+  export function EntryHistory(props: { entryId: string; labels?: Record<string, string>; className?: string }): React.JSX.Element;
+  /** A photo from a FileRef (or fileId). */
+  export function Photo(props: { file: import("@lcs/sdk").FileRef | string | null | undefined; alt?: string; className?: string; onClick?: () => void }): React.JSX.Element;
+  /** Thumbnails + "Add photo" (opens the camera). Holds FileRefs — put value straight into the entry's data. */
+  export function PhotoInput(props: { value: import("@lcs/sdk").FileRef[]; onChange: (v: import("@lcs/sdk").FileRef[]) => void; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string }): React.JSX.Element;
+  /** File rows + "Attach a file" (the device's picker). */
+  export function FileInput(props: { value: import("@lcs/sdk").FileRef[]; onChange: (v: import("@lcs/sdk").FileRef[]) => void; accept?: string; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string }): React.JSX.Element;
+  /** One file as a row (name, size); tap downloads it. */
+  export function FileChip(props: { file: import("@lcs/sdk").FileRef; onRemove?: () => void }): React.JSX.Element;
   export function DropdownMenu(props: { trigger: React.ReactNode; items: ({ label: string; onSelect: () => void; danger?: boolean } | "separator")[]; align?: "start" | "end" }): React.JSX.Element;
   export interface SignaturePadHandle { clear(): void; toDataURL(): string | null; isEmpty(): boolean }
   export const SignaturePad: React.ForwardRefExoticComponent<{ className?: string; onChangeEmpty?: (empty: boolean) => void } & React.RefAttributes<SignaturePadHandle>>;
@@ -324,6 +537,16 @@ declare module "@lcs/charts" {
   /** 7 rows (Sunday first, to Saturday) × 24 hours of counts. ctx.time.partsOf's weekday counts from Monday: use heat[(weekday + 1) % 7]. */
   export function HeatGrid(props: { heat: number[][] }): React.JSX.Element;
   export function StatTile(props: { label: string; value: string; hint?: string; icon?: React.ReactNode; accent?: string }): React.JSX.Element;
+  /**
+   * Change over time: one line per series (up to 8, each its own palette slot), crosshair + tooltip.
+   * x: a day ("YYYY-MM-DD", shown "Oct 6") or any label. area: shade under a single series. One axis only —
+   * two measures of different size go in two charts.
+   */
+  export function TrendChart(props: { data: { x: string; values: Record<string, number> }[]; series: Series[]; unit?: string; area?: boolean; height?: number }): React.JSX.Element;
+  /** Amounts for a few short categories as columns (many or long names: RankedBars). slot colors a column by what it is. */
+  export function ColumnChart(props: { data: { label: string; value: number; slot?: number | null }[]; unit?: string; height?: number }): React.JSX.Element;
+  /** Parts of a whole, up to 6 (fold the rest into "Other", slot null). Total in the middle; parts named with value and share. */
+  export function DonutChart(props: { data: { label: string; value: number; slot: number | null }[]; unit?: string; totalLabel?: string; size?: number }): React.JSX.Element;
 }
 
 declare module "@lcs/server" {
@@ -337,7 +560,18 @@ declare module "@lcs/server" {
   }
 
   export interface ServerSite { id: string; code: string; name: string; siteType: string }
-  export interface ServerResident { id: string; siteId: string; name: string; unit: string | null; status: string }
+  export interface ServerResident {
+    id: string;
+    siteId: string;
+    name: string;
+    firstName: string;
+    lastName: string;
+    preferredName: string | null;
+    unit: string | null;
+    status: string;
+    moveInDate: string | null;
+    lastActivityAt: string | null;
+  }
 
   export interface ServerEntry<T = Record<string, unknown>> {
     id: string;
@@ -350,6 +584,8 @@ declare module "@lcs/server" {
     createdByName: string;
     status: "active" | "voided";
     overrideReason: string | null;
+    /** Pass to entries.update's ifUpdatedAt so a change made meanwhile isn't overwritten. */
+    updatedAt: string;
   }
 
   export interface ServerEntryQuery {
@@ -374,32 +610,160 @@ declare module "@lcs/server" {
     get<T = Record<string, unknown>>(id: string): ServerEntry<T> | null;
   }
 
+  /** This form's own entries: read, and change from server code. */
+  export interface OwnEntriesApi extends EntriesApi {
+    /**
+     * Replace an entry's data — e.g. record an approval in an action that has checked who's asking.
+     * The server is trusted: entries.edit roles and beforeUpdate don't apply. Kept in the entry's
+     * history under the person's name. ifUpdatedAt (the entry's updatedAt as read) refuses the change
+     * with an error starting "CONFLICT" if someone saved the entry since: read it again and retry.
+     */
+    update<T = Record<string, unknown>>(id: string, data: T, opts?: { reason?: string; ifUpdatedAt?: string }): ServerEntry<T>;
+  }
+
+  /** One of the form's own calendar events (ctx.calendar.form). */
+  export interface FormCalendarEvent {
+    id: string;
+    ref: string | null;
+    pending: boolean;
+    title: string;
+    allDay: boolean;
+    startDate: string;
+    startTime: string | null;
+    endDate: string;
+    endTime: string | null;
+    /** The day its last occurrence ends; null = repeats forever. */
+    lastDate: string | null;
+    repeats: boolean;
+    sites: { code: string; name: string }[];
+  }
+
+  /** A member of staff, from ctx.directory. */
+  export interface StaffMember {
+    id: string;
+    name: string;
+    email: string;
+    roleKey: string;
+    roleName: string;
+    avatarColor: string | null;
+    /** Site codes they're assigned to; null = every site (Admin, Main Office). */
+    sites: string[] | null;
+  }
+
   export interface Ctx {
-    /** Who's using the form (null when called by an API key or the MCP server). */
+    /** Who's using the form (null when called by an API key, the MCP server, or form.json "schedule"). */
     user: ServerUser | null;
     /** ISO time now, and today's New York day. */
     now: string;
     today: string;
     /** Is this the draft (preview) or the published form? */
     draft: boolean;
+    /** The form's address, for links in emails: `${ctx.url}/request?id=…` opens that page. */
+    url: string;
     db: {
       /** This form's entries — all of them, regardless of who's asking. */
-      entries: EntriesApi;
+      entries: OwnEntriesApi;
       collections: {
         list<T = Record<string, unknown>>(name: string): { id: string; data: T }[];
         get<T = Record<string, unknown>>(name: string, id: string): { id: string; data: T } | null;
         put<T = Record<string, unknown>>(name: string, id: string | null, data: T): { id: string; data: T };
         remove(name: string, id: string): void;
       };
-      /** Another form's entries (listed in form.json "reads"), only if this person may read them. */
-      form(slug: string): { entries: EntriesApi };
+      /**
+       * Another form's entries (listed in form.json "reads"): when this person may read them, or always when
+       * that form shares with this one (its form.json "share": { "forms": ["this-slug"] }) — then this code
+       * decides what to show.
+       */
+      form(slug: string): {
+        entries: EntriesApi & {
+          /**
+           * Make an entry in that form (it must accept this one: its form.json "share": { "create": ["this-slug"] }).
+           * Queued and saved a moment later through that form's own rules (beforeCreate, limits — pass `override`
+           * when it'll want a reason), as the person using this form. Photos and files in `data` from this form are
+           * copied over. sourceEntryId ties it to this form's entry (ctx.jobs.list); label names it there.
+           * Not from the draft (returns { queued: false }).
+           */
+          create(entry: { data: Record<string, unknown>; site?: string; tenantId?: string; occurredAt?: string; override?: string; sourceEntryId?: string; label?: string }): { queued: boolean; jobId?: string; reason?: string };
+        };
+        /** That form's collections, read-only — when it shares with this one ("share": { "forms": [...] }). */
+        collections: {
+          list<T = Record<string, unknown>>(name: string): { id: string; data: T }[];
+          get<T = Record<string, unknown>>(name: string, id: string): { id: string; data: T } | null;
+        };
+      };
     };
     roster: {
       site(idOrCode: string): ServerSite | null;
-      sites(): ServerSite[];
+      /** The person's sites; { all: true } for every active site (names and codes, e.g. to choose where an event is). */
+      sites(opts?: { all?: boolean }): ServerSite[];
       resident(id: string): ServerResident | null;
-      residents(siteIdOrCode: string): ServerResident[];
+      /** Active residents, by last name; includeArchived for everyone who has lived there. */
+      residents(siteIdOrCode: string, opts?: { includeArchived?: boolean }): ServerResident[];
+      /**
+       * Note that the resident was seen (it resets their roster review clock and shows on their page),
+       * labelled with the form's title unless you give one. An entry with tenantId does this already;
+       * use this for anything else. Skipped in the draft.
+       */
+      logActivity(tenantId: string, opts?: { label?: string; occurredAt?: string }): { logged: boolean; reason?: string };
     };
+    /**
+     * Email from the app's mailbox. Link-only: the email is your subject, a line naming this form, and a link to
+     * `link` (a page of this site: `${ctx.url}/request?id=…` or "/apps/<slug>/…"; this form's first page by default).
+     * Nothing else is sent: no form contents, no resident details, no attachments. Put the details on a page and link
+     * to it. Keep resident names out of the subject too. Old html / text / attachments are accepted and ignored; the
+     * result lists them in `dropped`.
+     * Queued and sent in the background, so it returns at once: { queued: true }, or { queued: false, reason } in the
+     * draft (nothing is sent) or when the server has no email set up.
+     * To: up to 10 Lantern addresses, or ones listed in form.json "email": { "to": ["vendor@x.com", "@partner.org"] }.
+     * replyTo defaults to the person using the form. Results go to the audit log.
+     */
+    email: {
+      send(message: {
+        to: string | string[];
+        subject: string;
+        link?: string;
+        replyTo?: string;
+        /** @deprecated Not sent: emails are link-only. */
+        html?: string;
+        /** @deprecated Not sent: emails are link-only. */
+        text?: string;
+        /** @deprecated Not sent: emails are link-only. Link to a page with an export button instead. */
+        attachments?: import("@lcs/sdk").ExportSpec[];
+      }): { queued: boolean; reason?: string; dropped?: string[]; note?: string };
+    };
+    /** The site calendar, as the person using the form sees it. */
+    calendar: {
+      events(q: { from: string; to: string; site?: string | string[] }): Omit<import("@lcs/sdk").CalendarOccurrence, "canEdit">[];
+      categories(): { id: string; name: string; colorSlot: number }[];
+      /**
+       * Add an event as the person using the form, with their calendar rights — e.g. from afterCreate
+       * when an event request is approved. Not from the draft or an API key.
+       */
+      create(event: import("@lcs/sdk").CalendarEventInput): { id: string };
+      /**
+       * The form's own events (form.json "calendar": { "ownEvents": true }): added, changed and removed
+       * by the form for any site, whatever the person's calendar rights — e.g. an event request goes on
+       * the calendar as pending when it's made and is confirmed when the last approver says yes.
+       * Pending events show on the calendar marked "Needs approval" and stay out of Outlook. Nobody can
+       * change these on the calendar itself. Never for every site. In the draft nothing reaches the real
+       * calendar: create returns a "preview:" id and the rest do nothing.
+       */
+      form: {
+        /** Its events, or only those with this ref. */
+        list(ref?: string): FormCalendarEvent[];
+        create(event: import("@lcs/sdk").CalendarEventInput, opts?: { ref?: string; pending?: boolean }): { id: string };
+        /** Change it (scope/date as calendar.update), and/or mark it pending or approved. */
+        update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event?: import("@lcs/sdk").CalendarEventInput; pending?: boolean }): { id: string };
+        setPending(id: string, pending: boolean): void;
+        remove(id: string, opts?: { scope?: "all" | "this" | "following"; date?: string }): void;
+      };
+    };
+    /**
+     * Active staff: to choose approvers or find who to email (e.g. a site's managers: roles
+     * ["site_manager", "site_admin"], site "AUD"). site matches people assigned to it and those who
+     * see every site. Up to 500, by name.
+     */
+    directory(q?: { search?: string; roles?: string[]; site?: string; ids?: string[]; limit?: number }): StaffMember[];
     time: {
       /** New York "YYYY-MM-DD" of an ISO time. */
       dayOf(iso: string): string;
@@ -409,6 +773,21 @@ declare module "@lcs/server" {
       minutesBetween(aIso: string, bIso: string): number;
       /** New York day, hour (0-23) and weekday (0 = Monday) of an ISO time. */
       partsOf(iso: string): { day: string; hour: number; weekday: number };
+    };
+    /**
+     * Staff by user id (an entry's createdById): their name and profile color (null = the app's
+     * default avatar navy, #2c3453). For "who recorded it" charts, colored as their avatars are.
+     */
+    people(ids: string[]): { id: string; name: string; avatarColor: string | null }[];
+    /** This form's own files: read one back as a data: URL (600 KB at most) — e.g. a signature another form keeps inline. */
+    files: {
+      read(ref: import("@lcs/sdk").FileRef | string): string;
+    };
+    /** Entries this form asked other forms to make (db.form(slug).entries.create), by the entry they came from. */
+    jobs: {
+      list(sourceEntryId: string): { id: string; form: string; status: "queued" | "running" | "done" | "failed"; error: string | null; entryId: string | null; label: string | null; at: string }[];
+      /** Send a failed one again, with a reason when that form's rules asked for one. */
+      retry(jobId: string, override?: string): { queued: boolean };
     };
     /** Goes to the editor's console (and the server log). */
     log(...args: unknown[]): void;
@@ -438,8 +817,25 @@ declare module "@lcs/server" {
     beforeCreate?(entry: IncomingEntry<any>, ctx: Ctx): BeforeCreateResult<any> | void | Promise<BeforeCreateResult<any> | void>;
     /** Runs after an entry is saved (notifications, follow-up records). */
     afterCreate?(entry: ServerEntry<any>, ctx: Ctx): void | Promise<void>;
+    /**
+     * Runs before an entry's data is changed with entries.update. Return errors to refuse, or data to
+     * rewrite what's saved. (beforeCreate does not run on edits.)
+     */
+    beforeUpdate?(change: { entry: ServerEntry<any>; data: any; reason: string | null }, ctx: Ctx): { errors?: Record<string, string | undefined>; data?: any } | void | Promise<{ errors?: Record<string, string | undefined>; data?: any } | void>;
     /** Endpoints your pages call with actions.call(name, args). Return JSON. */
     actions?: Record<string, (args: any, ctx: Ctx) => unknown>;
+  }
+
+  /**
+   * What the action named in form.json "home": { "action": "home" } returns. It runs as each person
+   * when the Forms home loads (args: { home: true }); keep it quick (a count or two). The answer is kept a
+   * minute per person. page / params open that tab of the form. Up to 5 items and 3 tiles; return {} for none.
+   */
+  export interface HomeCards {
+    /** Joins "Needs your attention". warn = amber, act soon; info = a reminder. */
+    attention?: { title: string; detail?: string; action?: string; page?: string; params?: Record<string, string>; tone?: "warn" | "info" }[];
+    /** Stat tiles in a row under the home screen's own. */
+    tiles?: { label: string; value: string | number; hint?: string; page?: string; params?: Record<string, string> }[];
   }
 
   /** server/index.ts: `export default defineServer({ … })` */

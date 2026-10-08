@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { ConditionalEditor } from "./ConditionalEditor";
-import { FORM_ICONS } from "@/lib/formIcons";
+import { IconPicker } from "@/components/IconPicker";
 import { useForms } from "@/lib/queries";
 import type { BuilderReference, BuiltFormDetail } from "@/lib/builder";
 import type { FormDoc, FormSettings, Notification } from "@/lib/formEngine";
@@ -90,13 +90,7 @@ export function SettingsPanel({
         </Row>
         <Row label="Submit button"><Input value={s.submitLabel ?? ""} onChange={(e) => set({ submitLabel: e.target.value })} placeholder="Submit" className="max-w-xs" /></Row>
         <Row label="Icon" hint="On the Forms screen and in the sidebar.">
-          <div className="flex flex-wrap gap-1">
-            {Object.entries(FORM_ICONS).map(([k, { label, Icon }]) => (
-              <button key={k} title={label} onClick={() => set({ icon: k })} className={cn("grid h-8 w-8 place-items-center rounded-input border", s.icon === k ? "border-navy bg-navsel text-accent" : "border-hairline text-muted hover:text-ink")}>
-                <Icon className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
+          <IconPicker value={s.icon ?? null} onChange={(icon) => set({ icon: icon ?? undefined })} />
         </Row>
         <Toggle label="Progress bar" hint="On forms with page breaks." checked={s.progressBar !== false} onChange={(v) => set({ progressBar: v ? undefined : false })} />
         <Toggle label="Keep unfinished answers" hint="Saved on the device, so a reload or a dropped connection doesn't lose them." checked={s.saveDrafts !== false} onChange={(v) => set({ saveDrafts: v ? undefined : false })} />
@@ -184,7 +178,7 @@ function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Pa
   const update = (id: string, patch: Partial<Notification>) => set({ notifications: list.map((n) => (n.id === id ? cleanN({ ...n, ...patch }) : n)) });
   const add = (kind: "email" | "webhook") => {
     const id = `n${Date.now().toString(36)}`;
-    set({ notifications: [...list, kind === "email" ? { id, name: "New email", enabled: true, kind, to: "", subject: "New entry: {form:title}", body: "<p>{all_fields}</p><p><a href=\"{entry:url}\">Open the entry</a></p>" } : { id, name: "New webhook", enabled: true, kind, url: "https://" }] });
+    set({ notifications: [...list, kind === "email" ? { id, name: "New email", enabled: true, kind, to: "", subject: "New entry: {form:title}" } : { id, name: "New webhook", enabled: true, kind, url: "https://" }] });
     setOpen(id);
   };
   return (
@@ -206,10 +200,12 @@ function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Pa
               {n.kind === "email" ? (
                 <>
                   <Row label="To" hint="Comma-separated. {email_field_id} sends to an address someone typed."><Input value={n.to ?? ""} onChange={(e) => update(n.id, { to: e.target.value })} /></Row>
-                  <Row label="Subject"><Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} /></Row>
-                  <Row label="Body (HTML)" hint="{all_fields} lists every answer; {entry:url} links to the entry.">
-                    <CodeEditor language="html" value={n.body ?? ""} onChange={(v) => update(n.id, { body: v })} minHeight={90} />
+                  <Row label="Subject" hint="{form:title}, {site:name}, {user:name} and {date:today} work here. Answers don't: they're left out.">
+                    <Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} />
                   </Row>
+                  <p className="text-[12px] text-muted">
+                    The email is a link to the entry, nothing more: the answers stay in Lantern Forms, behind sign-in.
+                  </p>
                 </>
               ) : (
                 <>

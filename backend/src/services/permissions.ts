@@ -12,7 +12,7 @@ export const PERMISSIONS = [
   "roster.archive",
   "roster.restore",
   "audit.view",
-  /** Form submissions (Hot Foods entries and reports). Site Staff record forms but can't read them back. */
+  /** Form submissions (built and code forms: entries and reports). Site Staff record forms but can't read them back. */
   "entries.view",
   /** Void a form entry recorded in error (with a reason). The entry stays, marked void. */
   "entries.void",

@@ -9,6 +9,8 @@ import { appBaseUrl, devAuthEnabled, isProd, ssoConfigured } from "../env.js";
 import { autoApproveStaff, guestDomains } from "../services/settings.js";
 import { audit } from "../services/audit.js";
 import { DEFAULT_ROLE_KEY, ROLES, SITE_ROLE_KEYS, roleFor } from "../services/permissions.js";
+import { dropGraphToken, saveGraphToken } from "../services/graphTokens.js";
+import { noteGraphTokenArrived } from "../services/outlookSync.js";
 
 export const authRouter = Router();
 
@@ -70,9 +72,9 @@ authRouter.get(
       return failTo(res, "Microsoft did not return an authorization code.");
     }
 
-    let identity, returnTo, stay;
+    let identity, returnTo, stay, graph;
     try {
-      ({ identity, returnTo, stay } = await completeSignIn(code, state, req.cookies?.[OIDC_TX_COOKIE]));
+      ({ identity, returnTo, stay, graph } = await completeSignIn(code, state, req.cookies?.[OIDC_TX_COOKIE]));
     } catch (err) {
       clearTx();
       return failTo(res, err instanceof Error ? err.message : "Microsoft sign-in failed.");
@@ -119,12 +121,19 @@ authRouter.get(
       user = await prisma.user.update({ where: { id: user.id }, data: fromDirectory });
       if (user.status === "requested") return noticeTo(res, "Your account is still waiting for an admin to approve it.");
       if (user.status === "denied" || user.status === "deactivated") {
+        await dropGraphToken(user.id);
         return noticeTo(res, "You don't have access to Lantern Forms. If you think that's a mistake, contact the IT Team.");
       }
       if (user.status === "invited") {
         user = await prisma.user.update({ where: { id: user.id }, data: { status: "active" } });
       }
       await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() } });
+      // Their own Outlook, for the calendar (services/graphTokens.ts). Never holds up a sign-in.
+      if (graph) {
+        await saveGraphToken(user.id, graph.refreshToken, graph.scopes)
+          .then((isNew) => noteGraphTokenArrived(user!.id, isNew))
+          .catch((err) => console.error(`[auth] couldn't keep the Outlook sign-in for ${user!.email}:`, err));
+      }
       setSessionCookie(res, signSession({ userId: user.id, name: user.name, email: user.email }), stay);
       res.redirect(`${appBaseUrl}${returnTo}`);
     } catch (err) {
@@ -164,11 +173,17 @@ authRouter.post(
   })
 );
 
-authRouter.post("/logout", (_req, res) => {
-  // Clears this app's session only — not the person's Microsoft 365 session.
-  res.clearCookie(AUTH_COOKIE, COOKIE_ATTRS);
-  res.json({ ok: true });
-});
+authRouter.post(
+  "/logout",
+  asyncHandler(async (req, res) => {
+    // Clears this app's session only — not the person's Microsoft 365 session —
+    // and forgets their Outlook sign-in: nothing writes to their calendar until
+    // they sign in again.
+    if (req.user) await dropGraphToken(req.user.userId).catch((err) => console.error("[auth] couldn't drop the Outlook sign-in:", err));
+    res.clearCookie(AUTH_COOKIE, COOKIE_ATTRS);
+    res.json({ ok: true });
+  })
+);
 
 authRouter.get(
   "/me",

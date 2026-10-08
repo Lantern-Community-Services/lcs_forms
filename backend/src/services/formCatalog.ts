@@ -2,28 +2,24 @@ import { prisma } from "../prisma.js";
 import { getSetting, setSetting } from "./settings.js";
 
 /**
- * The Forms screen's starting catalog: every form linked from
- * forms.lanterncommunity.org (home page and /encounter-forms/) as of v1, in the
- * same groups staff already know. After the first write, the catalog belongs
- * to admins (Admin → Forms catalog); nothing here overwrites their edits.
- *
- * `url` is either a WordPress page (the form still lives there) or an app path
- * for a form rebuilt inside this site. The Tenant Updater is the first of
- * those: it is now the roster. Hot Foods is the second (/forms/hot-foods).
+ * The catalog the app used to start with: every form linked from
+ * forms.lanterncommunity.org as of v1. The catalog now starts empty, and forms
+ * are rebuilt here and added one by one (Admin → Forms catalog, or the MCP
+ * server). This list is kept only so retireLegacyCatalog can remove exactly
+ * these cards from a database that was seeded with them.
  */
 const WP = "https://forms.lanterncommunity.org";
 
-interface DefaultForm {
+interface LegacyForm {
   title: string;
   description?: string;
   url: string;
   keywords?: string;
   badge?: string;
-  /** Key from FORM_ICONS (routes/forms.ts). */
   icon?: string;
 }
 
-export const DEFAULT_CATALOG: { name: string; icon: string; forms: DefaultForm[] }[] = [
+const LEGACY_CATALOG: { name: string; icon: string; forms: LegacyForm[] }[] = [
   {
     name: "Pantry Forms",
     icon: "utensils",
@@ -111,44 +107,21 @@ export const DEFAULT_CATALOG: { name: string; icon: string; forms: DefaultForm[]
 ];
 
 /**
- * Write the default catalog, once. Guarded by a setting rather than "is the
- * table empty", so an admin who deliberately clears the catalog doesn't get it
- * back on the next restart.
+ * Take the old starting catalog out of a database that was seeded with it,
+ * once: every card pointing at one of its URLs (people's pins of them go too),
+ * then any of its categories left empty. Cards and categories added since are
+ * left alone, so is a legacy category that now holds one. Guarded by a setting
+ * so it never runs again, and a fresh database is never seeded any more.
  */
-export async function ensureDefaultCatalog(): Promise<boolean> {
-  if (await getSetting("formCatalogSeeded")) return false;
-  if ((await prisma.formCategory.count()) === 0) {
-    for (const [ci, cat] of DEFAULT_CATALOG.entries()) {
-      await prisma.formCategory.create({
-        data: {
-          name: cat.name,
-          icon: cat.icon,
-          sortOrder: ci,
-          forms: { create: cat.forms.map((f, fi) => ({ ...f, sortOrder: fi })) },
-        },
-      });
-    }
-  }
+export async function retireLegacyCatalog(): Promise<{ cards: number; categories: number } | null> {
+  if (await getSetting("legacyCatalogRetired")) return null;
+  const urls = LEGACY_CATALOG.flatMap((c) => c.forms.map((f) => f.url));
+  const names = LEGACY_CATALOG.map((c) => c.name);
+  const cards = await prisma.formLink.deleteMany({ where: { url: { in: urls } } });
+  const empty = await prisma.formCategory.findMany({ where: { name: { in: names }, forms: { none: {} } }, select: { id: true } });
+  const categories = await prisma.formCategory.deleteMany({ where: { id: { in: empty.map((c) => c.id) } } });
+  await setSetting("legacyCatalogRetired", new Date().toISOString());
+  // Older code wrote the catalog when this was unset; keep it set for any such build.
   await setSetting("formCatalogSeeded", new Date().toISOString());
-  return true;
-}
-
-/**
- * Give the forms of a catalog written before forms had icons the default one
- * for their title, once. Guarded like the catalog: an admin who later clears a
- * form's icon (back to its category's) keeps that choice.
- */
-export async function ensureFormIcons(): Promise<number> {
-  if (await getSetting("formIconsSeeded")) return 0;
-  const byTitle = new Map(DEFAULT_CATALOG.flatMap((c) => c.forms.filter((f) => f.icon).map((f) => [f.title, f.icon!] as const)));
-  const forms = await prisma.formLink.findMany({ where: { icon: null }, select: { id: true, title: true } });
-  let n = 0;
-  for (const f of forms) {
-    const icon = byTitle.get(f.title);
-    if (!icon) continue;
-    await prisma.formLink.update({ where: { id: f.id }, data: { icon } });
-    n++;
-  }
-  await setSetting("formIconsSeeded", new Date().toISOString());
-  return n;
+  return { cards: cards.count, categories: categories.count };
 }

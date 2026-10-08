@@ -5,7 +5,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
-import { compressJson, errorHandler, requestId } from "./http.js";
+import { clientIp, compressJson, errorHandler, requestId } from "./http.js";
 import { loadUser, requireAuth } from "./auth/middleware.js";
 import { authRouter } from "./routes/auth.js";
 import { tenantsRouter } from "./routes/tenants.js";
@@ -16,7 +16,6 @@ import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
 import { publicApiRouter } from "./routes/publicApi.js";
 import { formsRouter } from "./routes/forms.js";
-import { hotFoodsRouter } from "./routes/hotFoods.js";
 import { builderRouter } from "./routes/builder.js";
 import { fillRouter } from "./routes/fill.js";
 import { handleMcp } from "./forms/mcp.js";
@@ -36,11 +35,46 @@ const submitLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 120, standard
 /** File uploads carry their own raw body (routes/fill.ts); the JSON parser must leave them alone. */
 const isUpload = (path: string) => /^\/api\/f\/[^/]+\/files$/.test(path);
 
+/** A database check that's slow counts as down: the health probe mustn't hang. */
+async function databaseUp(timeoutMs = 3000): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      prisma.$queryRaw`SELECT 1`.then(() => true),
+      new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), timeoutMs))),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createApp() {
   const app = express();
-  // Behind App Service / a reverse proxy, uncomment so limiters key on the real IP.
-  // app.set("trust proxy", 1);
+  // Behind App Service the client's address is in X-Forwarded-For, so the rate
+  // limiters (and an entry's recorded IP) need to know how many proxies to look
+  // past: TRUST_PROXY, 1 by default (see env.ts).
+  app.set("trust proxy", env.trustProxy);
   app.use(requestId);
+  app.use(clientIp);
+  // Health. App Service restarts a container whose health check fails, so the
+  // probes answer 200 while the process is up, whatever the database is doing:
+  // a moment without Azure SQL shouldn't become a restart loop.
+  //   /api/health/live   the process answers (no database call)
+  //   /api/health        200, with whether the database answered
+  //   /api/health/ready  503 while the database doesn't answer (for a deploy check, not a restart probe)
+  app.get("/api/health/live", (_req, res) => {
+    res.json({ ok: true });
+  });
+  app.get("/api/health", async (_req, res) => {
+    res.json({ ok: true, database: (await databaseUp()) ? "up" : "unreachable" });
+  });
+  app.get("/api/health/ready", async (_req, res) => {
+    const up = await databaseUp();
+    res.status(up ? 200 : 503).json({ ok: up, database: up ? "up" : "unreachable" });
+  });
+
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   app.use(compressJson);
@@ -49,8 +83,6 @@ export function createApp() {
   // A session may contain many PNG signatures. Accept the larger body only
   // for an authenticated attendance write; all other JSON keeps the 1 MB cap.
   app.post("/api/attendance", requireAuth, express.json({ limit: "20mb" }));
-  // One Hot Foods entry carries one signature PNG (capped at 400 KB in the route).
-  app.post("/api/hot-foods", requireAuth, express.json({ limit: "2mb" }));
   // A built form's entry can hold signatures and custom-code data; the MCP
   // server receives whole form documents.
   app.post("/api/f/:slug/submit", submitLimiter, express.json({ limit: "5mb" }));
@@ -59,21 +91,11 @@ export function createApp() {
   const json = express.json({ limit: "1mb" });
   app.use((req, res, next) => (isUpload(req.path) ? next() : json(req, res, next)));
 
-  app.get("/api/health", async (_req, res) => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      res.json({ ok: true, database: "up" });
-    } catch (err) {
-      res.status(503).json({ ok: false, database: "unreachable", error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-
   app.use("/api/auth/microsoft", authLimiter);
   app.use("/api/auth", authRouter);
   app.use("/api/forms", formsRouter);
   app.use("/api/home", homeRouter);
   app.use("/api/calendar", calendarRouter);
-  app.use("/api/hot-foods", hotFoodsRouter);
   app.use("/api/tenants", tenantsRouter);
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/sites", sitesRouter);

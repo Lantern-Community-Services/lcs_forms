@@ -65,12 +65,67 @@ export const manifestSchema = z.object({
       undoMinutes: z.number().int().min(0).max(1440).optional(),
       /** Entries about a resident log roster activity (resets their review clock). Default true. */
       rosterActivity: z.boolean().optional(),
+      /** Roles that can edit anyone's entry (every change is kept in its history). Default: admins and developers only. */
+      edit: roleList,
+      /** Minutes during which people can edit their own entry. Default 0 (off). */
+      editOwnMinutes: z.number().int().min(0).max(10_080).optional(),
+    })
+    .strict()
+    .optional(),
+  /** Photos and files pages upload (files.upload / takePhoto). Default: 10 MB, images, PDF and office files. */
+  files: z
+    .object({
+      maxMb: z.number().min(0.1).max(10).optional(),
+      /** Like an <input accept>: "image/*,application/pdf,.docx". */
+      accept: z.string().max(300).optional(),
     })
     .strict()
     .optional(),
   /** The form's own data. Default for a collection not listed: everyone reads, admins write. */
   collections: z.record(z.object({ read: roleList, write: roleList }).strict()).optional(),
-  /** Other forms (slugs) whose entries the server code may read — still only if the person may. */
+  /**
+   * Cards on the Forms home: the server action run as each person when the home screen loads.
+   * It returns { attention?: [...], tiles?: [...] } (see the guide). `roles`: who gets them (default: everyone who can open the form).
+   */
+  home: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/), roles: roleList }).strict().optional(),
+  /**
+   * Server actions run on a timer, once a New York day at `at` ("HH:MM"): daily (default), on weekdays,
+   * or monthly on `day` (1–28). They run as nobody (ctx.user null) with args { scheduled: true, day }:
+   * reminders, digests, a monthly report email. Only the published form runs them.
+   */
+  schedule: z
+    .array(
+      z.object({
+        action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/),
+        at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "at is HH:MM (24-hour, New York)."),
+        on: z.enum(["daily", "weekdays", "monthly"]).optional(),
+        day: z.number().int().min(1).max(28).optional(),
+      }).strict()
+    )
+    .max(10)
+    .optional(),
+  /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
+  email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
+  /**
+   * The form's own calendar events. ownEvents: server code may add, change and remove events it
+   * owns (ctx.calendar.form) for any site, without the person's calendar rights, and mark them
+   * waiting on approval. Never events for every site; nobody changes them on the calendar itself.
+   */
+  calendar: z.object({ ownEvents: z.boolean().optional() }).strict().optional(),
+  /**
+   * Code forms (slugs) whose server code may read this form's entries whoever is using them (with the
+   * other form listing this one in "reads"). The other form's server code decides what to show — e.g.
+   * Encounters showing approved event requests at the person's own sites.
+   */
+  share: z
+    .object({
+      forms: z.array(z.string()).max(20).optional(),
+      /** Code forms whose server code may add entries here (ctx.db.form(slug).entries.create), through this form's own rules. */
+      create: z.array(z.string()).max(20).optional(),
+    })
+    .strict()
+    .optional(),
+  /** Other forms (slugs) whose entries the server code may read — still only if the person may, or if that form shares with this one. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */
   server: z.string().optional(),

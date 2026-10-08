@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetBody, SheetClose, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
 import { offlineEnabled, useConnectivity } from "@/lib/offline";
 import { useSnapshotStatus } from "@/lib/snapshot";
-import { discardHotFood, kick, retryHotFoods, useHotFoodsQueue } from "@/lib/hotFoodsQueue";
 import { discardFill, retryFills, syncFills, useFillQueue } from "@/lib/fillQueue";
 import { allQueued, discard as discardAppEntry, onQueueChange, retryFailed, syncNow, type QueuedEntry as AppQueued } from "@/apps/queue";
 import { cn } from "@/lib/utils";
@@ -16,8 +15,8 @@ import { cn } from "@/lib/utils";
  * still work, how many entries are kept on the device, and how old the data on
  * screen is. Online it shows entries uploading, then "everything uploaded" for
  * a moment; and in red, anything the server refused. Tapping it lists every
- * entry on the device, from all three queues (Hot Foods, built forms, code
- * forms), with retry and discard.
+ * entry on the device, from both queues (built forms and code forms), with
+ * retry and discard.
  */
 
 interface Row {
@@ -43,34 +42,22 @@ function useAppQueue() {
 }
 
 function useOutbox() {
-  const hf = useHotFoodsQueue();
   const fill = useFillQueue();
   const apps = useAppQueue();
   const rows: Row[] = [
-    // Still inside its Undo window: not waiting on anything yet.
-    ...hf.mine.filter((i) => i.status === "failed" || i.holdUntil <= Date.now()).map((i) => ({
-      key: `hf-${i.clientId}`,
-      form: "Hot Foods",
-      label: `${i.tenantName} · ${i.mealCount} meal${i.mealCount === 1 ? "" : "s"}`,
-      at: i.savedAt,
-      error: i.status === "failed" ? (i.error ?? "Refused") : undefined,
-      discard: () => discardHotFood(i.clientId),
-    })),
     ...fill.pending.concat(fill.failed).map((r) => ({ key: `f-${r.clientId}`, form: r.title, label: "Entry", at: r.queuedAt, error: r.error, discard: () => void discardFill(r.clientId) })),
     ...apps.map((r) => ({ key: `a-${r.clientId}`, form: r.title ?? r.slug, label: "Entry", at: r.queuedAt, error: r.error, discard: () => void discardAppEntry(r.clientId) })),
   ].sort((a, b) => a.at - b.at);
   return {
     pending: rows.filter((r) => !r.error),
     failed: rows.filter((r) => r.error),
-    others: hf.others.length + fill.others.length,
-    syncing: hf.syncing || fill.syncing,
+    others: fill.others.length,
+    syncing: fill.syncing,
     retry: () => {
-      retryHotFoods();
       void retryFills();
       new Set(apps.filter((r) => r.error).map((r) => r.slug)).forEach((slug) => void retryFailed(slug));
     },
     upload: () => {
-      void kick();
       void syncFills();
       void syncNow();
     },

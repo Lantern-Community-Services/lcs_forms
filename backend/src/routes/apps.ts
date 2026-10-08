@@ -1,8 +1,9 @@
-import { Router, type Request } from "express";
+import express, { Router, type Request } from "express";
 import { z } from "zod";
 import { asyncHandler, badRequest, forbidden } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
-import { actorOf } from "../services/audit.js";
+import { actorOf, audit } from "../services/audit.js";
+import { buildExport, exportSpec } from "../apps/exports.js";
 import { deleteForm, listVersions, setCatalog, setFormStatus } from "../forms/service.js";
 import { buildProject } from "../apps/compile.js";
 import { checkFiles } from "../apps/project.js";
@@ -11,8 +12,10 @@ import { SDK_TYPES } from "../apps/sdkText.js";
 import { DESIGN_BRIEF } from "../apps/designBrief.js";
 import {
   collectionGet, collectionList, collectionPut, collectionRemove, createEntry, findCodeForm, getEntry, isDeveloper, listEntries, loadApp,
-  requireOpen, restoreEntry, runAction, voidEntry, type ClientEntryQuery,
+  requireOpen, restoreEntry, runAction, voidEntry, updateEntry, entryHistory, type ClientEntryQuery,
 } from "../apps/runtime.js";
+import { readAppFile, uploadAppFile } from "../apps/files.js";
+import { fileBytes } from "../services/fileStore.js";
 import {
   createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, projectDetail, publishProject, restoreProjectVersion,
   saveProject, versionFiles,
@@ -145,7 +148,8 @@ appsRouter.delete(
   dev,
   asyncHandler(async (req, res) => {
     const form = await findCodeForm(req.params.id);
-    await deleteForm(form.id, actorOf(req));
+    const { withEntries } = z.object({ withEntries: z.boolean().optional() }).parse(req.body ?? {});
+    await deleteForm(form.id, actorOf(req), { withEntries });
     res.json({ ok: true });
   })
 );
@@ -213,6 +217,64 @@ appsRouter.post(
     const out = await createEntry(app, req.user!, body);
     const status = out.status === "saved" ? 201 : out.status === "needs_override" ? 409 : 422;
     res.status(status).json({ ...out, logs: app.draft ? out.logs : undefined });
+  })
+);
+
+appsRouter.put(
+  "/:slug/entries/:id",
+  asyncHandler(async (req, res) => {
+    const body = z.object({ data: z.record(z.unknown()), reason: z.string().max(500).nullable().optional() }).parse(req.body);
+    const app = await appFor(req);
+    const out = await updateEntry(app, req.user!, req.params.id, body);
+    res.status(out.status === "saved" ? 200 : 422).json({ ...out, logs: app.draft ? out.logs : undefined });
+  })
+);
+
+appsRouter.get("/:slug/entries/:id/history", asyncHandler(async (req, res) => res.json(await entryHistory(await appFor(req), req.user!, req.params.id))));
+
+/**
+ * A photo or file, sent as the raw body (always application/octet-stream, so no
+ * body parser touches it); its name, type and label ride in headers.
+ */
+appsRouter.post(
+  "/:slug/files",
+  express.raw({ type: () => true, limit: "11mb" }),
+  asyncHandler(async (req, res) => {
+    if (!Buffer.isBuffer(req.body)) throw badRequest("Send the file as the request body.");
+    const header = (h: string) => decodeURIComponent(String(req.headers[h] ?? ""));
+    const ref = await uploadAppFile(await appFor(req), req.user!, { name: header("x-file-name") || "file", mime: header("x-file-type"), label: header("x-file-label"), data: req.body });
+    res.status(201).json(ref);
+  })
+);
+
+appsRouter.get(
+  "/:slug/files/:fileId",
+  asyncHandler(async (req, res) => {
+    const app = await appFor(req);
+    requireOpen(app, req.user!);
+    const file = await readAppFile(app, req.user!, req.params.fileId, (entryId) => getEntry(app, req.user!, entryId));
+    const inline = /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf)$/.test(file.mime) && req.query.download !== "1";
+    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(file.name)}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    // Uploaded content is shown as a file, never as a page of this site.
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
+    res.type(inline ? file.mime : "application/octet-stream").send(await fileBytes(file));
+  })
+);
+
+/** An Excel / PDF / CSV file of what a page is showing (app.export). */
+appsRouter.post(
+  "/:slug/export",
+  asyncHandler(async (req, res) => {
+    const spec = exportSpec.parse(req.body);
+    const app = await appFor(req);
+    requireOpen(app, req.user!);
+    const file = await buildExport(spec, req.user!.name);
+    const verb = req.query.print === "1" ? "Printed" : "Exported";
+    await audit({ actor: actorOf(req), action: "apps.exported", summary: `${verb} “${spec.title}” (${spec.format}) from code form “${app.manifest.title}”` });
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file.filename)}"`);
+    res.type(file.mime).send(file.body);
   })
 );
 

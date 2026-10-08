@@ -1,12 +1,54 @@
-# Lantern Forms — backend + frontend.
+# Lantern Forms — the whole site in containers, the way Azure runs it:
+# SQL Server, Blob Storage (Azurite), migrations as a separate step, the API and the web app.
 #
-#   cp .env.example .env      # then fill in JWT_SECRET and the Microsoft values
+#   cp .env.example .env      # then fill in MSSQL_SA_PASSWORD, JWT_SECRET and the Microsoft values
 #   docker compose up --build
 #
-# Open http://localhost:5200. Only the frontend is published; it proxies
-# /api/* to the backend over the compose network, so the browser sees one origin.
+# Open http://localhost:5200. Only the web app (and SQL Server, for your tools) is
+# published; the web app proxies /api/* to the API over the compose network, so
+# the browser sees one origin.
+#
+# Just the database, for `npm run dev`:   docker compose up -d db
+
+x-database-url: &database-url "sqlserver://db:1433;database=lcs_forms;user=sa;password={${MSSQL_SA_PASSWORD}};encrypt=true;trustServerCertificate=true"
 
 services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env (8+ characters, upper, lower, digit, symbol)}
+    ports:
+      - "${DB_PORT:-1433}:1433"
+    volumes:
+      - lantern-sql:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Stands in for the Azure Storage account the API keeps uploaded files in.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.34.0
+    restart: unless-stopped
+    command: azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck --loose --location /data
+    volumes:
+      - lantern-blobs:/data
+
+  # `prisma migrate deploy`, then exits: what the pipeline runs before a release.
+  migrate:
+    build:
+      context: ./backend
+    environment:
+      RUN_MIGRATIONS: "true"
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
@@ -14,20 +56,29 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 4200
-      DATABASE_URL: ${DATABASE_URL:-file:/data/lantern-forms.db}
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (a long random string)}
+      DATABASE_URL: *database-url
+      # Required: the API refuses to start in production without it.
+      JWT_SECRET: ${JWT_SECRET:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
       CORS_ORIGIN: ${APP_BASE_URL:-http://localhost:5200}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5200}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
       DEV_AUTH: ${DEV_AUTH:-false}
       SSO_ALLOWED_DOMAINS: ${SSO_ALLOWED_DOMAINS:-lanterncommunity.org}
       MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
-      MAIL_FROM: ${MAIL_FROM:-}
       MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI:-http://localhost:5200/api/auth/microsoft/callback}
-      DB_PUSH_ON_START: ${DB_PUSH_ON_START:-true}
-    volumes:
-      - lantern-data:/data
+      MAIL_FROM: ${MAIL_FROM:-}
+      OUTLOOK_SYNC: ${OUTLOOK_SYNC:-true}
+      # Azurite's well-known development account (public, local only).
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-form-files}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      azurite:
+        condition: service_started
     expose:
       - "4200"
 
@@ -44,5 +95,5 @@ services:
       - "${FRONTEND_PORT:-5200}:5200"
 
 volumes:
-  # SQLite database. Goes away when you move to Azure SQL.
-  lantern-data:
+  lantern-sql:
+  lantern-blobs:

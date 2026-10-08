@@ -347,7 +347,9 @@ function Problems({ problems, onOpen }: { problems: FileProblem[]; onOpen: (path
 
 function Console({ lines }: { lines: ConsoleLine[] }) {
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [lines.length]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [lines.length]);
   if (!lines.length) return <p className="text-[12.5px] text-muted">console.log from pages (in the preview) and server code (ctx.log) shows up here.</p>;
   return (
     <div className="font-mono text-[11.5px]">

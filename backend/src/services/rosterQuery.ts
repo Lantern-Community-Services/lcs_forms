@@ -1,7 +1,6 @@
 import type { Request } from "express";
 import { Prisma, type Tenant } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import { env } from "../env.js";
 import { attentionHours } from "./settings.js";
 import { cutoff, serializeTenant, type TenantDTO } from "./roster.js";
 import { sitesInScope, type ScopedSite } from "./siteScope.js";
@@ -18,8 +17,7 @@ export const ROSTER_CAP = 5000;
  * Read with a raw query rather than `prisma.tenant.findMany`: Prisma's per-row
  * conversion of DateTime columns cost ~25ms per column across ~1,900 rows, so
  * the whole-organisation roster took ~410ms through the client and ~120ms as
- * plain SQL. Plain, unquoted ANSI SQL so it runs unchanged on SQLite and on
- * SQL Server / Azure SQL; only the row limit differs (see `limitClause`).
+ * plain SQL (SQL Server / Azure SQL).
  */
 const LIST_COLUMNS = Prisma.raw(
   [
@@ -30,10 +28,8 @@ const LIST_COLUMNS = Prisma.raw(
   ].join(", ")
 );
 
-/** SQLite ends with LIMIT; SQL Server needs OFFSET … FETCH after its ORDER BY. */
-const isSqlite = env.databaseUrl.startsWith("file:");
-const limitClause = (n: number) =>
-  isSqlite ? Prisma.sql`LIMIT ${n}` : Prisma.sql`OFFSET 0 ROWS FETCH NEXT ${n} ROWS ONLY`;
+/** SQL Server's row limit: OFFSET … FETCH, after the ORDER BY. */
+const limitClause = (n: number) => Prisma.sql`OFFSET 0 ROWS FETCH NEXT ${n} ROWS ONLY`;
 
 /** `contains`, as a LIKE pattern with the user's own % and _ taken literally. */
 const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

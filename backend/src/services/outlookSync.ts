@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import { prisma } from "../prisma.js";
-import { appBaseUrl, env } from "../env.js";
-import { graphToken } from "./mailer.js";
+import { appBaseUrl } from "../env.js";
 import { roleFor } from "./permissions.js";
+import { NoGraphToken, graphAccessTokenFor, graphTokensEnabled, useTokensForTests, withGraphToken } from "./graphTokens.js";
 import { addDays, toGraphRecurrence, type Recurrence } from "../calendar/recurrence.js";
 
 /**
@@ -11,43 +11,57 @@ import { addDays, toGraphRecurrence, type Recurrence } from "../calendar/recurre
  * Everyone who asked for an event's sites in the calendar's "Add to my Outlook"
  * popup (User.calendarSyncEverySite, CalendarFollow) gets it in their own
  * calendar, in the way they chose there:
- *   - as an invite: they're an attendee of a meeting organized by the "Lantern
- *     Calendar" mailbox (CALENDAR_ORGANIZER), which emails them;
- *   - or quietly: a copy is written straight into their calendar (CalendarCopy),
- *     no email, with their reminder and free/busy choices.
- * By default Teams meetings come as invites and everything else quietly. A
- * Teams event always has the organizer's meeting, since that's where the Teams
- * link comes from; quiet copies carry the link. This app stays the place
- * events are made and changed: Outlook only hears about it (one way).
+ *   - as an invite: they're an attendee of a meeting in the organizer's
+ *     calendar, and Exchange emails them the invite;
+ *   - or quietly: a copy is written straight into their own calendar
+ *     (CalendarCopy), no email, with their reminder and free/busy choices.
+ *
+ * The app has no Outlook access of its own. Everything is written with one
+ * person's own delegated Microsoft sign-in (Calendars.ReadWrite, kept by
+ * services/graphTokens.ts), into that person's own calendar:
+ *   - The organizer is whoever last changed the event when its meeting is first
+ *     sent (or who made it). The meeting lives in their calendar and stays
+ *     there; later changes are written with their sign-in.
+ *   - A quiet copy is written with its owner's sign-in. Someone with no sign-in
+ *     to use (never signed in with Microsoft, or signed out) is invited instead;
+ *     a copy they already have stays, and catches up when they sign in again.
+ *   - When a meeting's organizer has signed out, the next person to change the
+ *     event sends a new one, and the old one is cancelled when the organizer
+ *     signs in again (CalendarOutlookTrash).
+ * Every item the app makes carries an open extension (EXTENSION), and nothing
+ * without it is ever changed or deleted: the app only touches its own events.
+ *
+ * Invites and copies carry a link to the event here, and the Teams link,
+ * nothing else: no description, no form contents. This app stays the place
+ * events are made and changed; Outlook only hears about it (one way).
  *
  * Writes mark the event `outlookDirty`; a queue in this process sends it a few
  * seconds later (long enough for an Undo to cancel itself out), retries what
  * failed every few minutes, and re-checks every upcoming event's invite list a
- * few times a day, since people's sites change.
- *
- * Needs Calendars.ReadWrite for the app in Exchange (RBAC for Applications),
- * on the organizer and the staff mailboxes: backend/scripts/setup-outlook-calendar.ps1.
- * See README "Calendar in Outlook".
+ * few times a day, since people's sites change. One backend instance only: two
+ * would send the same event twice.
  */
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const TZ = "Eastern Standard Time";
+/** The open extension on every event the app writes (Graph openTypeExtension). */
+export const EXTENSION = "org.lanterncommunity.forms";
+const EXTENSION_ID = `Microsoft.OutlookServices.OpenTypeExtension.${EXTENSION}`;
 /** After a change, wait this long before sending, so quick edits and an Undo go as one. */
 const SETTLE_MS = 15_000;
 const RETRY_MS = 5 * 60_000;
 const RECHECK_MS = 6 * 60 * 60_000;
 
-export const outlookConfigured = () =>
-  Boolean(env.calendarOrganizer && env.microsoft.tenantId && env.microsoft.clientId && env.microsoft.clientSecret);
+export const outlookConfigured = () => graphTokensEnabled();
 
 // ── Talking to Graph (swappable for scripts that test without a tenant) ───
 
 let graphFetch: typeof fetch = (input, init) => fetch(input, init);
-let tokenFor: () => Promise<string> = graphToken;
 let forceConfigured = false;
-export function useGraphForTests(f: typeof fetch, token = async () => "test-token") {
+/** Test scripts: a fake Graph, and who has a sign-in (a token, or null for none). */
+export function useGraphForTests(f: typeof fetch, tokens: (userId: string) => Promise<string | null> = async () => "test-token") {
   graphFetch = f;
-  tokenFor = token;
+  useTokensForTests(tokens);
   forceConfigured = true;
 }
 const configured = () => forceConfigured || outlookConfigured();
@@ -58,10 +72,12 @@ class GraphError extends Error {
   }
 }
 
-async function graph<T = any>(method: string, path: string, body?: unknown): Promise<T | null> {
-  const res = await graphFetch(`${GRAPH}${path}`, {
+/** Graph, as this person, on their own mailbox (/me). Throws NoGraphToken if they have no sign-in to use. */
+async function graph<T = any>(userId: string, method: string, path: string, body?: unknown): Promise<T | null> {
+  const token = await graphAccessTokenFor(userId);
+  const res = await graphFetch(`${GRAPH}/me${path}`, {
     method,
-    headers: { Authorization: `Bearer ${await tokenFor()}`, "Content-Type": "application/json", Prefer: `outlook.timezone="${TZ}"` },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: `outlook.timezone="${TZ}"` },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(20_000),
   });
@@ -77,8 +93,31 @@ async function graph<T = any>(method: string, path: string, body?: unknown): Pro
   return text ? (JSON.parse(text) as T) : null;
 }
 
-const userPath = (email: string) => `/users/${encodeURIComponent(email)}`;
-const mailbox = () => userPath(env.calendarOrganizer || "calendar@test");
+const item = (outlookId: string) => `/events/${encodeURIComponent(outlookId)}`;
+
+/** The tag every event the app writes carries, added when it's made. */
+const tagFor = (eventId: string) => ({
+  extensions: [{ "@odata.type": "microsoft.graph.openTypeExtension", extensionName: EXTENSION, app: "Lantern Forms", calendarEventId: eventId }],
+});
+
+/**
+ * Is this item in the person's calendar one the app made? "gone" when it isn't
+ * there any more (deleted in Outlook). Anything without the app's extension is
+ * "notOurs", and is left alone.
+ */
+async function ownership(userId: string, outlookId: string): Promise<"ours" | "gone" | "notOurs"> {
+  try {
+    const found = await graph<{ extensions?: { id: string }[] }>(
+      userId,
+      "GET",
+      `${item(outlookId)}?$select=id&$expand=${encodeURIComponent(`extensions($filter=id eq '${EXTENSION_ID}')`)}`
+    );
+    return found?.extensions?.length ? "ours" : "notOurs";
+  } catch (e) {
+    if (e instanceof GraphError && e.status === 404) return "gone";
+    throw e;
+  }
+}
 
 // ── Who gets it, and how ─────────────────────────────────────────────────
 
@@ -114,10 +153,8 @@ export async function recipientsFor(ev: { allSites: boolean; categoryId: string 
     },
     orderBy: { email: "asc" },
   });
-  const organizer = env.calendarOrganizer.toLowerCase();
   return people
     .filter((p) => ev.allSites || roleFor(p.roleKey).allSites || p.sites.some((s) => siteIds.includes(s.siteId)))
-    .filter((p) => p.email.toLowerCase() !== organizer)
     .map((p) => ({
       userId: p.id, name: p.name, email: p.email,
       emailTeams: p.calendarEmailTeams, emailOther: p.calendarEmailOther,
@@ -125,9 +162,14 @@ export async function recipientsFor(ev: { allSites: boolean; categoryId: string 
     }));
 }
 
+async function nameOf(userId: string | null | undefined): Promise<string> {
+  if (!userId) return "Nobody";
+  return (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ?? "Someone who's left";
+}
+
 // ── What Outlook is sent ─────────────────────────────────────────────────
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const at = (date: string, time: string | null) => ({ dateTime: `${date}T${time ?? "00:00"}:00`, timeZone: TZ });
 const sha1 = (v: unknown) => crypto.createHash("sha1").update(JSON.stringify(v)).digest("hex");
 
@@ -136,19 +178,24 @@ function loadRow(id: string) {
   return prisma.calendarEvent.findUnique({
     where: { id },
     include: {
-      sites: { include: { site: { select: { name: true } } } },
       exceptions: { orderBy: { originalDate: "asc" } },
-      category: { select: { name: true, colorSlot: true } },
+      category: { select: { name: true } },
+      sites: { select: { siteId: true } },
     },
   });
 }
 
-function bodyHtml(ev: { description: string | null; allSites: boolean; startDate: string }, siteNames: string[], joinUrl?: string | null) {
+/**
+ * The body of an invite or a copy: a link to the event in Lantern Forms (and
+ * the Teams link on a copy). Nothing else: what it's about stays in the app,
+ * behind sign-in.
+ */
+function bodyHtml(ev: { startDate: string }, joinUrl?: string | null) {
   const link = `${appBaseUrl}/calendar?view=day&date=${ev.startDate}`;
   return [
     joinUrl ? `<p><a href="${esc(joinUrl)}"><strong>Join the Teams meeting</strong></a></p>` : "",
-    ev.description ? `<p>${esc(ev.description).replace(/\n/g, "<br>")}</p>` : "",
-    `<p style="color:#6b7280">For ${ev.allSites ? "every site" : esc(siteNames.join(", "))}. From the Lantern Forms calendar: <a href="${link}">open it there</a>. Changes made in Outlook aren't kept; change it in Lantern Forms.</p>`,
+    `<p><a href="${esc(link)}">Open it in Lantern Forms</a> for the details.</p>`,
+    `<p style="color:#6b7280">From the Lantern Forms calendar. Changes made in Outlook aren't kept; change it in Lantern Forms.</p>`,
   ].join("");
 }
 
@@ -166,13 +213,17 @@ const done = (id: string, data: Record<string, unknown>) =>
 const saveCopy = (eventId: string, userId: string, data: { mailbox: string; outlookEventId?: string | null; hash?: string | null; fallbackInvite?: boolean; error?: string | null }) =>
   prisma.calendarCopy.upsert({ where: { eventId_userId: { eventId, userId } }, create: { eventId, userId, ...data }, update: data });
 
+/** For later, with its owner's sign-in: cancel a meeting, or delete a quiet copy. */
+const toTrash = (ownerId: string, meeting: boolean, outlookEventId: string, title: string) =>
+  prisma.calendarOutlookTrash.create({ data: { ownerId, meeting, outlookEventId, title } });
+
 /** A mailbox that isn't in this organization (a partner account): Graph has nowhere to write. */
 const noMailbox = (e: unknown) => e instanceof GraphError && (e.status === 404 || /MailboxNotEnabled|InvalidUser|not found/i.test(e.message));
 
 /**
  * Bring one event in line with Outlook. People who want it as an invite are
- * attendees of Lantern Calendar's meeting (which sends them an email); everyone
- * else gets a quiet copy written straight into their own calendar (no email).
+ * attendees of the organizer's meeting (Exchange sends them the email);
+ * everyone else gets a quiet copy written into their own calendar (no email).
  * A Teams event always has the meeting, even with no invitees, because the
  * Teams link comes from it; the quiet copies carry that link.
  * Throws on a Graph failure (the event stays dirty and is tried again).
@@ -187,134 +238,186 @@ export async function syncEvent(id: string): Promise<void> {
     const mapped = toGraphRecurrence(ev.startDate, JSON.parse(ev.recurrence) as Recurrence);
     if (!mapped.ok) {
       // Can't go to Outlook as it is: take back anything sent before, and say why.
-      if (ev.outlookEventId) await cancelMeeting(mailbox(), ev.outlookEventId);
-      for (const c of copies) if (c.outlookEventId) await deleteItem(c.mailbox, c.outlookEventId);
+      if (ev.outlookEventId && ev.outlookOrganizerId) await toTrash(ev.outlookOrganizerId, true, ev.outlookEventId, ev.title);
+      for (const c of copies) if (c.outlookEventId) await toTrash(c.userId, false, c.outlookEventId, ev.title);
       await prisma.calendarCopy.deleteMany({ where: { eventId: id } });
-      await done(id, { outlookEventId: null, teamsJoinUrl: null, outlookHash: null, outlookError: `Not in Outlook: ${mapped.reason}` });
+      await done(id, { outlookEventId: null, outlookOrganizerId: null, teamsJoinUrl: null, outlookHash: null, outlookError: `Not in Outlook: ${mapped.reason}` });
+      kick(1_000);
       return;
     }
     recurrence = mapped.value;
   }
 
-  const people = await recipientsFor(ev);
-  const fallback = new Set(copies.filter((c) => c.fallbackInvite).map((c) => c.userId));
-  const wantsInvite = (p: Recipient) => fallback.has(p.userId) || (ev.teamsMeeting ? p.emailTeams : p.emailOther);
-  const invitees = people.filter(wantsInvite);
-  const quiet = people.filter((p) => !wantsInvite(p));
-  const needMeeting = invitees.length > 0 || (ev.teamsMeeting && quiet.length > 0);
+  // Waiting on approval: nobody gets it yet, which also takes back anything sent before.
+  const people = ev.pending ? [] : await recipientsFor(ev);
+  // Who could send it: the last person to change it, then whoever made it.
+  const senders = [ev.updatedById, ev.createdById].filter((x): x is string => Boolean(x));
+  const holders = await withGraphToken([...people.map((p) => p.userId), ...senders, ...(ev.outlookOrganizerId ? [ev.outlookOrganizerId] : [])]);
 
-  const siteNames = ev.sites.map((s) => s.site.name).sort();
+  // The organizer: whoever's calendar already holds the meeting.
+  let outlookId = ev.outlookEventId;
+  let joinUrl = ev.teamsJoinUrl;
+  let organizerId = outlookId ? ev.outlookOrganizerId : null;
+  let stuck = false;
+  if (outlookId && (!organizerId || !holders.has(organizerId))) {
+    // They've signed out (or left): their meeting can't be reached. The next
+    // sender takes over with a new one; theirs is cancelled when they're back.
+    const next = senders.find((s) => s !== organizerId && holders.has(s));
+    if (next) {
+      if (organizerId) await toTrash(organizerId, true, outlookId, ev.title);
+      outlookId = null;
+      joinUrl = null;
+      organizerId = next;
+      await prisma.calendarEvent.update({ where: { id }, data: { outlookEventId: null, outlookOrganizerId: null, teamsJoinUrl: null, outlookHash: null } });
+    } else {
+      stuck = true;
+    }
+  }
+  if (!outlookId) organizerId = senders.find((s) => holders.has(s)) ?? null;
+
+  const fallback = new Set(copies.filter((c) => c.fallbackInvite).map((c) => c.userId));
+  const hasCopy = new Set(copies.filter((c) => c.outlookEventId).map((c) => c.userId));
+  const prefersQuiet = (p: Recipient) => !fallback.has(p.userId) && !(ev.teamsMeeting ? p.emailTeams : p.emailOther);
+  // A quiet copy needs its owner's own sign-in. Without one they're invited,
+  // unless they already have a copy: it stays, so nobody gets the event twice.
+  const others = people.filter((p) => p.userId !== organizerId);
+  const quiet = others.filter((p) => prefersQuiet(p) && (holders.has(p.userId) || hasCopy.has(p.userId)));
+  const invitees = others.filter((p) => !quiet.includes(p));
+  const me = organizerId ? people.find((p) => p.userId === organizerId) : undefined;
+  const needMeeting = invitees.length > 0 || (ev.teamsMeeting && (quiet.length > 0 || Boolean(me)));
+  // The organizer's own calendar holds the meeting when there is one; otherwise they get a quiet copy like anyone else.
+  if (me && !needMeeting) quiet.push(me);
+
   const meeting = {
     subject: ev.title,
     ...timesOf(ev),
     location: { displayName: ev.location ?? "" },
     recurrence,
     attendees: invitees.map((a) => ({ type: "required", emailAddress: { address: a.email, name: a.name } })),
-    // Hundreds of yes/no replies to the Lantern Calendar mailbox help nobody.
+    // Hundreds of yes/no replies in the organizer's inbox help nobody.
     responseRequested: false,
     allowNewTimeProposals: false,
     showAs: ev.allDay ? "free" : "busy",
     ...(ev.teamsMeeting ? { isOnlineMeeting: true, onlineMeetingProvider: "teamsForBusiness" } : {}),
   };
-  const body = { contentType: "HTML", content: bodyHtml(ev, siteNames) };
+  const body = { contentType: "HTML", content: bodyHtml(ev) };
   const exceptions = ev.exceptions.map((x) => ({ d: x.originalDate, c: x.cancelled, t: x.title, l: x.location, s: [x.allDay, x.startDate, x.startTime, x.endDate, x.endTime] }));
-  const quietKey = quiet.map((p) => [p.userId, p.email, p.reminderMinutes, p.allDayFree]);
+  // Whether each quiet person can be written to is in it, so a copy waiting on
+  // its owner's sign-in catches up once they're back.
+  const quietKey = quiet.map((p) => [p.userId, p.email, p.reminderMinutes, p.allDayFree, holders.has(p.userId)]);
   // Two fingerprints, kept as "meeting|everything": every re-send of the meeting
   // emails its invitees an "updated" notice, so it's re-sent only when the
-  // meeting itself changed, not when a quiet copy or a category color did.
+  // meeting itself changed, not when a quiet copy did.
   // The Teams link isn't in either: it comes back from Outlook, it isn't sent.
-  const meetingHash = needMeeting ? sha1({ meeting, body, exceptions }) : "none";
-  const hash = `${meetingHash}|${sha1({ meetingHash, quietKey, fallback: [...fallback], category: ev.category, exceptions, body })}`;
+  const meetingHash = needMeeting ? sha1({ organizerId, meeting, body, exceptions }) : "none";
+  const hash = `${meetingHash}|${sha1({ meetingHash, quietKey, fallback: [...fallback], category: ev.category?.name, exceptions, body })}`;
   const [sentMeetingHash] = (ev.outlookHash ?? "").split("|");
 
   // Unchanged: nothing to send. One still missing the Teams link it asked for is
   // sent again, but only once the organizer can host Teams meetings; before
   // that, a re-send would only mail attendees a pointless "updated" notice.
-  if (hash === ev.outlookHash && (ev.outlookEventId || !needMeeting)) {
-    const retryTeams = needMeeting && ev.teamsMeeting && !ev.teamsJoinUrl;
+  if (!stuck && hash === ev.outlookHash && (outlookId || !needMeeting)) {
+    const retryTeams = needMeeting && ev.teamsMeeting && !joinUrl;
     if (!retryTeams) {
       await done(id, { outlookError: null });
       return;
     }
-    if (!(await teamsAvailable())) {
-      await done(id, { outlookError: TEAMS_MISSING });
+    if (!(await teamsAvailable(organizerId!))) {
+      await done(id, { outlookError: await teamsMissing(organizerId) });
       return;
     }
   }
 
   // 1. The meeting, for invitees (and for the Teams link).
-  let outlookId = ev.outlookEventId;
-  let joinUrl = ev.teamsJoinUrl;
+  const problems: string[] = [];
   type Created = { id: string; onlineMeeting?: { joinUrl?: string } | null };
-  const retryTeams = ev.teamsMeeting && !ev.teamsJoinUrl;
-  if (needMeeting && outlookId && meetingHash === sentMeetingHash && !retryTeams) {
+  const retryTeams = ev.teamsMeeting && !joinUrl;
+  if (needMeeting && stuck) {
+    problems.push(`It was sent from ${await nameOf(organizerId)}'s Outlook, and they've signed out of Lantern Forms, so changes can't reach it. They can sign in again, or anyone who can edit the event can save it to send it from their own Outlook.`);
+  } else if (needMeeting && !organizerId) {
+    const who = senders.length ? await nameOf(senders[0]) : "Whoever changes it next";
+    problems.push(`Not sent: invites go out from the Outlook of the person who changed the event, and ${who} hasn't signed in to Lantern Forms with Microsoft (or has signed out).`);
+  } else if (needMeeting && outlookId && meetingHash === sentMeetingHash && !retryTeams) {
     // The meeting is as sent: leave it (and its invitees' inboxes) alone.
   } else if (needMeeting) {
+    const sender = organizerId!;
     const create = async () => {
-      const made = await graph<Created>("POST", `${mailbox()}/events`, { ...meeting, body });
+      const made = await graph<Created>(sender, "POST", "/events", { ...meeting, body, ...tagFor(id) });
       return { id: made!.id, joinUrl: made!.onlineMeeting?.joinUrl ?? null };
     };
+    if (outlookId && (await ownership(sender, outlookId)) !== "ours") outlookId = null; // deleted in Outlook: send it afresh
     if (!outlookId) {
       ({ id: outlookId, joinUrl } = await create());
     } else {
       try {
         // A Teams meeting's body holds its join details, which a new body would wipe out.
-        const updated = await graph<Created>("PATCH", `${mailbox()}/events/${outlookId}`, ev.teamsJoinUrl || ev.teamsMeeting ? meeting : { ...meeting, body });
+        const updated = await graph<Created>(sender, "PATCH", item(outlookId), joinUrl || ev.teamsMeeting ? meeting : { ...meeting, body });
         joinUrl = updated?.onlineMeeting?.joinUrl ?? joinUrl;
       } catch (e) {
-        // Deleted in Outlook by someone: send it afresh.
         if (!(e instanceof GraphError && e.status === 404)) throw e;
         ({ id: outlookId, joinUrl } = await create());
       }
     }
     // Save the id before the day-by-day changes, so a failure there can't send a second meeting.
-    await prisma.calendarEvent.update({ where: { id }, data: { outlookEventId: outlookId, teamsJoinUrl: joinUrl } });
-    if (recurrence) await applyExceptions(mailbox(), outlookId!, ev, true);
+    await prisma.calendarEvent.update({ where: { id }, data: { outlookEventId: outlookId, outlookOrganizerId: sender, teamsJoinUrl: joinUrl } });
+    if (recurrence) await applyExceptions(sender, outlookId!, ev, true);
   } else if (outlookId) {
-    // Nobody wants the invite any more: call the meeting off.
-    await cancelMeeting(mailbox(), outlookId);
+    // Nobody wants the invite any more: call the meeting off (later, if the organizer has signed out).
+    if (!stuck && organizerId) await cancelMeeting(organizerId, outlookId);
+    else if (organizerId) await toTrash(organizerId, true, outlookId, ev.title);
     outlookId = null;
     joinUrl = null;
-    await prisma.calendarEvent.update({ where: { id }, data: { outlookEventId: null, teamsJoinUrl: null } });
+    await prisma.calendarEvent.update({ where: { id }, data: { outlookEventId: null, outlookOrganizerId: null, teamsJoinUrl: null } });
   }
 
-  // 2. Quiet copies, straight into each person's calendar.
-  const problems: string[] = [];
+  // 2. Quiet copies, straight into each person's own calendar, with their own sign-in.
   let newFallback = false;
+  let waiting = 0;
   for (const p of quiet) {
     const row = copies.find((c) => c.userId === p.userId);
+    if (!holders.has(p.userId)) {
+      // They've signed out: their copy stays as it is until they sign in again.
+      waiting++;
+      if (row && !row.error) await saveCopy(id, p.userId, { mailbox: row.mailbox, error: "Waiting for them to sign in to Lantern Forms again." });
+      continue;
+    }
     const copy = {
       subject: ev.title,
       ...timesOf(ev),
       location: { displayName: ev.location ?? "" },
       recurrence,
-      body: { contentType: "HTML", content: bodyHtml(ev, siteNames, joinUrl) },
+      body: { contentType: "HTML", content: bodyHtml(ev, joinUrl) },
       isReminderOn: p.reminderMinutes !== null,
       reminderMinutesBeforeStart: p.reminderMinutes ?? 0,
       showAs: ev.allDay && p.allDayFree ? "free" : "busy",
-      // The event's category, with its color, in their own Outlook (set up for them; see ensureCategory).
+      // The category's name. Its color would need access to their Outlook
+      // settings, which the app doesn't ask for: Outlook colors it if they
+      // have a category of that name.
       categories: ev.category ? [ev.category.name] : [],
     };
-    const copyHash = sha1({ copy, exceptions, color: ev.category?.colorSlot });
-    if (row?.outlookEventId && row.mailbox === p.email && row.hash === copyHash) continue;
+    const copyHash = sha1({ copy, exceptions });
+    if (row?.outlookEventId && row.hash === copyHash && !row.error) continue;
     try {
-      // Their address changed: the old copy goes, a new one is written.
-      if (row?.outlookEventId && row.mailbox !== p.email) await deleteItem(row.mailbox, row.outlookEventId).catch(() => {});
-      let copyId = row?.mailbox === p.email ? row.outlookEventId : null;
+      let copyId = row?.outlookEventId ?? null;
+      if (copyId && (await ownership(p.userId, copyId)) !== "ours") copyId = null; // they deleted their copy: write it again
       if (copyId) {
         try {
-          await graph("PATCH", `${userPath(p.email)}/events/${copyId}`, copy);
+          await graph(p.userId, "PATCH", item(copyId), copy);
         } catch (e) {
           if (!(e instanceof GraphError && e.status === 404)) throw e;
-          copyId = null; // they deleted their copy: write it again
+          copyId = null;
         }
       }
-      if (ev.category) await ensureCategory(p.email, ev.category.name, ev.category.colorSlot);
-      if (!copyId) copyId = (await graph<{ id: string }>("POST", `${userPath(p.email)}/events`, copy))!.id;
+      if (!copyId) copyId = (await graph<{ id: string }>(p.userId, "POST", "/events", { ...copy, ...tagFor(id) }))!.id;
       await saveCopy(id, p.userId, { mailbox: p.email, outlookEventId: copyId, hash: null, error: null, fallbackInvite: false });
-      if (recurrence) await applyExceptions(userPath(p.email), copyId, ev, false);
+      if (recurrence) await applyExceptions(p.userId, copyId, ev, false);
       await saveCopy(id, p.userId, { mailbox: p.email, hash: copyHash });
     } catch (e) {
+      if (e instanceof NoGraphToken) {
+        // Microsoft stopped honouring their sign-in just now: like signed out.
+        waiting++;
+        continue;
+      }
       if (!row?.outlookEventId && noMailbox(e)) {
         // No mailbox here to write into (a partner account): they get the invite instead.
         await saveCopy(id, p.userId, { mailbox: p.email, outlookEventId: null, fallbackInvite: true, error: "No mailbox in this organization; sent as an invite." });
@@ -333,7 +436,10 @@ export async function syncEvent(id: string): Promise<void> {
   for (const c of copies) {
     if (quietIds.has(c.userId)) continue;
     if (c.fallbackInvite && peopleIds.has(c.userId)) continue; // keeps the "invite instead" note
-    if (c.outlookEventId) await deleteItem(c.mailbox, c.outlookEventId);
+    if (c.outlookEventId) {
+      if (holders.has(c.userId)) await deleteItem(c.userId, c.outlookEventId);
+      else await toTrash(c.userId, false, c.outlookEventId, ev.title);
+    }
     await prisma.calendarCopy.delete({ where: { id: c.id } });
   }
 
@@ -344,102 +450,57 @@ export async function syncEvent(id: string): Promise<void> {
     return;
   }
   if (problems.length) {
-    const access = problems.some((m) => /\b403\b/.test(m))
-      ? " The app may not have access to staff calendars yet: run backend/scripts/setup-outlook-calendar.ps1 again."
-      : "";
-    await done(id, { outlookError: `Couldn't add it to ${problems.length} ${problems.length === 1 ? "person's" : "people's"} calendars.${access} First: ${problems[0]}`, outlookHash: null });
+    await done(id, { outlookError: problems.length === 1 ? problems[0] : `${problems.length} problems. First: ${problems[0]}`, outlookHash: null });
     return;
   }
   if (needMeeting && ev.teamsMeeting && !joinUrl) {
     // Exchange takes the request and quietly leaves the Teams link off when the
     // organizer can't host Teams meetings. Say so, and leave no hash, so the next
     // re-check (or "send now") asks again once Teams works for that account.
-    await done(id, { outlookError: TEAMS_MISSING, outlookHash: null });
+    await done(id, { outlookError: await teamsMissing(organizerId), outlookHash: null });
     return;
   }
+  // Copies waiting on someone's sign-in aren't a fault; the hash notes who could be written to.
   await done(id, { outlookError: null, outlookHash: hash });
+  if (waiting) console.log(`[outlook] event ${id}: ${waiting} quiet ${waiting === 1 ? "copy waits" : "copies wait"} for their owner to sign in again.`);
 }
 
-export const TEAMS_MISSING =
-  "In Outlook, but without a Teams link: the Lantern Calendar account can't host Teams meetings yet (Teams not in its license, still being set up, or the Outlook add-in is off in its Teams meeting policy). It's tried again automatically.";
+async function teamsMissing(organizerId: string | null) {
+  return `In Outlook, but without a Teams link: ${await nameOf(organizerId)}, whose Outlook sent it, can't host Teams meetings (Teams not in their license, or the Outlook add-in is off in their Teams meeting policy). It's tried again automatically.`;
+}
 
-let teamsCheck: { at: number; ok: boolean } | null = null;
-/** Can the organizer host Teams meetings now? Asked at most every 10 minutes. */
-async function teamsAvailable(): Promise<boolean> {
-  if (teamsCheck && Date.now() - teamsCheck.at < 10 * 60_000) return teamsCheck.ok;
-  const ok = ((await organizerMeetingProviders()) ?? []).includes("teamsForBusiness");
-  teamsCheck = { at: Date.now(), ok };
+const teamsChecks = new Map<string, { at: number; ok: boolean }>();
+/** Can this organizer host Teams meetings now? Asked at most every 10 minutes per person. */
+async function teamsAvailable(userId: string): Promise<boolean> {
+  const check = teamsChecks.get(userId);
+  if (check && Date.now() - check.at < 10 * 60_000) return check.ok;
+  const ok = ((await meetingProvidersFor(userId)) ?? []).includes("teamsForBusiness");
+  teamsChecks.set(userId, { at: Date.now(), ok });
   return ok;
 }
 
-/** Whether the organizer mailbox can host Teams meetings at all, as Exchange sees it. */
-export async function organizerMeetingProviders(): Promise<string[] | null> {
+/** Whether someone's calendar can host Teams meetings at all, as Exchange sees it. */
+export async function meetingProvidersFor(userId: string): Promise<string[] | null> {
   if (!configured()) return null;
-  const cal = await graph<{ allowedOnlineMeetingProviders?: string[] }>("GET", `${mailbox()}/calendar?$select=allowedOnlineMeetingProviders`);
+  const cal = await graph<{ allowedOnlineMeetingProviders?: string[] }>(userId, "GET", "/calendar?$select=allowedOnlineMeetingProviders");
   return cal?.allowedOnlineMeetingProviders ?? [];
 }
 
-// ── Outlook categories ───────────────────────────────────────────────────
-
-/**
- * The calendar's eight colors (index.css --viz-1…8) as Outlook's nearest
- * preset colors: blue, orange, green, amber, pink, dark green, purple, red.
- */
-const OUTLOOK_COLORS = ["preset7", "preset1", "preset5", "preset3", "preset9", "preset4", "preset8", "preset0"];
-
-/** Per mailbox: its Outlook categories (name → id and color), read at most hourly. */
-const masterCache = new Map<string, { at: number; byName: Map<string, { id: string; color: string }> | null }>();
-
-/**
- * Make sure someone's Outlook has this category, in the calendar's color, so
- * their copy shows up colored with nothing set up on their end. Needs the
- * app's MailboxSettings.ReadWrite in Exchange; without it the copy still gets
- * the category's name, just without a color, and nothing fails.
- */
-async function ensureCategory(email: string, name: string, colorSlot: number) {
-  const color = OUTLOOK_COLORS[colorSlot] ?? "preset12";
-  const key = email.toLowerCase();
-  let entry = masterCache.get(key);
-  if (!entry || Date.now() - entry.at > 60 * 60_000) {
-    try {
-      const list = await graph<{ value: { id: string; displayName: string; color: string }[] }>("GET", `${userPath(email)}/outlook/masterCategories`);
-      entry = { at: Date.now(), byName: new Map((list?.value ?? []).map((c) => [c.displayName.toLowerCase(), { id: c.id, color: c.color }])) };
-    } catch {
-      entry = { at: Date.now(), byName: null }; // no access yet: try again in an hour
-    }
-    masterCache.set(key, entry);
-  }
-  if (!entry.byName) return;
-  const have = entry.byName.get(name.toLowerCase());
-  try {
-    if (!have) {
-      const made = await graph<{ id: string }>("POST", `${userPath(email)}/outlook/masterCategories`, { displayName: name, color });
-      entry.byName.set(name.toLowerCase(), { id: made?.id ?? "", color });
-    } else if (have.color !== color && have.id) {
-      // Recolored here: follow it.
-      await graph("PATCH", `${userPath(email)}/outlook/masterCategories/${have.id}`, { color });
-      have.color = color;
-    }
-  } catch (e) {
-    if (e instanceof GraphError && e.status === 409) entry.at = 0; // made meanwhile: re-read next time
-    else console.error(`[outlook] category "${name}" for ${email}: ${e instanceof Error ? e.message : e}`);
-  }
-}
-
 /** Single days changed or cancelled here, on their Outlook occurrence (in the meeting, or a quiet copy). */
-async function applyExceptions(base: string, outlookId: string, ev: SyncRow, isMeeting: boolean) {
+async function applyExceptions(userId: string, outlookId: string, ev: SyncRow, isMeeting: boolean) {
   for (const x of ev.exceptions) {
     const window = `startDateTime=${addDays(x.originalDate, -1)}T00:00:00&endDateTime=${addDays(x.originalDate, 2)}T00:00:00`;
-    const list = await graph<{ value: { id: string; originalStart?: string }[] }>("GET", `${base}/events/${outlookId}/instances?${window}`);
+    // Occurrences of a series the app made (the series was checked as the app's own just before).
+    const list = await graph<{ value: { id: string; originalStart?: string }[] }>(userId, "GET", `${item(outlookId)}/instances?${window}`);
     const instance = list?.value.find((i) => i.originalStart && nyDay(i.originalStart) === x.originalDate);
     if (!instance) continue; // already cancelled, or not in Outlook's series
     if (x.cancelled) {
-      if (isMeeting) await cancelMeeting(base, instance.id);
-      else await deleteItem(null, instance.id, base);
+      if (isMeeting) await cancelMeeting(userId, instance.id, true);
+      else await deleteItem(userId, instance.id, true);
       continue;
     }
     const moved = x.startDate && x.endDate;
-    await graph("PATCH", `${base}/events/${instance.id}`, {
+    await graph(userId, "PATCH", item(instance.id), {
       ...(x.title !== null ? { subject: x.title } : {}),
       ...(x.location !== null ? { location: { displayName: x.location } } : {}),
       ...(moved ? timesOf({ allDay: Boolean(x.allDay), startDate: x.startDate!, startTime: x.startTime, endDate: x.endDate!, endTime: x.endTime }) : {}),
@@ -450,21 +511,27 @@ async function applyExceptions(base: string, outlookId: string, ev: SyncRow, isM
 const nyFormat = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 const nyDay = (iso: string) => nyFormat.format(new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`));
 
-/** Call off a meeting (or one occurrence): attendees get a cancellation. One with nobody invited is just deleted. */
-async function cancelMeeting(base: string, outlookId: string) {
+/**
+ * Call off a meeting (or one occurrence of the app's own series): attendees get
+ * a cancellation. One with nobody invited is just deleted. Only ever one the
+ * app made; one that's gone already is fine.
+ */
+async function cancelMeeting(userId: string, outlookId: string, occurrenceOfOurs = false) {
+  if (!occurrenceOfOurs && (await ownership(userId, outlookId)) !== "ours") return;
   try {
-    await graph("POST", `${base}/events/${outlookId}/cancel`, { comment: "Removed from the Lantern Forms calendar." });
+    await graph(userId, "POST", `${item(outlookId)}/cancel`, { comment: "Removed from the Lantern Forms calendar." });
   } catch (e) {
     if (e instanceof GraphError && e.status === 404) return;
-    if (e instanceof GraphError && e.status === 400) return deleteItem(null, outlookId, base);
+    if (e instanceof GraphError && e.status === 400) return deleteItem(userId, outlookId, true);
     throw e;
   }
 }
 
-/** Delete an item from someone's calendar (a quiet copy, or one of its days). Already gone is fine. */
-async function deleteItem(email: string | null, outlookId: string, base = userPath(email ?? "")) {
+/** Delete an item from someone's own calendar (a quiet copy, or one of its days). Only the app's own; already gone is fine. */
+async function deleteItem(userId: string, outlookId: string, checked = false) {
+  if (!checked && (await ownership(userId, outlookId)) !== "ours") return;
   try {
-    await graph("DELETE", `${base}/events/${outlookId}`);
+    await graph(userId, "DELETE", item(outlookId));
   } catch (e) {
     if (!(e instanceof GraphError && e.status === 404)) throw e;
   }
@@ -478,11 +545,11 @@ export async function noteCalendarChange(ids: string[]) {
   kick();
 }
 
-/** An event is about to be deleted here: cancel its meeting and remove the quiet copies, later. */
-export async function queueOutlookCancel(ev: { id: string; outlookEventId: string | null; title: string }) {
-  if (ev.outlookEventId) await prisma.calendarOutlookTrash.create({ data: { outlookEventId: ev.outlookEventId, title: ev.title } });
+/** An event is about to be deleted here: cancel its meeting and remove the quiet copies, later, with their owners' sign-ins. */
+export async function queueOutlookCancel(ev: { id: string; outlookEventId: string | null; outlookOrganizerId: string | null; title: string }) {
+  if (ev.outlookEventId && ev.outlookOrganizerId) await toTrash(ev.outlookOrganizerId, true, ev.outlookEventId, ev.title);
   const copies = await prisma.calendarCopy.findMany({ where: { eventId: ev.id, outlookEventId: { not: null } } });
-  if (copies.length) await prisma.calendarOutlookTrash.createMany({ data: copies.map((c) => ({ mailbox: c.mailbox, outlookEventId: c.outlookEventId!, title: ev.title })) });
+  if (copies.length) await prisma.calendarOutlookTrash.createMany({ data: copies.map((c) => ({ ownerId: c.userId, meeting: false, outlookEventId: c.outlookEventId!, title: ev.title })) });
   kick();
 }
 
@@ -491,6 +558,18 @@ export async function markUpcomingDirty() {
   const yesterday = addDays(new Date().toISOString().slice(0, 10), -1);
   await prisma.calendarEvent.updateMany({ where: { OR: [{ lastDate: null }, { lastDate: { gte: yesterday } }] }, data: { outlookDirty: true } });
   kick();
+}
+
+/**
+ * Someone signed in with Microsoft and the app has a sign-in for them it didn't
+ * have before: what was waiting on them (their copies, meetings sent from their
+ * Outlook, cancellations) can go now.
+ */
+export async function noteGraphTokenArrived(userId: string, isNew: boolean) {
+  if (!configured()) return;
+  if (isNew) await markUpcomingDirty();
+  else kick();
+  void userId;
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -506,16 +585,25 @@ function kick(delay = SETTLE_MS) {
 }
 
 /** Send everything waiting, one at a time. Safe to call while it's already going. */
-export async function runQueue(): Promise<{ sent: number; failed: number }> {
-  if (!configured()) return { sent: 0, failed: 0 };
+export async function runQueue(): Promise<{ sent: number; failed: number; waiting: number }> {
+  if (!configured()) return { sent: 0, failed: 0, waiting: 0 };
   while (running) await running;
   let sent = 0;
   let failed = 0;
+  let waiting = 0;
   running = (async () => {
-    for (const t of await prisma.calendarOutlookTrash.findMany({ orderBy: { createdAt: "asc" } })) {
+    const trash = await prisma.calendarOutlookTrash.findMany({ orderBy: { createdAt: "asc" } });
+    const owners = await withGraphToken(trash.map((t) => t.ownerId));
+    for (const t of trash) {
+      if (!owners.has(t.ownerId)) {
+        // Only its owner's own sign-in can remove it.
+        waiting++;
+        if (!t.error) await prisma.calendarOutlookTrash.update({ where: { id: t.id }, data: { error: `Waiting for ${await nameOf(t.ownerId)} to sign in to Lantern Forms again.` } });
+        continue;
+      }
       try {
-        if (t.mailbox) await deleteItem(t.mailbox, t.outlookEventId);
-        else await cancelMeeting(mailbox(), t.outlookEventId);
+        if (t.meeting) await cancelMeeting(t.ownerId, t.outlookEventId);
+        else await deleteItem(t.ownerId, t.outlookEventId);
         await prisma.calendarOutlookTrash.delete({ where: { id: t.id } });
       } catch (e) {
         failed++;
@@ -529,7 +617,7 @@ export async function runQueue(): Promise<{ sent: number; failed: number }> {
         sent++;
       } catch (e) {
         failed++;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = e instanceof NoGraphToken ? `${await nameOf(e.userId)} ${e.message}. It's tried again.` : e instanceof Error ? e.message : String(e);
         console.error(`[outlook] event ${id}: ${message}`);
         await prisma.calendarEvent.update({ where: { id }, data: { outlookError: message } }).catch(() => {});
       }
@@ -540,7 +628,7 @@ export async function runQueue(): Promise<{ sent: number; failed: number }> {
   } finally {
     running = null;
   }
-  return { sent, failed };
+  return { sent, failed, waiting };
 }
 
 /** On boot: send what's waiting, retry failures every few minutes, re-check invite lists a few times a day. */

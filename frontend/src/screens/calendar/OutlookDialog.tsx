@@ -24,8 +24,8 @@ const REMINDERS = [
 /**
  * "Add to my Outlook": which events come to this person's own Outlook calendar
  * (every-site events, their sites, the categories they want), and how: as an
- * invite from Lantern Calendar, which emails them, or added quietly with no
- * email. Opens by itself the first time someone visits the calendar; after
+ * invite from whoever added the event (Outlook emails it), or added quietly to
+ * their calendar with their own Microsoft sign-in, no email. Opens by itself the first time someone visits the calendar; after
  * that it's the Outlook button. Saving nothing is an answer too ("None for me").
  */
 export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -120,7 +120,7 @@ export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () =>
               ))}
               <CategoryToggle on={!p.skipUncategorized} color={categoryColor(null)} label="No category" onClick={() => set({ skipUncategorized: !p.skipUncategorized })} />
             </div>
-            <p className="mt-1.5 text-micro text-muted">Untick a category to leave its events out of your Outlook. Events added quietly show in Outlook in the same color.</p>
+            <p className="mt-1.5 text-micro text-muted">Untick a category to leave its events out of your Outlook. Events added quietly carry the category's name, so a category of that name in your Outlook colors them.</p>
           </section>
 
           <section className="space-y-2">
@@ -129,14 +129,20 @@ export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () =>
               on={p.emailTeams}
               onChange={(emailTeams) => set({ emailTeams })}
               title="Email me an invite for Teams meetings"
-              hint={p.emailTeams ? "An invite from Lantern Calendar, with the join link." : "Added quietly, no email. The join link is in the event."}
+              hint={p.emailTeams ? "An invite from whoever added the event, with the join link." : "Added quietly, no email. The join link is in the event."}
             />
             <SwitchRow
               on={p.emailOther}
               onChange={(emailOther) => set({ emailOther })}
               title="Email me an invite for other events"
-              hint={p.emailOther ? "An invite from Lantern Calendar, and an email each time it changes." : "Added quietly to your calendar, no email."}
+              hint={p.emailOther ? "An invite from whoever added the event, and an email each time it changes." : "Added quietly to your calendar, no email."}
             />
+            {data?.enabled && !data.canWriteMine && (!p.emailTeams || !p.emailOther) && (
+              <p className="text-micro text-muted">
+                Adding events quietly uses your Microsoft sign-in, and Lantern Forms doesn't have it right now (you signed out, or
+                haven't signed in with Microsoft since this was turned on). Until you sign in again, they come as invites.
+              </p>
+            )}
           </section>
 
           <section className="space-y-2">

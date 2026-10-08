@@ -149,7 +149,7 @@ function MonthBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onOp
   const { occ } = seg;
   const color = colorOf(colors, occ.categoryId);
   const place = { gridColumn: `${seg.start + 1} / ${seg.end + 2}`, gridRow: seg.lane + 1 };
-  const label = `${occ.title}${occ.allDay ? "" : `, ${formatTime(occ.startTime!)}`}`;
+  const label = `${occ.title}${occ.allDay ? "" : `, ${formatTime(occ.startTime!)}`}${occ.pending ? " (needs approval)" : ""}`;
   if (isSpanning(occ)) {
     return (
       <button
@@ -160,7 +160,8 @@ function MonthBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onOp
         className={cn(
           "pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1 border-l-[3px] px-1.5 text-left text-[12px] font-semibold leading-none text-ink hover:brightness-95",
           seg.fromBefore ? "rounded-l-none" : "rounded-l-[4px]",
-          seg.toAfter ? "rounded-r-none" : "rounded-r-[4px]"
+          seg.toAfter ? "rounded-r-none" : "rounded-r-[4px]",
+          occ.pending && "cal-pending"
         )}
       >
         {!occ.allDay && !seg.fromBefore && <span className="shrink-0 font-bold tabular text-muted">{formatTime(occ.startTime!)}</span>}
@@ -175,9 +176,9 @@ function MonthBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onOp
       onClick={() => onOpen(occ)}
       title={label}
       style={place}
-      className="pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1.5 rounded-[4px] px-1.5 text-left text-[12px] leading-none text-ink hover:bg-navsel"
+      className={cn("pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1.5 rounded-[4px] px-1.5 text-left text-[12px] leading-none text-ink hover:bg-navsel", occ.pending && "opacity-80")}
     >
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color.solid }} />
+      <span className="h-2 w-2 shrink-0 rounded-full" style={occ.pending ? { boxShadow: `inset 0 0 0 1.5px ${color.solid}` } : { background: color.solid }} />
       <span className="shrink-0 font-semibold tabular text-muted">{formatTime(occ.startTime!)}</span>
       <span className="truncate font-semibold">{occ.title}</span>
     </button>
@@ -251,7 +252,7 @@ export function MonthCompact({
                 </span>
                 <span className="flex h-1.5 gap-[3px]">
                   {dayItems.slice(0, 3).map((o) => (
-                    <span key={o.key} className="h-1.5 w-1.5 rounded-full" style={{ background: colorOf(colors, o.categoryId).solid }} />
+                    <span key={o.key} className="h-1.5 w-1.5 rounded-full" style={o.pending ? { boxShadow: `inset 0 0 0 1px ${colorOf(colors, o.categoryId).solid}` } : { background: colorOf(colors, o.categoryId).solid }} />
                   ))}
                 </span>
               </button>

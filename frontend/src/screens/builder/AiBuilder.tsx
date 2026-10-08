@@ -40,7 +40,7 @@ const PROMPTS = [
   "Add an email notification to facilities@lanterncommunity.org whenever priority is Urgent.",
   "Look at last month's entries for the supply request form and summarize what sites ask for most.",
   "Build a Pantry code form like Hot Foods: pick the site, pick the resident, choose items from a list admins manage, limit one visit a week unless a manager overrides, and a Reports tab.",
-  "In the hot-foods-code form, add a 'Dietary note' shown on the sign step when the resident has one saved in a collection.",
+  "In the hot-foods form, add a 'Dietary note' shown on the sign step when the resident has one saved in a collection.",
 ];
 
 /** Admin → AI form builder: connect Claude (or any MCP client) to build forms. */

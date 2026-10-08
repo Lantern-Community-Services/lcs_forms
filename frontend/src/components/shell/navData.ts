@@ -17,6 +17,9 @@ export function useReviewCount(): number {
   return rosterUser ? (data ?? []).reduce((n, s) => n + s.attentionCount, 0) : 0;
 }
 
+/** The Roster's catalog URL. It sits in the top group of the nav (Home, Roster, Calendar), not among the forms. */
+export const ROSTER_URL = "/roster";
+
 export interface NavCategory {
   category: FormCategory;
   Icon: React.ElementType;
@@ -33,9 +36,15 @@ export interface NavForm {
 export function useNavCatalog(): { categories: NavCategory[]; pinned: NavForm[] } {
   const { can } = useAuth();
   const { data: catalog } = useForms();
-  // Categories with nothing this person may open are left out entirely.
+  // Categories with nothing this person may open are left out entirely. The
+  // Roster is left out of the lists too: it has its own place beside Home and
+  // Calendar, so showing it again as a form would only repeat it.
   const categories = (catalog?.categories ?? [])
-    .map((category) => ({ category, Icon: formIcon(category.icon), forms: category.forms.filter((f) => canOpenForm(f.url, can)) }))
+    .map((category) => ({
+      category,
+      Icon: formIcon(category.icon),
+      forms: category.forms.filter((f) => f.url !== ROSTER_URL && canOpenForm(f.url, can)),
+    }))
     .filter((c) => c.forms.length > 0);
   const byId = new Map<string, NavForm>(
     categories.flatMap((c) => c.forms.map((form): [string, NavForm] => [form.id, { form, category: c.category, Icon: formLinkIcon(form, c.category.icon || "folder") }]))
@@ -47,13 +56,13 @@ export function useNavCatalog(): { categories: NavCategory[]; pinned: NavForm[] 
 
 export const isRosterPath = (pathname: string) => pathname.startsWith("/roster") || pathname.startsWith("/tenants");
 
-/** Inside a form rather than on the catalog or an admin screen: built-in forms, the Roster, built forms and code forms. */
+/** Inside a form rather than on the catalog or an admin screen: the Roster, built forms and code forms. */
 export const isFormPath = (pathname: string) =>
-  pathname.startsWith("/forms/") || pathname.startsWith("/f/") || pathname.startsWith("/apps/") || isRosterPath(pathname);
+  pathname.startsWith("/f/") || pathname.startsWith("/apps/") || isRosterPath(pathname);
 
 /**
  * Whether a catalog URL is the screen on show. A form stays lit on its own tabs
- * (/forms/hot-foods/entries), and the Roster on every roster tab and resident page.
+ * (/apps/hot-foods/entries), and the Roster on every roster tab and resident page.
  */
 export function useIsLit(): (url: string) => boolean {
   const { pathname } = useLocation();

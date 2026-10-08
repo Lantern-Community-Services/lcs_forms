@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { isRoleKey } from "../services/permissions.js";
 import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
+import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
 
 export const formsRouter = Router();
 formsRouter.use(requireAuth);
@@ -36,14 +37,12 @@ function toClient<T extends FormRow>(form: T): Omit<T, "roles"> & { roles: strin
   return { ...form, roles: rolesOf(form) };
 }
 
-/** Icon keys the frontend can draw (frontend/src/lib/formIcons.ts). Categories and forms share the set. */
-export const FORM_ICONS = [
-  "folder", "utensils", "users", "bus", "wallet", "shield", "briefcase", "monitor",
-  "home", "heart", "calendar", "clipboard", "package", "file",
-  "basket", "soup", "cart", "boxes", "contact", "camera", "gift", "inspect", "party", "calendar-plus",
-  "train", "ticket", "banknote", "piggy-bank", "receipt", "lock", "alert", "newspaper", "user-plus",
-  "hard-hat", "message", "laptop", "help", "history", "inbox",
-] as const;
+/**
+ * Icon keys the frontend can draw: every Lucide icon bar brand logos. Generated
+ * together with frontend/src/lib/formIconSet.ts by frontend/scripts/gen-form-icons.mjs.
+ * Categories and forms share the set.
+ */
+export const FORM_ICONS = FORM_ICON_KEYS;
 
 /**
  * A WordPress (or any https) page, or a path inside this app. Anything else —
@@ -74,7 +73,7 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => (v ? v : null));
 
-const formBody = z.object({
+export const formBody = z.object({
   categoryId: z.string().min(1),
   title: z.string().trim().min(1).max(120),
   description: optionalText(300),
@@ -92,7 +91,7 @@ const formBody = z.object({
     .transform((v) => (v && v.length ? [...new Set(v)].join(",") : null)),
 });
 
-const categoryBody = z.object({
+export const categoryBody = z.object({
   name: z.string().trim().min(1).max(80),
   icon: z.enum(FORM_ICONS).default("folder"),
 });

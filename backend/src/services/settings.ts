@@ -17,20 +17,14 @@ export const SETTING_DEFAULTS = {
    * one. Partner domains still file an access request either way.
    */
   autoApproveStaff: "true",
-  /** Set once the default forms catalog has been written; see formCatalog.ts. */
+  /** Set when a build that wrote a default forms catalog had written it; see formCatalog.ts. */
   formCatalogSeeded: "",
-  /** Set once the forms have been given their default icons; see formCatalog.ts ensureFormIcons. */
-  formIconsSeeded: "",
+  /** Set once the old default catalog has been taken out; see formCatalog.ts retireLegacyCatalog. */
+  legacyCatalogRetired: "",
   /** Set once site addresses and coordinates have been filled from the site map; see siteLocations.ts. */
   siteLocationsSeeded: "",
   /** Set once the default calendar categories have been written; see calendar.ts. */
   calendarCategoriesSeeded: "",
-  /** Hot Foods: meals of each meal type one resident gets per day at supportive housing. */
-  hotFoodsLimitSupportive: "1",
-  /** Hot Foods: the same at a shelter. */
-  hotFoodsLimitShelter: "3",
-  /** Hot Foods: minutes a shelter resident waits between two meals of the same type. 0 = no cooldown. */
-  hotFoodsCooldownMinutes: "60",
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;

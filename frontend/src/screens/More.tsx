@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, UtensilsCrossed, Webhook } from "lucide-react";
+import { ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, Webhook } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/badge";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
@@ -48,7 +48,6 @@ function AdminSection() {
   return (
     <Section title="Admin">
       {can("forms.manage") && <Row to="/admin/forms" icon={FileText} label="Forms catalog" />}
-      {can("forms.manage") && <Row to="/admin/hot-foods" icon={UtensilsCrossed} label="Hot Foods" />}
       {can("sites.manage") && <Row to="/admin/sites" icon={Layers} label="Sites" meta={sites?.length} />}
       {can("sites.manage") && <Row to="/admin/import" icon={Upload} label="Import tenant list" />}
       {people && (

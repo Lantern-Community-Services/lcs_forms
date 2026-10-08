@@ -1,66 +1,118 @@
+import { createElement, useEffect, useState } from "react";
 import {
   Banknote, Boxes, Briefcase, Bus, Calendar, CalendarPlus, Camera, ClipboardList, Contact, File, Folder, Gift, HardHat, Heart,
-  History, Home, Inbox, Laptop, LifeBuoy, Lock, MessageSquare, Monitor, Newspaper, Package, PartyPopper, PiggyBank, Receipt,
+  History, House, Inbox, Laptop, LifeBuoy, Lock, MessageSquare, Monitor, Newspaper, Package, PartyPopper, PiggyBank, Receipt,
   SearchCheck, Shield, ShoppingBasket, ShoppingCart, Soup, Ticket, TrainFront, TriangleAlert, UserPlus, Users, Utensils, Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import type { PermissionKey } from "./types";
 
 /**
- * Icons a form category or a form can wear. The keys are stored in the
- * database, so this list must match FORM_ICONS in backend/src/routes/forms.ts:
- * add to both, and never rename a key that is in use.
+ * Icons a form category or a form can wear: all of Lucide (lucide.dev, free,
+ * ISC licence) bar brand logos, about 1,500. They are generated into
+ * formIconSet.ts by scripts/gen-form-icons.mjs, together with the backend's
+ * list of accepted keys (backend/src/forms/iconKeys.ts). Keys are stored in the
+ * database, so one that has shipped is never renamed or dropped.
+ *
+ * The full set is big, so it loads on demand. The 39 icons the app started
+ * with (CORE_ICONS) are always on hand: they cover the sidebar and the Forms
+ * screen on first paint, and an icon outside them draws as a blank square of
+ * the same size for the instant its chunk takes to arrive.
  */
-export const FORM_ICONS = {
-  folder: { label: "Folder", Icon: Folder },
-  utensils: { label: "Food", Icon: Utensils },
-  users: { label: "People", Icon: Users },
-  bus: { label: "Transport", Icon: Bus },
-  wallet: { label: "Money", Icon: Wallet },
-  shield: { label: "Security", Icon: Shield },
-  briefcase: { label: "Work", Icon: Briefcase },
-  monitor: { label: "Computer", Icon: Monitor },
-  home: { label: "Home", Icon: Home },
-  heart: { label: "Care", Icon: Heart },
-  calendar: { label: "Calendar", Icon: Calendar },
-  clipboard: { label: "Clipboard", Icon: ClipboardList },
-  package: { label: "Package", Icon: Package },
-  file: { label: "Document", Icon: File },
-  basket: { label: "Pantry", Icon: ShoppingBasket },
-  soup: { label: "Hot meal", Icon: Soup },
-  cart: { label: "Groceries", Icon: ShoppingCart },
-  boxes: { label: "Inventory", Icon: Boxes },
-  contact: { label: "Roster", Icon: Contact },
-  camera: { label: "Photo", Icon: Camera },
-  gift: { label: "Gift", Icon: Gift },
-  inspect: { label: "Inspection", Icon: SearchCheck },
-  party: { label: "Event", Icon: PartyPopper },
-  "calendar-plus": { label: "Request", Icon: CalendarPlus },
-  train: { label: "Transit", Icon: TrainFront },
-  ticket: { label: "Ticket", Icon: Ticket },
-  banknote: { label: "Cash", Icon: Banknote },
-  "piggy-bank": { label: "Savings", Icon: PiggyBank },
-  receipt: { label: "Receipt", Icon: Receipt },
-  lock: { label: "Lock", Icon: Lock },
-  alert: { label: "Incident", Icon: TriangleAlert },
-  newspaper: { label: "Newsletter", Icon: Newspaper },
-  "user-plus": { label: "New person", Icon: UserPlus },
-  "hard-hat": { label: "Safety", Icon: HardHat },
-  message: { label: "Conversation", Icon: MessageSquare },
-  laptop: { label: "Laptop", Icon: Laptop },
-  help: { label: "Help", Icon: LifeBuoy },
-  history: { label: "History", Icon: History },
-  inbox: { label: "Inbox", Icon: Inbox },
-} as const;
+export interface FormIconDef {
+  key: string;
+  label: string;
+  /** Lowercase words the picker's search also matches. */
+  tags: string;
+  Icon: LucideIcon;
+}
 
-export type FormIconKey = keyof typeof FORM_ICONS;
+export type FormIconKey = string;
 
-export function formIcon(key: string) {
-  return (FORM_ICONS[key as FormIconKey] ?? FORM_ICONS.folder).Icon;
+/** The original keys. Must stay in step with LEGACY in scripts/gen-form-icons.mjs. */
+const CORE_ICONS: Record<string, LucideIcon> = Object.assign(Object.create(null) as Record<string, LucideIcon>, {
+  folder: Folder, utensils: Utensils, users: Users, bus: Bus, wallet: Wallet, shield: Shield, briefcase: Briefcase, monitor: Monitor,
+  home: House, heart: Heart, calendar: Calendar, clipboard: ClipboardList, package: Package, file: File, basket: ShoppingBasket,
+  soup: Soup, cart: ShoppingCart, boxes: Boxes, contact: Contact, camera: Camera, gift: Gift, inspect: SearchCheck, party: PartyPopper,
+  "calendar-plus": CalendarPlus, train: TrainFront, ticket: Ticket, banknote: Banknote, "piggy-bank": PiggyBank, receipt: Receipt,
+  lock: Lock, alert: TriangleAlert, newspaper: Newspaper, "user-plus": UserPlus, "hard-hat": HardHat, message: MessageSquare,
+  laptop: Laptop, help: LifeBuoy, history: History, inbox: Inbox,
+});
+
+let loading: Promise<readonly FormIconDef[]> | null = null;
+let loaded: readonly FormIconDef[] | null = null;
+const byKey = new Map<string, FormIconDef>();
+
+/** Fetches the full icon set once; every caller shares the one request. */
+export function loadFormIconSet(): Promise<readonly FormIconDef[]> {
+  loading ??= import("./formIconSet").then((m) => {
+    loaded = m.FORM_ICON_LIST;
+    for (const i of loaded) byKey.set(i.key, i);
+    return loaded;
+  });
+  // A failed fetch (offline, first run) is tried again the next time something asks.
+  loading.catch(() => (loading = null));
+  return loading;
+}
+
+/** The full icon set for the picker: null until it has loaded. */
+export function useFormIconSet(): readonly FormIconDef[] | null {
+  const [list, setList] = useState(loaded);
+  useEffect(() => {
+    if (!list) loadFormIconSet().then(setList, () => {});
+  }, [list]);
+  return list;
+}
+
+/** One component per key, so a card keeps the same element type across renders. */
+const lazyIcons = new Map<string, LucideIcon>();
+function lazyIcon(key: string): LucideIcon {
+  let Lazy = lazyIcons.get(key);
+  if (!Lazy) {
+    const Component = (props: React.ComponentProps<LucideIcon>) => {
+      const [def, setDef] = useState(() => byKey.get(key));
+      useEffect(() => {
+        // Not in the set at all (an old or mistyped key): the folder, as ever.
+        if (!def) loadFormIconSet().then(() => setDef(byKey.get(key) ?? { key, label: "Folder", tags: "", Icon: Folder }), () => {});
+      }, [def]);
+      return def ? createElement(def.Icon, props) : createElement("svg", { className: props.className, "aria-hidden": true });
+    };
+    // Called like any Lucide icon (<Icon className=… />), which is all of it that callers use.
+    Lazy = Component as unknown as LucideIcon;
+    lazyIcons.set(key, Lazy);
+  }
+  return Lazy;
+}
+
+export function formIcon(key: string): LucideIcon {
+  return CORE_ICONS[key] ?? (key ? lazyIcon(key) : Folder);
+}
+
+/**
+ * Icons whose name or tags contain every word of `query`. Whole-word matches
+ * come first ("house" finds the house before "warehouse"), then names starting
+ * with the word, then anything containing it.
+ */
+export function searchFormIcons(list: readonly FormIconDef[], query: string): readonly FormIconDef[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return list;
+  const scored: [number, FormIconDef][] = [];
+  for (const icon of list) {
+    const label = icon.label.toLowerCase();
+    const hay = `${icon.key} ${label} ${icon.tags}`;
+    if (!words.every((w) => hay.includes(w))) continue;
+    const whole = new Set(hay.split(/[\s-]+/));
+    const labelWords = label.split(/\s+/);
+    const tier = words.every((w) => whole.has(w)) ? 0 : words.every((w) => labelWords.some((l) => l.startsWith(w))) ? 1 : 2;
+    scored.push([tier, icon]);
+  }
+  // Array.sort is stable, so within a tier the original icons come first, then A to Z.
+  return scored.sort((a, b) => a[0] - b[0]).map(([, i]) => i);
 }
 
 /** A form's own icon, or its category's when it has none. */
 export function formLinkIcon(form: { icon?: string | null }, categoryIcon: string) {
-  return formIcon(form.icon && form.icon in FORM_ICONS ? form.icon : categoryIcon);
+  return formIcon(form.icon || categoryIcon);
 }
 
 /** A form built into this app ("/roster") rather than a link out to WordPress. */
@@ -78,7 +130,6 @@ const INTERNAL_NEEDS: { prefix: string; anyOf: PermissionKey[]; hint: string }[]
   { prefix: "/roster", anyOf: ["roster.view"], hint: ROSTER_HINT },
   { prefix: "/tenants", anyOf: ["roster.view"], hint: ROSTER_HINT },
   // Recording needs roster.edit; Main Office can still read entries and reports.
-  { prefix: "/forms/hot-foods", anyOf: ["roster.edit", "entries.view"], hint: "You need a site role to record Hot Foods. Ask an administrator." },
 ];
 
 export function formNeeds(url: string) {

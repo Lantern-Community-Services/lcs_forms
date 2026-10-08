@@ -3,7 +3,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
 import type {
-  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeData,HotFoodEntryDetail, HotFoodEntryRow, HotFoodConfig, HotFoodItem, HotFoodReport, HotFoodToday,
+  ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeAppCards, HomeData,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
 } from "./types";
 
@@ -117,6 +117,16 @@ export function useHome() {
   });
 }
 
+/** Code forms' own cards on the Forms home; separate so a slow form can't hold up the rest. */
+export function useHomeApps() {
+  return useQuery({
+    queryKey: ["home", "apps"],
+    queryFn: () => api.get<HomeAppCards>("/home/apps"),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 export const formsApi = {
   favorite: (id: string) => api.put<{ ok: true }>(`/forms/${id}/favorite`),
   unfavorite: (id: string) => api.delete<{ ok: true }>(`/forms/${id}/favorite`),
@@ -177,95 +187,6 @@ export const attendanceApi = {
 export function useAttendanceMutation<TVars, TResult = AttendanceDetail>(fn: (vars: TVars) => Promise<TResult>) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ["attendance"] }) });
-}
-
-// ── Hot Foods ────────────────────────────────────────────────────────────
-
-/** What the Entries list, the Reports tab and both exports are filtered by. */
-export interface HotFoodView {
-  /** Comma list of site codes, or undefined for all of my sites. */
-  site?: string;
-  /** Inclusive yyyy-mm-dd, New York days. */
-  from: string;
-  to: string;
-  q?: string;
-  status?: "active" | "void" | "all";
-}
-
-export function hotFoodParams(v: HotFoodView, extra: Record<string, string> = {}) {
-  return new URLSearchParams({
-    ...(v.site ? { site: v.site } : {}),
-    from: v.from,
-    to: v.to,
-    ...(v.q?.trim() ? { q: v.q.trim() } : {}),
-    ...(v.status && v.status !== "active" ? { status: v.status } : {}),
-    ...extra,
-  });
-}
-
-export function useHotFoodItems(all = false) {
-  return useQuery({ queryKey: ["hotfoods", "items", all], queryFn: () => api.get<HotFoodItem[]>(`/hot-foods/items${all ? "?all=1" : ""}`), staleTime: 5 * 60_000 });
-}
-
-const nyDay = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-
-export function useHotFoodToday(site: string | undefined) {
-  return useQuery({
-    queryKey: ["hotfoods", "today", site ?? ""],
-    queryFn: async () => {
-      const { data, cachedAt } = await api.getWithMeta<HotFoodToday>(`/hot-foods/today?site=${encodeURIComponent(site!)}`);
-      // Offline, this is the device's stored copy. One from an earlier day has
-      // that day's meals in it, which would block today's first meal; the
-      // rules and the regulars still hold.
-      return cachedAt && nyDay(cachedAt) !== nyDay(Date.now()) ? { ...data, counts: {}, meals: {} } : data;
-    },
-    enabled: Boolean(site),
-    // Two staff serving the same line see each other's entries within the minute.
-    refetchInterval: 60_000,
-  });
-}
-
-export function useHotFoodEntries(v: HotFoodView, enabled = true) {
-  return useInfiniteQuery({
-    queryKey: ["hotfoods", "entries", v],
-    initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) =>
-      api.get<{ items: HotFoodEntryRow[]; nextBefore: string | null; total: number }>(`/hot-foods?${hotFoodParams(v, pageParam ? { before: pageParam } : {})}`),
-    getNextPageParam: (last) => last.nextBefore,
-    enabled,
-  });
-}
-
-export function useHotFoodEntry(id: string | undefined) {
-  return useQuery({ queryKey: ["hotfoods", "entry", id ?? ""], queryFn: () => api.get<HotFoodEntryDetail>(`/hot-foods/${id}`), enabled: Boolean(id) });
-}
-
-export function useHotFoodReport(v: HotFoodView, enabled = true) {
-  return useQuery({
-    queryKey: ["hotfoods", "report", v],
-    queryFn: () => api.get<HotFoodReport>(`/hot-foods/report?${hotFoodParams(v)}`),
-    enabled,
-    placeholderData: (prev) => prev,
-  });
-}
-
-export const hotFoodsApi = {
-  create: (body: Record<string, unknown>) => api.post<{ id: string; tenantName: string; mealCount: number; todayCount: number; limit: number }>("/hot-foods", body),
-  void: (id: string, reason: string) => api.post<HotFoodEntryDetail>(`/hot-foods/${id}/void`, { reason }),
-  createItem: (body: { name: string; imageUrl?: string }) => api.post<HotFoodItem>("/hot-foods/items", body),
-  updateItem: (id: string, body: Partial<Pick<HotFoodItem, "name" | "active" | "colorSlot">> & { imageUrl?: string }) => api.patch<HotFoodItem>(`/hot-foods/items/${id}`, body),
-  reorderItems: (ids: string[]) => api.post("/hot-foods/items/reorder", { ids }),
-  updateConfig: (body: Partial<Pick<HotFoodConfig, "supportiveLimit" | "shelterLimit" | "cooldownMinutes">>) => api.patch<HotFoodConfig>("/hot-foods/config", body),
-};
-
-export function useHotFoodConfig(enabled = true) {
-  return useQuery({ queryKey: ["hotfoods", "config"], queryFn: () => api.get<HotFoodConfig>("/hot-foods/config"), enabled });
-}
-
-/** Every Hot Foods write invalidates the whole family: today's counts, lists and reports. */
-export function useHotFoodsMutation<TVars, TResult>(fn: (vars: TVars) => Promise<TResult>) {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ["hotfoods"] }) });
 }
 
 // ── Calendar ─────────────────────────────────────────────────────────────

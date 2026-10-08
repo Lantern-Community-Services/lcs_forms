@@ -156,7 +156,8 @@ builderRouter.post(
 builderRouter.delete(
   "/forms/:id",
   asyncHandler(async (req, res) => {
-    await deleteForm(req.params.id, actorOf(req));
+    const { withEntries } = z.object({ withEntries: z.boolean().optional() }).parse(req.body ?? {});
+    await deleteForm(req.params.id, actorOf(req), { withEntries });
     res.json({ ok: true });
   })
 );

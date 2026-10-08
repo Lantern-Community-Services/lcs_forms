@@ -275,7 +275,7 @@ h6 {
   will-change: transform, opacity;
 }
 
-/* Elements arriving when a screen opens (home, Hot Foods). Their order down the
+/* Elements arriving when a screen opens (home, the calendar). Their order down the
    screen is set by useCascade (lib/cascade), which writes each one's
    animation-delay from its position; don't set one by hand.
 
@@ -791,4 +791,11 @@ html.lcs-resizing iframe { pointer-events: none; }
   select {
     font-size: 16px !important;
   }
+}
+
+/* A calendar event waiting on approval in the form that put it there: striped, dashed outline. */
+.cal-pending {
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgb(var(--c-surface) / 0.65) 5px 10px);
+  outline: 1.5px dashed rgb(var(--c-muted) / 0.75);
+  outline-offset: -1.5px;
 }
