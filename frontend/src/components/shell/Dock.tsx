@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
 import { CountBadge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
-import { isInternalForm } from "@/lib/formIcons";
+import { formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
 import { ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
 
@@ -65,12 +65,12 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
-  const home = <DockLink key="home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} />;
+  const home = <DockLink key="home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} onClick={onCloseLauncher} />;
   const rosterItem = roster && (
-    <DockLink key="roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} />
+    <DockLink key="roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
   );
   const calendarItem = (
-    <DockLink key="calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} />
+    <DockLink key="calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} onClick={onCloseLauncher} />
   );
   const all = (
     <DockButton key="all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
@@ -78,7 +78,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   const account = (
     <DockAccount key="account" active={menuOpen || pathname === "/profile"} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
   );
-  const pinItems = pins.map((p) => <DockPin key={p.form.id} pin={p} active={!launcherOpen && isInternalForm(p.form.url) && lit(p.form.url)} phone={phone} />);
+  const pinItems = pins.map((p) => <DockPin key={p.form.id} pin={p} active={!launcherOpen && isInternalForm(p.form.url) && lit(p.form.url)} phone={phone} onClick={onCloseLauncher} />);
 
   return (
     <nav
@@ -161,9 +161,10 @@ function Badge({ count }: { count: number }) {
   );
 }
 
-function DockLink({ to, end, label, Icon, active, count = 0, phone }: { to: string; end?: boolean; label: string; Icon: React.ElementType; active: boolean; count?: number; phone: boolean }) {
+/** onClick closes the launcher: tapping the page you are already on changes no route, so nothing else would. */
+function DockLink({ to, end, label, Icon, active, count = 0, phone, onClick }: { to: string; end?: boolean; label: string; Icon: React.ElementType; active: boolean; count?: number; phone: boolean; onClick: () => void }) {
   return (
-    <NavLink to={to} end={end} className={itemClass(active, phone)}>
+    <NavLink to={to} end={end} onClick={onClick} className={itemClass(active, phone)}>
       <Icon className="h-[22px] w-[22px]" />
       <span className="max-w-full truncate">{label}</span>
       {count > 0 && <Badge count={count} />}
@@ -228,7 +229,7 @@ function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }
   );
 }
 
-function DockPin({ pin, active, phone }: { pin: NavForm; active: boolean; phone: boolean }) {
+function DockPin({ pin, active, phone, onClick }: { pin: NavForm; active: boolean; phone: boolean; onClick: () => void }) {
   const { form, Icon } = pin;
   const body = (
     <>
@@ -237,14 +238,14 @@ function DockPin({ pin, active, phone }: { pin: NavForm; active: boolean; phone:
     </>
   );
   return isInternalForm(form.url) ? (
-    <NavLink to={form.url} title={form.title} className={itemClass(active, phone)}>{body}</NavLink>
+    <NavLink to={form.url} onClick={onClick} title={form.title} className={itemClass(active, phone)}>{body}</NavLink>
   ) : (
-    <a href={form.url} target="_blank" rel="noopener noreferrer" title={`${form.title} (opens in a new tab)`} className={itemClass(false, phone)}>{body}</a>
+    <a href={form.url} target="_blank" rel="noopener noreferrer" onClick={onClick} title={`${form.title} (opens in a new tab)`} className={itemClass(false, phone)}>{body}</a>
   );
 }
 
 /**
- * Every form, as big tap targets grouped by category. It
+ * Every form, as an app drawer: icon tiles grouped by category. It
  * rises out of the dock: on a phone a sheet that runs on down behind the dock
  * to the bottom of the screen, on a tablet a panel just above it. The dock stays
  * on top and usable, so "All forms" closes it again.
@@ -277,7 +278,9 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   const lit = useIsLit();
   const [q, setQ] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const phone = device === "phone";
+  const swipe = useSwipeDown(dialogRef, listRef, onClose);
 
   // Focus moves into the sheet (not the search: on a phone that would throw
   // the keyboard up over it) and back to where it was on close.
@@ -301,8 +304,8 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
 
   const results = searchForms(categories, q);
   const searching = q.trim() !== "";
-  const chip = (form: FormLink, key: string) => (
-    <FormChip key={key} form={form} lit={isInternalForm(form.url) && lit(form.url)} count={form.url === ROSTER_URL ? reviewCount : 0} onPick={onClose} />
+  const tile = (form: FormLink, Icon: React.ElementType, key: string) => (
+    <AppTile key={key} form={form} Icon={Icon} lit={isInternalForm(form.url) && lit(form.url)} count={form.url === ROSTER_URL ? reviewCount : 0} onPick={onClose} />
   );
 
   return (
@@ -323,7 +326,12 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
         aria-modal="true"
         aria-label="All forms"
         tabIndex={-1}
-        style={phone ? { paddingBottom: "var(--dock-h, 96px)" } : undefined}
+        {...swipe.handlers}
+        style={{
+          ...(phone ? { paddingBottom: "var(--dock-h, 96px)" } : {}),
+          // While a finger drags it down it follows the finger, no easing.
+          ...(swipe.offset > 0 ? { transform: `translateY(${swipe.offset}px)`, transition: "none" } : {}),
+        }}
         className={cn(
           "relative flex w-full flex-col overflow-hidden bg-surface shadow-panel outline-none",
           "transition-[transform,opacity] duration-[280ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none",
@@ -343,22 +351,23 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
           <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form" aria-label="Find a form" />
         </div>
 
-        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-thin", !phone && "md:px-6")}>
+        <div ref={listRef} className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-thin", !phone && "md:px-6")}>
           {searching ? (
-            <div className="flex flex-wrap gap-2 pt-1">
-              {results.map((r) => chip(r.form, r.form.id))}
-              {results.length === 0 && <p className="py-2 text-[14px] text-muted">No forms match. Try a shorter word.</p>}
-            </div>
+            results.length > 0 ? (
+              <div className={cn(TILE_GRID, "pt-1")}>{results.map((r) => tile(r.form, r.Icon, r.form.id))}</div>
+            ) : (
+              <p className="py-2 text-[14px] text-muted">No forms match. Try a shorter word.</p>
+            )
           ) : (
-            <div className={cn("grid gap-x-6 gap-y-5 pt-1", !phone && "grid-cols-2")}>
+            <div className="grid gap-y-6 pt-1">
               {pinned.length > 0 && (
-                <Group title="Pinned" className={cn(!phone && "col-span-2")}>
-                  {pinned.map((p) => chip(p.form, `pin-${p.form.id}`))}
+                <Group title="Pinned">
+                  {pinned.map((p) => tile(p.form, p.Icon, `pin-${p.form.id}`))}
                 </Group>
               )}
               {categories.map((c) => (
                 <Group key={c.category.id} title={c.category.name} Icon={c.Icon}>
-                  {c.forms.map((f) => chip(f, f.id))}
+                  {c.forms.map((f) => tile(f, formLinkIcon(f, c.category.icon || "folder"), f.id))}
                 </Group>
               ))}
             </div>
@@ -369,9 +378,69 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   );
 }
 
-function Group({ title, Icon, className, children }: { title: string; Icon?: React.ElementType; className?: string; children: React.ReactNode }) {
+/**
+ * The launcher's app-drawer grid: every tile the same width whatever its name,
+ * as many to a row as fit (4 on a phone, 6–7 on a tablet).
+ */
+const TILE_GRID = "grid grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-x-2 gap-y-4";
+
+/**
+ * Swipe down to put the launcher away, like a system sheet: from anywhere on
+ * it while its list is scrolled to the top (otherwise the swipe scrolls the
+ * list). Far enough, or a quick flick, closes it; anything less springs back.
+ */
+function useSwipeDown(sheetRef: React.RefObject<HTMLDivElement | null>, listRef: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
+  const [offset, setOffset] = useState(0);
+  const drag = useRef<{ y: number; t: number; armed: boolean; active: boolean } | null>(null);
+  // Once the sheet is following the finger, the list mustn't rubber-band too.
+  // React's touch listeners are passive, so this one is added by hand.
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const stop = (e: TouchEvent) => {
+      if (drag.current?.active) e.preventDefault();
+    };
+    el.addEventListener("touchmove", stop, { passive: false });
+    return () => el.removeEventListener("touchmove", stop);
+  }, [sheetRef]);
+  const handlers = {
+    onTouchStart(e: React.TouchEvent) {
+      if (e.touches.length !== 1) return;
+      const inList = listRef.current?.contains(e.target as Node) ?? false;
+      drag.current = { y: e.touches[0].clientY, t: e.timeStamp, armed: !inList || (listRef.current?.scrollTop ?? 0) <= 0, active: false };
+    },
+    onTouchMove(e: React.TouchEvent) {
+      const d = drag.current;
+      if (!d?.armed) return;
+      const dy = e.touches[0].clientY - d.y;
+      // Moving up first means scrolling the list: leave it to the browser.
+      if (!d.active && dy < -4) {
+        d.armed = false;
+        return;
+      }
+      if (!d.active && dy > 8) d.active = true;
+      if (d.active) setOffset(Math.max(0, dy));
+    },
+    onTouchEnd(e: React.TouchEvent) {
+      const d = drag.current;
+      drag.current = null;
+      if (!d?.active) return;
+      const dy = (e.changedTouches[0]?.clientY ?? d.y) - d.y;
+      const speed = dy / Math.max(1, e.timeStamp - d.t);
+      setOffset(0);
+      if (dy > 110 || (dy > 30 && speed > 0.6)) onClose();
+    },
+    onTouchCancel() {
+      drag.current = null;
+      setOffset(0);
+    },
+  };
+  return { offset, handlers };
+}
+
+function Group({ title, Icon, children }: { title: string; Icon?: React.ElementType; children: React.ReactNode }) {
   return (
-    <section className={className}>
+    <section>
       <h3 className="mb-2 flex items-center gap-2 text-micro font-extrabold uppercase tracking-[0.04em] text-muted">
         {Icon && (
           <span className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-navy text-white dark:bg-navsel">
@@ -380,25 +449,43 @@ function Group({ title, Icon, className, children }: { title: string; Icon?: Rea
         )}
         {title}
       </h3>
-      <div className="flex flex-wrap gap-2">{children}</div>
+      <div className={TILE_GRID}>{children}</div>
     </section>
   );
 }
 
-function FormChip({ form, lit, count, onPick }: { form: FormLink; lit: boolean; count: number; onPick: () => void }) {
-  const className = cn(
-    "flex min-h-[44px] items-center gap-2 rounded-[12px] border px-3.5 py-2 text-left text-[14px] font-bold leading-[18px] transition-colors",
-    lit ? "border-navy bg-navy text-white dark:border-navsel dark:bg-navsel" : "border-hairline bg-surface text-ink hover:bg-navsel/60"
+/** A form as a home-screen app: a square icon with its name underneath, at most two lines. */
+function AppTile({ form, Icon, lit, count, onPick }: { form: FormLink; Icon: React.ElementType; lit: boolean; count: number; onPick: () => void }) {
+  const internal = isInternalForm(form.url);
+  const className = "group flex min-w-0 flex-col items-center gap-1.5 rounded-[14px] px-0.5 py-1 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent";
+  const body = (
+    <>
+      <span
+        className={cn(
+          "relative flex h-[58px] w-[58px] items-center justify-center rounded-[16px] transition-colors",
+          lit ? "bg-navy text-white dark:bg-accent" : "bg-navsel text-accent group-hover:bg-navsel/70 group-active:scale-95 dark:text-white"
+        )}
+      >
+        <Icon className="h-[26px] w-[26px]" />
+        {count > 0 && (
+          <span className="absolute -right-1.5 -top-1.5">
+            <CountBadge count={count} max={99} label={`${count} to review`} />
+          </span>
+        )}
+        {!internal && (
+          <span className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-hairline bg-surface text-muted" aria-hidden>
+            <ExternalLink className="h-2.5 w-2.5" />
+          </span>
+        )}
+      </span>
+      <span className={cn("line-clamp-2 w-full break-words text-[12px] leading-[15px] text-ink", lit ? "font-extrabold" : "font-semibold")}>
+        {shortFormName(form.title)}
+      </span>
+    </>
   );
-  return isInternalForm(form.url) ? (
-    <NavLink to={form.url} onClick={onPick} className={className}>
-      {form.title}
-      {count > 0 && <CountBadge count={count} max={999} label={`${count} to review`} />}
-    </NavLink>
+  return internal ? (
+    <NavLink to={form.url} onClick={onPick} title={form.title} className={className}>{body}</NavLink>
   ) : (
-    <a href={form.url} target="_blank" rel="noopener noreferrer" onClick={onPick} title={`${form.title} (opens in a new tab)`} className={className}>
-      {form.title}
-      <ExternalLink className="h-3 w-3 shrink-0 opacity-50" aria-hidden />
-    </a>
+    <a href={form.url} target="_blank" rel="noopener noreferrer" onClick={onPick} title={`${form.title} (opens in a new tab)`} className={className}>{body}</a>
   );
 }
