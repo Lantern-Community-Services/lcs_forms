@@ -6,7 +6,7 @@ import type { PermissionKey, User } from "./types";
 
 /** Holding any of these puts Admin in the navigation. */
 export const ADMIN_AREA: PermissionKey[] = [
-  "forms.manage", "apps.develop", "sites.manage", "sites.manageRules", "users.manage", "users.manageSite", "integrations.manage", "settings.manage",
+  "forms.manage", "apps.develop", "sites.manage", "sites.manageRules", "users.manage", "users.manageSite", "integrations.manage", "settings.manage", "devlog.view",
 ];
 
 interface AuthContextValue {

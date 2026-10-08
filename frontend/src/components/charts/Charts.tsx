@@ -31,7 +31,7 @@ export const SITE_TYPE = {
 } as const;
 export const siteTypeOf = (t: string) => SITE_TYPE[(t in SITE_TYPE ? t : "other") as keyof typeof SITE_TYPE];
 
-function useWidth<T extends HTMLElement>() {
+export function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -45,7 +45,7 @@ function useWidth<T extends HTMLElement>() {
 }
 
 /** 0 and three or four whole-number steps up to at least `max`. */
-function ticks(max: number) {
+export function ticks(max: number) {
   const raw = Math.max(1, max) / 4;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const step = Math.max(1, [1, 2, 5, 10].map((s) => s * mag).find((s) => s >= raw) ?? 10 * mag);

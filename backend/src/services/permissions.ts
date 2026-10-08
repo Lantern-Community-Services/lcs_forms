@@ -46,6 +46,8 @@ export const PERMISSIONS = [
    * (or the GLOBAL_ADMINS setting) can give. See permissionsFor().
    */
   "admins.manage",
+  /** Admin → Dev log: response times, errors, memory and the server log. Admin only. */
+  "devlog.view",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number];

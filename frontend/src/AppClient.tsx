@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { startOffline } from "./lib/offline";
+import { startTelemetry } from "./lib/telemetry";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
@@ -33,6 +34,7 @@ export function AppClient() {
       })
   );
   useEffect(() => startOffline(), []);
+  useEffect(() => startTelemetry(), []);
 
   return (
     <QueryClientProvider client={queryClient}>

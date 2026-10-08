@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import zlib from "node:zlib";
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
+import { noteServerError } from "./services/devlog.js";
 
 /** Wrap an async route handler so thrown errors reach the error middleware. */
 export function asyncHandler(
@@ -83,6 +84,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     // Expected refusals (400/401/403/404) are part of normal operation and are
     // not logged as failures — only server faults are.
     if (err.status >= 500) {
+      noteServerError(req, err.status, err);
       console.error(
         `[${id}] ${req.method} ${req.originalUrl} -> ${err.status} (user ${req.user?.email ?? "anonymous"})`,
         err
@@ -91,6 +93,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return res.status(err.status).json({ error: err.message, details: err.details, requestId: id });
   }
 
+  noteServerError(req, 500, err);
   console.error(
     `[${id}] ${req.method} ${req.originalUrl} -> 500 (user ${req.user?.email ?? "anonymous"})`,
     err

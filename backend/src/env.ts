@@ -11,6 +11,12 @@ const list = (value: string | undefined, fallback = "") =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/** A positive number from the environment, or the fallback when it's unset or isn't one. */
+function positive(value: string | undefined, fallback: number): number {
+  const n = Number(value);
+  return value !== undefined && value.trim() !== "" && Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 /**
  * TRUST_PROXY: how many proxies stand between the client and this process, so
  * req.ip is the client's address (Express "trust proxy"). 1 = one front end
@@ -124,6 +130,22 @@ export const env = {
 
   /** Demo rows (demo accounts, a backdated review queue) in production: never, unless this is "true". */
   allowDemoData: (process.env.ALLOW_DEMO_DATA ?? "false").toLowerCase() === "true",
+
+  /**
+   * Admin → Dev log (services/devlog.ts). On unless DEVLOG=false.
+   *   DEVLOG_SLOW_REQUEST_MS   a request this slow is logged on its own (2000)
+   *   DEVLOG_SLOW_QUERY_MS     likewise a database query (500)
+   *   DEVLOG_RETENTION_DAYS    how long the log is kept (30)
+   * APP_VERSION (a commit or build number, set by the pipeline) is shown on
+   * each server start, so a change in the numbers can be matched to a deploy.
+   */
+  devlog: {
+    enabled: (process.env.DEVLOG ?? "true").toLowerCase() !== "false",
+    slowRequestMs: positive(process.env.DEVLOG_SLOW_REQUEST_MS, 2000),
+    slowQueryMs: positive(process.env.DEVLOG_SLOW_QUERY_MS, 500),
+    retentionDays: positive(process.env.DEVLOG_RETENTION_DAYS, 30),
+    appVersion: (process.env.APP_VERSION ?? process.env.GIT_SHA ?? "").trim().slice(0, 64),
+  },
 };
 
 export const isProd = env.nodeEnv === "production";
