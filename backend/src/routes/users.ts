@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { SITE_ROLE_KEYS, isRoleKey, roleFor } from "../services/permissions.js";
 import { markUpcomingDirty } from "../services/outlookSync.js";
+import { dropGraphToken } from "../services/graphTokens.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -191,6 +192,8 @@ usersRouter.patch(
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });
+    // No access, no acting as them in Outlook either.
+    if (body.status === "denied" || body.status === "deactivated") await dropGraphToken(before.id);
     // Their sites, role or status decide which Outlook invites they get.
     if (body.siteIds || body.roleKey || body.status) await markUpcomingDirty();
     res.json(shape(user));

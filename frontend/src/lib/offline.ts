@@ -160,12 +160,12 @@ function schedulePoll(delay = 8000) {
   }, delay);
 }
 
-/** Can the server actually be reached? (/api/health always skips the worker's cache.) */
+/** Can the server, and its database, actually be reached? (/api/health/* always skips the worker's cache.) */
 export async function reachable(timeoutMs = 5000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch("/api/health", { cache: "no-store", signal: ctrl.signal });
+    const res = await fetch("/api/health/ready", { cache: "no-store", signal: ctrl.signal });
     return res.ok;
   } catch {
     return false;

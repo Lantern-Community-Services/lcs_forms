@@ -10,11 +10,13 @@
     "start": "node dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:reset": "prisma db push --force-reset && npm run seed",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset",
+    "db:copy-sqlite": "tsx scripts/copy-sqlite.ts",
+    "files:to-blob": "tsx scripts/files-to-blob.ts",
     "seed": "tsx prisma/seed.ts",
     "import:tenants": "tsx scripts/import-tenants.ts",
-    "sql:azure": "tsx scripts/export-azure-sql.ts",
     "sync:engine": "node scripts/sync-engine.mjs",
     "check:engine": "node scripts/sync-engine.mjs --check",
     "forms": "tsx scripts/forms.ts"
@@ -23,7 +25,9 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.3",
     "@azure/msal-node": "^5.6.0",
+    "@azure/storage-blob": "^12.34.0",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@prisma/client": "^5.22.0",
     "cookie-parser": "^1.4.7",

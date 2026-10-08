@@ -89,7 +89,9 @@ entriesRoles: [role keys that can read entries; Admin always can];
 requireSite: true to ask which site the entry is for (entries are then limited to that site's staff);
 limits: { maxEntries, perUser: { count, period: day|week|month|ever }, opensAt, closesAt (ISO), closedMessage };
 confirmation: { type: "message"|"redirect", message (HTML, merge tags), url, showSummary };
-notifications: [{ id, name, enabled, kind: "email"|"webhook", to, subject, body, url, secret, conditional }].
+notifications: [{ id, name, enabled, kind: "email"|"webhook", to, subject, url, secret, conditional }].
+  Emails are link-only: a line and a link to the entry, never the answers. The subject may use {form:title},
+  {site:name}, {user:name}, {date:today}…; answer tags ({field_id}, {all_fields}) are dropped from it. No body.
 Role keys: admin, main_office, site_admin, site_manager, site_staff.
 
 ## Example
@@ -114,7 +116,7 @@ const EXAMPLE: FormDoc = {
     submitLabel: "Send request",
     access: { mode: "signed_in" },
     confirmation: { type: "message", message: "<p>Thanks, {user:name}. We've logged it.</p>" },
-    notifications: [{ id: "urgent", name: "Urgent to facilities", enabled: true, kind: "email", to: "facilities@lanterncommunity.org", subject: "URGENT: {area} at {site}", body: "{all_fields}", conditional: { action: "show", match: "all", rules: [{ field: "urgent", op: "is", value: "yes" }] } }],
+    notifications: [{ id: "urgent", name: "Urgent to facilities", enabled: true, kind: "email", to: "facilities@lanterncommunity.org", subject: "Urgent maintenance request: {site:name}", conditional: { action: "show", match: "all", rules: [{ field: "urgent", op: "is", value: "yes" }] } }],
   },
 };
 

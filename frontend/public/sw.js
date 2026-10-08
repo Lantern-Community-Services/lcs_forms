@@ -71,7 +71,7 @@ function bypassApi(url) {
     p.startsWith("/api/auth/microsoft") ||
     p === "/api/auth/logout" ||
     p === "/api/auth/dev-login" ||
-    p === "/api/health" ||
+    p.startsWith("/api/health") ||
     // The roster's change feed: the app keeps its own copy (lib/rosterStore.ts), and a stored delta would only be stale.
     p === "/api/tenants/sync" ||
     // Downloads and stored files: big, and only useful online.

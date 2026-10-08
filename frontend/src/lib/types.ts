@@ -399,6 +399,11 @@ export interface CalendarEventInput {
 export interface OutlookPrefs {
   /** The server is set up to send to Outlook. Choices are kept either way. */
   enabled: boolean;
+  /**
+   * The app can write to their own calendar (they signed in with Microsoft and
+   * haven't signed out). Without it everything comes as an invite.
+   */
+  canWriteMine: boolean;
   email: string;
   answered: boolean;
   everySite: boolean;

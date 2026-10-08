@@ -1,5 +1,6 @@
 import type { FormJob } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { createFormFile, fileBytes } from "../services/fileStore.js";
 import { currentUserById, type CurrentUser } from "../auth/middleware.js";
 import { createEntry, loadApp, type LoadedApp } from "./runtime.js";
 import { fileIdsIn } from "./files.js";
@@ -79,7 +80,7 @@ async function copyFiles(sourceFormId: string, targetFormId: string, data: unkno
   const rows = await prisma.formFile.findMany({ where: { id: { in: ids }, formId: sourceFormId } });
   const map = new Map<string, string>();
   for (const f of rows) {
-    const copy = await prisma.formFile.create({ data: { formId: targetFormId, fieldId: f.fieldId, name: f.name, mime: f.mime, size: f.size, data: f.data, createdById } });
+    const copy = await createFormFile({ formId: targetFormId, fieldId: f.fieldId, name: f.name, mime: f.mime, data: await fileBytes(f), createdById });
     map.set(f.id, copy.id);
   }
   const walk = (v: unknown, depth = 0): unknown => {

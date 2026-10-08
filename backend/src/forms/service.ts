@@ -1,5 +1,6 @@
 import type { BuiltForm, Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { deleteFiles } from "../services/fileStore.js";
 import { HttpError, badRequest, notFound } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
 import { FORM_ICONS } from "../routes/forms.js";
@@ -218,11 +219,11 @@ export async function deleteForm(id: string, actor: Actor, opts: { withEntries?:
   const entries = `${n} entr${n === 1 ? "y" : "ies"}`;
   if (n > 0 && !opts.withEntries) throw badRequest(`This form has ${entries}. Archive it instead, so they're kept.`);
   // Files first: a file points at its entry with no cascade, so the entries
-  // can't go while files still name them. The form's delete cascades to its
-  // entries (and their notes), versions and records.
+  // can't go while files still name them (deleteFiles also removes their blobs).
+  // The form's delete cascades to its entries (and their notes), versions and records.
+  await deleteFiles({ formId: form.id });
   await prisma.$transaction([
     ...(form.catalogLinkId ? [prisma.formLink.deleteMany({ where: { id: form.catalogLinkId } })] : []),
-    prisma.formFile.deleteMany({ where: { formId: form.id } }),
     prisma.builtForm.delete({ where: { id: form.id } }),
   ]);
   await audit({ actor, action: "builder.deleted", summary: `Deleted form “${form.title}” (/f/${form.slug})${n > 0 ? ` and its ${entries}` : ""}` });

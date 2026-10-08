@@ -1,6 +1,3 @@
--- Lantern Forms — Azure SQL (SQL Server) schema.
--- Generated from backend/prisma/schema.prisma by `npm run sql:azure`. Do not edit by hand.
-
 BEGIN TRY
 
 BEGIN TRAN;
@@ -36,7 +33,7 @@ CREATE TABLE [dbo].[Tenant] (
     [moveInDate] DATETIME2,
     [moveOutDate] DATETIME2,
     [notes] NVARCHAR(max),
-    [externalId] NVARCHAR(64),
+    [externalId] NVARCHAR(255),
     [lastActivityAt] DATETIME2,
     [lastActivitySource] NVARCHAR(255),
     [lastKeptAt] DATETIME2,
@@ -44,7 +41,7 @@ CREATE TABLE [dbo].[Tenant] (
     [attentionClockAt] DATETIME2 NOT NULL CONSTRAINT [Tenant_attentionClockAt_df] DEFAULT CURRENT_TIMESTAMP,
     [archivedAt] DATETIME2,
     [archivedById] NVARCHAR(64),
-    [archiveReason] NVARCHAR(255),
+    [archiveReason] NVARCHAR(max),
     [version] INT NOT NULL CONSTRAINT [Tenant_version_df] DEFAULT 1,
     [createdById] NVARCHAR(64),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [Tenant_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
@@ -57,7 +54,7 @@ CREATE TABLE [dbo].[TenantActivity] (
     [id] NVARCHAR(64) NOT NULL,
     [tenantId] NVARCHAR(64) NOT NULL,
     [source] NVARCHAR(255) NOT NULL,
-    [label] NVARCHAR(255),
+    [label] NVARCHAR(max),
     [externalRef] NVARCHAR(255),
     [occurredAt] DATETIME2 NOT NULL,
     [recordedBy] NVARCHAR(255),
@@ -128,7 +125,7 @@ CREATE TABLE [dbo].[CalendarEvent] (
     [id] NVARCHAR(64) NOT NULL,
     [title] NVARCHAR(255) NOT NULL,
     [description] NVARCHAR(max),
-    [location] NVARCHAR(255),
+    [location] NVARCHAR(max),
     [categoryId] NVARCHAR(64),
     [allSites] BIT NOT NULL CONSTRAINT [CalendarEvent_allSites_df] DEFAULT 1,
     [allDay] BIT NOT NULL CONSTRAINT [CalendarEvent_allDay_df] DEFAULT 0,
@@ -138,17 +135,22 @@ CREATE TABLE [dbo].[CalendarEvent] (
     [endTime] NVARCHAR(255),
     [recurrence] NVARCHAR(max),
     [teamsMeeting] BIT NOT NULL CONSTRAINT [CalendarEvent_teamsMeeting_df] DEFAULT 0,
+    [pending] BIT NOT NULL CONSTRAINT [CalendarEvent_pending_df] DEFAULT 0,
+    [sourceFormId] NVARCHAR(64),
+    [sourceRef] NVARCHAR(255),
     [firstDate] NVARCHAR(255) NOT NULL,
     [lastDate] NVARCHAR(255),
     [createdById] NVARCHAR(64),
     [createdByName] NVARCHAR(255) NOT NULL,
+    [updatedById] NVARCHAR(64),
     [updatedByName] NVARCHAR(255),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarEvent_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
-    [outlookEventId] NVARCHAR(64),
-    [teamsJoinUrl] NVARCHAR(255),
+    [outlookOrganizerId] NVARCHAR(64),
+    [outlookEventId] NVARCHAR(512),
+    [teamsJoinUrl] NVARCHAR(max),
     [outlookDirty] BIT NOT NULL CONSTRAINT [CalendarEvent_outlookDirty_df] DEFAULT 1,
-    [outlookError] NVARCHAR(255),
+    [outlookError] NVARCHAR(max),
     [outlookSyncedAt] DATETIME2,
     [outlookHash] NVARCHAR(255),
     CONSTRAINT [CalendarEvent_pkey] PRIMARY KEY CLUSTERED ([id])
@@ -174,7 +176,7 @@ CREATE TABLE [dbo].[CalendarCopy] (
     [eventId] NVARCHAR(64) NOT NULL,
     [userId] NVARCHAR(64) NOT NULL,
     [mailbox] NVARCHAR(255) NOT NULL,
-    [outlookEventId] NVARCHAR(64),
+    [outlookEventId] NVARCHAR(512),
     [hash] NVARCHAR(64),
     [fallbackInvite] BIT NOT NULL CONSTRAINT [CalendarCopy_fallbackInvite_df] DEFAULT 0,
     [error] NVARCHAR(max),
@@ -186,8 +188,9 @@ CREATE TABLE [dbo].[CalendarCopy] (
 -- CreateTable
 CREATE TABLE [dbo].[CalendarOutlookTrash] (
     [id] NVARCHAR(64) NOT NULL,
-    [mailbox] NVARCHAR(255),
-    [outlookEventId] NVARCHAR(64) NOT NULL,
+    [ownerId] NVARCHAR(64) NOT NULL,
+    [meeting] BIT NOT NULL,
+    [outlookEventId] NVARCHAR(512) NOT NULL,
     [title] NVARCHAR(255) NOT NULL,
     [error] NVARCHAR(max),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [CalendarOutlookTrash_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
@@ -202,7 +205,7 @@ CREATE TABLE [dbo].[CalendarException] (
     [cancelled] BIT NOT NULL CONSTRAINT [CalendarException_cancelled_df] DEFAULT 0,
     [title] NVARCHAR(255),
     [description] NVARCHAR(max),
-    [location] NVARCHAR(255),
+    [location] NVARCHAR(max),
     [allDay] BIT,
     [startDate] NVARCHAR(255),
     [startTime] NVARCHAR(255),
@@ -233,7 +236,7 @@ CREATE TABLE [dbo].[FormLink] (
     [title] NVARCHAR(255) NOT NULL,
     [description] NVARCHAR(max),
     [url] NVARCHAR(max) NOT NULL,
-    [keywords] NVARCHAR(255),
+    [keywords] NVARCHAR(max),
     [badge] NVARCHAR(255),
     [icon] NVARCHAR(255),
     [sortOrder] INT NOT NULL CONSTRAINT [FormLink_sortOrder_df] DEFAULT 0,
@@ -259,8 +262,8 @@ CREATE TABLE [dbo].[BuiltForm] (
     [slug] NVARCHAR(255) NOT NULL,
     [title] NVARCHAR(255) NOT NULL,
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [BuiltForm_status_df] DEFAULT 'draft',
-    [draftSchema] NVARCHAR(255) NOT NULL,
-    [liveSchema] NVARCHAR(255),
+    [draftSchema] NVARCHAR(max) NOT NULL,
+    [liveSchema] NVARCHAR(max),
     [liveVersion] INT NOT NULL CONSTRAINT [BuiltForm_liveVersion_df] DEFAULT 0,
     [revision] INT NOT NULL CONSTRAINT [BuiltForm_revision_df] DEFAULT 1,
     [catalogLinkId] NVARCHAR(64),
@@ -280,8 +283,8 @@ CREATE TABLE [dbo].[BuiltFormVersion] (
     [id] NVARCHAR(64) NOT NULL,
     [formId] NVARCHAR(64) NOT NULL,
     [version] INT NOT NULL,
-    [schema] NVARCHAR(255) NOT NULL,
-    [note] NVARCHAR(255),
+    [schema] NVARCHAR(max) NOT NULL,
+    [note] NVARCHAR(max),
     [publishedByName] NVARCHAR(255) NOT NULL,
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [BuiltFormVersion_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT [BuiltFormVersion_pkey] PRIMARY KEY CLUSTERED ([id]),
@@ -293,18 +296,18 @@ CREATE TABLE [dbo].[FormEntry] (
     [id] NVARCHAR(64) NOT NULL,
     [formId] NVARCHAR(64) NOT NULL,
     [formVersion] INT NOT NULL,
-    [data] NVARCHAR(255) NOT NULL,
+    [data] NVARCHAR(max) NOT NULL,
     [siteId] NVARCHAR(64),
     [source] NVARCHAR(255) NOT NULL CONSTRAINT [FormEntry_source_df] DEFAULT 'app',
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [FormEntry_status_df] DEFAULT 'active',
     [occurredAt] DATETIME2 NOT NULL CONSTRAINT [FormEntry_occurredAt_df] DEFAULT CURRENT_TIMESTAMP,
     [tenantId] NVARCHAR(64),
     [overrideReason] NVARCHAR(max),
-    [clientId] NVARCHAR(64),
+    [clientId] NVARCHAR(255),
     [createdById] NVARCHAR(64),
     [createdByName] NVARCHAR(255) NOT NULL,
-    [ip] NVARCHAR(255),
-    [userAgent] NVARCHAR(255),
+    [ip] NVARCHAR(64),
+    [userAgent] NVARCHAR(512),
     [voidedAt] DATETIME2,
     [voidedByName] NVARCHAR(255),
     [voidReason] NVARCHAR(max),
@@ -321,7 +324,7 @@ CREATE TABLE [dbo].[FormEntryNote] (
     [entryId] NVARCHAR(64) NOT NULL,
     [kind] NVARCHAR(255) NOT NULL CONSTRAINT [FormEntryNote_kind_df] DEFAULT 'note',
     [authorName] NVARCHAR(255) NOT NULL,
-    [body] NVARCHAR(255) NOT NULL,
+    [body] NVARCHAR(max) NOT NULL,
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormEntryNote_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT [FormEntryNote_pkey] PRIMARY KEY CLUSTERED ([id])
 );
@@ -331,11 +334,12 @@ CREATE TABLE [dbo].[FormFile] (
     [id] NVARCHAR(64) NOT NULL,
     [formId] NVARCHAR(64) NOT NULL,
     [entryId] NVARCHAR(64),
-    [fieldId] NVARCHAR(64) NOT NULL,
+    [fieldId] NVARCHAR(255) NOT NULL,
     [name] NVARCHAR(255) NOT NULL,
     [mime] NVARCHAR(255) NOT NULL,
     [size] INT NOT NULL,
-    [data] VARBINARY(max) NOT NULL,
+    [data] VARBINARY(max),
+    [storageKey] NVARCHAR(512),
     [createdById] NVARCHAR(64),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormFile_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT [FormFile_pkey] PRIMARY KEY CLUSTERED ([id])
@@ -346,8 +350,8 @@ CREATE TABLE [dbo].[FormRecord] (
     [id] NVARCHAR(64) NOT NULL,
     [formId] NVARCHAR(64) NOT NULL,
     [collection] NVARCHAR(255) NOT NULL,
-    [docId] NVARCHAR(64) NOT NULL,
-    [data] NVARCHAR(255) NOT NULL,
+    [docId] NVARCHAR(255) NOT NULL,
+    [data] NVARCHAR(max) NOT NULL,
     [updatedByName] NVARCHAR(255),
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormRecord_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
@@ -366,7 +370,7 @@ CREATE TABLE [dbo].[User] (
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [User_status_df] DEFAULT 'active',
     [title] NVARCHAR(255),
     [avatarColor] NVARCHAR(255),
-    [defaultLandingPage] NVARCHAR(255) NOT NULL CONSTRAINT [User_defaultLandingPage_df] DEFAULT '/forms',
+    [defaultLandingPage] NVARCHAR(max) NOT NULL CONSTRAINT [User_defaultLandingPage_df] DEFAULT '/forms',
     [defaultSiteCode] NVARCHAR(255),
     [calendarEditor] BIT NOT NULL CONSTRAINT [User_calendarEditor_df] DEFAULT 0,
     [calendarSyncEverySite] BIT NOT NULL CONSTRAINT [User_calendarSyncEverySite_df] DEFAULT 0,
@@ -384,6 +388,16 @@ CREATE TABLE [dbo].[User] (
 );
 
 -- CreateTable
+CREATE TABLE [dbo].[UserGraphToken] (
+    [userId] NVARCHAR(64) NOT NULL,
+    [refreshToken] NVARCHAR(max) NOT NULL,
+    [scopes] NVARCHAR(max) NOT NULL,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [UserGraphToken_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [UserGraphToken_pkey] PRIMARY KEY CLUSTERED ([userId])
+);
+
+-- CreateTable
 CREATE TABLE [dbo].[UserSite] (
     [userId] NVARCHAR(64) NOT NULL,
     [siteId] NVARCHAR(64) NOT NULL,
@@ -396,7 +410,7 @@ CREATE TABLE [dbo].[ApiKey] (
     [name] NVARCHAR(255) NOT NULL,
     [prefix] NVARCHAR(255) NOT NULL,
     [hash] NVARCHAR(64) NOT NULL,
-    [scopes] NVARCHAR(255) NOT NULL,
+    [scopes] NVARCHAR(max) NOT NULL,
     [siteId] NVARCHAR(64),
     [lastUsedAt] DATETIME2,
     [createdById] NVARCHAR(64),
@@ -412,7 +426,7 @@ CREATE TABLE [dbo].[Webhook] (
     [name] NVARCHAR(255) NOT NULL,
     [url] NVARCHAR(max) NOT NULL,
     [secret] NVARCHAR(255) NOT NULL,
-    [events] NVARCHAR(255) NOT NULL CONSTRAINT [Webhook_events_df] DEFAULT '*',
+    [events] NVARCHAR(max) NOT NULL CONSTRAINT [Webhook_events_df] DEFAULT '*',
     [active] BIT NOT NULL CONSTRAINT [Webhook_active_df] DEFAULT 1,
     [lastDeliveryAt] DATETIME2,
     [lastStatus] INT,
@@ -437,9 +451,27 @@ CREATE TABLE [dbo].[WebhookDelivery] (
 -- CreateTable
 CREATE TABLE [dbo].[Setting] (
     [key] NVARCHAR(255) NOT NULL,
-    [value] NVARCHAR(255) NOT NULL,
+    [value] NVARCHAR(max) NOT NULL,
     [updatedAt] DATETIME2 NOT NULL,
     CONSTRAINT [Setting_pkey] PRIMARY KEY CLUSTERED ([key])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[FormJob] (
+    [id] NVARCHAR(64) NOT NULL,
+    [formId] NVARCHAR(64) NOT NULL,
+    [sourceEntryId] NVARCHAR(64),
+    [targetSlug] NVARCHAR(255) NOT NULL,
+    [input] NVARCHAR(max) NOT NULL,
+    [userId] NVARCHAR(64),
+    [userName] NVARCHAR(255) NOT NULL,
+    [status] NVARCHAR(255) NOT NULL CONSTRAINT [FormJob_status_df] DEFAULT 'queued',
+    [error] NVARCHAR(max),
+    [resultEntryId] NVARCHAR(64),
+    [attempts] INT NOT NULL CONSTRAINT [FormJob_attempts_df] DEFAULT 0,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [FormJob_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [FormJob_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
 -- CreateIndex
@@ -486,6 +518,9 @@ CREATE NONCLUSTERED INDEX [CalendarEvent_firstDate_idx] ON [dbo].[CalendarEvent]
 
 -- CreateIndex
 CREATE NONCLUSTERED INDEX [CalendarEvent_lastDate_idx] ON [dbo].[CalendarEvent]([lastDate]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [CalendarEvent_sourceFormId_sourceRef_idx] ON [dbo].[CalendarEvent]([sourceFormId], [sourceRef]);
 
 -- CreateIndex
 CREATE NONCLUSTERED INDEX [CalendarEventSite_siteId_idx] ON [dbo].[CalendarEventSite]([siteId]);
@@ -541,6 +576,12 @@ CREATE NONCLUSTERED INDEX [User_entraObjectId_idx] ON [dbo].[User]([entraObjectI
 -- CreateIndex
 CREATE NONCLUSTERED INDEX [WebhookDelivery_webhookId_createdAt_idx] ON [dbo].[WebhookDelivery]([webhookId], [createdAt]);
 
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormJob_status_createdAt_idx] ON [dbo].[FormJob]([status], [createdAt]);
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [FormJob_formId_sourceEntryId_idx] ON [dbo].[FormJob]([formId], [sourceEntryId]);
+
 -- AddForeignKey
 ALTER TABLE [dbo].[Tenant] ADD CONSTRAINT [Tenant_siteId_fkey] FOREIGN KEY ([siteId]) REFERENCES [dbo].[Site]([id]) ON DELETE NO ACTION ON UPDATE CASCADE;
 
@@ -567,6 +608,9 @@ ALTER TABLE [dbo].[CalendarCategoryMute] ADD CONSTRAINT [CalendarCategoryMute_ca
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarEvent] ADD CONSTRAINT [CalendarEvent_categoryId_fkey] FOREIGN KEY ([categoryId]) REFERENCES [dbo].[CalendarCategory]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[CalendarEvent] ADD CONSTRAINT [CalendarEvent_sourceFormId_fkey] FOREIGN KEY ([sourceFormId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE [dbo].[CalendarEventSite] ADD CONSTRAINT [CalendarEventSite_eventId_fkey] FOREIGN KEY ([eventId]) REFERENCES [dbo].[CalendarEvent]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
@@ -614,6 +658,9 @@ ALTER TABLE [dbo].[FormFile] ADD CONSTRAINT [FormFile_entryId_fkey] FOREIGN KEY 
 ALTER TABLE [dbo].[FormRecord] ADD CONSTRAINT [FormRecord_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE [dbo].[UserGraphToken] ADD CONSTRAINT [UserGraphToken_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE [dbo].[UserSite] ADD CONSTRAINT [UserSite_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -624,6 +671,9 @@ ALTER TABLE [dbo].[ApiKey] ADD CONSTRAINT [ApiKey_siteId_fkey] FOREIGN KEY ([sit
 
 -- AddForeignKey
 ALTER TABLE [dbo].[WebhookDelivery] ADD CONSTRAINT [WebhookDelivery_webhookId_fkey] FOREIGN KEY ([webhookId]) REFERENCES [dbo].[Webhook]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[FormJob] ADD CONSTRAINT [FormJob_formId_fkey] FOREIGN KEY ([formId]) REFERENCES [dbo].[BuiltForm]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 COMMIT TRAN;
 
@@ -637,4 +687,3 @@ END;
 THROW
 
 END CATCH
-

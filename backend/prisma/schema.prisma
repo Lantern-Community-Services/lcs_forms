@@ -1,17 +1,23 @@
 // Lantern Forms — data model (forms hub + roster).
 //
-// Local prototype runs on SQLite so it boots with no database server. The
-// schema is deliberately written in the subset Prisma supports on BOTH SQLite
-// and SQL Server (Azure SQL): no enums, no scalar lists, no Json columns —
-// statuses are strings and structured blobs are JSON text. Moving to Azure SQL
-// is a provider + DATABASE_URL change; see README "Moving to Azure SQL".
+// Azure SQL (SQL Server). Local development runs SQL Server in a container
+// (README "Database"). No enums, scalar lists or Json columns: statuses are
+// strings and structured blobs are JSON text.
+//
+// Every string column has an explicit size. Ids are 64; anything that can hold
+// free text, JSON or a URL is MAX; the rest 255, so every index stays under
+// SQL Server's 1,700-byte key limit. NVARCHAR(MAX) can't be in an index.
+//
+// Schema changes are migrations (prisma/migrations): `npx prisma migrate dev
+// --name <what>` locally; production runs `prisma migrate deploy`
+// (RUN_MIGRATIONS=true, see docker-entrypoint.sh).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "sqlserver"
   url      = env("DATABASE_URL")
 }
 
@@ -19,22 +25,22 @@ datasource db {
 
 /// A Lantern property / shelter site. Every roster entry belongs to one.
 model Site {
-  id             String  @id @default(cuid())
+  id             String  @id @default(cuid()) @db.NVarChar(64)
   /// Stable, URL-safe code used by the public API and WordPress
   /// (e.g. "amber-hall"). Never changes once integrations depend on it.
-  code           String  @unique
+  code           String  @unique @db.NVarChar(255)
   /// Display name staff see ("Amber Hall").
-  name           String
+  name           String  @db.NVarChar(255)
   /// Legal/ownership entity as it appears in property-management exports
   /// ("Amber Hall LP"). The CSV importer matches on this.
   /// Unique in practice (enforced in code) — not a DB unique index, because
   /// SQL Server permits only one NULL in a unique index.
-  entityName     String?
+  entityName     String? @db.NVarChar(255)
   /// "shelter" sites turn over fast; "supportive" housing is stable. Code forms
   /// read it (Hot Foods: shelters get more meals a day, with a cooldown).
   /// Anything but "shelter" counts as supportive.
-  siteType       String  @default("supportive")
-  address        String?
+  siteType       String  @default("supportive") @db.NVarChar(255)
+  address        String? @db.NVarChar(Max)
   /// Where the building is (WGS84). Forms use it to pick the site a staff
   /// member is standing at; their position is compared on the device and never
   /// sent to the server. Both null = no location on file.
@@ -65,30 +71,30 @@ model Site {
 /// WordPress and the activity log all reference it, never the name — so a
 /// spelling fix or a preferred-name change can't create a false "inactive".
 model Tenant {
-  id            String    @id @default(cuid())
+  id            String    @id @default(cuid()) @db.NVarChar(64)
   site          Site      @relation(fields: [siteId], references: [id])
-  siteId        String
-  unit          String?
-  firstName     String
-  lastName      String    @default("")
+  siteId        String    @db.NVarChar(64)
+  unit          String?   @db.NVarChar(255)
+  firstName     String    @db.NVarChar(255)
+  lastName      String    @default("") @db.NVarChar(255)
   /// What staff call them ("Inez"). Shown first when present.
-  preferredName String?
+  preferredName String?   @db.NVarChar(255)
   /// "active" | "archived". Removing someone archives them; nothing in the
   /// app hard-deletes a roster entry.
-  status        String    @default("active")
+  status        String    @default("active") @db.NVarChar(255)
   moveInDate    DateTime?
   moveOutDate   DateTime?
-  notes         String?
+  notes         String?   @db.NVarChar(Max)
   /// Identifier in an upstream system (Yardi, property-management export…).
-  externalId    String?
+  externalId    String?   @db.NVarChar(255)
 
   // ── Activity / attention ────────────────────────────────
   /// Last time any designated form or integration referenced this person.
   lastActivityAt     DateTime?
-  lastActivitySource String?
+  lastActivitySource String?   @db.NVarChar(255)
   /// Last time a staff member swiped "keep" in the review queue.
   lastKeptAt         DateTime?
-  lastKeptById       String?
+  lastKeptById       String?   @db.NVarChar(64)
   /// max(createdAt, lastActivityAt, lastKeptAt) — denormalised so the
   /// attention queue is one indexed range scan instead of a computed filter.
   /// Maintained by services/roster.ts; never write it directly.
@@ -96,12 +102,12 @@ model Tenant {
 
   // ── Archive ────────────────────────────────────────────
   archivedAt    DateTime?
-  archivedById  String?
-  archiveReason String?
+  archivedById  String?   @db.NVarChar(64)
+  archiveReason String?   @db.NVarChar(Max)
 
   /// Optimistic concurrency: every write must present the version it read.
   version     Int      @default(1)
-  createdById String?
+  createdById String?  @db.NVarChar(64)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -118,20 +124,20 @@ model Tenant {
 /// A signal that a tenant is still around: a form submission that named them,
 /// an integration ping, or a manual "seen today". Append-only.
 model TenantActivity {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @db.NVarChar(64)
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  tenantId    String
+  tenantId    String   @db.NVarChar(64)
   /// Machine source: "gravity_forms" | "roster" | "api" | "import".
-  source      String
+  source      String   @db.NVarChar(255)
   /// Human label: "Incident Report (form 12)".
-  label       String?
+  label       String?  @db.NVarChar(Max)
   /// Source-side id (e.g. GF entry id). With `source`, makes a retried
   /// webhook idempotent — checked in code, not by a unique constraint,
   /// because SQL Server allows only one NULL in a unique index.
-  externalRef String?
+  externalRef String?  @db.NVarChar(255)
   occurredAt  DateTime
   /// Who/what recorded it — a person's name or an API key's name.
-  recordedBy  String?
+  recordedBy  String?  @db.NVarChar(255)
   createdAt   DateTime @default(now())
 
   @@index([source, externalRef])
@@ -140,18 +146,18 @@ model TenantActivity {
 
 /// Immutable record of who changed a roster and why.
 model AuditEvent {
-  id        String   @id @default(cuid())
-  actorId   String?
-  actorName String
+  id        String   @id @default(cuid()) @db.NVarChar(64)
+  actorId   String?  @db.NVarChar(64)
+  actorName String   @db.NVarChar(255)
   /// tenant.created | tenant.updated | tenant.archived | tenant.restored |
   /// tenant.kept | site.* | user.* | import.completed | apikey.* | webhook.*
-  action    String
+  action    String   @db.NVarChar(255)
   tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  tenantId  String?
-  siteId    String?
-  summary   String
+  tenantId  String?  @db.NVarChar(64)
+  siteId    String?  @db.NVarChar(64)
+  summary   String   @db.NVarChar(Max)
   /// JSON text: { field: [before, after] } or free-form metadata.
-  changes   String?
+  changes   String?  @db.NVarChar(Max)
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -165,15 +171,15 @@ model AuditEvent {
 /// whoever was marked present. Append-only — nothing here is ever edited;
 /// retake it if a mistake is made, the same philosophy as AuditEvent.
 model AttendanceEvent {
-  id            String   @id @default(cuid())
+  id            String   @id @default(cuid()) @db.NVarChar(64)
   site          Site     @relation(fields: [siteId], references: [id])
-  siteId        String
-  title         String
-  description   String
+  siteId        String   @db.NVarChar(64)
+  title         String   @db.NVarChar(255)
+  description   String   @db.NVarChar(Max)
   /// Always the server's clock at creation — never taken from the client.
   occurredAt    DateTime @default(now())
-  createdById   String?
-  createdByName String
+  createdById   String?  @db.NVarChar(64)
+  createdByName String   @db.NVarChar(255)
   createdAt     DateTime @default(now())
 
   entries AttendanceEntry[]
@@ -184,15 +190,15 @@ model AttendanceEvent {
 /// One person's presence at an attendance event, with an optional signature
 /// captured on the device at the time.
 model AttendanceEntry {
-  id         String          @id @default(cuid())
+  id         String          @id @default(cuid()) @db.NVarChar(64)
   event      AttendanceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId    String
+  eventId    String          @db.NVarChar(64)
   tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  tenantId   String
+  tenantId   String          @db.NVarChar(64)
   /// Snapshot at signing time — a later name edit shouldn't rewrite history.
-  tenantName String
+  tenantName String          @db.NVarChar(255)
   /// PNG data URL captured on the device; null if not collected.
-  signature  String?
+  signature  String?         @db.NVarChar(Max)
   signedAt   DateTime?
   createdAt  DateTime        @default(now())
 
@@ -207,8 +213,8 @@ model AttendanceEntry {
 
 /// A kind of event ("Training", "Holiday") and the color it's drawn in.
 model CalendarCategory {
-  id        String   @id @default(cuid())
-  name      String
+  id        String   @id @default(cuid()) @db.NVarChar(64)
+  name      String   @db.NVarChar(255)
   /// Slot 0-7 of the chart palette (frontend index.css --viz-1…8), so a
   /// color means the same kind of event on every screen.
   colorSlot Int      @default(0)
@@ -223,9 +229,9 @@ model CalendarCategory {
 /// A category someone doesn't want in their Outlook ("no trainings, thanks").
 model CalendarCategoryMute {
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
+  userId     String           @db.NVarChar(64)
   category   CalendarCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  categoryId String
+  categoryId String           @db.NVarChar(64)
 
   @@id([userId, categoryId])
   @@index([categoryId])
@@ -233,25 +239,25 @@ model CalendarCategoryMute {
 
 /// One event on the calendar, or a whole repeating series of them.
 model CalendarEvent {
-  id            String            @id @default(cuid())
-  title         String
-  description   String?
-  location      String?
+  id            String            @id @default(cuid()) @db.NVarChar(64)
+  title         String            @db.NVarChar(255)
+  description   String?           @db.NVarChar(Max)
+  location      String?           @db.NVarChar(Max)
   /// Deleting a category leaves its events uncategorized.
   category      CalendarCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  categoryId    String?
+  categoryId    String?           @db.NVarChar(64)
   /// True: every site sees it. False: only people at the sites in `sites`.
   allSites      Boolean           @default(true)
   allDay        Boolean           @default(false)
   /// The first occurrence as entered. Later ones keep its length and times.
-  startDate     String
+  startDate     String            @db.NVarChar(255)
   /// "HH:MM"; null when all day.
-  startTime     String?
+  startTime     String?           @db.NVarChar(255)
   /// The day it ends (the same day, or later for a multi-day event).
-  endDate       String
-  endTime       String?
+  endDate       String            @db.NVarChar(255)
+  endTime       String?           @db.NVarChar(255)
   /// JSON text: the repeat rule (src/calendar/recurrence.ts). Null = happens once.
-  recurrence    String?
+  recurrence    String?           @db.NVarChar(Max)
   /// Give it a Microsoft Teams meeting link when it goes to Outlook. Once
   /// Outlook has made the link it can't be taken away (a Microsoft rule).
   teamsMeeting  Boolean           @default(false)
@@ -262,16 +268,19 @@ model CalendarEvent {
   /// changes it; the calendar screens show it read-only with a link back. Deleting
   /// the form leaves the event as an ordinary one.
   sourceForm    BuiltForm?        @relation(fields: [sourceFormId], references: [id], onDelete: SetNull)
-  sourceFormId  String?
+  sourceFormId  String?           @db.NVarChar(64)
   /// The form's own reference for it, e.g. the entry id of the request.
-  sourceRef     String?
+  sourceRef     String?           @db.NVarChar(255)
   /// The day it first happens, and the day its last occurrence ends, so a
   /// month's events are an indexed range query. lastDate null = repeats forever.
-  firstDate     String
-  lastDate      String?
-  createdById   String?
-  createdByName String
-  updatedByName String?
+  firstDate     String            @db.NVarChar(255)
+  lastDate      String?           @db.NVarChar(255)
+  createdById   String?           @db.NVarChar(64)
+  createdByName String            @db.NVarChar(255)
+  /// Who changed it last (null: a scheduled action). Their Outlook calendar is
+  /// the one that sends it, if it hasn't been sent yet (services/outlookSync.ts).
+  updatedById   String?           @db.NVarChar(64)
+  updatedByName String?           @db.NVarChar(255)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -280,17 +289,19 @@ model CalendarEvent {
   copies     CalendarCopy[]
 
   // ── Outlook (services/outlookSync.ts) ──
-  /// The meeting's id in the organizer mailbox (CALENDAR_ORGANIZER), once sent.
-  outlookEventId  String?
+  /// The person whose Outlook calendar holds the meeting (its organizer), once sent.
+  outlookOrganizerId String?   @db.NVarChar(64)
+  /// The meeting's id in the organizer's calendar, once sent.
+  outlookEventId     String?   @db.NVarChar(512)
   /// The Teams join link Outlook made for it.
-  teamsJoinUrl    String?
+  teamsJoinUrl       String?   @db.NVarChar(Max)
   /// Changed since Outlook last heard about it; the sync queue picks these up.
-  outlookDirty    Boolean   @default(true)
+  outlookDirty       Boolean   @default(true)
   /// Why the last send failed (or can't happen), in words. Null = fine.
-  outlookError    String?
-  outlookSyncedAt DateTime?
+  outlookError       String?   @db.NVarChar(Max)
+  outlookSyncedAt    DateTime?
   /// What was last sent, hashed, so an unchanged event isn't sent again.
-  outlookHash     String?
+  outlookHash        String?   @db.NVarChar(255)
 
   @@index([firstDate])
   @@index([lastDate])
@@ -300,9 +311,9 @@ model CalendarEvent {
 /// A site an event is for, when it isn't for every site.
 model CalendarEventSite {
   event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId String
+  eventId String        @db.NVarChar(64)
   site    Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  siteId  String
+  siteId  String        @db.NVarChar(64)
 
   @@id([eventId, siteId])
   @@index([siteId])
@@ -311,9 +322,9 @@ model CalendarEventSite {
 /// A site whose events someone wants as invites in their own Outlook calendar.
 model CalendarFollow {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  userId String @db.NVarChar(64)
   site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  siteId String
+  siteId String @db.NVarChar(64)
 
   @@id([userId, siteId])
   @@index([siteId])
@@ -322,54 +333,57 @@ model CalendarFollow {
 /// One person's quiet copy of an event, written straight into their own
 /// Outlook calendar (no invite email). See services/outlookSync.ts.
 model CalendarCopy {
-  id             String        @id @default(cuid())
+  id             String        @id @default(cuid()) @db.NVarChar(64)
   event          CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId        String
-  userId         String
+  eventId        String        @db.NVarChar(64)
+  userId         String        @db.NVarChar(64)
   /// The mailbox it was written to (their email when it was written).
-  mailbox        String
-  outlookEventId String?
+  mailbox        String        @db.NVarChar(255)
+  outlookEventId String?       @db.NVarChar(512)
   /// What was last written, hashed.
-  hash           String?
+  hash           String?       @db.NVarChar(64)
   /// They have no mailbox here (a partner account): they get the invite instead.
   fallbackInvite Boolean       @default(false)
-  error          String?
+  error          String?       @db.NVarChar(Max)
   updatedAt      DateTime      @updatedAt
 
   @@unique([eventId, userId])
 }
 
-/// An Outlook meeting (or a quiet copy) still to be removed, after its event was deleted here.
+/// An Outlook meeting (or a quiet copy) still to be removed, after its event was
+/// deleted here. Removed with its owner's own token; waits until they have one.
 model CalendarOutlookTrash {
-  id             String   @id @default(cuid())
-  /// Whose calendar: null = the organizer's meeting (cancelled, so invitees hear),
-  /// otherwise a quiet copy in that mailbox (just deleted).
-  mailbox        String?
-  outlookEventId String
-  title          String
-  error          String?
+  id             String   @id @default(cuid()) @db.NVarChar(64)
+  /// Whose calendar it's in (User id).
+  ownerId        String   @db.NVarChar(64)
+  /// True: the organizer's meeting (cancelled, so invitees hear). False: a
+  /// quiet copy (just deleted).
+  meeting        Boolean
+  outlookEventId String   @db.NVarChar(512)
+  title          String   @db.NVarChar(255)
+  error          String?  @db.NVarChar(Max)
   createdAt      DateTime @default(now())
 }
 
 /// One day of a repeating event changed on its own: cancelled, moved, or
 /// reworded. Fields left null follow the series.
 model CalendarException {
-  id            String        @id @default(cuid())
+  id            String        @id @default(cuid()) @db.NVarChar(64)
   event         CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId       String
+  eventId       String        @db.NVarChar(64)
   /// The day the series puts it on, which says which occurrence this is.
-  originalDate  String
+  originalDate  String        @db.NVarChar(255)
   cancelled     Boolean       @default(false)
-  title         String?
-  description   String?
-  location      String?
+  title         String?       @db.NVarChar(255)
+  description   String?       @db.NVarChar(Max)
+  location      String?       @db.NVarChar(Max)
   /// Set all together, only when this one was moved or retimed.
   allDay        Boolean?
-  startDate     String?
-  startTime     String?
-  endDate       String?
-  endTime       String?
-  updatedByName String?
+  startDate     String?       @db.NVarChar(255)
+  startTime     String?       @db.NVarChar(255)
+  endDate       String?       @db.NVarChar(255)
+  endTime       String?       @db.NVarChar(255)
+  updatedByName String?       @db.NVarChar(255)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -381,10 +395,10 @@ model CalendarException {
 
 /// A heading on the Forms screen ("Pantry Forms", "Finance & Cash Handling").
 model FormCategory {
-  id        String     @id @default(cuid())
-  name      String
+  id        String     @id @default(cuid()) @db.NVarChar(64)
+  name      String     @db.NVarChar(255)
   /// Icon key from the frontend's fixed set (frontend/src/lib/formIcons.ts).
-  icon      String     @default("folder")
+  icon      String     @default("folder") @db.NVarChar(255)
   sortOrder Int        @default(0)
   forms     FormLink[]
   createdAt DateTime   @default(now())
@@ -395,28 +409,28 @@ model FormCategory {
 /// the WordPress site and are plain links; as a form is rebuilt inside this app
 /// its `url` becomes an app path ("/roster") and nothing else changes.
 model FormLink {
-  id          String         @id @default(cuid())
+  id          String         @id @default(cuid()) @db.NVarChar(64)
   /// No cascade: a category must be emptied before it can be deleted.
   category    FormCategory   @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  categoryId  String
-  title       String
-  description String?
+  categoryId  String         @db.NVarChar(64)
+  title       String         @db.NVarChar(255)
+  description String?        @db.NVarChar(Max)
   /// An absolute http(s) URL (a form still on WordPress), or an app path
   /// starting with "/" (a screen built into this site).
-  url         String
+  url         String         @db.NVarChar(Max)
   /// Extra words search should match, comma-separated ("tenant updater, move in").
-  keywords    String?
+  keywords    String?        @db.NVarChar(Max)
   /// Short tag shown on the card ("New", "Password required").
-  badge       String?
+  badge       String?        @db.NVarChar(255)
   /// Icon key (frontend lib/formIcons.ts), shown on the card and in the
   /// collapsed sidebar. Null = the category's icon.
-  icon        String?
+  icon        String?        @db.NVarChar(255)
   sortOrder   Int            @default(0)
   /// Hidden from staff when false; admins still see it in the catalog editor.
   active      Boolean        @default(true)
   /// Comma-separated role keys that may see this form ("site_admin,site_manager").
   /// Null = every role. Admins always see every form.
-  roles       String?
+  roles       String?        @db.NVarChar(255)
   favorites   FormFavorite[]
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -428,9 +442,9 @@ model FormLink {
 /// every device they sign in on.
 model FormFavorite {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
+  userId    String   @db.NVarChar(64)
   form      FormLink @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId    String
+  formId    String   @db.NVarChar(64)
   createdAt DateTime @default(now())
 
   @@id([userId, formId])
@@ -444,35 +458,35 @@ model FormFavorite {
 /// (backend/src/forms/schema.ts), so what the builder, the code editor, an
 /// export file and an LLM see is exactly the same thing.
 model BuiltForm {
-  id            String    @id @default(cuid())
+  id            String    @id @default(cuid()) @db.NVarChar(64)
   /// "basic" (drag-and-drop lcs-form document) | "code" (a code form: a small
   /// project of files — pages, server logic, styles; see backend/src/apps/).
-  kind          String    @default("basic")
+  kind          String    @default("basic") @db.NVarChar(255)
   /// URL name: the form opens at /f/<slug>. Unique; changing it breaks links.
-  slug          String    @unique
-  title         String
+  slug          String    @unique @db.NVarChar(255)
+  title         String    @db.NVarChar(255)
   /// "draft" (never published) | "published" | "closed" (published, not taking
   /// entries) | "archived" (hidden everywhere, entries kept).
-  status        String    @default("draft")
+  status        String    @default("draft") @db.NVarChar(255)
   /// The working copy the builder edits. JSON text: an lcs-form document, or for
   /// a code form { files: { path: source } }.
-  draftSchema   String
+  draftSchema   String    @db.NVarChar(Max)
   /// What people actually fill in. Null until first published. For a code form,
   /// { files, build } — the published sources and their compiled output.
-  liveSchema    String?
+  liveSchema    String?   @db.NVarChar(Max)
   /// Bumped on every publish; entries record the version they were filled against.
   liveVersion   Int       @default(0)
   /// Bumped on every draft save — the editor sends back the revision it loaded,
   /// so two admins (or an admin and an LLM) can't silently overwrite each other.
   revision      Int       @default(1)
   /// Catalog card that opens this form, when it's been added to Forms.
-  catalogLinkId String?
+  catalogLinkId String?   @db.NVarChar(64)
   /// A code form whose published form.json has "home": its server action adds
   /// cards to the Forms home. Kept as a column so the home screen needn't open every form.
   homeAction    Boolean   @default(false)
-  createdById   String?
-  createdByName String
-  updatedByName String?
+  createdById   String?   @db.NVarChar(64)
+  createdByName String    @db.NVarChar(255)
+  updatedByName String?   @db.NVarChar(255)
   publishedAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -491,13 +505,13 @@ model BuiltForm {
 /// shown with the labels and choices it was filled in against, and an older
 /// version can be restored into the draft.
 model BuiltFormVersion {
-  id              String    @id @default(cuid())
+  id              String    @id @default(cuid()) @db.NVarChar(64)
   form            BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId          String
+  formId          String    @db.NVarChar(64)
   version         Int
-  schema          String
-  note            String?
-  publishedByName String
+  schema          String    @db.NVarChar(Max)
+  note            String?   @db.NVarChar(Max)
+  publishedByName String    @db.NVarChar(255)
   createdAt       DateTime  @default(now())
 
   @@unique([formId, version])
@@ -505,39 +519,39 @@ model BuiltFormVersion {
 
 /// One submission of a built form. Values are JSON keyed by field id.
 model FormEntry {
-  id             String    @id @default(cuid())
+  id             String    @id @default(cuid()) @db.NVarChar(64)
   form           BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId         String
+  formId         String    @db.NVarChar(64)
   formVersion    Int
   /// JSON text: { [fieldId]: value }. Only fields that were visible are kept.
-  data           String
+  data           String    @db.NVarChar(Max)
   /// The site the entry was made for, when the form asks for one — entries are
   /// then limited to people assigned to that site, like the rest of the app.
-  siteId         String?
+  siteId         String?   @db.NVarChar(64)
   /// "app" | "public" | "api" | "mcp" | "import"
-  source         String    @default("app")
+  source         String    @default("app") @db.NVarChar(255)
   /// "active" | "voided"
-  status         String    @default("active")
+  status         String    @default("active") @db.NVarChar(255)
   /// When it happened (a code form may record offline and upload later);
   /// defaults to when it was saved.
   occurredAt     DateTime  @default(now())
   /// Roster id of the resident the entry is about, when there is one — indexed
   /// so code forms can ask "this resident's entries today" cheaply.
-  tenantId       String?
+  tenantId       String?   @db.NVarChar(64)
   /// Why a code form's rule (a limit, a cooldown) was overridden.
-  overrideReason String?
+  overrideReason String?   @db.NVarChar(Max)
   /// Idempotency key from the filling device, so a retried submit can't save twice.
-  clientId       String?
-  createdById    String?
-  createdByName  String
-  ip             String?
-  userAgent      String?
+  clientId       String?   @db.NVarChar(255)
+  createdById    String?   @db.NVarChar(64)
+  createdByName  String    @db.NVarChar(255)
+  ip             String?   @db.NVarChar(64)
+  userAgent      String?   @db.NVarChar(512)
   voidedAt       DateTime?
-  voidedByName   String?
-  voidReason     String?
+  voidedByName   String?   @db.NVarChar(255)
+  voidReason     String?   @db.NVarChar(Max)
   /// Starred by an entry viewer (Gravity Forms' star), for follow-up.
   starred        Boolean   @default(false)
-  updatedByName  String?
+  updatedByName  String?   @db.NVarChar(255)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -555,36 +569,40 @@ model FormEntry {
 /// A note on an entry — typed by a person, or written by the system
 /// (notification sent, entry edited, voided).
 model FormEntryNote {
-  id         String    @id @default(cuid())
+  id         String    @id @default(cuid()) @db.NVarChar(64)
   entry      FormEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  entryId    String
+  entryId    String    @db.NVarChar(64)
   /// "note" | "system"
-  kind       String    @default("note")
-  authorName String
-  body       String
+  kind       String    @default("note") @db.NVarChar(255)
+  authorName String    @db.NVarChar(255)
+  body       String    @db.NVarChar(Max)
   createdAt  DateTime  @default(now())
 
   @@index([entryId, createdAt])
 }
 
-/// A file uploaded through a File field. Stored in the database so the app has
-/// one thing to back up; capped per file in the route.
+/// A file uploaded through a File field or a code form (photos, signatures).
+/// The bytes are in Azure Blob Storage (storageKey) when it's configured, or in
+/// `data` otherwise (local development). See services/fileStore.ts.
 model FormFile {
-  id          String     @id @default(cuid())
+  id          String     @id @default(cuid()) @db.NVarChar(64)
   form        BuiltForm  @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId      String
+  formId      String     @db.NVarChar(64)
   /// Null while uploaded but not yet submitted; orphans older than a day are swept.
   entry       FormEntry? @relation(fields: [entryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  entryId     String?
+  entryId     String?    @db.NVarChar(64)
   /// The File field's id; for a code form, the page's own label for the file ("photo").
-  fieldId     String
-  name        String
-  mime        String
+  fieldId     String     @db.NVarChar(255)
+  name        String     @db.NVarChar(255)
+  mime        String     @db.NVarChar(255)
   size        Int
-  data        Bytes
+  /// The bytes, when they're kept in the database.
+  data        Bytes?
+  /// The blob's name in the files container, when they're in Blob Storage.
+  storageKey  String?    @db.NVarChar(512)
   /// Who uploaded it. A code form's file that isn't on an entry yet can only be
   /// read back (or attached) by the person who uploaded it.
-  createdById String?
+  createdById String?    @db.NVarChar(64)
   createdAt   DateTime   @default(now())
 
   @@index([entryId])
@@ -595,13 +613,13 @@ model FormFile {
 /// settings, anything the form's pages or server code keep. One JSON document
 /// per (form, collection, docId).
 model FormRecord {
-  id            String    @id @default(cuid())
+  id            String    @id @default(cuid()) @db.NVarChar(64)
   form          BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId        String
-  collection    String
-  docId         String
-  data          String
-  updatedByName String?
+  formId        String    @db.NVarChar(64)
+  collection    String    @db.NVarChar(255)
+  docId         String    @db.NVarChar(255)
+  data          String    @db.NVarChar(Max)
+  updatedByName String?   @db.NVarChar(255)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -612,25 +630,25 @@ model FormRecord {
 // ───────────────────────── People ─────────────────────────
 
 model User {
-  id                        String                 @id @default(cuid())
-  name                      String
-  email                     String                 @unique
+  id                        String                 @id @default(cuid()) @db.NVarChar(64)
+  name                      String                 @db.NVarChar(255)
+  email                     String                 @unique @db.NVarChar(255)
   /// Entra object id — stable identity behind the mailbox, recorded on first
   /// sign-in. Google Workspace users signing in as Entra B2B guests get one
   /// too, so the same matching works for both. Indexed, not unique: invited
   /// users have none yet, and SQL Server allows only one NULL per unique index.
-  entraObjectId             String?
+  entraObjectId             String?                @db.NVarChar(64)
   /// "microsoft" | "google.com" | other federated idp claim. Informational.
-  identityProvider          String?
+  identityProvider          String?                @db.NVarChar(255)
   /// admin | main_office | site_admin | site_manager | site_staff — see services/permissions.ts.
-  roleKey                   String                 @default("site_staff")
+  roleKey                   String                 @default("site_staff") @db.NVarChar(255)
   /// active | invited | requested | denied | deactivated
-  status                    String                 @default("active")
-  title                     String?
-  avatarColor               String?
-  defaultLandingPage        String                 @default("/forms")
+  status                    String                 @default("active") @db.NVarChar(255)
+  title                     String?                @db.NVarChar(255)
+  avatarColor               String?                @db.NVarChar(255)
+  defaultLandingPage        String                 @default("/forms") @db.NVarChar(Max)
   /// Site code the roster opens on. Null = first site they can see.
-  defaultSiteCode           String?
+  defaultSiteCode           String?                @db.NVarChar(255)
   /// Can add, change and remove calendar events for their own sites, whatever
   /// their role. Only an Admin turns it on. Admins can always edit the calendar.
   calendarEditor            Boolean                @default(false)
@@ -658,6 +676,7 @@ model User {
   sites           UserSite[]
   formFavorites   FormFavorite[]
   calendarFollows CalendarFollow[]
+  graphToken      UserGraphToken?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -665,11 +684,27 @@ model User {
   @@index([entraObjectId])
 }
 
+/// A person's Microsoft Graph refresh token from their last Microsoft sign-in
+/// (delegated Calendars.ReadWrite + offline_access), so the calendar can write
+/// to their own Outlook when they aren't on the site. Encrypted at rest
+/// (services/graphTokens.ts), never sent to a browser, and deleted when they
+/// sign out or lose access.
+model UserGraphToken {
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String   @id @db.NVarChar(64)
+  /// AES-256-GCM with TOKEN_ENCRYPTION_KEY: "v1.<iv>.<tag>.<ciphertext>", base64url.
+  refreshToken String   @db.NVarChar(Max)
+  /// The scopes Microsoft granted, space-separated.
+  scopes       String   @db.NVarChar(Max)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model UserSite {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  userId String @db.NVarChar(64)
   site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  siteId String
+  siteId String @db.NVarChar(64)
 
   @@id([userId, siteId])
 }
@@ -678,34 +713,34 @@ model UserSite {
 
 /// Machine credential for WordPress / Power Automate. Only a hash is stored.
 model ApiKey {
-  id          String    @id @default(cuid())
-  name        String
+  id          String    @id @default(cuid()) @db.NVarChar(64)
+  name        String    @db.NVarChar(255)
   /// First characters of the key, shown so people can tell keys apart.
-  prefix      String
-  hash        String    @unique
+  prefix      String    @db.NVarChar(255)
+  hash        String    @unique @db.NVarChar(64)
   /// Comma-separated: "roster:read,activity:write".
-  scopes      String
+  scopes      String    @db.NVarChar(Max)
   /// Optional restriction to one site.
   site        Site?     @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  siteId      String?
+  siteId      String?   @db.NVarChar(64)
   lastUsedAt  DateTime?
-  createdById String?
+  createdById String?   @db.NVarChar(64)
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 }
 
 /// Outbound webhook: roster changes are POSTed here, HMAC-signed.
 model Webhook {
-  id             String    @id @default(cuid())
-  name           String
-  url            String
-  secret         String
+  id             String    @id @default(cuid()) @db.NVarChar(64)
+  name           String    @db.NVarChar(255)
+  url            String    @db.NVarChar(Max)
+  secret         String    @db.NVarChar(255)
   /// Comma-separated event names, or "*" for everything.
-  events         String    @default("*")
+  events         String    @default("*") @db.NVarChar(Max)
   active         Boolean   @default(true)
   lastDeliveryAt DateTime?
   lastStatus     Int?
-  lastError      String?
+  lastError      String?   @db.NVarChar(Max)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -713,12 +748,12 @@ model Webhook {
 }
 
 model WebhookDelivery {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @db.NVarChar(64)
   webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-  webhookId  String
-  event      String
+  webhookId  String   @db.NVarChar(64)
+  event      String   @db.NVarChar(255)
   statusCode Int?
-  error      String?
+  error      String?  @db.NVarChar(Max)
   durationMs Int?
   createdAt  DateTime @default(now())
 
@@ -727,8 +762,8 @@ model WebhookDelivery {
 
 /// Org-wide key/value settings (attention threshold, guest domains…).
 model Setting {
-  key       String   @id
-  value     String
+  key       String   @id @db.NVarChar(255)
+  value     String   @db.NVarChar(Max)
   updatedAt DateTime @updatedAt
 }
 
@@ -738,24 +773,24 @@ model Setting {
 /// who caused it, by services in apps/jobs.ts. Kept as the record of what was
 /// made from what; a failed one can be retried.
 model FormJob {
-  id            String    @id @default(cuid())
+  id            String    @id @default(cuid()) @db.NVarChar(64)
   /// The form whose server code asked.
   form          BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId        String
+  formId        String    @db.NVarChar(64)
   /// The source form's entry it belongs to (e.g. the encounter), if any.
-  sourceEntryId String?
+  sourceEntryId String?   @db.NVarChar(64)
   /// The form the entry goes into.
-  targetSlug    String
+  targetSlug    String    @db.NVarChar(255)
   /// JSON text: { data, site, tenantId, occurredAt, override, label }.
-  input         String
+  input         String    @db.NVarChar(Max)
   /// Whose request it was; null = scheduled or an API key.
-  userId        String?
-  userName      String
+  userId        String?   @db.NVarChar(64)
+  userName      String    @db.NVarChar(255)
   /// "queued" | "running" | "done" | "failed"
-  status        String    @default("queued")
-  error         String?
+  status        String    @default("queued") @db.NVarChar(255)
+  error         String?   @db.NVarChar(Max)
   /// The entry made in the target form.
-  resultEntryId String?
+  resultEntryId String?   @db.NVarChar(64)
   attempts      Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

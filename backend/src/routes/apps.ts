@@ -15,6 +15,7 @@ import {
   requireOpen, restoreEntry, runAction, voidEntry, updateEntry, entryHistory, type ClientEntryQuery,
 } from "../apps/runtime.js";
 import { readAppFile, uploadAppFile } from "../apps/files.js";
+import { fileBytes } from "../services/fileStore.js";
 import {
   createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, projectDetail, publishProject, restoreProjectVersion,
   saveProject, versionFiles,
@@ -258,7 +259,7 @@ appsRouter.get(
     res.setHeader("Cache-Control", "private, max-age=3600");
     // Uploaded content is shown as a file, never as a page of this site.
     res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
-    res.type(inline ? file.mime : "application/octet-stream").send(Buffer.from(file.data));
+    res.type(inline ? file.mime : "application/octet-stream").send(await fileBytes(file));
   })
 );
 

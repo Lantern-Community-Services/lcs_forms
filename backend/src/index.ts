@@ -8,6 +8,7 @@ import { startOutlookSync } from "./services/outlookSync.js";
 import { startFormBackup } from "./services/formBackup.js";
 import { startScheduler } from "./apps/schedule.js";
 import { startJobs } from "./apps/jobs.js";
+import { fileStorageLabel } from "./services/fileStore.js";
 
 // The catalog starts empty and forms are added as they're rebuilt here; a
 // database seeded with the old WordPress links has them taken out, once.
@@ -33,9 +34,10 @@ migrateLegacyRoles()
   .then((n) => n && console.log(`  Roles: moved ${n} people off retired roles.`))
   .catch((err) => console.error("[roles] could not migrate retired roles:", err));
 
-createApp().listen(env.port, () => {
-  console.log(`\n  Lantern Forms backend listening on http://localhost:${env.port}`);
+createApp().listen(env.port, env.host, () => {
+  console.log(`\n  Lantern Forms backend listening on http://${env.host}:${env.port}`);
   console.log(`  Microsoft sign-in: ${ssoConfigured ? "configured" : "NOT configured (set MICROSOFT_* in .env.local)"}`);
+  console.log(`  Uploaded files: ${fileStorageLabel()}`);
   if (devAuthEnabled) console.log("  Dev sign-in: ON (local prototype only — DEV_AUTH=false to disable)");
   console.log(`  Public API: http://localhost:${env.port}/api/v1  (API key required)\n`);
 });

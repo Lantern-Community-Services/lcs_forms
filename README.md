@@ -179,6 +179,12 @@ Notifications send through Microsoft Graph as the mailbox in `MAIL_FROM`, which 
 Exchange application access policy). Until it's set, each email is noted on the entry as "not
 sent"; webhooks work regardless.
 
+**Every email is link-only** (`linkOnlyHtml` in `services/mailer.ts`): one line naming the form
+and a link to the entry. Answers, form contents and resident details never go in an email, and
+nothing is attached. A notification's subject keeps the form, site, person and date merge tags
+(`{form:title}`, `{site:name}`…) and drops any answer tags; a body saved on an older form is
+ignored. Code forms' `ctx.email.send` works the same way (below).
+
 ## Code forms
 
 When a form needs more than fields and rules (custom screens, server-side logic, offline recording,
@@ -224,7 +230,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).
 - **Photos and files:** `<PhotoInput>` / `device.takePhoto()` open the camera in the app itself (the
   sandboxed frame has no camera), with a live preview and "Choose a photo". Photos are shrunk to
-  1600px JPEG and stored in `FormFile`; any `{ fileId }` in an entry's data is attached when it saves.
+  1600px JPEG and stored as a `FormFile` (bytes in Blob Storage, see "Uploaded files"); any `{ fileId }` in an entry's data is attached when it saves.
   Offline, photos wait on the device and upload ahead of their entry (`frontend/src/apps/queue.ts`).
   `form.json` `"files"` sets size and types.
 - **Editing entries:** `entries.update` for `form.json` `entries.edit` roles (default admins and
@@ -263,14 +269,16 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
     as a data: URL.
   - `form.json` `"schedule"` runs actions once a New York day: daily, on weekdays, or monthly. They run as nobody,
     with args `{ scheduled: true, day }`. `SCHEDULE_DISABLED=true` turns the timer off.
-  - `ctx.email.send` can attach export specs (Excel/PDF/CSV, built when it sends).
   - The first forms built this way are **Event Requests** (`/apps/events`) and **Encounter Events**
     (`/apps/encounters`, which records attendance against approved events), built through MCP on
     2026-10-07.
 - **Dashboards and reports:** `TrendChart`, `ColumnChart`, `DonutChart` beside the original charts (`DailyBars`, `RankedBars`, `HeatGrid`, `StatTile`);
   `app.export()` makes Excel / PDF / CSV on the server (`backend/src/apps/exports.ts`), audited.
-- **Email:** `ctx.email.send()` from server code, queued through the Graph mailbox (see Email below —
-  not set up yet), to Lantern addresses unless `form.json` `"email"` lists others.
+- **Email:** `ctx.email.send({ to, subject, link })` from server code, queued through the Graph mailbox
+  (see Email above), to Lantern addresses unless `form.json` `"email"` lists others. **Link-only:** the
+  email is the subject and a link to `link` (a page of the form, e.g. `${ctx.url}/request?id=…`).
+  `html`, `text` and `attachments` are accepted for old code but not sent; the result lists them in
+  `dropped`. A monthly report is a link to the Reports page, where the reader exports it.
 - **Phones, iPads, desktops:** inside a page, Tailwind's `sm:` `md:` `lg:` `xl:` and `portrait:` /
   `landscape:` follow the device's window (not the frame), so markup from the app's own screens lays
   out the same; `phone:` `tablet:` `desktop:` variants and `useDevice()` are there for device-specific
@@ -365,81 +373,66 @@ Events go into each person's **own** Outlook calendar. The app is still where ev
 changed; Outlook is told about each change (one way: edits made in Outlook aren't brought back).
 Nobody sets anything up in Outlook.
 
+**The app has no Outlook access of its own.** Everything is written with one person's own Microsoft
+sign-in: delegated **Calendars.ReadWrite** + **offline_access** on the app registration, consented
+for the organization, so nobody sees a consent screen. Each Microsoft sign-in keeps that person's
+refresh token, encrypted with `TOKEN_ENCRYPTION_KEY` (`UserGraphToken`, `services/graphTokens.ts`),
+so the calendar can write to *their* calendar later. It's deleted when they sign out, when an admin
+denies or deactivates them, and when Microsoft stops honouring it; their next sign-in brings it back.
+
+- **Who sends what.**
+  - The **meeting** (with everyone who wants an invite as attendees) is in the calendar of whoever
+    last changed the event when it's first sent, or who made it. Exchange sends the invites from them.
+    Later changes are written to that meeting with their sign-in.
+  - A **quiet copy** is written into each person's own calendar with their own sign-in.
+  - Someone the app has no sign-in for (never signed in with Microsoft since this was turned on, or
+    signed out) gets an invite instead; a quiet copy they already have stays as it is and catches up
+    when they sign in again.
+  - If a meeting's organizer has signed out, the next person to change the event sends a new one
+    from their calendar, and the old one is cancelled once the organizer signs in again
+    (`CalendarOutlookTrash`). Until then the event says why Outlook isn't up to date.
+- **Only its own events.** Every event the app writes carries an open extension
+  (`org.lanterncommunity.forms`, with the calendar event's id). Before changing, cancelling or
+  deleting anything, the app checks for it, and leaves anything without it alone.
+- **Link-only.** Invites and copies carry the title, times (New York), location, the repeat rule
+  and single days changed or cancelled, and a body that's just a link back here (plus the Teams link
+  on a quiet copy). No description, no form contents, nothing about residents.
 - **What each person gets.** The first time someone opens the calendar, a popup asks (the Outlook
   button reopens it):
   - **Sites:** "Events for every site" and any of their own sites (all ticked to start).
   - **Categories:** untick one (Training, say) and its events stay out of their Outlook; "No
     category" too. New categories are in by default.
-  - **How they arrive:** an **invite** from the **Lantern Calendar** mailbox, which emails them, or
-    added **quietly**, written straight into their calendar with no email. By default Teams
-    meetings come as invites and everything else quietly.
+  - **How they arrive:** an **invite** (an email from whoever added the event), or added
+    **quietly**, written straight into their calendar with no email. By default Teams meetings come
+    as invites and everything else quietly.
   - **For quiet ones:** their reminder (none to a day before, default 15 minutes) and whether
     all-day events show as free (default yes).
   "None for me" is an answer too. Someone with no mailbox in this organization (a partner account)
   gets invites whatever they chose.
-- **Colors.** Quiet copies are tagged with the event's category, and the app creates that category
-  in the person's Outlook in the calendar's color (the nearest of Outlook's colors), so it shows
-  colored with no setup. Invites can't carry a category (Outlook doesn't send one with a meeting),
-  so invites arrive uncolored.
-- **Can't be changed in Outlook for everyone.** Invites are Lantern Calendar's meetings: attendees
-  can't edit them, and "propose new time" is off. A quiet copy belongs to the person, so they could
-  edit their own copy; it changes nothing for anyone else, and it's put back the next time the event
-  changes here.
-- **Teams.** An event with **Teams meeting** on always has Lantern Calendar's meeting, since that's
-  where the Teams link comes from; invites carry it and quiet copies get the join link in their
-  notes, and the calendar shows "Join the Teams meeting". Once Outlook has made the link it can't be
-  removed, so the switch then stays on. A Teams meeting's notes aren't updated in Outlook after it's
-  sent (a new body would wipe out the join details). If the organizer can't host Teams meetings,
-  the event says so and gets the link once it can.
+- **Categories.** Quiet copies carry the event's category name. The app can't create Outlook
+  categories (that needs mailbox-settings access it doesn't ask for), so a copy shows colored when
+  the person has an Outlook category of that name. Invites can't carry a category.
+- **Teams.** An event with **Teams meeting** on always has a meeting, since that's where the Teams
+  link comes from; invites carry it, quiet copies get the join link, and the calendar shows "Join the
+  Teams meeting". Once Outlook has made the link it can't be removed, so the switch then stays on.
+  If the organizer can't host Teams meetings, the event says so and gets the link once they can.
 - **Few emails.** The meeting is only re-sent (an "updated" email to invitees) when the meeting
-  itself changed: not when a quiet copy, a category color or someone else's choices change.
-- **What's sent.** Title, times (New York), location, notes with a link back here, the repeat rule,
-  and single days changed or cancelled. Deleting an event cancels the meeting and removes the quiet
-  copies. Repeat patterns Outlook can't express (a "fifth" or "second-to-last" day, yearly in several
-  months, every few days on some weekdays only, days 29–31 of the month) stay on this calendar only;
-  the editor says so.
+  itself changed: not when a quiet copy or someone else's choices change. Repeat patterns Outlook
+  can't express (a "fifth" or "second-to-last" day, yearly in several months, every few days on some
+  weekdays only, days 29–31 of the month) stay on this calendar only; the editor says so.
 - **How.** `backend/src/services/outlookSync.ts`. A save marks the event; about 15 seconds later (so
-  an Undo cancels out) the server sends it through Microsoft Graph, app-only. Unchanged events aren't
-  re-sent. Failures are retried every 5 minutes, and every 6 hours each upcoming event's recipients
-  are checked again, since people's sites change. Admins can see where it stands at
-  `GET /api/calendar/outlook/status` and re-check everything now with `POST /api/calendar/outlook/run`.
+  an Undo cancels out) the server sends it. Unchanged events aren't re-sent. Failures are retried
+  every 5 minutes, and every 6 hours each upcoming event's recipients are checked again, since
+  people's sites change. Admins can see where it stands at `GET /api/calendar/outlook/status` and
+  re-check everything now with `POST /api/calendar/outlook/run`. One backend instance only.
 - **Restoring a cancelled day** after Outlook already cancelled it doesn't bring it back in Outlook.
 
-**Setting it up (once).** The app uses its existing Entra app registration and client secret (the
-ones sign-in uses).
-
-1. **Create the organizer.** In the Microsoft 365 admin center, create a user
-   `calendar@lanterncommunity.org`, display name **Lantern Calendar**, with a license that includes
-   Exchange Online and Teams (Teams is needed for it to organize Teams meetings). Nobody needs to
-   sign in as it.
-2. **Find the app's two IDs.** Entra admin center → **Enterprise applications** (not App
-   registrations, which shows different values) → the Lantern Forms app → Overview. Copy the
-   **Application ID** and the **Object ID**.
-3. **Give the app its Exchange access** by running
-   `powershell -ExecutionPolicy Bypass -File .\backend\scripts\setup-outlook-calendar.ps1` as an
-   Exchange admin (Organization Management). It grants Calendars.ReadWrite on Lantern Calendar and on
-   staff mailboxes (for quiet copies), and MailboxSettings.ReadWrite on staff mailboxes (for the
-   colored categories); "staff" is every user mailbox unless you pass `-StaffFilter`. The commands it
-   runs, for reference (organizer part): Don't add Calendars.ReadWrite under API permissions in
-   Entra: an Entra grant reaches every mailbox in the organization, and Exchange can't fence it.
-
-   ```powershell
-   Connect-ExchangeOnline
-   New-ServicePrincipal -AppId <Application ID> -ObjectId <Object ID> -DisplayName "Lantern Forms"
-   New-ManagementScope -Name "Lantern Calendar only" -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'calendar@lanterncommunity.org'"
-   New-ManagementRoleAssignment -App <Object ID> -Role "Application Calendars.ReadWrite" -CustomResourceScope "Lantern Calendar only"
-   Test-ServicePrincipalAuthorization -Identity <Object ID> -Resource calendar@lanterncommunity.org
-   ```
-
-   The test should list Application Calendars.ReadWrite with InScope True. Exchange can take 30
-   minutes to 2 hours to apply it.
-4. **Tell the server.** Set `CALENDAR_ORGANIZER=calendar@lanterncommunity.org` (with the
-   `MICROSOFT_*` values sign-in already uses) and restart. The log says
-   "Calendar: sending events to Outlook."
-5. **Check it.** Turn on Teams for a test event, save, and wait about 15 seconds. The invite arrives
-   from Lantern Calendar, and `GET /api/calendar/outlook/status` shows it sent. If the Teams link
-   doesn't appear, check Teams admin center → Meetings → Meeting policies → the Outlook add-in is on
-   for Lantern Calendar's policy.
+**Setting it up.** On the app registration sign-in uses: delegated Microsoft Graph
+**Calendars.ReadWrite** and **offline_access**, with admin consent. Set `TOKEN_ENCRYPTION_KEY` (32
+random bytes, base64; Key Vault in Azure). That's all: it's on whenever Microsoft sign-in is
+configured, and each person's calendar starts working at their next Microsoft sign-in.
+`OUTLOOK_SYNC=false` turns it off, and then sign-in asks for identity only (for an app
+registration without that consent). No mailbox, Exchange setup or application permission is needed.
 
 ## Offline mode
 
@@ -532,62 +525,91 @@ If the PC's LAN address changes, the server certificate is remade on the next st
 keeps working (it trusts the authority, not the address). `npm run dev:https -- --target 5300` puts
 the same https in front of something else, such as a production build.
 
-## Quick start (local prototype)
+## Quick start (local)
 
-Needs Node 20+. No database server: the prototype runs on SQLite.
+Needs Node 20+ and Docker (for SQL Server).
 
 ```bash
-cd backend && npm install && npx prisma db push && npm run seed && npm run dev
+cp .env.example .env    # set MSSQL_SA_PASSWORD
+docker compose up -d db
+```
+
+```bash
+cd backend && cp .env.example .env && npm install && npx prisma migrate dev && npm run seed && npm run dev
 ```
 
 ```bash
 cd frontend && npm install && npm run dev
 ```
 
-Or run `start-site.bat` to start both. Open **http://localhost:5200**. The ports are 4200/5200 so
-this can run next to the old roster app on 4100/5273. Until Entra is configured, the sign-in screen
-offers **Prototype sign-in** with six demo accounts: admin, site manager, staff, a partner "Google
-Workspace" staff member, viewer, and a forms-only **Staff member**. Prototype sign-in is always off
-when `NODE_ENV=production` or `DEV_AUTH=false`.
+Put the same password in `backend/.env`'s `DATABASE_URL`, and the Dev app registration's
+`MICROSOFT_*` values in `backend/.env.local`. `npx prisma migrate dev` creates the database and
+applies `prisma/migrations`. Or run `start-site.bat` (it starts the database container too). Open
+**http://localhost:5200**. The ports are 4200/5200 so this can run next to the old roster app on
+4100/5273.
 
-The seed writes the default forms catalog (`backend/src/services/formCatalog.ts`). The backend also
-writes it on first start against an empty database, so a new deployment opens with the forms
-listed. It is written **once**. After that the catalog belongs to admins and nothing overwrites it.
+With `DEV_AUTH=true` (local only) the sign-in screen also offers **Prototype sign-in** with the
+seed's demo accounts. It's always off when `NODE_ENV=production`, on App Service, or when
+`DEV_AUTH` isn't `true`.
 
-The seed imports the tenant list from `data/tenant_list.csv` if it's there, or from the path in
-`TENANT_CSV`. **That file is not in the repository** and must never be committed: it's real
-resident data, and `data/` is git-ignored. Without it, the seed still creates the demo accounts and
-the forms catalog, and you can import later from Admin → Import tenant list. **Demo only:** it also
-backdates the review clock on ~7% of residents so the 48-hour queue has people in it on day one.
-Set `SEED_DEMO_QUEUE=false` to skip that. `npm run db:reset` starts over.
+**From SQLite.** Before this moved to SQL Server the local database was `backend/prisma/dev.db`.
+To bring it over: `npx prisma migrate deploy` against an empty database, then
+`npm run db:copy-sqlite -- prisma/dev.db`. It checks every value fits before writing anything, and
+marks every calendar event to be sent to Outlook afresh (see "Calendar in Outlook").
+
+**The seed** (`npm run seed`) writes demo accounts, so it refuses to run in production
+(`NODE_ENV=production` or App Service) unless `ALLOW_DEMO_DATA=true`. It imports the tenant list
+from `data/tenant_list.csv` if it's there, or from the path in `TENANT_CSV`. **That file is not in
+the repository** and must never be committed: it's real resident data, and `data/` is git-ignored.
+Without it, the seed still creates the demo accounts, and you can import later from Admin → Import
+tenant list. With `SEED_DEMO_QUEUE=true` it also backdates the review clock on ~7% of residents so
+the 48-hour queue has people in it. `npm run db:reset` starts over (drops the database, re-applies
+the migrations, runs the seed).
 
 ---
 
 ## Running in Docker
 
-Two images, one per service: `backend/Dockerfile` (Express + Prisma) and `frontend/Dockerfile`
-(Next.js standalone build). Both run as a non-root user and have health checks.
+Two images, one per service: `backend/Dockerfile` (Express + Prisma, port 4200) and
+`frontend/Dockerfile` (Next.js standalone build, port 5200). Both listen on 0.0.0.0, run as a
+non-root user and have health checks. `docker-compose.yml` runs the whole site the way Azure does:
+SQL Server, Azurite (Blob Storage), a one-shot `migrate` service, the API and the web app.
 
 ```bash
-cp .env.example .env     # set JWT_SECRET and the MICROSOFT_* values
+cp .env.example .env     # MSSQL_SA_PASSWORD, JWT_SECRET, TOKEN_ENCRYPTION_KEY, the MICROSOFT_* values
 docker compose up --build
 ```
 
-Open **http://localhost:5200**. Only the frontend is published; it proxies `/api/*` to the backend
-over the compose network, so the browser sees one origin (no CORS, cookies stay first-party).
+Open **http://localhost:5200**. Only the web app is published (and SQL Server, for your tools); it
+proxies `/api/*` to the API over the compose network, so the browser sees one origin.
 
 - **Sign-in.** The containers run with `NODE_ENV=production`, where prototype sign-in is refused, so
   Entra has to be configured. For a local smoke test set `NODE_ENV=development` and `DEV_AUTH=true`
-  in `.env`. If 5200 is taken (for example by `npm run dev`), set `FRONTEND_PORT`.
-- **Database.** SQLite in the `lantern-data` volume (`/data`), created and brought up to date by
-  `prisma db push` each time the backend starts. That command refuses changes that would lose data,
-  so a bad schema change stops the container instead of dropping a column. Back up the volume.
-  The seed and importers work in the container: `docker compose exec backend npm run seed`.
-- **`BACKEND_URL` is a build argument.** Next bakes the `/api` rewrite into the build, so changing
-  where the backend lives means rebuilding the frontend image (`build.args` in `docker-compose.yml`).
-- **Before production:** move to Azure SQL (see Database), set `DB_PUSH_ON_START=false` and deploy
-  schema changes with `prisma migrate deploy`, and uncomment `app.set("trust proxy", 1)` in
-  `backend/src/app.ts` so the rate limiters see the real client IP behind the proxy.
+  in `.env`. If 5200 is taken, set `FRONTEND_PORT`.
+- **Migrations** run as their own step: the API image with `RUN_MIGRATIONS=true` applies
+  `prisma/migrations` (`prisma migrate deploy`) and exits. Starting the API never changes the schema.
+- **`BACKEND_URL` is a build argument.** Next bakes the `/api` rewrite into the build, so each
+  environment gets its own web image, built with that environment's API address.
+
+---
+
+## Deploying to Azure
+
+Two Web Apps for Containers (Linux App Service): **web** (`frontend/Dockerfile`) and **api**
+(`backend/Dockerfile`), images from the registry, Azure SQL, Blob Storage, secrets in Key Vault. The
+pipeline and infrastructure live in `infra/` and `.github/workflows/`.
+
+| | |
+|---|---|
+| **Ports** | api listens on 0.0.0.0:4200, web on 0.0.0.0:5200 (`WEBSITES_PORT`). |
+| **Health** | `/api/health` answers 200 while the process is up, with `database: "up"` or `"unreachable"`, so a database blip doesn't restart-loop the container. `/api/health/live` never touches the database; `/api/health/ready` is 503 while the database doesn't answer (for a deploy check, not the restart probe). The web app's `/` answers 200. |
+| **Migrations** | Before swapping in a release: the api image with `RUN_MIGRATIONS=true` and `DATABASE_URL` (or `npx prisma migrate deploy` from `backend/`). New schema changes: `npx prisma migrate dev --name <what>` locally, and commit the migration. |
+| **web settings** | Build arg `BACKEND_URL` = the api app's URL (one web image per environment). |
+| **api settings** | `DATABASE_URL`, `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `MICROSOFT_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` (`https://<web host>/api/auth/microsoft/callback`), `APP_BASE_URL` and `CORS_ORIGIN` (`https://<web host>`), `TRUST_PROXY=2`, `AZURE_STORAGE_ACCOUNT_URL`, optional `MAIL_FROM`, `FORM_BACKUP_REPO` / `FORM_BACKUP_TOKEN`. Never `DEV_AUTH`, `ALLOW_DEMO_DATA` or `SEED_DEMO_QUEUE`. |
+| **Proxies** | The browser reaches the api through the web app's `/api` proxy, so there are two App Service front ends in the way: `TRUST_PROXY=2` makes the rate limiters see the browser's address rather than the web app's. (1 if browsers call the api app directly; then lock the api app to the web app.) |
+| **Files** | `AZURE_STORAGE_ACCOUNT_URL` (`https://<account>.blob.core.windows.net`) and the api app's managed identity with **Storage Blob Data Contributor**; container `form-files` (`AZURE_STORAGE_CONTAINER`), private. A user-assigned identity also needs `AZURE_CLIENT_ID`. |
+| **Entra app** | Redirect URI `https://<web host>/api/auth/microsoft/callback`; delegated User.Read, Calendars.ReadWrite, offline_access with admin consent. Mail.Send (application) only if `MAIL_FROM` is used. |
+| **Instances** | **One api instance.** The Outlook queue, the form backup, code forms' scheduled actions and the cross-form job worker are timers in the process; a second instance would run them twice. The web app can scale out. |
 
 ---
 
@@ -722,22 +744,13 @@ To enable it, register an app in Entra (single tenant, Web redirect
 
 ## Database
 
-- `backend/prisma/schema.prisma` is the source of truth. Tables: `FormCategory`, `FormLink`, `FormFavorite`,
-  `CalendarCategory`, `CalendarEvent`,
-  `CalendarEventSite`, `CalendarException`, `Site`, `Tenant`,
-  `TenantActivity`, `AuditEvent`, `User`, `UserSite`, `ApiKey`, `Webhook`, `WebhookDelivery`,
-  `Setting`.
-- `database/azure-sql-schema.sql` is the same schema as T-SQL for Azure SQL, regenerated with
-  `npm run sql:azure`. String columns are sized so every index fits SQL Server's key limit.
-- The schema avoids enums, scalar lists and JSON columns, and has no nullable unique columns
-  (SQL Server allows only one NULL per unique index), so it runs unchanged on SQLite and SQL Server.
-
-### Moving to Azure SQL
-
-1. In `schema.prisma`, set `provider = "sqlserver"` and add `@db.NVarChar(n)` sizes matching
-   `scripts/export-azure-sql.ts`.
-2. Set `DATABASE_URL="sqlserver://<server>.database.windows.net:1433;database=lantern-roster;…;encrypt=true"`.
-3. Run `npx prisma migrate dev --name init`, then `npm run seed` (or the importer below).
+- `backend/prisma/schema.prisma` is the source of truth, on SQL Server (Azure SQL). Every string
+  column has an explicit size, so every index fits SQL Server's 1,700-byte key limit, and anything
+  long is NVARCHAR(MAX). No enums, scalar lists or JSON columns; JSON is text.
+- `backend/prisma/migrations` is the schema's history, applied with `prisma migrate deploy`.
+  `20261008133532_init` is the whole schema as it moved to SQL Server; its `migration.sql` is the T-SQL.
+- No nullable unique columns (SQL Server allows only one NULL per unique index), and no cascade
+  paths SQL Server refuses (a file points at its entry with no cascade).
 
 ### Importing a tenant list
 
@@ -767,12 +780,12 @@ backend/    Express + Prisma API (port 4200)
   src/routes/     forms, calendar, auth, tenants, attendance, sites, activity, users, admin, publicApi (/api/v1)
   src/calendar/   recurrence.ts (repeat rules; shared with the frontend)
   src/services/   formCatalog (retires the old default catalog), calendar, roster (attention clock), tenantImport, webhooks, audit, apiKeys, settings, permissions
-  scripts/        import-tenants.ts, export-azure-sql.ts, forms.ts (forms as code, backups)
+  prisma/migrations  the schema's history (prisma migrate)
+  scripts/        import-tenants.ts, forms.ts (forms as code, backups), copy-sqlite.ts, files-to-blob.ts
 frontend/   Next.js-hosted React SPA (port 5200, proxies /api → backend)
   src/screens/    Forms (home), calendar/*, builder/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
   src/components/ shell (from lcs_invoices), ui (from lcs_invoices), roster/*
 integrations/wordpress/lantern-roster-connector.php
-database/azure-sql-schema.sql
 data/            (git-ignored) local tenant list CSV — resident data, never committed
 ```
 
@@ -787,4 +800,4 @@ data/            (git-ignored) local tenant list CSV — resident data, never co
   Test it on a staging copy of forms.lanterncommunity.org first.
 - Only a few forms produce activity until the connector is on them. Until then, expect the
   review queue to be busy and rely on **Keep**.
-- Hosting: the intended target is Azure App Service + Azure SQL. No deployment scripts yet.
+- Hosting: Azure App Service + Azure SQL + Blob Storage; see "Deploying to Azure".

@@ -466,7 +466,7 @@ async function updateSeries(req: Request, ev: SeriesRow, input: EventInput) {
   if (ev.teamsJoinUrl) data.teamsMeeting = true;
   const stale = ev.exceptions.filter((x) => !rule || !isOccurrence(data.startDate, rule, x.originalDate)).map((x) => x.id);
   await prisma.$transaction([
-    prisma.calendarEvent.update({ where: { id: ev.id }, data: { ...data, updatedByName: req.user?.name ?? "A form" } }),
+    prisma.calendarEvent.update({ where: { id: ev.id }, data: { ...data, updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } }),
     prisma.calendarEventSite.deleteMany({ where: { eventId: ev.id } }),
     prisma.calendarEventSite.createMany({ data: siteIds.map((siteId) => ({ eventId: ev.id, siteId })) }),
     prisma.calendarException.deleteMany({ where: { id: { in: stale } } }),
@@ -503,7 +503,7 @@ async function updateOne(req: Request, ev: SeriesRow, date: string, input: Event
       update: fields,
     });
   }
-  await prisma.calendarEvent.update({ where: { id: ev.id }, data: { updatedByName: req.user?.name ?? "A form" } });
+  await prisma.calendarEvent.update({ where: { id: ev.id }, data: { updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } });
   return ev.id;
 }
 
@@ -528,7 +528,7 @@ async function updateFollowing(req: Request, ev: SeriesRow, rule: Recurrence, da
   const carried = later.filter((x) => isOccurrence(data.startDate, nextRule, x.originalDate)).map((x) => x.id);
   const dropped = later.filter((x) => !carried.includes(x.id)).map((x) => x.id);
   const next = await prisma.$transaction(async (tx) => {
-    await tx.calendarEvent.update({ where: { id: ev.id }, data: { ...truncate(ev, rule, date), updatedByName: req.user?.name ?? "A form" } });
+    await tx.calendarEvent.update({ where: { id: ev.id }, data: { ...truncate(ev, rule, date), updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } });
     const created = await tx.calendarEvent.create({
       data: { ...data, createdById: req.user?.userId ?? null, createdByName: req.user?.name ?? "A form", sites: { create: siteIds.map((siteId) => ({ siteId })) } },
     });
@@ -596,7 +596,7 @@ export async function deleteEvent(req: Request, id: string, scope: Scope, date: 
     });
   } else {
     await prisma.$transaction([
-      prisma.calendarEvent.update({ where: { id }, data: { ...truncate(ev, rule, date!), updatedByName: req.user?.name ?? "A form" } }),
+      prisma.calendarEvent.update({ where: { id }, data: { ...truncate(ev, rule, date!), updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } }),
       prisma.calendarException.deleteMany({ where: { eventId: id, originalDate: { gte: date! } } }),
     ]);
   }
@@ -628,7 +628,7 @@ export async function setEventPending(req: Request, id: string, pending: boolean
   const ev = await loadForWrite(id);
   assertOwns(owner, ev);
   if (ev.pending === pending) return;
-  await prisma.calendarEvent.update({ where: { id }, data: { pending, updatedByName: req.user?.name ?? "A form" } });
+  await prisma.calendarEvent.update({ where: { id }, data: { pending, updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } });
   await audit({
     actor: actorOf(req),
     action: "calendar.event_updated",

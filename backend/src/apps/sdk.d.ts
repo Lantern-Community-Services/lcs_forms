@@ -706,17 +706,29 @@ declare module "@lcs/server" {
       logActivity(tenantId: string, opts?: { label?: string; occurredAt?: string }): { logged: boolean; reason?: string };
     };
     /**
-     * Email from the app's mailbox. Queued and sent in the background, so it returns at once: { queued: true },
-     * or { queued: false, reason } in the draft (nothing is sent) or when the server has no email set up.
+     * Email from the app's mailbox. Link-only: the email is your subject, a line naming this form, and a link to
+     * `link` (a page of this site: `${ctx.url}/request?id=…` or "/apps/<slug>/…"; this form's first page by default).
+     * Nothing else is sent: no form contents, no resident details, no attachments. Put the details on a page and link
+     * to it. Keep resident names out of the subject too. Old html / text / attachments are accepted and ignored; the
+     * result lists them in `dropped`.
+     * Queued and sent in the background, so it returns at once: { queued: true }, or { queued: false, reason } in the
+     * draft (nothing is sent) or when the server has no email set up.
      * To: up to 10 Lantern addresses, or ones listed in form.json "email": { "to": ["vendor@x.com", "@partner.org"] }.
-     * Give html, or text (sent as-is). replyTo defaults to the person using the form. Results go to the audit log.
+     * replyTo defaults to the person using the form. Results go to the audit log.
      */
     email: {
-      /**
-       * attachments: up to 3 files made exactly as app.export makes them (an ExportSpec: xlsx, pdf or csv), built
-       * when the email goes; under 3 MB in all. E.g. a monthly report as Excel.
-       */
-      send(message: { to: string | string[]; subject: string; html?: string; text?: string; replyTo?: string; attachments?: import("@lcs/sdk").ExportSpec[] }): { queued: boolean; reason?: string };
+      send(message: {
+        to: string | string[];
+        subject: string;
+        link?: string;
+        replyTo?: string;
+        /** @deprecated Not sent: emails are link-only. */
+        html?: string;
+        /** @deprecated Not sent: emails are link-only. */
+        text?: string;
+        /** @deprecated Not sent: emails are link-only. Link to a page with an export button instead. */
+        attachments?: import("@lcs/sdk").ExportSpec[];
+      }): { queued: boolean; reason?: string; dropped?: string[]; note?: string };
     };
     /** The site calendar, as the person using the form sees it. */
     calendar: {

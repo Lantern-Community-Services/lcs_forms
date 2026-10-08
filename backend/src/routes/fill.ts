@@ -1,6 +1,7 @@
 import express, { Router, type Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
 import { findForm, readDoc } from "../forms/service.js";
 import {
@@ -250,7 +251,7 @@ fillRouter.delete(
     const { form } = await readable(req);
     if (!isFormAdmin(req.user)) throw forbidden("Only admins can delete entries.");
     const entry = await entryIn(req, form.id);
-    await prisma.formFile.deleteMany({ where: { entryId: entry.id } });
+    await deleteFiles({ entryId: entry.id });
     await prisma.formEntry.delete({ where: { id: entry.id } });
     res.json({ ok: true });
   })
@@ -271,6 +272,6 @@ fillRouter.get(
     res.setHeader("X-Content-Type-Options", "nosniff");
     // Uploaded content is shown as a file, never as a page of this site.
     res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
-    res.type(inline ? file.mime : "application/octet-stream").send(Buffer.from(file.data));
+    res.type(inline ? file.mime : "application/octet-stream").send(await fileBytes(file));
   })
 );

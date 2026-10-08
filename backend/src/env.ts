@@ -11,12 +11,52 @@ const list = (value: string | undefined, fallback = "") =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/**
+ * TRUST_PROXY: how many proxies stand between the client and this process, so
+ * req.ip is the client's address (Express "trust proxy"). 1 = one front end
+ * (local dev behind Next's /api proxy, or the API called straight through App
+ * Service). Behind App Service with the web app proxying /api to the API app
+ * there are two (both apps' front ends): set 2. "false" trusts no header.
+ */
+function trustProxy(value: string | undefined): number | false {
+  if (value === undefined || value.trim() === "") return 1;
+  if (value.trim().toLowerCase() === "false") return false;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`TRUST_PROXY must be a number of proxies or "false", not "${value}".`);
+  return n;
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 4200),
+  /** Containers listen on every interface; App Service reaches them from outside. */
+  host: process.env.HOST ?? "0.0.0.0",
+  trustProxy: trustProxy(process.env.TRUST_PROXY),
   databaseUrl: process.env.DATABASE_URL ?? "",
   corsOrigins: list(process.env.CORS_ORIGIN, "http://localhost:5200"),
   jwtSecret: process.env.JWT_SECRET ?? "dev-only-change-me",
+
+  /**
+   * Key for what's encrypted in the database (people's Microsoft refresh
+   * tokens): 32 random bytes, base64 (`openssl rand -base64 32`). From Key Vault
+   * in Azure. Required in production for anything to go to Outlook; locally a
+   * key is derived from JWT_SECRET when it's not set. See services/secretBox.ts.
+   */
+  tokenEncryptionKey: (process.env.TOKEN_ENCRYPTION_KEY ?? "").trim(),
+
+  /**
+   * Where uploaded files (File fields, code forms' photos and signatures) are
+   * kept: Azure Blob Storage when either of these is set, otherwise the
+   * database (local development). See services/fileStore.ts.
+   *   AZURE_STORAGE_ACCOUNT_URL         https://<account>.blob.core.windows.net, signed in with
+   *                                     the app's managed identity (Storage Blob Data Contributor)
+   *   AZURE_STORAGE_CONNECTION_STRING   a connection string instead (Azurite, local tests)
+   */
+  blob: {
+    accountUrl: (process.env.AZURE_STORAGE_ACCOUNT_URL ?? "").trim().replace(/\/$/, ""),
+    connectionString: (process.env.AZURE_STORAGE_CONNECTION_STRING ?? "").trim(),
+    container: (process.env.AZURE_STORAGE_CONTAINER ?? "form-files").trim() || "form-files",
+  },
 
   /**
    * Microsoft Entra ID — the production sign-in. Google Workspace users sign in
@@ -41,11 +81,11 @@ export const env = {
   mailFrom: process.env.MAIL_FROM ?? "",
 
   /**
-   * The "Lantern Calendar" mailbox that organizes the calendar's Outlook
-   * meetings and invites people to them (Graph, app-only; see
-   * services/outlookSync.ts). Empty = nothing is sent to Outlook.
+   * The calendar in people's Outlook (services/outlookSync.ts), through each
+   * person's own delegated Microsoft sign-in. On whenever Microsoft sign-in is
+   * configured and tokens can be stored; OUTLOOK_SYNC=false turns it off.
    */
-  calendarOrganizer: (process.env.CALENDAR_ORGANIZER ?? "").trim(),
+  outlookSync: (process.env.OUTLOOK_SYNC ?? "true").toLowerCase() !== "false",
 
   /**
    * Backup of every built form to a GitHub repository (services/formBackup.ts).
@@ -69,18 +109,39 @@ export const env = {
 
   /**
    * Local-only "pick a demo user" sign-in, so the prototype runs before an
-   * Entra app registration exists. Refused outright in production.
+   * Entra app registration exists. Off unless DEV_AUTH=true, and refused
+   * outright in production (see devAuthEnabled).
    */
-  devAuth: (process.env.DEV_AUTH ?? "true").toLowerCase() === "true",
+  devAuth: (process.env.DEV_AUTH ?? "false").toLowerCase() === "true",
+
+  /** Demo rows (demo accounts, a backdated review queue) in production: never, unless this is "true". */
+  allowDemoData: (process.env.ALLOW_DEMO_DATA ?? "false").toLowerCase() === "true",
 };
 
 export const isProd = env.nodeEnv === "production";
+
+/** Running in Azure App Service (it sets WEBSITE_SITE_NAME in every app). */
+export const onAppService = Boolean(process.env.WEBSITE_SITE_NAME);
 
 export const ssoConfigured = Boolean(
   env.microsoft.tenantId && env.microsoft.clientId && env.microsoft.clientSecret
 );
 
-/** Dev sign-in is never available in production, whatever DEV_AUTH says. */
-export const devAuthEnabled = env.devAuth && !isProd;
+/**
+ * Dev sign-in is never available in production, whatever DEV_AUTH says: not
+ * with NODE_ENV=production, and not on App Service even if NODE_ENV was
+ * changed there.
+ */
+export const devAuthEnabled = env.devAuth && !isProd && !onAppService;
+
+/**
+ * Scripts that write demo rows call this first. In production they stop unless
+ * ALLOW_DEMO_DATA=true, which the pipeline never sets.
+ */
+export function assertDemoDataAllowed(what: string) {
+  if ((isProd || onAppService) && !env.allowDemoData) {
+    throw new Error(`${what} writes demo data, and this is production (NODE_ENV=production, or App Service). Refusing; set ALLOW_DEMO_DATA=true to override.`);
+  }
+}
 
 export const appBaseUrl = env.appBaseUrl || env.corsOrigins[0] || "http://localhost:5200";

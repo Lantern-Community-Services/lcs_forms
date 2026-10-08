@@ -178,7 +178,7 @@ function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Pa
   const update = (id: string, patch: Partial<Notification>) => set({ notifications: list.map((n) => (n.id === id ? cleanN({ ...n, ...patch }) : n)) });
   const add = (kind: "email" | "webhook") => {
     const id = `n${Date.now().toString(36)}`;
-    set({ notifications: [...list, kind === "email" ? { id, name: "New email", enabled: true, kind, to: "", subject: "New entry: {form:title}", body: "<p>{all_fields}</p><p><a href=\"{entry:url}\">Open the entry</a></p>" } : { id, name: "New webhook", enabled: true, kind, url: "https://" }] });
+    set({ notifications: [...list, kind === "email" ? { id, name: "New email", enabled: true, kind, to: "", subject: "New entry: {form:title}" } : { id, name: "New webhook", enabled: true, kind, url: "https://" }] });
     setOpen(id);
   };
   return (
@@ -200,10 +200,12 @@ function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Pa
               {n.kind === "email" ? (
                 <>
                   <Row label="To" hint="Comma-separated. {email_field_id} sends to an address someone typed."><Input value={n.to ?? ""} onChange={(e) => update(n.id, { to: e.target.value })} /></Row>
-                  <Row label="Subject"><Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} /></Row>
-                  <Row label="Body (HTML)" hint="{all_fields} lists every answer; {entry:url} links to the entry.">
-                    <CodeEditor language="html" value={n.body ?? ""} onChange={(v) => update(n.id, { body: v })} minHeight={90} />
+                  <Row label="Subject" hint="{form:title}, {site:name}, {user:name} and {date:today} work here. Answers don't: they're left out.">
+                    <Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} />
                   </Row>
+                  <p className="text-[12px] text-muted">
+                    The email is a link to the entry, nothing more: the answers stay in Lantern Forms, behind sign-in.
+                  </p>
                 </>
               ) : (
                 <>

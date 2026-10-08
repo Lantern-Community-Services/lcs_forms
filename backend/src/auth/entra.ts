@@ -1,14 +1,19 @@
 import crypto from "node:crypto";
-import { ConfidentialClientApplication, CryptoProvider, LogLevel } from "@azure/msal-node";
+import { ConfidentialClientApplication, CryptoProvider, LogLevel, type AccountInfo } from "@azure/msal-node";
 import jwt from "jsonwebtoken";
 import { env, isProd, ssoConfigured } from "../env.js";
+import { CALENDAR_SCOPES, graphTokensEnabled } from "../services/graphTokens.js";
 
 /**
  * Microsoft Entra ID sign-in (OIDC authorization-code flow + PKCE).
  *
  * Single-tenant: the authority is pinned to the Lantern directory, so only
  * accounts in that tenant can even reach the consent screen. We ask for
- * `openid profile email` only — this app reads identity, never Graph data.
+ * identity (`openid profile email User.Read`) and, when the calendar goes to
+ * Outlook, delegated `Calendars.ReadWrite offline_access`: the refresh token
+ * that comes back is kept, encrypted, so the calendar can write to this
+ * person's own Outlook later (services/graphTokens.ts). Both are consented for
+ * the organization on the app registration, so nobody sees a consent screen.
  *
  * Between the two legs of the flow we have to remember the PKCE verifier and
  * the CSRF state. Rather than keep server-side session state (the API is
@@ -18,8 +23,9 @@ import { env, isProd, ssoConfigured } from "../env.js";
 
 // User.Read is delegated and user-consentable — it needs no admin consent. It
 // buys us the Graph /me lookup below, which is the only way to get a job title:
-// no OIDC claim carries one.
-const SCOPES = ["openid", "profile", "email", "User.Read"];
+// no OIDC claim carries one. The calendar scopes only when Outlook is on
+// (OUTLOOK_SYNC=false leaves them out, for an app registration without that consent).
+const scopes = () => ["openid", "profile", "email", "User.Read", ...(graphTokensEnabled() ? CALENDAR_SCOPES : [])];
 
 /** Graph is best-effort: a slow directory must never hold up a sign-in. */
 const GRAPH_TIMEOUT_MS = 5000;
@@ -132,7 +138,7 @@ export async function beginSignIn(
   const state = crypto.randomBytes(16).toString("hex");
 
   const authUrl = await getClient().getAuthCodeUrl({
-    scopes: SCOPES,
+    scopes: scopes(),
     redirectUri: env.microsoft.redirectUri,
     codeChallenge: challenge,
     codeChallengeMethod: "S256",
@@ -197,7 +203,7 @@ export async function completeSignIn(
   code: string,
   state: string,
   txCookie: string | undefined
-): Promise<{ identity: EntraIdentity; returnTo: string; stay: boolean }> {
+): Promise<{ identity: EntraIdentity; returnTo: string; stay: boolean; graph: { refreshToken: string; scopes: string[] } | null }> {
   if (!txCookie) throw new Error("Sign-in session expired. Please try again.");
 
   let tx: OidcTransaction;
@@ -216,11 +222,12 @@ export async function completeSignIn(
 
   const result = await getClient().acquireTokenByCode({
     code,
-    scopes: SCOPES,
+    scopes: scopes(),
     redirectUri: env.microsoft.redirectUri,
     codeVerifier: tx.verifier,
     state,
   });
+  const refreshToken = await takeRefreshToken(result.account);
 
   const claims = (result.idTokenClaims ?? {}) as Record<string, unknown>;
   const tenantId = String(claims.tid ?? "");
@@ -253,7 +260,30 @@ export async function completeSignIn(
     returnTo: safeReturnTo(tx.returnTo),
     // Absent means yes — see the note on OidcTransaction.
     stay: tx.stay !== false,
+    graph: refreshToken && result.scopes.some((s) => /calendars\.readwrite/i.test(s)) ? { refreshToken, scopes: result.scopes } : null,
   };
+}
+
+/**
+ * The refresh token MSAL just received for this account, then that account
+ * taken out of MSAL's in-memory cache (the app keeps its own copy per person,
+ * encrypted, and MSAL's cache would otherwise grow with every sign-in).
+ * MSAL doesn't hand refresh tokens out directly; they're in its serialized
+ * cache, in the shared MSAL cache format. Null when there's none (no
+ * offline_access) or it can't be found: sign-in goes ahead without Outlook.
+ */
+async function takeRefreshToken(account: AccountInfo | null): Promise<string | null> {
+  if (!account) return null;
+  const cache = getClient().getTokenCache();
+  try {
+    const parsed = JSON.parse(cache.serialize()) as { RefreshToken?: Record<string, { home_account_id?: string; secret?: string }> };
+    return Object.values(parsed.RefreshToken ?? {}).find((t) => t.home_account_id === account.homeAccountId)?.secret ?? null;
+  } catch (err) {
+    console.warn("[entra] couldn't read the refresh token from MSAL's cache:", err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    await cache.removeAccount(account).catch(() => undefined);
+  }
 }
 
 /**

@@ -56,6 +56,18 @@ export function requestId(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+/**
+ * App Service's front ends write X-Forwarded-For entries as "address:port", and
+ * Express hands that on as req.ip, so every connection would look like a new
+ * client to the rate limiters. Keep just the address.
+ */
+export function clientIp(req: Request, _res: Response, next: NextFunction) {
+  const raw = req.ip;
+  const ip = raw?.replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, "$1").replace(/^\[([0-9a-f:.]+)\](?::\d+)?$/i, "$1");
+  if (ip !== raw) Object.defineProperty(req, "ip", { value: ip, configurable: true, enumerable: true });
+  next();
+}
+
 /** Central error handler. */
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   const id = req.id ?? "-";

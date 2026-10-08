@@ -99,9 +99,11 @@ Admins and developers pass every role check.
   PDF, as the app's own reports do. Plain app.print() prints the page as the browser sees it (charts don't print well).
 - Who recorded it: ctx.people(ids) in server code gives each person's name and avatarColor, so a "by staff member"
   chart can color each bar like their avatar (<Avatar color> and the chart row's color; null = #2c3453).
-- Email: ctx.email.send({ to, subject, text | html, attachments? }) from server code (afterCreate, actions). Queued, Lantern
-  addresses unless form.json "email" lists others, never from the draft. attachments: up to 3 ExportSpecs (as app.export),
-  built into files when it sends — e.g. a monthly Excel report.
+- Email: ctx.email.send({ to, subject, link? }) from server code (afterCreate, actions). LINK-ONLY: the email is the
+  subject and a link to \`link\` (a page of this form, e.g. \`\${ctx.url}/request?id=…\`); no form contents, resident
+  details or attachments are ever sent (html / text / attachments are ignored). Keep resident names out of subjects.
+  Queued, Lantern addresses unless form.json "email" lists others, never from the draft. For a monthly report, email a
+  link to the Reports page, where the reader exports it.
 - Scheduled actions: form.json "schedule" runs an action once a New York day at "at" (daily, weekdays, or monthly on
   "day"), as nobody: ctx.user is null and args is { scheduled: true, day }. Check args.scheduled, read across everyone
   (ctx.db, ctx.directory), and email. Only the published form runs them; a run missed while the server was down happens

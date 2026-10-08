@@ -9,6 +9,8 @@ import { env } from "../env.js";
  * also needs the Mail.Send *application* permission with admin consent —
  * ideally fenced to that one mailbox with an Exchange application access
  * policy. Until then notifications are recorded on the entry as "not sent".
+ *
+ * What's sent is always linkOnlyHtml: a line and a link, no attachments.
  */
 export const mailConfigured = () =>
   Boolean(env.mailFrom && env.microsoft.tenantId && env.microsoft.clientId && env.microsoft.clientSecret);
@@ -28,13 +30,24 @@ export async function graphToken(): Promise<string> {
   return res.accessToken;
 }
 
-export interface MailAttachment {
-  name: string;
-  contentType: string;
-  body: Buffer;
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * Every email the app sends is this: one line saying where to look, and a link
+ * to it in Lantern Forms. Never form contents, answers or resident details:
+ * those stay in the app, behind sign-in, whoever the email reaches.
+ */
+export function linkOnlyHtml(lead: string, url: string) {
+  return [
+    `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1f2937">`,
+    `<p>${esc(lead)}</p>`,
+    `<p><a href="${esc(url)}" style="font-weight:600">Open it in Lantern Forms</a></p>`,
+    `<p style="color:#6b7280;font-size:12px">The details aren't in this email. Sign in to see them.</p>`,
+    `</div>`,
+  ].join("");
 }
 
-export async function sendMail(opts: { to: string[]; subject: string; html: string; replyTo?: string; attachments?: MailAttachment[] }): Promise<void> {
+export async function sendMail(opts: { to: string[]; subject: string; html: string; replyTo?: string }): Promise<void> {
   if (!mailConfigured()) throw new Error("Email isn't set up on this server (MAIL_FROM).");
   const token = await graphToken();
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(env.mailFrom)}/sendMail`, {
@@ -47,16 +60,6 @@ export async function sendMail(opts: { to: string[]; subject: string; html: stri
         body: { contentType: "HTML", content: opts.html },
         toRecipients: opts.to.map((address) => ({ emailAddress: { address } })),
         ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
-        ...(opts.attachments?.length
-          ? {
-              attachments: opts.attachments.map((a) => ({
-                "@odata.type": "#microsoft.graph.fileAttachment",
-                name: a.name,
-                contentType: a.contentType,
-                contentBytes: a.body.toString("base64"),
-              })),
-            }
-          : {}),
       },
       saveToSentItems: false,
     }),

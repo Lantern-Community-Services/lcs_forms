@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { fileBytes } from "../services/fileStore.js";
 import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
 import type { Actor } from "../services/audit.js";
@@ -166,10 +167,10 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       if (/^image\/(png|jpe?g|gif|webp)$/.test(file.mime) && file.size <= 5 * 1024 * 1024) {
         return new McpContent([
           { type: "text", text: JSON.stringify(info) },
-          { type: "image", data: Buffer.from(file.data).toString("base64"), mimeType: file.mime },
+          { type: "image", data: (await fileBytes(file)).toString("base64"), mimeType: file.mime },
         ]);
       }
-      return base64 ? { ...info, base64: Buffer.from(file.data).toString("base64") } : info;
+      return base64 ? { ...info, base64: (await fileBytes(file)).toString("base64") } : info;
     },
     { readOnlyHint: true }
   );

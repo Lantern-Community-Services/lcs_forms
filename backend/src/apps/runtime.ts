@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { BuiltForm, FormEntry, Prisma, Site, Tenant } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { fileBytes } from "../services/fileStore.js";
 import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { displayName, recordActivity } from "../services/roster.js";
@@ -736,7 +737,7 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         const f = await prisma.formFile.findFirst({ where: { id, formId: app.form.id } });
         if (!f) throw new Error("No such file on this form.");
         if (f.size > 600_000) throw new Error("That file is too big to read here (600 KB max).");
-        return `data:${f.mime};base64,${Buffer.from(f.data).toString("base64")}`;
+        return `data:${f.mime};base64,${(await fileBytes(f)).toString("base64")}`;
       }
       case "calendar.form.list":
       case "calendar.form.create":

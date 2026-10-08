@@ -2,10 +2,11 @@ import { prisma } from "../prisma.js";
 import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { requireOpen, type LoadedApp } from "./runtime.js";
+import { createFormFile, sweepUnattachedFiles } from "../services/fileStore.js";
 
 /**
- * Photos and files for code forms. Stored in FormFile (the same table as the
- * form builder's File field), so the database stays the one thing to back up.
+ * Photos and files for code forms. FormFile rows (the same table as the form
+ * builder's File field), with the bytes in Blob Storage (services/fileStore.ts).
  *
  * A page uploads a file first and gets a FileRef back; it puts the ref
  * anywhere in an entry's data. When the entry is saved, every { fileId } in
@@ -42,19 +43,14 @@ export async function uploadAppFile(app: LoadedApp, user: CurrentUser, file: { n
   if (file.data.length > cap) throw new HttpError(413, `Files can be at most ${Math.round(cap / 1024 / 1024)} MB.`);
   const accept = rule.accept ?? "image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt";
   if (!acceptOk(accept, file.name, file.mime)) throw badRequest(`This form takes ${accept} files.`);
-  // Uploaded but never saved with an entry, after a day: swept here, no scheduler needed.
-  await prisma.formFile.deleteMany({ where: { entryId: null, createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
-  const row = await prisma.formFile.create({
-    data: {
-      formId: app.form.id,
-      fieldId: (file.label || "file").slice(0, 60),
-      name: file.name.slice(0, 200) || "file",
-      mime: file.mime.slice(0, 100) || "application/octet-stream",
-      size: file.data.length,
-      data: file.data,
-      createdById: user.userId,
-    },
-    select: { id: true, name: true, mime: true, size: true },
+  await sweepUnattachedFiles();
+  const row = await createFormFile({
+    formId: app.form.id,
+    fieldId: (file.label || "file").slice(0, 60),
+    name: file.name.slice(0, 200) || "file",
+    mime: file.mime.slice(0, 100) || "application/octet-stream",
+    data: file.data,
+    createdById: user.userId,
   });
   return refOut(row);
 }
