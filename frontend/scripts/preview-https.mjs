@@ -2,9 +2,8 @@
 /**
  * The production build over https, for testing offline mode on a real iPad.
  *
- * Offline can't be tested against `next dev`: a dev page waits on the dev
- * server to compile and stream it code, so with no connection it stays blank.
- * The production build is self-contained, as the iPads will run it. This:
+ * The dev server on 5443 opens offline too (next.config.mjs), but the
+ * production build is what the iPads will run, so it's the faithful test. This:
  *
  *   1. builds the app (`next build`);
  *   2. starts it on http://localhost:5300 (`next start`);
