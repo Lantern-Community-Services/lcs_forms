@@ -28,6 +28,8 @@ export interface QueuedFill {
   values: Values;
   siteCode?: string | null;
   codeErrors?: Record<string, string>;
+  /** The published version it was filled in on; missing on entries queued before this was kept. */
+  formVersion?: number | null;
   queuedAt: number;
   attempts: number;
   /** The server refused it (not a network problem); it waits for a person. */
@@ -209,7 +211,7 @@ export async function syncFills() {
           await putRow(current);
           for (const id of locals) await delFile(id).catch(() => undefined);
         }
-        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors });
+        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion });
         await delRow(row.clientId);
       } catch (e) {
         if (transient(e)) {

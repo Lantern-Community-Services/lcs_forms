@@ -5,7 +5,7 @@ import { fileBytes } from "../services/fileStore.js";
 import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { displayName, recordActivity } from "../services/roster.js";
-import { canReadEntries as canReadBasicEntries } from "../forms/entries.js";
+import { canReadEntries as canReadBasicEntries, isDuplicateClientId } from "../forms/entries.js";
 import { readDoc } from "../forms/service.js";
 import { buildProject, type Build } from "./compile.js";
 import { runInSandbox, type SandboxResult } from "./sandbox.js";
@@ -269,21 +269,29 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
   }
   const attach = await filesToAttach(app, user, data);
 
-  const entry = await prisma.formEntry.create({
-    data: {
-      formId: app.form.id,
-      formVersion: app.draft ? 0 : app.form.liveVersion,
-      data: JSON.stringify(data),
-      siteId: site?.id ?? null,
-      tenantId: tenant?.id ?? null,
-      occurredAt,
-      source: app.draft ? "preview" : opts.source ?? "app",
-      clientId: input.clientId ?? crypto.randomUUID(),
-      overrideReason: input.override?.trim().slice(0, 500) || null,
-      createdById: user?.userId ?? null,
-      createdByName: user?.name ?? opts.actorName ?? "System",
-    },
-  });
+  let entry: FormEntry;
+  try {
+    entry = await prisma.formEntry.create({
+      data: {
+        formId: app.form.id,
+        formVersion: app.draft ? 0 : app.form.liveVersion,
+        data: JSON.stringify(data),
+        siteId: site?.id ?? null,
+        tenantId: tenant?.id ?? null,
+        occurredAt,
+        source: app.draft ? "preview" : opts.source ?? "app",
+        clientId: input.clientId ?? crypto.randomUUID(),
+        overrideReason: input.override?.trim().slice(0, 500) || null,
+        createdById: user?.userId ?? null,
+        createdByName: user?.name ?? opts.actorName ?? "System",
+      },
+    });
+  } catch (e) {
+    // The same upload sent twice at once: both passed the check above, and the database let one in.
+    const dup = input.clientId && isDuplicateClientId(e) ? await prisma.formEntry.findFirst({ where: { formId: app.form.id, clientId: input.clientId } }) : null;
+    if (dup) return { status: "saved", entry: entryOut(dup, await siteMap()), logs };
+    throw e;
+  }
   await attachFiles(entry.id, attach);
   if (tenant && app.manifest.entries?.rosterActivity !== false && !app.draft) {
     await recordActivity({ tenantId: tenant.id, source: "form", label: app.form.title, externalRef: entry.id, occurredAt, recordedBy: entry.createdByName }).catch((err) =>

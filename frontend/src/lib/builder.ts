@@ -193,7 +193,8 @@ export const builderApi = {
 };
 
 export const fillApi = {
-  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; website_hp?: string }) =>
+  /** formVersion: the published version the page showed, so a late upload is checked against the fields the person saw. */
+  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; website_hp?: string }) =>
     api.post<{ id: string; duplicate: boolean; values: Values }>(`/f/${slug}/submit`, body),
   upload: async (slug: string, fieldId: string, file: File) => {
     const res = await fetch(`${API_BASE}/f/${slug}/files?field=${encodeURIComponent(fieldId)}`, {

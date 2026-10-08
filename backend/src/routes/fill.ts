@@ -49,6 +49,8 @@ const submitBody = z.object({
   siteCode: z.string().max(80).nullable().optional(),
   clientId: z.string().max(100).nullable().optional(),
   codeErrors: z.record(z.string().max(300)).optional(),
+  /** The published version the page showed (forms/entries.ts SubmitInput.formVersion). */
+  formVersion: z.number().int().positive().nullable().optional(),
   /** Honeypot: a hidden input real people never fill in. */
   website_hp: z.string().optional(),
 });
@@ -68,6 +70,7 @@ fillRouter.post(
       siteCode: body.siteCode,
       clientId: body.clientId,
       codeErrors: body.codeErrors,
+      formVersion: body.formVersion,
       user: req.user,
       source: req.user ? "app" : "public",
       ip: req.ip,

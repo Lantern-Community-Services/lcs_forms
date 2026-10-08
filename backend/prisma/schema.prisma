@@ -541,7 +541,11 @@ model FormEntry {
   /// Why a code form's rule (a limit, a cooldown) was overridden.
   overrideReason String?   @db.NVarChar(Max)
   /// Idempotency key from the filling device, so a retried submit can't save twice.
-  clientId       String?   @db.NVarChar(255)
+  /// Unique per form, enforced by the database: two uploads of the same entry
+  /// that race past the duplicate check can't both be saved. Entries sent
+  /// without one (imports, the MCP server) get a generated one, since SQL
+  /// Server's unique index counts NULLs as equal.
+  clientId       String    @default(cuid()) @db.NVarChar(255)
   createdById    String?   @db.NVarChar(64)
   createdByName  String    @db.NVarChar(255)
   ip             String?   @db.NVarChar(64)
@@ -562,7 +566,7 @@ model FormEntry {
   @@index([formId, status])
   @@index([formId, occurredAt])
   @@index([formId, tenantId, occurredAt])
-  @@index([clientId])
+  @@unique([formId, clientId])
   @@index([siteId])
 }
 

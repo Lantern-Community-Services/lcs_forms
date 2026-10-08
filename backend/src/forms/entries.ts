@@ -121,6 +121,24 @@ export interface SubmitInput {
   codeErrors?: Record<string, string>;
   /** Machine callers with no person: the site ids they may use (null = every site). */
   machineSiteIds?: string[] | null;
+  /**
+   * The published version the person filled in (the fill page sends it). An
+   * entry kept on a device offline can upload after the form is republished; it
+   * is checked and stored against the fields the person saw, not the new ones.
+   */
+  formVersion?: number | null;
+}
+
+/** The database refused a second entry with this clientId: a retry that raced the first upload. */
+export const isDuplicateClientId = (e: unknown) => (e as { code?: unknown } | null)?.code === "P2002";
+
+/** The published version an entry was filled against: the one sent, if it's an older version that exists, else the live one. */
+async function filledVersion(form: BuiltForm, live: FormDoc, sent: number | null | undefined): Promise<{ doc: FormDoc; version: number }> {
+  if (sent && Number.isInteger(sent) && sent > 0 && sent < form.liveVersion) {
+    const doc = await versionDoc(form.id, sent);
+    if (doc) return { doc, version: sent };
+  }
+  return { doc: live, version: form.liveVersion };
 }
 
 type SiteAccess = { user: Viewer; machineSiteIds?: string[] | null };
@@ -181,8 +199,12 @@ export async function submitEntry(input: SubmitInput) {
   const closed = await closedReason(form, doc, user);
   if (closed) throw new HttpError(409, closed);
 
+  // Who may fill it in and whether it's taking entries are today's rules (above);
+  // the answers are judged by the fields the person was shown.
+  const filled = await filledVersion(form, doc, input.formVersion);
+
   let siteId: string | null = null;
-  if (doc.settings.requireSite) {
+  if (filled.doc.settings.requireSite) {
     if (!input.siteCode) throw badRequest("Pick the site this entry is for.", { errors: { _site: "Pick a site." } });
     const site = await prisma.site.findUnique({ where: { code: input.siteCode } });
     if (!site || !site.active) throw badRequest("That site doesn't exist.");
@@ -190,36 +212,46 @@ export async function submitEntry(input: SubmitInput) {
     siteId = site.id;
   }
 
-  const values = cleanValues(doc, input.values ?? {});
-  const errors = validateValues(doc, values, { codeErrors: input.codeErrors });
-  await resolveLookups(doc, form, values, { user, machineSiteIds: input.machineSiteIds }, errors);
+  const values = cleanValues(filled.doc, input.values ?? {});
+  const errors = validateValues(filled.doc, values, { codeErrors: input.codeErrors });
+  await resolveLookups(filled.doc, form, values, { user, machineSiteIds: input.machineSiteIds }, errors);
   // A form without a required site but with a Site field: the entry belongs to that site.
   if (!siteId) {
-    const siteField = doc.fields.find((f) => f.type === "site" && values[f.id]);
+    const siteField = filled.doc.fields.find((f) => f.type === "site" && values[f.id]);
     if (siteField) siteId = (await prisma.site.findUnique({ where: { code: String(values[siteField.id]) }, select: { id: true } }))?.id ?? null;
   }
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
 
   const actorName = user?.name ?? input.actorName ?? "Public visitor";
-  const entry = await prisma.formEntry.create({
-    data: {
-      formId: form.id,
-      formVersion: form.liveVersion,
-      data: JSON.stringify(values),
-      siteId,
-      source: input.source,
-      clientId: input.clientId ?? null,
-      createdById: user?.userId ?? null,
-      createdByName: actorName,
-      ip: input.ip?.slice(0, 64) ?? null,
-      userAgent: input.userAgent?.slice(0, 300) ?? null,
-    },
-  });
-  const fileIds = doc.fields.filter((f) => f.type === "file").flatMap((f) => ((values[f.id] as { id: string }[] | undefined) ?? []).map((x) => x.id));
+  let entry: FormEntry;
+  try {
+    entry = await prisma.formEntry.create({
+      data: {
+        formId: form.id,
+        formVersion: filled.version,
+        data: JSON.stringify(values),
+        siteId,
+        source: input.source,
+        // None sent (the MCP server): the database makes one.
+        clientId: input.clientId || undefined,
+        createdById: user?.userId ?? null,
+        createdByName: actorName,
+        ip: input.ip?.slice(0, 64) ?? null,
+        userAgent: input.userAgent?.slice(0, 300) ?? null,
+      },
+    });
+  } catch (e) {
+    // The same upload sent twice at once (a retry while the first was still
+    // being saved): both passed the check above, and the database let one in.
+    const dup = input.clientId && isDuplicateClientId(e) ? await prisma.formEntry.findFirst({ where: { formId: form.id, clientId: input.clientId } }) : null;
+    if (dup) return { entry: dup, duplicate: true, doc };
+    throw e;
+  }
+  const fileIds = filled.doc.fields.filter((f) => f.type === "file").flatMap((f) => ((values[f.id] as { id: string }[] | undefined) ?? []).map((x) => x.id));
   if (fileIds.length) await prisma.formFile.updateMany({ where: { id: { in: fileIds } }, data: { entryId: entry.id } });
 
   // The roster hears that these residents were seen.
-  for (const f of doc.fields) {
+  for (const f of filled.doc.fields) {
     if (f.type !== "resident" || f.logActivity === false) continue;
     const r = values[f.id] as { id?: string } | undefined;
     if (r?.id) {
@@ -230,7 +262,9 @@ export async function submitEntry(input: SubmitInput) {
   }
 
   // Notifications go out after the response; their outcome is noted on the entry.
-  void runNotifications(form, doc, entry, values, user).catch((err) => console.error(`[forms] notifications for entry ${entry.id} failed:`, err));
+  // Today's notification settings, with the fields the answers belong to.
+  const notifyDoc = filled.doc === doc ? doc : { ...doc, fields: filled.doc.fields };
+  void runNotifications(form, notifyDoc, entry, values, user).catch((err) => console.error(`[forms] notifications for entry ${entry.id} failed:`, err));
   return { entry, duplicate: false, doc };
 }
 

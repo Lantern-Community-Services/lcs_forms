@@ -75,7 +75,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   /** No connection: keep it on the device; lib/fillQueue.ts uploads it later. */
   async function saveOnDevice(values: Values, extra: SubmitExtra) {
     try {
-      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors });
+      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version });
     } catch {
       toast("No connection, and this device couldn't keep the entry. Try again once the internet is back.", "error");
       return;
@@ -93,7 +93,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
     try {
       // A file attached offline is only on the device, so the queue (which uploads it first) has to send this.
       if (canQueue && (!isOnline() || hasLocalFiles(values))) return await saveOnDevice(values, extra);
-      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, website_hp: extra.honeypot || undefined });
+      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, website_hp: extra.honeypot || undefined });
       clearDraft();
       const conf = doc.settings.confirmation;
       if (conf?.type === "redirect" && conf.url) {
