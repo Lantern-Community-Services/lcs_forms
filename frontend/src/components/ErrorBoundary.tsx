@@ -1,6 +1,7 @@
 "use client";
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportClientError } from "@/lib/telemetry";
 
 /**
  * Catches a render error so one broken screen doesn't take the app with it.
@@ -38,6 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     // eslint-disable-next-line no-console
     console.error("[ui] a screen failed to render:", error, info.componentStack);
+    reportClientError(error, { componentStack: info.componentStack?.slice(0, 2000) ?? null, screenFailed: true });
   }
 
   render() {

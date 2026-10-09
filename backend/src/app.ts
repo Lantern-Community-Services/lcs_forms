@@ -22,6 +22,9 @@ import { handleMcp } from "./forms/mcp.js";
 import { appsRouter } from "./routes/apps.js";
 import { homeRouter } from "./routes/home.js";
 import { calendarRouter } from "./routes/calendar.js";
+import { devlogRouter } from "./routes/devlog.js";
+import { requestMetrics } from "./services/devlog.js";
+import { notificationsRouter } from "./routes/notifications.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false });
@@ -57,6 +60,7 @@ export function createApp() {
   // past: TRUST_PROXY, 1 by default (see env.ts).
   app.set("trust proxy", env.trustProxy);
   app.use(requestId);
+  app.use(requestMetrics);
   app.use(clientIp);
   // Health. App Service restarts a container whose health check fails, so the
   // probes answer 200 while the process is up, whatever the database is doing:
@@ -101,11 +105,13 @@ export function createApp() {
   app.use("/api/sites", sitesRouter);
   app.use("/api/activity", activityRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/notifications", notificationsRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/v1", apiLimiter, publicApiRouter);
   app.use("/api/builder", builderRouter);
   app.use("/api/f", fillRouter);
   app.use("/api/apps", appsRouter);
+  app.use("/api/devlog", devlogRouter);
   // MCP server for building forms with an LLM (API key, scope forms:build).
   app.all(["/mcp", "/api/mcp"], apiLimiter, (req, res, next) => {
     handleMcp(req, res).catch(next);

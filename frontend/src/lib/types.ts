@@ -17,7 +17,9 @@ export type PermissionKey =
   | "calendar.manage"
   | "calendar.edit"
   /** Make, change and remove Admins: Super Admins only. */
-  | "admins.manage";
+  | "admins.manage"
+  /** Admin → Dev log. Admin only. */
+  | "devlog.view";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";

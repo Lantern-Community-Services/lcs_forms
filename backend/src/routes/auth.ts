@@ -8,6 +8,7 @@ import { requireAuth } from "../auth/middleware.js";
 import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured } from "../env.js";
 import { autoApproveStaff, guestDomains } from "../services/settings.js";
 import { audit } from "../services/audit.js";
+import { notifyQuietly } from "../services/notifications.js";
 import { DEFAULT_ROLE_KEY, ROLES, SITE_ROLE_KEYS, roleFor, roleNameFor } from "../services/permissions.js";
 import { dropGraphToken, saveGraphToken } from "../services/graphTokens.js";
 import { noteGraphTokenArrived } from "../services/outlookSync.js";
@@ -124,6 +125,14 @@ authRouter.get(
           actor: { id: requester.id, name: requester.name },
           action: "user.access_requested",
           summary: `${requester.name} (${requester.email}) requested access`,
+        });
+        notifyQuietly({
+          to: { permissions: ["users.manage"] },
+          type: "people.request",
+          title: `${requester.name} is asking for access to Lantern Forms`,
+          body: `${requester.email}${requester.title ? ` · ${requester.title}` : ""} signed in for the first time. Give them a role and sites, or turn the request down, in People & roles.`,
+          link: "/admin/people?tab=requests",
+          sourceLabel: "People & roles",
         });
         return noticeTo(res, "Your account needs to be approved by an admin. We've let them know — you'll be able to sign in once it's approved.");
       }

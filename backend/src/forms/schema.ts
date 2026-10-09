@@ -93,12 +93,15 @@ const notification = z.object({
   id: z.string().min(1).max(64),
   name: z.string().max(120),
   enabled: z.boolean().default(true),
-  kind: z.enum(["email", "webhook"]).default("email"),
+  kind: z.enum(["email", "webhook", "notify"]).default("email"),
   to: z.string().max(2000).optional(),
   subject: z.string().max(500).optional(),
   body: z.string().max(100_000).optional(),
   url: z.string().max(2000).optional(),
   secret: z.string().max(200).optional(),
+  roles: z.array(z.string().max(64)).max(10).optional(),
+  siteOnly: z.boolean().optional(),
+  link: z.string().max(2000).optional(),
   conditional: conditional.optional(),
 }).strict();
 

@@ -42,6 +42,21 @@ export function isMobileDevice(): boolean {
 }
 
 /**
+ * The same answer as useDeviceKind, read from the browser right now rather
+ * than through a hook. useDeviceKind's first render always says "desktop"
+ * (useMediaQuery starts false and corrects itself in an effect), which is
+ * harmless for layout but not for a gate: a phone would mount, for one
+ * render, whatever is behind it. Gates ask this too.
+ */
+export function currentDeviceKind(): DeviceKind {
+  const forced = forcedDevice();
+  if (forced) return forced;
+  if (typeof window === "undefined" || !window.matchMedia) return "desktop";
+  if (window.matchMedia("(max-width: 767px)").matches) return "phone";
+  return window.matchMedia("(min-width: 768px) and (pointer: coarse)").matches ? "tablet" : "desktop";
+}
+
+/**
  * Which navigation the shell shows: the sidebar on a computer, the dock on a
  * phone or a tablet. A tablet is a touch screen at least `md` wide — a coarse
  * primary pointer — so a touch laptop, whose primary pointer is still the

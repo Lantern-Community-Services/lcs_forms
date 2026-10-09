@@ -1,14 +1,15 @@
+import { Suspense } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { Monitor } from "lucide-react";
 import { ADMIN_AREA, useAuth } from "./lib/auth";
 import type { PermissionKey } from "./lib/types";
 import { AppShell } from "./components/shell/AppShell";
-import { ConfigLayout } from "./components/shell/ConfigLayout";
 import { SectionTabsLayout } from "./components/shell/SectionTabs";
 import { useReviewCount } from "./components/shell/navData";
 import { Button } from "./components/ui/button";
 import { EmptyState, LoadingState } from "./components/ui/misc";
-import { useDeviceKind } from "./lib/device";
+import { currentDeviceKind, useDeviceKind } from "./lib/device";
+import { lazyScreen } from "./lib/lazyScreen";
 
 import { SignInPage } from "./screens/SignIn";
 import { FormsPage } from "./screens/Forms";
@@ -21,23 +22,37 @@ import { AttendancePage } from "./screens/Attendance";
 import { AttendanceDetailPage } from "./screens/AttendanceDetail";
 import { ProfilePage } from "./screens/Profile";
 import { MorePage } from "./screens/More";
-import { AdminSites } from "./screens/admin/Sites";
-import { AdminImport } from "./screens/admin/Import";
-import { AdminPeople } from "./screens/admin/People";
-import { AdminSettings, AdminSignInAccess } from "./screens/admin/Settings";
-import { AdminApiKeys, AdminWebhooks, AdminWordPress } from "./screens/admin/Integrations";
-import { AdminFormsCatalog } from "./screens/admin/FormsCatalog";
-import { AdminBuilderList } from "./screens/builder/BuilderList";
-import { FormEditorPage } from "./screens/builder/Editor";
-import { AdminAiBuilder } from "./screens/builder/AiBuilder";
+import { NotificationOpenPage, NotificationsPage } from "./screens/Notifications";
 import { FillPage } from "./screens/builtforms/FillPage";
 import { BuiltFormEntriesPage } from "./screens/builtforms/Entries";
 import { BuiltFormEntryPage } from "./screens/builtforms/EntryDetail";
 import { BuiltFormPreviewPage } from "./screens/builtforms/PreviewPage";
 import { AppHostPage } from "./apps/AppHostPage";
-import { CodeFormsList } from "./apps/CodeFormsList";
-import { AppEditorPage } from "./apps/AppEditor";
 import { CalendarPage } from "./screens/calendar/CalendarPage";
+
+/*
+ * Admin's screens are their own downloads, fetched the first time an Admin
+ * opens one on a computer. A phone, an iPad, or anyone without an admin
+ * permission never downloads them (the form builder and code editor are most
+ * of the app's weight): DesktopOnly and RequirePermission decide before any
+ * of these is rendered, and nothing outside admin imports them.
+ */
+const ConfigLayout = lazyScreen(() => import("./components/shell/ConfigLayout"), "ConfigLayout");
+const AdminSites = lazyScreen(() => import("./screens/admin/Sites"), "AdminSites");
+const AdminImport = lazyScreen(() => import("./screens/admin/Import"), "AdminImport");
+const AdminPeople = lazyScreen(() => import("./screens/admin/People"), "AdminPeople");
+const AdminSettings = lazyScreen(() => import("./screens/admin/Settings"), "AdminSettings");
+const AdminSignInAccess = lazyScreen(() => import("./screens/admin/Settings"), "AdminSignInAccess");
+const AdminApiKeys = lazyScreen(() => import("./screens/admin/Integrations"), "AdminApiKeys");
+const AdminWebhooks = lazyScreen(() => import("./screens/admin/Integrations"), "AdminWebhooks");
+const AdminWordPress = lazyScreen(() => import("./screens/admin/Integrations"), "AdminWordPress");
+const AdminFormsCatalog = lazyScreen(() => import("./screens/admin/FormsCatalog"), "AdminFormsCatalog");
+const AdminDevLog = lazyScreen(() => import("./screens/admin/DevLog"), "AdminDevLog");
+const AdminBuilderList = lazyScreen(() => import("./screens/builder/BuilderList"), "AdminBuilderList");
+const FormEditorPage = lazyScreen(() => import("./screens/builder/Editor"), "FormEditorPage");
+const AdminAiBuilder = lazyScreen(() => import("./screens/builder/AiBuilder"), "AdminAiBuilder");
+const CodeFormsList = lazyScreen(() => import("./apps/CodeFormsList"), "CodeFormsList");
+const AppEditorPage = lazyScreen(() => import("./apps/AppEditor"), "AppEditorPage");
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -68,8 +83,16 @@ function RequirePermission({ anyOf }: { anyOf: PermissionKey[] }) {
  * offered, and a typed or bookmarked address lands here instead of on them.
  */
 function DesktopOnly() {
+  // The hook re-renders on a resize or rotation; its first answer is always
+  // "desktop", so the browser is asked directly as well (lib/device.ts).
   const device = useDeviceKind();
-  if (device === "desktop") return <Outlet />;
+  if (device === "desktop" && currentDeviceKind() === "desktop") {
+    return (
+      <Suspense fallback={<div className="grid h-full place-items-center"><LoadingState /></div>}>
+        <Outlet />
+      </Suspense>
+    );
+  }
   return (
     <div className="flex flex-col items-center px-6 py-10">
       <EmptyState
@@ -129,6 +152,7 @@ function AdminHome() {
   if (can("sites.manage")) return <Navigate to="/admin/sites" replace />;
   if (can("users.manage") || can("users.manageSite")) return <Navigate to="/admin/people" replace />;
   if (can("integrations.manage")) return <Navigate to="/admin/api-keys" replace />;
+  if (can("devlog.view")) return <Navigate to="/admin/devlog" replace />;
   return <Navigate to="/admin/settings" replace />;
 }
 
@@ -213,11 +237,16 @@ export function App() {
               <Route path="/admin/webhooks" element={<AdminWebhooks />} />
               <Route path="/admin/wordpress" element={<AdminWordPress />} />
             </Route>
+            <Route element={<RequirePermission anyOf={["devlog.view"]} />}>
+              <Route path="/admin/devlog" element={<AdminDevLog />} />
+            </Route>
           </Route>
         </Route>
         </Route>
 
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/notifications/:id" element={<NotificationOpenPage />} />
         <Route path="/more" element={<MorePage />} />
       </Route>
 

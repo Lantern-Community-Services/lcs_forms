@@ -52,6 +52,7 @@ export const API_SCOPE_OPTIONS = [
   { scope: "apps:build", label: "Build code forms: files, server code, publish (AI / MCP)" },
   { scope: "entries:read", label: "Read built forms' entries" },
   { scope: "entries:write", label: "Submit entries to built forms" },
+  { scope: "notifications:send", label: "Send notifications to people (the bell and email)" },
 ];
 
 export function AdminApiKeys() {

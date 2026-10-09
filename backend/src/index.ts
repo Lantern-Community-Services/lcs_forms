@@ -1,3 +1,4 @@
+import { noteBoot, startDevlog } from "./services/devlog.js";
 import { createApp } from "./app.js";
 import { devAuthEnabled, env, ssoConfigured } from "./env.js";
 import { retireLegacyCatalog } from "./services/formCatalog.js";
@@ -9,7 +10,11 @@ import { startOutlookSync } from "./services/outlookSync.js";
 import { startFormBackup } from "./services/formBackup.js";
 import { startScheduler } from "./apps/schedule.js";
 import { startJobs } from "./apps/jobs.js";
+import { startNotificationMail } from "./services/notifications.js";
 import { fileStorageLabel } from "./services/fileStore.js";
+
+// First, so what the startup work below logs is in the dev log too.
+startDevlog();
 
 // The catalog starts empty and forms are added as they're rebuilt here; a
 // database seeded with the old WordPress links has them taken out, once.
@@ -26,6 +31,7 @@ if (startOutlookSync()) console.log("  Calendar: sending events to Outlook.");
 if (startFormBackup()) console.log(`  Forms: backing up built forms to ${env.formBackup.repo}.`);
 if (startScheduler()) console.log("  Code forms: running scheduled actions.");
 startJobs();
+startNotificationMail();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))
@@ -45,4 +51,5 @@ createApp().listen(env.port, env.host, () => {
   console.log(`  Uploaded files: ${fileStorageLabel()}`);
   if (devAuthEnabled) console.log("  Dev sign-in: ON (local prototype only — DEV_AUTH=false to disable)");
   console.log(`  Public API: http://localhost:${env.port}/api/v1  (API key required)\n`);
+  noteBoot();
 });

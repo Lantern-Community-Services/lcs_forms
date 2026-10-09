@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { CheckboxList } from "@/components/ui/checkbox";
@@ -147,7 +147,7 @@ export function SettingsPanel({
         )}
       </Section>
 
-      <Notifications doc={doc} set={set} mailConfigured={reference?.mailConfigured ?? false} />
+      <Notifications doc={doc} set={set} mailConfigured={reference?.mailConfigured ?? false} roles={(reference?.roles ?? []).map((r) => ({ value: r.key, label: r.name }))} />
 
       <Section title="Forms screen" hint="List this form on the Forms screen and in the sidebar, under a category. Who sees the card follows “Who can fill it in”.">
         <Select value={currentCategory} onChange={(e) => onCatalog(e.target.value || null)} options={[{ value: "", label: "Not listed" }, ...(catalog?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]} className="max-w-sm" />
@@ -172,15 +172,24 @@ function clean(s: FormSettings): FormSettings {
   return out as FormSettings;
 }
 
-function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Partial<FormSettings>) => void; mailConfigured: boolean }) {
+function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set: (p: Partial<FormSettings>) => void; mailConfigured: boolean; roles: { value: string; label: string }[] }) {
   const list = doc.settings.notifications ?? [];
   const [open, setOpen] = useState<string | null>(null);
   const update = (id: string, patch: Partial<Notification>) => set({ notifications: list.map((n) => (n.id === id ? cleanN({ ...n, ...patch }) : n)) });
-  const add = (kind: "email" | "webhook") => {
+  const add = (kind: Notification["kind"]) => {
     const id = `n${Date.now().toString(36)}`;
-    set({ notifications: [...list, kind === "email" ? { id, name: "New email", enabled: true, kind, to: "", subject: "New entry: {form:title}" } : { id, name: "New webhook", enabled: true, kind, url: "https://" }] });
+    const fresh: Record<Notification["kind"], Notification> = {
+      notify: { id, name: "Notify in the app", enabled: true, kind, roles: [], siteOnly: true, subject: "New entry: {form:title}" },
+      email: { id, name: "New email", enabled: true, kind, to: "", subject: "New entry: {form:title}" },
+      webhook: { id, name: "New webhook", enabled: true, kind, url: "https://" },
+    };
+    set({ notifications: [...list, fresh[kind]] });
     setOpen(id);
   };
+  const summary = (n: Notification) =>
+    n.kind === "notify"
+      ? `In the app to ${[...(n.roles ?? []).map((k) => roles.find((r) => r.value === k)?.label ?? k), ...(n.to?.trim() ? [n.to.trim()] : [])].join(", ") || "—"}${n.siteOnly && n.roles?.length ? " at the entry's site" : ""}`
+      : n.kind === "email" ? `Email to ${n.to || "—"}` : `Webhook to ${n.url}`;
   return (
     <Section title="Notifications" hint="Sent after each entry, optionally only when rules match. The outcome is written on the entry's notes.">
       {!mailConfigured && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Email isn't set up on this server yet (MAIL_FROM), so emails are noted on the entry but not sent. Webhooks work.</p>}
@@ -190,14 +199,42 @@ function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Pa
             <Switch checked={n.enabled} onCheckedChange={(v) => update(n.id, { enabled: v })} />
             <button onClick={() => setOpen(open === n.id ? null : n.id)} className="min-w-0 flex-1 text-left">
               <span className="block truncate text-[13.5px] font-semibold text-ink">{n.name}</span>
-              <span className="block truncate text-micro text-muted">{n.kind === "email" ? `Email to ${n.to || "—"}` : `Webhook to ${n.url}`}{n.conditional ? " · with rules" : ""}</span>
+              <span className="block truncate text-micro text-muted">{summary(n)}{n.conditional ? " · with rules" : ""}</span>
             </button>
             <Button variant="ghost" size="icon" onClick={() => set({ notifications: list.filter((x) => x.id !== n.id) })} aria-label="Remove notification"><Trash2 className="h-4 w-4" /></Button>
           </div>
           {open === n.id && (
             <div className="space-y-3 border-t border-hairline p-3">
               <Row label="Name"><Input value={n.name} onChange={(e) => update(n.id, { name: e.target.value })} /></Row>
-              {n.kind === "email" ? (
+              {n.kind === "notify" ? (
+                <>
+                  <Row label="People with these roles" hint="Everyone who has one of them.">
+                    <CheckboxList options={roles} value={n.roles ?? []} onChange={(v) => update(n.id, { roles: v })} />
+                  </Row>
+                  <label className="flex items-start gap-2 text-[13px] text-ink">
+                    <Switch checked={n.siteOnly ?? false} onCheckedChange={(v) => update(n.id, { siteOnly: v })} className="mt-0.5" />
+                    <span>
+                      Only those at the entry's site
+                      <span className="block text-micro text-muted">People who work at every site (Admin, Main Office) always get it.</span>
+                    </span>
+                  </label>
+                  <Row label="And these people" hint="Comma-separated addresses of people with an account. {user:email} is whoever filled it in.">
+                    <Input value={n.to ?? ""} onChange={(e) => update(n.id, { to: e.target.value })} placeholder="{user:email}, someone@lanterncommunity.org" />
+                  </Row>
+                  <Row label="Title" hint="One line. {form:title}, {site:name}, {user:name} and {date:today} work; answers are left out, because it may be emailed.">
+                    <Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} />
+                  </Row>
+                  <Row label="Message (optional)" hint="Shown in the app only, so answers can go in: {field_id}, or {all_fields} for everything.">
+                    <Textarea value={n.body ?? ""} onChange={(e) => update(n.id, { body: e.target.value || undefined })} rows={3} />
+                  </Row>
+                  <Row label="Opens (optional)" hint="A page of this site. Leave empty to open the entry. Merge tags work: /f/my-form/entries/{entry:id}.">
+                    <Input value={n.link ?? ""} onChange={(e) => update(n.id, { link: e.target.value || undefined })} placeholder="The entry" />
+                  </Row>
+                  <p className="text-[12px] text-muted">
+                    It appears under the bell for each person. Whether it's emailed too is their choice, on their Profile (new form entries are off by email unless they turn them on). An email is the title and a link, never the message.
+                  </p>
+                </>
+              ) : n.kind === "email" ? (
                 <>
                   <Row label="To" hint="Comma-separated. {email_field_id} sends to an address someone typed."><Input value={n.to ?? ""} onChange={(e) => update(n.id, { to: e.target.value })} /></Row>
                   <Row label="Subject" hint="{form:title}, {site:name}, {user:name} and {date:today} work here. Answers don't: they're left out.">
@@ -222,6 +259,7 @@ function Notifications({ doc, set, mailConfigured }: { doc: FormDoc; set: (p: Pa
         </div>
       ))}
       <div className="flex gap-2">
+        <Button variant="secondary" size="sm" onClick={() => add("notify")}><Plus className="h-3.5 w-3.5" /> Notify in the app</Button>
         <Button variant="secondary" size="sm" onClick={() => add("email")}><Plus className="h-3.5 w-3.5" /> Email</Button>
         <Button variant="secondary" size="sm" onClick={() => add("webhook")}><Plus className="h-3.5 w-3.5" /> Webhook</Button>
       </div>

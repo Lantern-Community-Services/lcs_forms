@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Settings, Home, Contact, CalendarDays, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
+  Settings, Home, Contact, CalendarDays, Bell, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
 import { Avatar } from "@/components/ui/avatar";
-import { CountBadge } from "@/components/ui/badge";
+import { CountBadge, UnreadBubble } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
@@ -15,6 +15,7 @@ import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useNavMode } from "@/lib/shellNav";
 import { readStorage, writeStorage } from "@/lib/storage";
+import { useUnreadCount } from "@/lib/notifications";
 import { isFormPath, ROSTER_URL, searchForms, useIsLit, useNavCatalog, useReviewCount, type NavCategory } from "./navData";
 
 const EXPANDED_WIDTH = 240;
@@ -269,6 +270,7 @@ export function Sidebar() {
   const { collapsed, expand, toggleCollapsed } = useCollapsed();
   const swipe = useSwipeToggle(collapsed, toggleCollapsed);
   const reviewCount = useReviewCount();
+  const unread = useUnreadCount();
   const { categories, pinned } = useNavCatalog();
   const lit = useIsLit();
   const navigate = useNavigate();
@@ -458,11 +460,29 @@ export function Sidebar() {
         )}
       </nav>
 
+      {/* Notifications, just above you: the bell carries the unread bubble open or collapsed. */}
+      <NavLink
+        to="/notifications"
+        title={collapsed ? (unread ? `Notifications (${unread} unread)` : "Notifications") : undefined}
+        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        className={({ isActive }) => cn(itemClass(isActive, collapsed), "mt-2")}
+      >
+        {({ isActive }) => (
+          <>
+            <span className={iconBox(isActive, collapsed)}>
+              <Bell className="h-[18px] w-[18px]" />
+              <UnreadBubble count={unread} className="right-0.5 top-0.5 ring-sidebar" />
+            </span>
+            <span className={cn("whitespace-nowrap", fade(collapsed))}>Notifications</span>
+          </>
+        )}
+      </NavLink>
+
       {/* Collapse toggle */}
       <button
         onClick={toggleCollapsed}
         title={collapsed ? "Expand" : "Collapse"}
-        className="mb-2 mt-2 flex h-10 w-full shrink-0 items-center overflow-hidden rounded-input text-[12.5px] font-semibold text-muted transition-colors hover:bg-navsel/60 hover:text-ink"
+        className="mb-3 flex h-10 w-full shrink-0 items-center overflow-hidden rounded-input text-[12.5px] font-semibold text-muted transition-colors hover:bg-navsel/60 hover:text-ink"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center">
           {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
@@ -470,19 +490,39 @@ export function Sidebar() {
         <span className={cn("whitespace-nowrap", fade(collapsed))}>Collapse</span>
       </button>
 
-      {/* User chip */}
-      <div className="w-full shrink-0 overflow-hidden border-t border-hairline pt-3">
+      {/* You: the whole chip opens Profile & settings; sign out sits apart at its end. */}
+      <div className="-mx-1 shrink-0 border-t border-hairline px-1 pt-3">
         <div className="flex w-full items-center">
-          <NavLink to="/profile" title={collapsed ? user?.name : undefined} className="flex h-8 w-10 shrink-0 items-center justify-center"><Avatar name={user?.name ?? "?"} color={user?.avatarColor} /></NavLink>
-          {/* Hidden, not unmounted, while collapsed: taken out of the tab order
-              so focus can't land on something clipped out of view. */}
-          <div className={cn("flex shrink-0 items-center", TAIL_W, fade(collapsed))} aria-hidden={collapsed || undefined}>
-            <div className="min-w-0 flex-1">
-              <NavLink to="/profile" tabIndex={collapsed ? -1 : undefined} className="block truncate text-[13px] font-semibold text-ink hover:text-accent dark:hover:text-white">{user?.name}</NavLink>
-              <p className="truncate text-micro text-muted">{user?.role?.name}</p>
-            </div>
-            <button onClick={() => logout()} title="Sign out" tabIndex={collapsed ? -1 : undefined} className="shrink-0 text-muted hover:text-ink"><LogOut className="h-4 w-4" /></button>
-          </div>
+          <NavLink
+            to="/profile"
+            title={collapsed ? `${user?.name} · Profile & settings` : "Profile & settings"}
+            className={({ isActive }) =>
+              cn(
+                "flex min-w-0 items-center overflow-hidden rounded-input py-1.5 transition-colors",
+                collapsed ? "w-10 shrink-0" : "flex-1",
+                isActive ? "bg-navsel" : "hover:bg-navsel/60"
+              )
+            }
+          >
+            <span className="flex w-10 shrink-0 justify-center">
+              <Avatar name={user?.name ?? "?"} color={user?.avatarColor} />
+            </span>
+            {/* Hidden, not unmounted, while collapsed, so the name doesn't re-wrap as the width moves. */}
+            <span className={cn("min-w-0 flex-1 pr-2", fade(collapsed))} aria-hidden={collapsed || undefined}>
+              <span className="block truncate text-[13px] font-semibold leading-tight text-ink">{user?.name}</span>
+              <span className="mt-0.5 block truncate text-micro leading-tight text-muted">{user?.role?.name}</span>
+            </span>
+          </NavLink>
+          {!collapsed && (
+            <button
+              onClick={() => logout()}
+              title="Sign out"
+              aria-label="Sign out"
+              className={cn("ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-input text-muted transition-colors hover:bg-status-redBg hover:text-status-redText", fade(collapsed))}
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
     </aside>

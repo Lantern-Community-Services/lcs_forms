@@ -104,9 +104,14 @@ Admins and developers pass every role check.
   details or attachments are ever sent (html / text / attachments are ignored). Keep resident names out of subjects.
   Queued, Lantern addresses unless form.json "email" lists others, never from the draft. For a monthly report, email a
   link to the Reports page, where the reader exports it.
+- Notifications: ctx.notify.send({ to?, roles?, sites?, title, body?, link? }) from server code tells staff something in
+  the app (the bell), and emails it to whoever wants that by email: prefer it to email for anything meant for staff
+  (an approval waiting, a request answered). to = addresses or user ids (an entry's createdById); roles narrowed by
+  sites (codes or ids). title is the email subject, so no resident names; body is in-app only. In the draft only the
+  person previewing is notified. People can turn one form's notifications off on their Profile.
 - Scheduled actions: form.json "schedule" runs an action once a New York day at "at" (daily, weekdays, or monthly on
   "day"), as nobody: ctx.user is null and args is { scheduled: true, day }. Check args.scheduled, read across everyone
-  (ctx.db, ctx.directory), and email. Only the published form runs them; a run missed while the server was down happens
+  (ctx.db, ctx.directory), and email or notify. Only the published form runs them; a run missed while the server was down happens
   later that day. Test one with MCP run_action (also as nobody).
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
   (MCP save_catalog_card), not in a code form.

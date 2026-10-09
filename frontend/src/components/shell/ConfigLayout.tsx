@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { CountBadge } from "@/components/ui/badge";
+import { LoadingState } from "@/components/ui/misc";
 import { useAuth } from "@/lib/auth";
 import { useApiKeys, useForms, useSites, useUsers, useWebhooks } from "@/lib/queries";
 import type { PermissionKey } from "@/lib/types";
@@ -44,6 +46,10 @@ const GROUPS: { group: string; items: { to: string; label: string; key: string; 
   {
     group: "Roster",
     items: [{ to: "/admin/settings", label: "Roster rules", key: "settings", needs: ["settings.manage", "sites.manageRules"] }],
+  },
+  {
+    group: "System",
+    items: [{ to: "/admin/devlog", label: "Dev log", key: "devlog", needs: ["devlog.view"] }],
   },
 ];
 
@@ -96,7 +102,10 @@ export function ConfigLayout() {
         </div>
       </nav>
       <div className="min-w-0 flex-1 overflow-y-auto scroll-thin [scrollbar-gutter:stable]">
-        <Outlet />
+        {/* Each admin screen is its own download (App.tsx): the rail stays put while one loads. */}
+        <Suspense fallback={<div className="grid h-full place-items-center"><LoadingState /></div>}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   );
