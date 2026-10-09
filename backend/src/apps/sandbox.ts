@@ -139,6 +139,9 @@ globalThis.__makeCtx = (base) => ({
   email: {
     send: (m) => __h("email.send", m || {}),
   },
+  notify: {
+    send: (n) => __h("notify.send", n || {}),
+  },
   people: (ids) => __h("people", { ids: Array.isArray(ids) ? ids : [] }),
   calendar: {
     events: (q) => __h("calendar.events", { q: q || {} }),

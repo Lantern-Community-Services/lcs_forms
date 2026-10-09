@@ -20,6 +20,7 @@ import {
 import { docForEntry, entryRow, entryWhere, submitEntry } from "./entries.js";
 import { registerCodeTools } from "../apps/mcpTools.js";
 import { registerCatalogTools } from "./catalogTools.js";
+import { registerNotificationTools } from "./notifyTools.js";
 
 /**
  * MCP server for building forms with an LLM — Claude Code, Claude Desktop,
@@ -27,7 +28,8 @@ import { registerCatalogTools } from "./catalogTools.js";
  *
  *   URL:   <backend>/mcp
  *   Auth:  Authorization: Bearer lrk_…   (Admin → API keys, scope forms:build;
- *          add entries:read / entries:write to let it read or submit entries)
+ *          add entries:read / entries:write to let it read or submit entries,
+ *          notifications:send to let it notify people)
  *
  * Stateless: every POST gets a fresh server, so it scales like the rest of the
  * API and needs no session store. Every tool goes through forms/service.ts,
@@ -89,9 +91,14 @@ entriesRoles: [role keys that can read entries; Admin always can];
 requireSite: true to ask which site the entry is for (entries are then limited to that site's staff);
 limits: { maxEntries, perUser: { count, period: day|week|month|ever }, opensAt, closesAt (ISO), closedMessage };
 confirmation: { type: "message"|"redirect", message (HTML, merge tags), url, showSummary };
-notifications: [{ id, name, enabled, kind: "email"|"webhook", to, subject, url, secret, conditional }].
+notifications: [{ id, name, enabled, kind: "email"|"webhook"|"notify", to, subject, url, secret, roles, siteOnly, body, link, conditional }].
   Emails are link-only: a line and a link to the entry, never the answers. The subject may use {form:title},
   {site:name}, {user:name}, {date:today}…; answer tags ({field_id}, {all_fields}) are dropped from it. No body.
+  kind "notify" is an in-app notification (the bell) for people with an account: roles: [role keys] and/or
+  to: "addresses, {user:email}"; siteOnly: true keeps role recipients to the entry's site. subject is its title
+  (answer tags dropped: it may be emailed); body is shown in the app only, so answer tags and {all_fields} work.
+  link (a site path, merge tags allowed) defaults to the entry. Each person chooses on their Profile whether
+  new-entry notifications also come by email. See the notification_reference tool.
 Role keys: admin, main_office, site_admin, site_manager, site_staff.
 
 ## Example
@@ -465,6 +472,7 @@ function buildServer(key: ResolvedKey): McpServer {
 
   registerCodeTools(tool, need, actor, key);
   registerCatalogTools(tool, need, actor);
+  registerNotificationTools(tool, need, key);
   return server;
 }
 

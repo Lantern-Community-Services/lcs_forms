@@ -14,6 +14,7 @@ import * as time from "./time.js";
 import { appBaseUrl } from "../env.js";
 import { attachFiles, filesToAttach } from "./files.js";
 import { queueEmail } from "./email.js";
+import { sendNotification } from "./notify.js";
 import type { Request } from "express";
 import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scopeSchema, setEventPending, updateEvent, type FormOwner } from "../services/calendar.js";
 import { noteCalendarChange } from "../services/outlookSync.js";
@@ -731,6 +732,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
       }
       case "email.send":
         return queueEmail(app, user, args ?? {});
+      case "notify.send":
+        return sendNotification(app, user, args ?? {});
       case "calendar.categories":
         return prisma.calendarCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, colorSlot: true } });
       case "calendar.create": {

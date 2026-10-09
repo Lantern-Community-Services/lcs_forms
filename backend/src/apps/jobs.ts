@@ -4,6 +4,7 @@ import { createFormFile, fileBytes } from "../services/fileStore.js";
 import { currentUserById, type CurrentUser } from "../auth/middleware.js";
 import { createEntry, loadApp, type LoadedApp } from "./runtime.js";
 import { fileIdsIn } from "./files.js";
+import { notifyQuietly } from "../services/notifications.js";
 
 /**
  * Entries one code form makes in another (ctx.db.form(slug).entries.create):
@@ -97,7 +98,25 @@ async function copyFiles(sourceFormId: string, targetFormId: string, data: unkno
 async function runOne(job: FormJob) {
   const claimed = await prisma.formJob.updateMany({ where: { id: job.id, status: "queued" }, data: { status: "running", attempts: { increment: 1 } } });
   if (!claimed.count) return;
-  const fail = (error: string) => prisma.formJob.update({ where: { id: job.id }, data: { status: "failed", error: error.slice(0, 1000) } });
+  const fail = async (error: string) => {
+    await prisma.formJob.update({ where: { id: job.id }, data: { status: "failed", error: error.slice(0, 1000) } });
+    // Whoever caused it hears about it; the source form's page can send it again (ctx.jobs.retry).
+    if (!job.userId) return;
+    const forms = await prisma.builtForm.findMany({ where: { OR: [{ id: job.formId }, { slug: job.targetSlug }] }, select: { id: true, slug: true, title: true } });
+    const source = forms.find((f) => f.id === job.formId);
+    const target = forms.find((f) => f.slug === job.targetSlug);
+    const label = (JSON.parse(job.input) as JobInput).label;
+    notifyQuietly({
+      to: { users: [job.userId] },
+      type: "forms.problem",
+      title: `${source ? `“${source.title}”` : "A form"} couldn't save an entry in “${target?.title ?? job.targetSlug}”`,
+      body: `${label ? `${label}: ` : ""}${error.slice(0, 500)}`,
+      link: source ? `/apps/${source.slug}` : null,
+      source: source ? `form:${source.slug}` : "system",
+      sourceLabel: source?.title ?? null,
+      formId: source?.id ?? null,
+    });
+  };
   try {
     const source = await prisma.builtForm.findUnique({ where: { id: job.formId }, select: { slug: true } });
     if (!source) return void (await fail("The form that asked for it is gone."));

@@ -8,6 +8,7 @@ import type { CurrentUser } from "../auth/middleware.js";
 import { appBaseUrl } from "../env.js";
 import { displayName, recordActivity } from "../services/roster.js";
 import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
+import { notify } from "../services/notifications.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
@@ -305,6 +306,26 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
         if (n.secret) headers["X-Lantern-Signature"] = `sha256=${crypto.createHmac("sha256", n.secret).update(body).digest("hex")}`;
         const res = await fetch(n.url!, { method: "POST", headers, body, signal: AbortSignal.timeout(8000) });
         note = res.ok ? `Webhook “${n.name}” delivered (${res.status}).` : `Webhook “${n.name}” failed: the server answered ${res.status}.`;
+      } else if (n.kind === "notify") {
+        // In the app, behind sign-in, so the body may carry answers. The title
+        // may be emailed (each person's choice), so it gets the subject's rules.
+        const users = renderTemplate(n.to, { ...ctx, html: false }).split(/[,;\s]+/).map((s) => s.trim()).filter((s) => s.includes("@"));
+        const roles = n.roles ?? [];
+        if (!users.length && !roles.length) note = `Notification “${n.name}” not sent: nobody to send it to.`;
+        else {
+          const out = await notify({
+            to: { users, roles, sites: n.siteOnly && roles.length && entry.siteId ? [entry.siteId] : undefined },
+            type: "forms.entry",
+            title: linkOnlySubject(n.subject, ctx),
+            body: renderTemplate(n.body, { ...ctx, html: false }) || null,
+            link: (n.link && renderTemplate(n.link, { ...ctx, html: false }).trim()) || ctx.entryUrl,
+            source: `form:${form.slug}`,
+            sourceLabel: form.title,
+            formId: form.id,
+            maxRecipients: 500,
+          });
+          note = `Notification “${n.name}” sent to ${out.sent} ${out.sent === 1 ? "person" : "people"}${out.muted ? ` (${out.muted} had turned these off)` : ""}${out.unknown?.length ? `; no account for ${out.unknown.join(", ")}` : ""}.`;
+        }
       } else {
         const to = renderTemplate(n.to, ctx).split(/[,;\s]+/).map((s) => s.trim()).filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
         if (!to.length) note = `Email “${n.name}” not sent: no valid address in “${n.to}”.`;
@@ -321,7 +342,7 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
         }
       }
     } catch (err) {
-      note = `${n.kind === "webhook" ? "Webhook" : "Email"} “${n.name}” failed: ${err instanceof Error ? err.message : String(err)}`;
+      note = `${n.kind === "webhook" ? "Webhook" : n.kind === "notify" ? "Notification" : "Email"} “${n.name}” failed: ${err instanceof Error ? err.message : String(err)}`;
     }
     await prisma.formEntryNote.create({ data: { entryId: entry.id, kind: "system", authorName: "System", body: note.slice(0, 2000) } });
   }

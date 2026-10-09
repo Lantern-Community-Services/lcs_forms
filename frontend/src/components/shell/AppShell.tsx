@@ -15,6 +15,7 @@ import { onApiUpdated, onReconnect } from "@/lib/offline";
 import { startSnapshot } from "@/lib/snapshot";
 import { OfflineBar, useOfflineBarVisible } from "./OfflineBar";
 import { useCascade } from "@/lib/cascade";
+import { useNewNotificationToast } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
 /**
@@ -80,6 +81,8 @@ export function AppShell() {
     [qc]
   );
   const offlineBar = useOfflineBarVisible();
+  // A toast when a notification arrives while the app is open.
+  useNewNotificationToast();
 
   const device = useDeviceKind();
   const touch = device !== "desktop";

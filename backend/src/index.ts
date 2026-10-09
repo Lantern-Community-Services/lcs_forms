@@ -9,6 +9,7 @@ import { startOutlookSync } from "./services/outlookSync.js";
 import { startFormBackup } from "./services/formBackup.js";
 import { startScheduler } from "./apps/schedule.js";
 import { startJobs } from "./apps/jobs.js";
+import { startNotificationMail } from "./services/notifications.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 
 // The catalog starts empty and forms are added as they're rebuilt here; a
@@ -26,6 +27,7 @@ if (startOutlookSync()) console.log("  Calendar: sending events to Outlook.");
 if (startFormBackup()) console.log(`  Forms: backing up built forms to ${env.formBackup.repo}.`);
 if (startScheduler()) console.log("  Code forms: running scheduled actions.");
 startJobs();
+startNotificationMail();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

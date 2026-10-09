@@ -49,7 +49,7 @@ export function referencesTo(doc: FormDoc, id: string): string[] {
     if (uses) out.push(f.label || f.id);
   }
   for (const n of doc.settings.notifications ?? []) {
-    if (n.conditional?.rules.some((r) => r.field.split(".")[0] === id) || [n.to, n.subject, n.body].some((s) => s && tag.test(s))) out.push(`notification “${n.name}”`);
+    if (n.conditional?.rules.some((r) => r.field.split(".")[0] === id) || [n.to, n.subject, n.body, n.link].some((s) => s && tag.test(s))) out.push(`notification “${n.name}”`);
   }
   if (doc.settings.confirmation?.message && tag.test(doc.settings.confirmation.message)) out.push("the confirmation message");
   return out;

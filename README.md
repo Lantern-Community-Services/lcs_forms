@@ -170,7 +170,8 @@ Code setup. Tools: `get_reference` (the full format guide), `create_form`, `patc
 (add/update/move/remove fields and settings in one atomic call), `update_form`, `validate_form`,
 `publish_form`, `import_forms`, `export_forms`, `list_entries`, `submit_entry` and more
 (`backend/src/forms/mcp.ts`). The assistant acts as its key, and its changes are drafts until
-someone publishes.
+someone publishes. With `notifications:send` it can also notify people (`send_notification`;
+`notification_reference` explains how forms send their own, see Notifications).
 
 ### Email
 
@@ -279,6 +280,9 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   email is the subject and a link to `link` (a page of the form, e.g. `${ctx.url}/request?id=…`).
   `html`, `text` and `attachments` are accepted for old code but not sent; the result lists them in
   `dropped`. A monthly report is a link to the Reports page, where the reader exports it.
+- **Notifications:** `ctx.notify.send({ to?, roles?, sites?, title, body?, link? })` tells staff something
+  under the bell, and emails it to whoever wants that kind by email (see Notifications). Prefer it to
+  `ctx.email` for anything meant for staff. In the draft only the person previewing gets it.
 - **Phones, iPads, desktops:** inside a page, Tailwind's `sm:` `md:` `lg:` `xl:` and `portrait:` /
   `landscape:` follow the device's window (not the frame), so markup from the app's own screens lays
   out the same; `phone:` `tablet:` `desktop:` variants and `useDevice()` are there for device-specific
@@ -433,6 +437,40 @@ random bytes, base64; Key Vault in Azure). That's all: it's on whenever Microsof
 configured, and each person's calendar starts working at their next Microsoft sign-in.
 `OUTLOOK_SYNC=false` turns it off, and then sign-in asks for identity only (for an app
 registration without that consent). No mailbox, Exchange setup or application permission is needed.
+
+## Notifications
+
+Everything the site tells a person is a notification (`backend/src/services/notifications.ts`). It shows
+under the **bell** (beside your name at the foot of the desktop sidebar, or a bubble on your avatar
+when it's collapsed; on a phone or iPad, a bubble on the dock's profile picture, whose menu opens them), with a toast when one arrives while the app is open, and is listed
+on `/notifications`. Opening one marks it read and goes to its page. The bell polls once a minute while
+the app is in view. Notifications are kept 120 days.
+
+**Who sends them:**
+
+| Sender | How | Kind |
+| --- | --- | --- |
+| The site | An access request (to people with `users.manage`), being let in or a changed role or sites, an entry another form couldn't save | `people.request`, `account`, `forms.problem` |
+| Form builder | A **Notify in the app** rule in Settings → Notifications: roles (optionally only at the entry's site) and/or addresses (`{user:email}` is whoever filled it in), a title, an in-app message that may use any merge tag, and a page to open (the entry by default) | `forms.entry` |
+| Code forms | `ctx.notify.send(...)` from server code | `forms.message` (or `forms.entry`) |
+| MCP / Power Automate | `send_notification`, or `POST /api/v1/notifications`, with an API key holding `notifications:send` (a site-pinned key reaches only that site's people) | `forms.message` or `announcement` |
+
+Recipients are people with an active account: by address or id, by role or permission, narrowed to sites
+(people at every site always count), or everyone (API keys only).
+
+**Each person chooses** on **Profile → Notifications**: per kind, in the app and/or by email; then
+**form by form** (every form on their Forms screen, and any that has notified them), the same switches
+for each kind that form sends (messages, new entries, problems), which follow their choice for the kind
+until they change them, with "Turn this form off" and "Use my choices above"; and email as each one
+arrives, one summary each morning (7 AM New York), or never. "New form entries" and "Announcements" aren't emailed unless someone turns them on.
+"Send me a test" checks it end to end.
+
+**Email** follows the link-only rule (see Email): the subject is the notification's title, then one
+line and a link to `/notifications/<id>`, which marks it read and opens its page. The message never
+leaves the app, so titles must not carry resident details or answers (a builder rule's title drops
+answer tags). A worker in the API process sends them (`startNotificationMail`), claiming each row first
+so two servers never send the same one, retrying a failed send up to three times. Without `MAIL_FROM`,
+notifications still appear in the app.
 
 ## Offline mode
 

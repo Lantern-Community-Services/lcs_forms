@@ -163,13 +163,27 @@ export interface Notification {
   id: string;
   name: string;
   enabled: boolean;
-  /** "email" sends mail; "webhook" POSTs the entry as signed JSON. */
-  kind: "email" | "webhook";
-  /** email: comma-separated addresses; merge tags allowed ({email_field}). */
+  /**
+   * "email" sends mail; "webhook" POSTs the entry as signed JSON; "notify" is a
+   * notification in the app (the bell), emailed too to whoever wants new-entry
+   * notifications by email — each person chooses on their Profile.
+   */
+  kind: "email" | "webhook" | "notify";
+  /**
+   * email: comma-separated addresses; merge tags allowed ({email_field}).
+   * notify: people with an account, by address ({user:email} is whoever filled it in).
+   */
   to?: string;
+  /** email: the subject. notify: the notification's title. Answer tags are dropped (it may be emailed). */
   subject?: string;
-  /** email body (HTML). {all_fields} lists every answer. */
+  /** notify: more detail, shown in the app only, so any merge tag works ({field_id}, {all_fields}). Plain text. */
   body?: string;
+  /** notify: everyone with these roles… */
+  roles?: string[];
+  /** notify: …only those at the entry's site (people at every site always count). */
+  siteOnly?: boolean;
+  /** notify: the page it opens; the entry by default. Merge tags work ({entry:id}). */
+  link?: string;
   /** webhook: where to POST. */
   url?: string;
   /** webhook: HMAC secret; the X-Lantern-Signature header is sha256=<hex>. */
@@ -1155,6 +1169,7 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings">): { path: str
   (doc.settings.notifications ?? []).forEach((n, i) => {
     checkRules(n.conditional, `settings.notifications[${i}].conditional`);
     if (n.enabled && n.kind === "email" && !n.to) problems.push({ path: `settings.notifications[${i}].to`, message: "An email notification needs a To address." });
+    if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length) problems.push({ path: `settings.notifications[${i}].to`, message: "A notification needs people: roles, or addresses in To." });
     if (n.enabled && n.kind === "webhook" && !/^https:\/\//.test(n.url ?? "")) problems.push({ path: `settings.notifications[${i}].url`, message: "A webhook needs an https:// URL." });
   });
   if (doc.settings.access?.mode === "public") {
