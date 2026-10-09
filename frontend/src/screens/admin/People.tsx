@@ -88,7 +88,7 @@ type Draft = {
 
 /** The role picker's value for a Super Admin, shown but never offered. */
 const SUPER = "super_admin";
-const SUPER_DESCRIPTION = "Everything an Admin can do, plus making, changing and removing Admins. Set on the server, not here.";
+const SUPER_DESCRIPTION = "Everything an Admin can do, plus making, changing and removing Admins.";
 
 /**
  * The status picker offers the moves that make sense from where the person is.
@@ -309,9 +309,10 @@ export function AdminPeople() {
                   </Field>
                 )}
               </div>
-              {draft.roleKey === "admin" ? (
+              {/* A Super Admin's dialog is read-only: the role and status say it all. */}
+              {draft.superAdmin ? null : draft.roleKey === "admin" ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
-                  {draft.superAdmin ? "Super Admins" : "Admins"} can always edit the calendar and its categories.
+                  Admins can always edit the calendar and its categories.
                 </p>
               ) : everyone ? (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
@@ -326,8 +327,8 @@ export function AdminPeople() {
               ) : draft.calendarEditor ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can edit the calendar at their sites. Only an Admin can change that.</p>
               ) : null}
-              {role?.allSites ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{draft.superAdmin ? "Super Admin" : role.name} sees every site.</p>
+              {draft.superAdmin ? null : role?.allSites ? (
+                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{role.name} sees every site.</p>
               ) : (
                 <Field
                   label={
