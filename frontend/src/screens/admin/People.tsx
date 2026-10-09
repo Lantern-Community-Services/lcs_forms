@@ -30,23 +30,27 @@ const STATUS_LABEL: Record<UserStatus, string> = {
 };
 
 /**
- * People sit in three lists. Pending is everyone not in yet: accounts an admin
- * made ahead of time (just an email until that person's first Microsoft
- * sign-in fills in their name and job title), and sign-ins asking for access,
- * which float to the top. Deactivated holds denied requests too.
+ * People sit in four lists. Pending is accounts an admin made ahead of time:
+ * just an email until that person's first Microsoft sign-in fills in their
+ * name and job title. Requests is people who signed in without one and are
+ * waiting for an admin. Deactivated holds denied requests too.
  */
-type Tab = "active" | "pending" | "deactivated";
+type Tab = "active" | "pending" | "requests" | "deactivated";
 const TABS: { key: Tab; label: string }[] = [
   { key: "active", label: "Active" },
   { key: "pending", label: "Pending" },
+  { key: "requests", label: "Requests" },
   { key: "deactivated", label: "Deactivated" },
 ];
-const tabOf = (status: UserStatus): Tab =>
-  status === "active" ? "active" : status === "invited" || status === "requested" ? "pending" : "deactivated";
+const TAB_OF: Record<UserStatus, Tab> = {
+  active: "active", invited: "pending", requested: "requests", denied: "deactivated", deactivated: "deactivated",
+};
+const tabOf = (status: UserStatus): Tab => TAB_OF[status];
 
 const EMPTY_STATE: Record<Tab, string> = {
   active: "Nobody has signed in yet.",
   pending: "No pending accounts. Add someone by email to set up their role before they sign in.",
+  requests: "No one is waiting for access.",
   deactivated: "Nobody has been deactivated.",
 };
 
@@ -104,8 +108,8 @@ function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
 }
 
 /**
- * Who can use the site, with what role, at which sites, in three tabs: Active,
- * Pending and Deactivated (see TABS). Name and job title always come from
+ * Who can use the site, with what role, at which sites, in four tabs: Active,
+ * Pending, Requests and Deactivated (see TABS). Name and job title always come from
  * Microsoft at sign-in; an admin only ever types an email.
  *
  * An Admin sees everyone. A Site Admin sees the people at their sites (and new
@@ -129,20 +133,16 @@ export function AdminPeople() {
   const toast = useToast();
 
   const counts = useMemo(() => {
-    const out: Record<Tab, number> = { active: 0, pending: 0, deactivated: 0 };
+    const out: Record<Tab, number> = { active: 0, pending: 0, requests: 0, deactivated: 0 };
     for (const u of users ?? []) out[tabOf(u.status)]++;
     return out;
   }, [users]);
-  const requests = (users ?? []).filter((u) => u.status === "requested").length;
 
   const needle = search.trim().toLowerCase();
   const shown = (users ?? [])
     .filter((u) => tabOf(u.status) === tab)
     .filter((u) => !needle || [u.name, u.email, u.title ?? ""].some((v) => v.toLowerCase().includes(needle)))
-    .sort((a, b) =>
-      Number(b.status === "requested") - Number(a.status === "requested") ||
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-    );
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   async function save() {
     if (!draft) return;
@@ -197,8 +197,8 @@ export function AdminPeople() {
             <Chip key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
               {t.label}
               <span className="opacity-70">{counts[t.key]}</span>
-              {t.key === "pending" && requests > 0 && tab !== "pending" && (
-                <span className="inline-block h-1.5 w-1.5 rounded-pill bg-status-amberDot" title={`${requests} waiting for approval`} />
+              {t.key === "requests" && counts.requests > 0 && tab !== "requests" && (
+                <span className="inline-block h-1.5 w-1.5 rounded-pill bg-status-amberDot" title={`${counts.requests} waiting for approval`} />
               )}
             </Chip>
           ))}
@@ -229,12 +229,12 @@ export function AdminPeople() {
                       </span>
                     </span>
                     <span className="hidden text-micro text-muted md:block">
-                      {u.lastSignInAt ? `signed in ${relativeTime(u.lastSignInAt)}` : u.status === "invited" ? `added ${relativeTime(u.createdAt)}` : "never signed in"}
+                      {u.lastSignInAt ? `signed in ${relativeTime(u.lastSignInAt)}` : u.status === "invited" ? `added ${relativeTime(u.createdAt)}` : u.status === "requested" ? `asked ${relativeTime(u.createdAt)}` : "never signed in"}
                     </span>
                     {u.calendarEditor && u.roleKey !== "admin" && <Tag tone="accent" title="Can edit the calendar">Calendar</Tag>}
                     <span className="hidden text-[13px] text-ink sm:block">{u.role.name}</span>
-                    {/* The Active tab says it already; the other two mix statuses. */}
-                    {tab !== "active" && <ToneBadge tone={STATUS_TONE[u.status]}>{STATUS_LABEL[u.status]}</ToneBadge>}
+                    {/* Only Deactivated mixes statuses (denied and deactivated); the other tabs say it already. */}
+                    {tab === "deactivated" && <ToneBadge tone={STATUS_TONE[u.status]}>{STATUS_LABEL[u.status]}</ToneBadge>}
                   </button>
                 </li>
               );
