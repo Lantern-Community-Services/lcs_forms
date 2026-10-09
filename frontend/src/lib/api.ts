@@ -1,4 +1,5 @@
 import { cachedAtOf, noteNetworkFailure, noteResponse, requestStarted } from "./offline";
+import { noteApiTiming } from "./telemetry";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -67,6 +68,7 @@ async function requestWithMeta<T>(method: string, path: string, body?: unknown, 
 
 async function send<T>(method: string, path: string, body?: unknown): Promise<{ data: T; cachedAt: number | null }> {
   let res: Response;
+  const started = performance.now();
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
@@ -82,6 +84,7 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<{ 
   // Fresh from the server, or the service worker's stored copy (public/sw.js) — see lib/offline.ts.
   noteResponse(res);
   const cachedAt = cachedAtOf(res);
+  noteApiTiming(method, path, performance.now() - started, res.status, cachedAt !== null);
 
   if (!res.ok) {
     let payload: any = undefined;

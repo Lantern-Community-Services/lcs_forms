@@ -807,3 +807,92 @@ model FormJob {
   @@index([status, createdAt])
   @@index([formId, sourceEntryId])
 }
+
+// ───────────────────────── Dev log ─────────────────────────
+//
+// Admin → Dev log (services/devlog.ts): how the running site is doing, kept
+// DEVLOG_RETENTION_DAYS (30 by default). Rolled up in memory and written once
+// a minute, so the log costs a handful of writes a minute, not one a request.
+
+/// One minute of calls to one API route ("route"), or of every database query
+/// ("db"), on one server. h0…h10 count calls by duration (DURATION_BOUNDS in
+/// services/devlog.ts), so percentiles add up across minutes and servers.
+model DevMetric {
+  id       String   @id @default(cuid()) @db.NVarChar(64)
+  /// The minute, to the minute.
+  at       DateTime
+  /// Which server (App Service instance, or the host name).
+  instance String   @db.NVarChar(255)
+  /// "route" | "db"
+  kind     String   @db.NVarChar(64)
+  /// "GET /api/tenants/:id" for a route; "" for db.
+  name     String   @db.NVarChar(255)
+  calls    Int      @default(0)
+  /// 5xx answers.
+  errors   Int      @default(0)
+  /// 4xx answers (refusals, validation, not found).
+  rejected Int      @default(0)
+  totalMs  Float    @default(0)
+  maxMs    Float    @default(0)
+  h0       Int      @default(0)
+  h1       Int      @default(0)
+  h2       Int      @default(0)
+  h3       Int      @default(0)
+  h4       Int      @default(0)
+  h5       Int      @default(0)
+  h6       Int      @default(0)
+  h7       Int      @default(0)
+  h8       Int      @default(0)
+  h9       Int      @default(0)
+  h10      Int      @default(0)
+
+  @@index([kind, at])
+  @@index([at])
+}
+
+/// One minute of one server process: memory, CPU, event-loop delay.
+model DevSample {
+  id          String   @id @default(cuid()) @db.NVarChar(64)
+  at          DateTime
+  instance    String   @db.NVarChar(255)
+  rssMb       Float
+  heapUsedMb  Float
+  heapTotalMb Float
+  /// Share of one CPU core this process used over the minute (can pass 100).
+  cpuPct      Float
+  /// How late timers ran: a busy event loop makes every request wait.
+  loopP50Ms   Float
+  loopP99Ms   Float
+  loopMaxMs   Float
+  /// Most requests in progress at once during the minute.
+  inFlightMax Int
+  uptimeSec   Int
+
+  @@index([at])
+}
+
+/// Something to look at one at a time: a server error or log line, a slow
+/// request or query, a server start, a browser error, a page load's timings,
+/// a slow tap.
+model DevEvent {
+  id         String   @id @default(cuid()) @db.NVarChar(64)
+  createdAt  DateTime @default(now())
+  /// "error" | "log" | "slow-request" | "slow-query" | "boot"
+  /// | "client-error" | "page-load" | "slow-interaction" | "slow-api"
+  kind       String   @db.NVarChar(64)
+  /// "error" | "warn" | "info"
+  level      String   @default("info") @db.NVarChar(16)
+  instance   String?  @db.NVarChar(255)
+  /// The route or page.
+  path       String?  @db.NVarChar(255)
+  status     Int?
+  durationMs Float?
+  message    String?  @db.NVarChar(Max)
+  /// JSON text: stack, timings, device, the query…
+  data       String?  @db.NVarChar(Max)
+  requestId  String?  @db.NVarChar(64)
+  userEmail  String?  @db.NVarChar(255)
+
+  @@index([createdAt])
+  @@index([kind, createdAt])
+}

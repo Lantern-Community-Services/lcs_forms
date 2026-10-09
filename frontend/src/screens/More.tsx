@@ -3,7 +3,7 @@ import { ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Uploa
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/badge";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
-import { useDeviceKind } from "@/lib/device";
+import { currentDeviceKind, useDeviceKind } from "@/lib/device";
 import { useSites, useUsers } from "@/lib/queries";
 
 /**
@@ -14,7 +14,9 @@ import { useSites, useUsers } from "@/lib/queries";
 export function MorePage() {
   const { user, can, logout } = useAuth();
   // Admin is desktop only; this page is reached from touch screens, so it rarely shows.
-  const isAdmin = ADMIN_AREA.some(can) && useDeviceKind() === "desktop";
+  // The hook's first answer is always "desktop" (lib/device.ts), hence the direct read.
+  const device = useDeviceKind();
+  const isAdmin = ADMIN_AREA.some(can) && device === "desktop" && currentDeviceKind() === "desktop";
 
   return (
     <div className="pb-4">
