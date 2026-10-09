@@ -31,6 +31,8 @@ const TOOLS: [string, string][] = [
   ["add_to_catalog", "Put it on the Forms screen"],
   ["list_entries / get_entry", "Read answers (entries:read)"],
   ["submit_entry", "Submit test entries (entries:write)"],
+  ["notification_reference", "How forms send notifications (the bell and email)"],
+  ["send_notification", "Notify people now (notifications:send)"],
 ];
 
 const PROMPTS = [
@@ -38,6 +40,7 @@ const PROMPTS = [
   "Import this Gravity Forms export and tell me what didn't convert cleanly.",
   "In the incident report, add a 'Police report number' text field that only shows when 'Police called' is ticked.",
   "Add an email notification to facilities@lanterncommunity.org whenever priority is Urgent.",
+  "When a maintenance request is marked Urgent, notify the site managers at that site in the app.",
   "Look at last month's entries for the supply request form and summarize what sites ask for most.",
   "Build a Pantry code form like Hot Foods: pick the site, pick the resident, choose items from a list admins manage, limit one visit a week unless a manager overrides, and a Reports tab.",
   "In the hot-foods form, add a 'Dietary note' shown on the sign step when the resident has one saved in a collection.",
@@ -51,6 +54,7 @@ export function AdminAiBuilder() {
   const { data: keys } = useApiKeys(can("integrations.manage"));
   const [name, setName] = useState("Claude — form builder");
   const [entries, setEntries] = useState(true);
+  const [notifications, setNotifications] = useState(false);
   const [code, setCode] = useState(true);
   const [key, setKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,7 +68,7 @@ export function AdminAiBuilder() {
   async function createKey() {
     setBusy(true);
     try {
-      const res = await api.post<{ key: string }>("/admin/api-keys", { name, scopes: ["forms:build", ...(code ? ["apps:build"] : []), ...(entries ? ["entries:read", "entries:write"] : [])] });
+      const res = await api.post<{ key: string }>("/admin/api-keys", { name, scopes: ["forms:build", ...(code ? ["apps:build"] : []), ...(entries ? ["entries:read", "entries:write"] : []), ...(notifications ? ["notifications:send"] : [])] });
       setKey(res.key);
       await qc.invalidateQueries({ queryKey: ["admin", "api-keys"] });
     } catch (e) {
@@ -98,6 +102,7 @@ export function AdminAiBuilder() {
                 <label className="min-w-[220px] flex-1 text-micro font-semibold text-muted">Key name<Input value={name} onChange={(e) => setName(e.target.value)} className="mt-0.5" /></label>
                 <label className="flex items-center gap-2 pb-2 text-[13px] text-ink"><input type="checkbox" checked={code} onChange={(e) => setCode(e.target.checked)} /> Can build code forms</label>
                 <label className="flex items-center gap-2 pb-2 text-[13px] text-ink"><input type="checkbox" checked={entries} onChange={(e) => setEntries(e.target.checked)} /> Can also read and submit entries</label>
+                <label className="flex items-center gap-2 pb-2 text-[13px] text-ink"><input type="checkbox" checked={notifications} onChange={(e) => setNotifications(e.target.checked)} /> Can notify people</label>
                 <Button onClick={createKey} disabled={busy || !name.trim()}>Create key</Button>
               </div>
             )}

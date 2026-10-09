@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LogOut } from "lucide-react";
 import { MobileBackLink, Page, PageHeader } from "@/components/shell/AppShell";
 import { SnapshotSummary } from "@/components/shell/OfflineBar";
+import { NotificationSettings } from "@/components/NotificationSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -166,6 +167,8 @@ export function ProfilePage() {
           <Select value={landing} onChange={(e) => changeLanding(e.target.value)} options={landingOptions} disabled={preferenceStatus === "saving"} />
         </Field>
       </Card>
+
+      <NotificationSettings delay="80ms" />
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "88ms" }}>
         <p className="kicker">Offline</p>

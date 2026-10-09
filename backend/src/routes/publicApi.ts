@@ -7,6 +7,7 @@ import { requireApiScope } from "../auth/middleware.js";
 import { displayName, publicTenant, recordActivity } from "../services/roster.js";
 import { emitEvent } from "../services/webhooks.js";
 import { parseName } from "../services/tenantImport.js";
+import { apiNotifyBody, sendFromKey } from "../services/notifyApi.js";
 
 /**
  * Public, versioned API for WordPress, Power Automate and anything else.
@@ -19,6 +20,7 @@ import { parseName } from "../services/tenantImport.js";
  *   GET  /api/v1/roster/changes?since=ISO      delta sync (includes archived)
  *   GET  /api/v1/tenants/:id
  *   POST /api/v1/activity                      "this person was on a form"
+ *   POST /api/v1/notifications                 tell people something (bell + email)
  */
 export const publicApiRouter = Router();
 
@@ -185,5 +187,23 @@ publicApiRouter.post(
     const failed = results.filter((r) => r.status === "not_found" || r.status === "ambiguous").length;
     if (failed === results.length) throw new HttpError(422, "No residents matched.", { results });
     res.status(failed ? 207 : 200).json({ results });
+  })
+);
+
+/**
+ * A notification for people with an account: in the app, and by email for
+ * whoever wants that kind by email. Same body as the MCP's send_notification
+ * (services/notifyApi.ts). Answers { sent, recipients, emailed, muted, unknown? }.
+ */
+publicApiRouter.post(
+  "/notifications",
+  requireApiScope("notifications:send"),
+  asyncHandler(async (req, res) => {
+    const body = apiNotifyBody.parse(req.body);
+    try {
+      res.json(await sendFromKey(req.apiKey!, body, "API"));
+    } catch (err) {
+      throw badRequest(err instanceof Error ? err.message : String(err));
+    }
   })
 );

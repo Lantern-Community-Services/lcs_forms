@@ -732,6 +732,39 @@ declare module "@lcs/server" {
         attachments?: import("@lcs/sdk").ExportSpec[];
       }): { queued: boolean; reason?: string; dropped?: string[]; note?: string };
     };
+    /**
+     * A notification in the app — the bell, for people with an account here — that's also emailed to whoever wants
+     * this kind by email. Each person chooses on their Profile, and can turn this form's off. Use it rather than
+     * email.send for anything meant for staff: an approval waiting, a request answered, a reminder.
+     *
+     * Who: `to` (addresses or user ids, e.g. an entry's createdById or ctx.user.id) and/or everyone with `roles`,
+     * which `sites` (codes or ids) narrows to people at those sites; Admins and Main Office, who work at every site,
+     * always count. Only active people; addresses that aren't one come back in `unknown`.
+     *
+     * `title` is one line and is the email's subject, so keep resident names out of it. `body` is shown in the app
+     * only, so it may say more. `link` is the page it opens: `${ctx.url}/request?id=…` or "/apps/<slug>/…"
+     * (this form's first page by default).
+     *
+     * type: "forms.message" (default) or "forms.entry" (a new entry for someone to look at).
+     * In the draft only the person previewing gets it (titled "Preview: …", and `preview: true`).
+     * At most 200 people a call and 1,000 notifications an hour per form.
+     *
+     * @example afterCreate(entry, ctx) {
+     *   ctx.notify.send({ roles: ["site_manager"], sites: [entry.siteId!], title: "A request is waiting for your approval",
+     *     body: `${ctx.user?.name} asked for ${entry.data.amount}.`, link: `${ctx.url}/approve?id=${entry.id}` });
+     * }
+     */
+    notify: {
+      send(notification: {
+        to?: string | string[];
+        roles?: string[];
+        sites?: string[];
+        title: string;
+        body?: string;
+        link?: string;
+        type?: "forms.message" | "forms.entry";
+      }): { sent: number; recipients: number; emailed: number; muted: number; unknown?: string[]; preview?: boolean; reason?: string };
+    };
     /** The site calendar, as the person using the form sees it. */
     calendar: {
       events(q: { from: string; to: string; site?: string | string[] }): Omit<import("@lcs/sdk").CalendarOccurrence, "canEdit">[];

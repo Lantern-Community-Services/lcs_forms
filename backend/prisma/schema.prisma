@@ -562,11 +562,11 @@ model FormEntry {
   notes FormEntryNote[]
   files FormFile[]
 
+  @@unique([formId, clientId])
   @@index([formId, createdAt])
   @@index([formId, status])
   @@index([formId, occurredAt])
   @@index([formId, tenantId, occurredAt])
-  @@unique([formId, clientId])
   @@index([siteId])
 }
 
@@ -680,12 +680,20 @@ model User {
   calendarSkipUncategorized Boolean                @default(false)
   calendarMutes             CalendarCategoryMute[]
   lastSignInAt              DateTime?
+  /// How notification emails reach them: "instant" (each one as it comes),
+  /// "daily" (one summary a morning) or "off". Which kinds are emailed at all
+  /// is in NotificationPref. See services/notifications.ts.
+  notifyEmailMode           String                 @default("instant") @db.NVarChar(255)
+  /// When their last daily summary went out.
+  notifyDigestAt            DateTime?
 
   /// Sites this person may act on. Empty = all sites (admins always all).
-  sites           UserSite[]
-  formFavorites   FormFavorite[]
-  calendarFollows CalendarFollow[]
-  graphToken      UserGraphToken?
+  sites             UserSite[]
+  formFavorites     FormFavorite[]
+  calendarFollows   CalendarFollow[]
+  graphToken        UserGraphToken?
+  notifications     Notification[]
+  notificationPrefs NotificationPref[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -895,4 +903,61 @@ model DevEvent {
 
   @@index([createdAt])
   @@index([kind, createdAt])
+}
+
+// ───────────────────────── Notifications ─────────────────────────
+
+/// One thing to tell one person: in the app (the bell and /notifications) and,
+/// if they want it, by email. Made only by services/notifications.ts — the
+/// site's own events, form builder "Notify in the app" rules, code forms'
+/// ctx.notify, the MCP server and the public API.
+model Notification {
+  id          String    @id @default(cuid()) @db.NVarChar(64)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String    @db.NVarChar(64)
+  /// A NOTIFICATION_TYPES key: what it's about, and which preference applies.
+  type        String    @db.NVarChar(255)
+  /// Shown in the app and used as the email's subject.
+  title       String    @db.NVarChar(255)
+  /// More detail, in the app only. Never emailed.
+  body        String?   @db.NVarChar(Max)
+  /// A page of this site ("/f/…", "/apps/…") that opening it goes to.
+  link        String?   @db.NVarChar(Max)
+  /// Who sent it: "system", "form:<slug>", "api:<key name>".
+  source      String    @default("system") @db.NVarChar(255)
+  /// The sender's name for people: a form's title, "Lantern Forms".
+  sourceLabel String?   @db.NVarChar(255)
+  /// The form it came from, for per-form preferences. Not a relation: the
+  /// notification outlives a deleted form.
+  formId      String?   @db.NVarChar(64)
+  /// In the bell and the list. False when they only wanted it by email.
+  inApp       Boolean   @default(true)
+  readAt      DateTime?
+  /// none | pending | sending | digest | sent | failed | skipped
+  emailStatus String    @default("none") @db.NVarChar(255)
+  emailError  String?   @db.NVarChar(Max)
+  emailTries  Int       @default(0)
+  emailedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, inApp, readAt])
+  @@index([userId, createdAt])
+  @@index([emailStatus, createdAt])
+  @@index([createdAt])
+}
+
+/// A person's choice for one kind of notification (key = a NOTIFICATION_TYPES
+/// key), or for one kind from one form (key = "form:<BuiltForm id>:<kind>").
+/// No row for a form = it follows their choice for the kind; no row for a kind
+/// = the kind's default.
+model NotificationPref {
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String   @db.NVarChar(64)
+  key       String   @db.NVarChar(255)
+  inApp     Boolean  @default(true)
+  email     Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, key])
 }

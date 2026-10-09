@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRoles, useSites, useUsers } from "@/lib/queries";
 import { errorMessage, relativeTime } from "@/lib/utils";
+import { useSearchParam } from "@/lib/useSearchParam";
 import type { ManagedUser, UserStatus } from "@/lib/types";
 
 const STATUS_TONE: Record<UserStatus, "green" | "blue" | "amber" | "red" | "neutral"> = {
@@ -138,7 +139,10 @@ export function AdminPeople() {
   // Everyone but an Admin gets exactly their assigned sites back.
   const { data: sites } = useSites(true);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [tab, setTab] = useState<Tab>("active");
+  // In the address, so a notification about a request can open the Requests tab.
+  const [tabParam, setTabParam] = useSearchParam("tab");
+  const tab: Tab = TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "active";
+  const setTab = (t: Tab) => setTabParam(t === "active" ? null : t);
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
   const toast = useToast();

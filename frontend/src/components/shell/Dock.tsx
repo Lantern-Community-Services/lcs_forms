@@ -4,10 +4,11 @@ import { CalendarDays, ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Con
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
-import { CountBadge } from "@/components/ui/badge";
+import { CountBadge, UnreadBubble } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
+import { useUnreadCount } from "@/lib/notifications";
 import { ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
 
 /**
@@ -76,7 +77,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
     <DockButton key="all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
   );
   const account = (
-    <DockAccount key="account" active={menuOpen || pathname === "/profile"} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
+    <DockAccount key="account" active={menuOpen || pathname === "/profile" || pathname.startsWith("/notifications")} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
   );
   const pinItems = pins.map((p) => <DockPin key={p.form.id} pin={p} active={!launcherOpen && isInternalForm(p.form.url) && lit(p.form.url)} phone={phone} onClick={onCloseLauncher} />);
 
@@ -181,12 +182,16 @@ function DockButton({ label, Icon, active, onClick, phone, expanded }: { label: 
   );
 }
 
-/** The last dock slot: your avatar, opening the account menu. */
+/** The last dock slot: your avatar, opening the account menu, with the unread notifications on it. */
 function DockAccount({ active, open, onClick, phone }: { active: boolean; open: boolean; onClick: () => void; phone: boolean }) {
   const { user } = useAuth();
+  const unread = useUnreadCount();
   return (
     <button type="button" onClick={onClick} aria-expanded={open} aria-haspopup="dialog" className={itemClass(active, phone)}>
-      <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={26} />
+      <span className="relative">
+        <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={26} />
+        <UnreadBubble count={unread} className="-right-2.5 -top-1.5" />
+      </span>
       <span className="max-w-full truncate">Profile</span>
     </button>
   );
@@ -199,6 +204,7 @@ function DockAccount({ active, open, onClick, phone }: { active: boolean; open: 
  */
 function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }) {
   const { user, logout } = useAuth();
+  const unread = useUnreadCount();
   return (
     <>
       <button type="button" tabIndex={-1} aria-label="Close" onClick={onClose} className="fixed inset-0 z-40 cursor-default" />
@@ -217,6 +223,11 @@ function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }
             <span className="block truncate text-micro text-muted">{user?.role?.name}</span>
           </span>
         </div>
+        <NavLink to="/notifications" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+          <span className="flex-1">Notifications</span>
+          {unread > 0 && <CountBadge count={unread} max={99} label={`${unread} unread`} />}
+          <ChevronRight className="h-4 w-4 text-muted" />
+        </NavLink>
         <NavLink to="/profile" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
           <span className="flex-1">Profile &amp; settings</span>
           <ChevronRight className="h-4 w-4 text-muted" />

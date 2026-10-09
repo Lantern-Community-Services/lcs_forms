@@ -21,6 +21,8 @@ export const API_SCOPES = [
   "entries:read",
   /** Submit entries to built forms. */
   "entries:write",
+  /** Send notifications to people (the bell and email): the MCP's send_notification, POST /api/v1/notifications. */
+  "notifications:send",
 ] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 

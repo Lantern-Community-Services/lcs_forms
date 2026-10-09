@@ -7,6 +7,7 @@ import { actorOf, audit } from "../services/audit.js";
 import { SITE_ROLE_KEYS, isRoleKey, roleFor, roleNameFor } from "../services/permissions.js";
 import { markUpcomingDirty } from "../services/outlookSync.js";
 import { dropGraphToken } from "../services/graphTokens.js";
+import { notifyQuietly } from "../services/notifications.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -222,6 +223,24 @@ usersRouter.patch(
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });
+    // Tell them, if they can sign in: let in, or given a different role or sites.
+    if (user.status === "active" && user.id !== req.user!.userId) {
+      const letIn = before.status !== "active";
+      const sitesChanged = body.siteIds && [...body.siteIds].sort().join() !== before.sites.map((s) => s.siteId).sort().join();
+      const roleChanged = body.roleKey !== undefined && roleFor(body.roleKey).key !== roleFor(before.roleKey).key;
+      if (letIn || roleChanged || sitesChanged) {
+        const role = roleNameFor(roleFor(user.roleKey), user);
+        const where = user.sites.length ? user.sites.map((s) => s.site.name).join(", ") : roleFor(user.roleKey).allSites ? "every site" : "no sites yet";
+        notifyQuietly({
+          to: { users: [user.id] },
+          type: "account",
+          title: letIn ? "You can now sign in to Lantern Forms" : "Your access in Lantern Forms changed",
+          body: `${req.user!.name} ${letIn ? "let you in" : "changed your access"}. You're ${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}, at ${where}.`,
+          link: "/forms",
+          sourceLabel: "People & roles",
+        });
+      }
+    }
     // No access, no acting as them in Outlook either.
     if (body.status === "denied" || body.status === "deactivated") await dropGraphToken(before.id);
     // Their sites, role or status decide which Outlook invites they get.

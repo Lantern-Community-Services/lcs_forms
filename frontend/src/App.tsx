@@ -22,6 +22,7 @@ import { AttendancePage } from "./screens/Attendance";
 import { AttendanceDetailPage } from "./screens/AttendanceDetail";
 import { ProfilePage } from "./screens/Profile";
 import { MorePage } from "./screens/More";
+import { NotificationOpenPage, NotificationsPage } from "./screens/Notifications";
 import { FillPage } from "./screens/builtforms/FillPage";
 import { BuiltFormEntriesPage } from "./screens/builtforms/Entries";
 import { BuiltFormEntryPage } from "./screens/builtforms/EntryDetail";
@@ -244,6 +245,8 @@ export function App() {
         </Route>
 
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/notifications/:id" element={<NotificationOpenPage />} />
         <Route path="/more" element={<MorePage />} />
       </Route>
 

@@ -1,10 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, Webhook } from "lucide-react";
+import { Bell, ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, Webhook } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/badge";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { currentDeviceKind, useDeviceKind } from "@/lib/device";
 import { useSites, useUsers } from "@/lib/queries";
+import { useUnreadCount } from "@/lib/notifications";
 
 /**
  * The phone's last tab: Admin and Profile, which the bottom bar has no room
@@ -17,6 +18,7 @@ export function MorePage() {
   // The hook's first answer is always "desktop" (lib/device.ts), hence the direct read.
   const device = useDeviceKind();
   const isAdmin = ADMIN_AREA.some(can) && device === "desktop" && currentDeviceKind() === "desktop";
+  const unread = useUnreadCount();
 
   return (
     <div className="pb-4">
@@ -31,6 +33,7 @@ export function MorePage() {
 
       {isAdmin && <AdminSection />}
       <Section title="You">
+        <Row to="/notifications" icon={Bell} label="Notifications" badge={unread ? `${unread} unread` : undefined} />
         <Row to="/profile" icon={UserRound} label="Profile & settings" />
         <button onClick={() => void logout()} className="flex min-h-[50px] w-full items-center gap-3 border-b border-hairline px-4 text-left active:bg-rowhover">
           <LogIn className="h-[18px] w-[18px] shrink-0 rotate-180 text-muted" />

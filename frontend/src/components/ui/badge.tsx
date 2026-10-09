@@ -60,6 +60,25 @@ export function CountBadge({ count, max, className, label }: { count: number; ma
   );
 }
 
+/**
+ * The unread-notifications bubble on the corner of an icon or avatar. Position
+ * it with className (it's absolute); its parent must be `relative`.
+ */
+export function UnreadBubble({ count, className }: { count: number; className?: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`${count} unread notification${count === 1 ? "" : "s"}`}
+      className={cn(
+        "absolute flex h-[17px] min-w-[17px] items-center justify-center rounded-pill bg-status-redDot px-1 text-[10px] font-extrabold leading-none text-white ring-2 ring-surface tabular",
+        className
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 const TAG_TONES = {
   amber: "bg-status-amberBg text-status-amberText",
   red: "bg-status-redBg text-status-redText",
