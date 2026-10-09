@@ -160,7 +160,7 @@ export function AdminSignInAccess() {
         <p className="kicker mb-2">Admitted domains</p>
         <p className="mb-3 text-[13px] text-muted">
           <b className="text-ink">lanterncommunity.org</b> is always admitted. Add a partner's domain to let their staff request access
-          by signing in. To admit one person without their whole domain, invite them in People &amp; roles instead.
+          by signing in. To admit one person without their whole domain, add them by email in People &amp; roles instead.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
           {domains.length === 0 && <span className="text-[13px] text-muted">No partner domains yet.</span>}
@@ -188,7 +188,7 @@ export function AdminSignInAccess() {
             <b className="text-ink">Individual Gmail users</b>: use the built-in <b>Google</b> identity provider instead (Google Cloud OAuth client,
             redirect <code>https://login.microsoftonline.com/te/&lt;tenant-id&gt;/oauth2/authresp</code>). Microsoft documents this as Gmail-only.
           </li>
-          <li>Invite partner staff as B2B guests (or admit their domain above and invite them in People &amp; roles). They click “Continue with Microsoft”, type their work email, and Entra sends them to Google.</li>
+          <li>Invite partner staff as B2B guests (or admit their domain above and add them in People &amp; roles). They click “Continue with Microsoft”, type their work email, and Entra sends them to Google.</li>
           <li>Anyone else outside Lantern can still get in with Entra's email one-time passcode — no app change either way.</li>
         </ol>
         <p className="mt-2">This app only ever talks to Lantern's Entra tenant; it records which provider signed each person in (the <code>idp</code> claim).</p>

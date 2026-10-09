@@ -574,9 +574,14 @@ async function formCalendar(app: LoadedApp, user: CurrentUser | null, op: string
   throw new Error(`Unknown call calendar.form.${op}.`);
 }
 
-/** ctx.directory: active staff, for choosing approvers and emailing them. Names, emails, roles and sites only. */
+/**
+ * ctx.directory: staff, for choosing approvers and emailing them. Names, emails,
+ * roles and sites only. Active accounts plus pending ones (invited, not signed
+ * in yet) so someone can be put in an approval chain before their first day;
+ * a pending person's name is their email until they sign in.
+ */
 async function directory(q: { search?: unknown; roles?: unknown; site?: unknown; ids?: unknown; limit?: unknown }) {
-  const and: Prisma.UserWhereInput[] = [{ status: "active" }];
+  const and: Prisma.UserWhereInput[] = [{ status: { in: ["active", "invited"] } }];
   if (typeof q.search === "string" && q.search.trim()) {
     const s = q.search.trim();
     and.push({ OR: [{ name: { contains: s } }, { email: { contains: s } }] });
@@ -591,7 +596,7 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
   }
   const rows = await prisma.user.findMany({
     where: { AND: and },
-    select: { id: true, name: true, email: true, roleKey: true, avatarColor: true, sites: { select: { site: { select: { id: true, code: true } } } } },
+    select: { id: true, name: true, email: true, roleKey: true, status: true, avatarColor: true, sites: { select: { site: { select: { id: true, code: true } } } } },
     orderBy: { name: "asc" },
     take: 2000,
   });
@@ -605,6 +610,8 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
         roleKey: role.key,
         roleName: role.name,
         avatarColor: u.avatarColor ?? null,
+        /** Invited but hasn't signed in yet. */
+        pending: u.status === "invited",
         /** Null = every site (their role sees them all). */
         sites: role.allSites ? null : u.sites.map((s) => s.site.code),
         siteIds: role.allSites ? null : u.sites.map((s) => s.site.id),

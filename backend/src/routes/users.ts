@@ -99,7 +99,8 @@ function assertAssignable(req: Request, roleKey: string | undefined, siteIds: st
 }
 
 const userBody = z.object({
-  name: z.string().trim().min(1).max(120),
+  /** Optional: a pending account is just its email until Microsoft fills in the name. */
+  name: z.string().trim().max(120).optional(),
   email: z.string().trim().toLowerCase().email(),
   roleKey: z.string().refine(isRoleKey, "Unknown role"),
   siteIds: z.array(z.string()).default([]),
@@ -111,9 +112,13 @@ const userBody = z.object({
 const CALENDAR_SWITCH_ADMIN_ONLY = "Only an Admin can change who edits the calendar.";
 
 /**
- * Pre-create (invite) a person. Their first sign-in — Microsoft or a Google
- * Workspace account federated through Entra — activates the account. This is
- * how partner-org staff get in without their whole domain being admitted.
+ * Pre-create (invite) a person: a pending account, so they can be given a role
+ * and sites, and picked as an approver, before they ever sign in. It holds only
+ * the email (stored as the name too, until there's a real one). Their first
+ * sign-in — Microsoft or a Google Workspace account federated through Entra —
+ * fills in their name and job title from the directory and activates the
+ * account. This is also how partner-org staff get in without their whole
+ * domain being admitted.
  */
 usersRouter.post(
   "/",
@@ -127,7 +132,7 @@ usersRouter.post(
     if (await prisma.user.findUnique({ where: { email: body.email } })) throw badRequest("Someone with that email already exists.");
     const user = await prisma.user.create({
       data: {
-        name: body.name,
+        name: body.name || body.email,
         email: body.email,
         roleKey: body.roleKey,
         title: body.title ?? null,
@@ -138,7 +143,7 @@ usersRouter.post(
       },
       include: SITES_INCLUDE,
     });
-    await audit({ actor: actorOf(req), action: "user.invited", summary: `Invited ${user.name} (${user.email}) as ${roleNameFor(roleFor(user.roleKey), user)}${user.calendarEditor ? ", with calendar editing" : ""}` });
+    await audit({ actor: actorOf(req), action: "user.invited", summary: `Invited ${user.name === user.email ? user.email : `${user.name} (${user.email})`} as ${roleNameFor(roleFor(user.roleKey), user)}${user.calendarEditor ? ", with calendar editing" : ""}` });
     res.status(201).json(shape(user));
   })
 );

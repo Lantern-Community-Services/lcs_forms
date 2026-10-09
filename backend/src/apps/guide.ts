@@ -86,7 +86,7 @@ Admins and developers pass every role check.
   form.json must have "share": { "create": ["this-slug"] }. Files are copied over. ctx.jobs.list(entryId) shows how each
   went; ctx.jobs.retry(id, reason) sends a failed one again. ctx.db.form(slug).collections reads a sharing form's lists,
   and ctx.files.read(ref) gives one of this form's files as a data: URL.
-- Staff: ctx.directory({ search, roles, site, ids }) lists active staff (name, email, role, sites) to choose approvers
+- Staff: ctx.directory({ search, roles, site, ids }) lists active and pending staff (name, email, role, sites, pending) to choose approvers
   in a settings page (through an action) or to find a site's managers to email.
 - Forms home: form.json "home": { "action": "home" }. That action runs as each person when the home screen loads and
   returns { attention: [{ title, detail, action, page, params, tone: "warn" | "info" }], tiles: [{ label, value, hint, page }] }.
