@@ -645,6 +645,8 @@ declare module "@lcs/server" {
     roleKey: string;
     roleName: string;
     avatarColor: string | null;
+    /** Invited but hasn't signed in yet: the name is their email until they do. */
+    pending: boolean;
     /** Site codes they're assigned to; null = every site (Admin, Main Office). */
     sites: string[] | null;
   }
