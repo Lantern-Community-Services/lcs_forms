@@ -41,9 +41,9 @@ export const PERMISSIONS = [
    */
   "calendar.edit",
   /**
-   * Make people Admins (or Global Admins), and change or remove an Admin. Not
-   * part of any role: it comes with User.globalAdmin, which only a Global Admin
-   * (or the GLOBAL_ADMINS setting) can give. See permissionsFor().
+   * Make people Admins, and change or remove an Admin. Not part of any role: it
+   * comes with User.globalAdmin (a Super Admin), which only the SUPER_ADMINS
+   * setting gives. See permissionsFor().
    */
   "admins.manage",
 ] as const;
@@ -66,7 +66,7 @@ export const ROLES: RoleDef[] = [
   {
     key: "admin",
     name: "Admin",
-    description: "Full control on every site — the forms catalog, people, sites, integrations and settings. Only a Global Admin can make someone an Admin.",
+    description: "Full control on every site — the forms catalog, people, sites, integrations and settings. Only a Super Admin can make someone an Admin.",
     permissions: PERMISSIONS.filter((p) => p !== "admins.manage"),
     allSites: true,
   },
@@ -133,7 +133,7 @@ export function roleFor(key: string): RoleDef {
  * for them alone. Everything that works out permissions goes through here, so
  * a switch can't be honored in one place and missed in another.
  *
- * A Global Admin is an Admin (roleKey "admin", so every "admin" role list in a
+ * A Super Admin is an Admin (roleKey "admin", so every "admin" role list in a
  * form or code form includes them) with User.globalAdmin on, which adds
  * admins.manage: only they make, change or remove Admins.
  */
@@ -144,9 +144,9 @@ export function permissionsFor(role: RoleDef, person: { calendarEditor?: boolean
   return extra.length ? [...role.permissions, ...extra] : role.permissions;
 }
 
-/** "Global Admin" for a Global Admin, otherwise the role's name. */
+/** "Super Admin" for a Super Admin, otherwise the role's name. */
 export function roleNameFor(role: RoleDef, person: { globalAdmin?: boolean | null }): string {
-  return person.globalAdmin && role.key === "admin" ? "Global Admin" : role.name;
+  return person.globalAdmin && role.key === "admin" ? "Super Admin" : role.name;
 }
 
 export function isRoleKey(key: string): boolean {

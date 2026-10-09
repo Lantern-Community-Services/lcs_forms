@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import { devAuthEnabled, env, ssoConfigured } from "./env.js";
 import { retireLegacyCatalog } from "./services/formCatalog.js";
 import { migrateLegacyRoles } from "./services/permissions.js";
+import { syncSuperAdmins } from "./services/superAdmins.js";
 import { ensureSiteLocations } from "./services/siteLocations.js";
 import { ensureDefaultCalendarCategories } from "./services/calendar.js";
 import { startOutlookSync } from "./services/outlookSync.js";
@@ -33,6 +34,10 @@ ensureSiteLocations()
 migrateLegacyRoles()
   .then((n) => n && console.log(`  Roles: moved ${n} people off retired roles.`))
   .catch((err) => console.error("[roles] could not migrate retired roles:", err));
+
+syncSuperAdmins()
+  .then((r) => r && (r.promoted || r.demoted) && console.log(`  Super Admins: ${r.promoted} made, ${r.demoted} removed (SUPER_ADMINS).`))
+  .catch((err) => console.error("[users] could not apply SUPER_ADMINS:", err));
 
 createApp().listen(env.port, env.host, () => {
   console.log(`\n  Lantern Forms backend listening on http://${env.host}:${env.port}`);

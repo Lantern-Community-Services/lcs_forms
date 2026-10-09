@@ -656,9 +656,10 @@ model User {
   /// Can add, change and remove calendar events for their own sites, whatever
   /// their role. Only an Admin turns it on. Admins can always edit the calendar.
   calendarEditor            Boolean                @default(false)
-  /// A Global Admin: an Admin who can also make, change and remove Admins
-  /// (admins.manage). Only on with roleKey "admin". Set by another Global Admin,
-  /// or at sign-in for the emails in GLOBAL_ADMINS.
+  /// A Super Admin (the column keeps its first name, Global Admin): an Admin who
+  /// can also make, change and remove Admins (admins.manage). Only on with
+  /// roleKey "admin". Set only from the SUPER_ADMINS setting, at start-up and at
+  /// sign-in (services/superAdmins.ts); the app and the API never change it.
   globalAdmin               Boolean                @default(false)
   /// Outlook invites: every-site events too. Set in the calendar's "Add to my
   /// Outlook" popup, along with the sites in CalendarFollow.

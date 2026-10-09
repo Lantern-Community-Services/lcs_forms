@@ -16,7 +16,7 @@ export type PermissionKey =
   | "apps.develop"
   | "calendar.manage"
   | "calendar.edit"
-  /** Make, change and remove Admins: Global Admins only. */
+  /** Make, change and remove Admins: Super Admins only. */
   | "admins.manage";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
@@ -53,7 +53,7 @@ export interface User {
   lastSignInAt?: string | null;
   /** The "Can edit the calendar" switch: events for their own sites, whatever their role. */
   calendarEditor?: boolean;
-  /** An Admin who can also make, change and remove Admins. */
+  /** A Super Admin: an Admin who also makes, changes and removes Admins. Set only by the server (SUPER_ADMINS); the field keeps its first name. */
   globalAdmin?: boolean;
 }
 

@@ -52,12 +52,16 @@ const SITES_INCLUDE = { sites: { include: { site: { select: { id: true, code: tr
 const managesEveryone = (req: Request) => req.user!.permissions.includes("users.manage");
 
 /**
- * Admins are a Global Admin's business (admins.manage): making someone an Admin
- * or a Global Admin, and changing an Admin's role or status. An Admin manages
- * everyone else.
+ * Admins are a Super Admin's business (admins.manage): making someone an Admin,
+ * and changing an Admin's role or status. An Admin manages everyone else.
+ *
+ * Super Admins themselves are nobody's here: they come only from the
+ * SUPER_ADMINS setting (services/superAdmins.ts). The API never makes one and
+ * refuses any change to one, whoever asks.
  */
 const managesAdmins = (req: Request) => req.user!.permissions.includes("admins.manage");
-const GLOBAL_ONLY = "Only a Global Admin can make someone an Admin, or change or remove an Admin.";
+const SUPER_ONLY = "Only a Super Admin can make someone an Admin, or change or remove an Admin.";
+const SUPER_LOCKED = "Super Admins are set on the server (SUPER_ADMINS) and can't be changed here.";
 
 /** Null = everyone (Admin). Otherwise the sites the caller administers. */
 function managedSiteIds(req: Request): string[] | null {
@@ -85,7 +89,7 @@ usersRouter.get(
       users.map((u) => ({
         ...shape(u),
         // What this caller may do to the row, so the editor can say so up front.
-        canEditRole: !mine || u.sites.every((s) => mine.includes(s.siteId)),
+        canEditRole: !u.globalAdmin && (!mine || u.sites.every((s) => mine.includes(s.siteId))),
       }))
     );
   })
@@ -106,7 +110,6 @@ const userBody = z.object({
   siteIds: z.array(z.string()).default([]),
   title: z.string().trim().max(120).nullable().optional(),
   calendarEditor: z.boolean().optional(),
-  globalAdmin: z.boolean().optional(),
 });
 
 const CALENDAR_SWITCH_ADMIN_ONLY = "Only an Admin can change who edits the calendar.";
@@ -128,7 +131,7 @@ usersRouter.post(
     assertAssignable(req, body.roleKey, body.siteIds);
     if (!managesEveryone(req) && body.siteIds.length === 0) throw badRequest("Pick at least one of your sites.");
     if (body.calendarEditor && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
-    if ((body.roleKey === "admin" || body.globalAdmin) && !managesAdmins(req)) throw forbidden(GLOBAL_ONLY);
+    if (body.roleKey === "admin" && !managesAdmins(req)) throw forbidden(SUPER_ONLY);
     if (await prisma.user.findUnique({ where: { email: body.email } })) throw badRequest("Someone with that email already exists.");
     const user = await prisma.user.create({
       data: {
@@ -137,7 +140,6 @@ usersRouter.post(
         roleKey: body.roleKey,
         title: body.title ?? null,
         calendarEditor: body.calendarEditor ?? false,
-        globalAdmin: body.roleKey === "admin" && Boolean(body.globalAdmin),
         status: "invited",
         sites: { create: body.siteIds.map((siteId) => ({ siteId })) },
       },
@@ -159,31 +161,20 @@ usersRouter.patch(
         siteIds: z.array(z.string()).optional(),
         name: z.string().trim().min(1).max(120).optional(),
         calendarEditor: z.boolean().optional(),
-        globalAdmin: z.boolean().optional(),
       })
       .parse(req.body);
     const before = await prisma.user.findUnique({ where: { id: req.params.id }, include: { sites: { select: { siteId: true } } } });
     if (!before) throw notFound();
-    // Global Admin goes with the Admin role: off whenever the role isn't Admin.
-    const nextRole = body.roleKey ?? before.roleKey;
-    const nextGlobal = nextRole === "admin" && (body.globalAdmin ?? before.globalAdmin);
-    const globalChange = nextGlobal !== before.globalAdmin;
-    const touchesAdmin =
-      (nextRole === "admin" && before.roleKey !== "admin") ||
-      (before.roleKey === "admin" && ((body.roleKey !== undefined && body.roleKey !== before.roleKey) || (body.status !== undefined && body.status !== before.status))) ||
-      globalChange;
-    if (touchesAdmin && !managesAdmins(req)) throw forbidden(GLOBAL_ONLY);
-    const roleChange = (body.roleKey !== undefined && body.roleKey !== before.roleKey) || globalChange;
+    // A Super Admin is changed only through SUPER_ADMINS, never here.
+    if (before.globalAdmin) throw forbidden(SUPER_LOCKED);
+    const roleChange = body.roleKey !== undefined && body.roleKey !== before.roleKey;
     const statusChange = body.status !== undefined && body.status !== before.status;
+    const touchesAdmin = (roleChange && (body.roleKey === "admin" || before.roleKey === "admin")) || (statusChange && before.roleKey === "admin");
+    if (touchesAdmin && !managesAdmins(req)) throw forbidden(SUPER_ONLY);
     // Nobody changes their own role or status: that's someone else's call, and
     // it means nobody locks themselves out by accident.
     if (before.id === req.user!.userId && (roleChange || statusChange)) {
-      throw forbidden("You can't change your own role or status. Ask another Global Admin.");
-    }
-    // A Global Admin can't be deactivated or denied outright. Another Global
-    // Admin demotes them first, and then deactivates them as a separate step.
-    if (before.globalAdmin && statusChange) {
-      throw badRequest("A Global Admin can't be deactivated. Change their role first and save, then deactivate them.");
+      throw forbidden("You can't change your own role or status.");
     }
     const calendarChange = body.calendarEditor !== undefined && body.calendarEditor !== before.calendarEditor;
     if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
@@ -212,11 +203,6 @@ usersRouter.patch(
       const admins = await prisma.user.count({ where: { roleKey: "admin", status: "active" } });
       if (admins <= 1) throw badRequest("This is the only active administrator. Make someone else an admin first.");
     }
-    // …and the last active Global Admin can't stop being one.
-    if (before.globalAdmin && before.status === "active" && (!nextGlobal || (body.status && body.status !== "active"))) {
-      const globals = await prisma.user.count({ where: { globalAdmin: true, roleKey: "admin", status: "active" } });
-      if (globals <= 1) throw badRequest("This is the only active Global Admin. Make someone else a Global Admin first.");
-    }
 
     const user = await prisma.$transaction(async (tx) => {
       if (body.siteIds) {
@@ -225,7 +211,7 @@ usersRouter.patch(
       }
       return tx.user.update({
         where: { id: before.id },
-        data: { roleKey: body.roleKey, status: body.status, name: body.name, calendarEditor: calendarChange ? body.calendarEditor : undefined, globalAdmin: globalChange ? nextGlobal : undefined },
+        data: { roleKey: body.roleKey, status: body.status, name: body.name, calendarEditor: calendarChange ? body.calendarEditor : undefined },
         include: SITES_INCLUDE,
       });
     });
@@ -234,7 +220,6 @@ usersRouter.patch(
       body.status && body.status !== before.status ? `status → ${body.status}` : null,
       body.siteIds ? `sites → ${body.siteIds.length || "none"}` : null,
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
-      globalChange ? (nextGlobal ? "now a Global Admin" : "no longer a Global Admin") : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });
     // No access, no acting as them in Outlook either.
