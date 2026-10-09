@@ -85,13 +85,13 @@ authRouter.get(
       let user = identity.oid ? await prisma.user.findFirst({ where: { entraObjectId: identity.oid } }) : null;
       if (!user) user = await prisma.user.findUnique({ where: { email: identity.email } });
 
-      // Listed in GLOBAL_ADMINS: an active Global Admin whatever else is true,
+      // Listed in SUPER_ADMINS: an active Super Admin whatever else is true,
       // which is how a new environment gets its first Admins.
-      const listedGlobal = env.globalAdmins.includes(identity.email);
+      const listedSuper = env.superAdmins.includes(identity.email);
 
       // Domain gate — skipped for an address an admin has already put in the
       // system (invited partner staff), which is the whole point of inviting.
-      if (!user && !listedGlobal && !isAllowedDomain(identity.email, await guestDomains())) {
+      if (!user && !listedSuper && !isAllowedDomain(identity.email, await guestDomains())) {
         return failTo(res, `${identity.email} is not from an organisation that uses Lantern Forms.`);
       }
 
@@ -103,10 +103,10 @@ authRouter.get(
         ...(identity.profileLoaded ? { title: identity.jobTitle } : {}),
       };
 
-      if (listedGlobal && (!user || !user.globalAdmin || user.roleKey !== "admin" || user.status !== "active")) {
+      if (listedSuper && (!user || !user.globalAdmin || user.roleKey !== "admin" || user.status !== "active")) {
         const data = { roleKey: "admin", globalAdmin: true, status: "active" };
         user = user ? await prisma.user.update({ where: { id: user.id }, data }) : await prisma.user.create({ data: { ...fromDirectory, ...data } });
-        await audit({ actor: { id: user.id, name: user.name }, action: "user.global_admin", summary: `${user.name} (${user.email}) signed in as a Global Admin (GLOBAL_ADMINS)` });
+        await audit({ actor: { id: user.id, name: user.name }, action: "user.super_admin", summary: `${user.name} (${user.email}) signed in as a Super Admin (SUPER_ADMINS)` });
       }
 
       if (!user && isStaffDomain(identity.email) && (await autoApproveStaff())) {
@@ -221,7 +221,7 @@ authRouter.get("/roles", requireAuth, (req, res) => {
   res.json(
     ROLES.map((r) => ({
       ...r,
-      // Admin is a Global Admin's to give.
+      // Admin is a Super Admin's to give.
       assignable: r.key === "admin" ? perms.includes("admins.manage") : perms.includes("users.manage") || (perms.includes("users.manageSite") && SITE_ROLE_KEYS.includes(r.key)),
     }))
   );

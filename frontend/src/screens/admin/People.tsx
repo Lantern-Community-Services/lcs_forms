@@ -76,22 +76,19 @@ type Draft = {
   canEditRole: boolean;
   /** "Can edit the calendar": events for their own sites. Only an Admin changes it. */
   calendarEditor: boolean;
-  /** A Global Admin: also makes, changes and removes Admins. Picked as a role; only a Global Admin gives it. */
-  globalAdmin: boolean;
-  /** A Global Admin when the editor opened: can't be deactivated until demoted and saved. */
-  wasGlobal: boolean;
+  /**
+   * A Super Admin (User.globalAdmin): an Admin who also makes, changes and
+   * removes Admins. Read-only here: Super Admins are set only on the server
+   * (SUPER_ADMINS), and the API refuses any change to one.
+   */
+  superAdmin: boolean;
   /** The editor is looking at their own account: role and status are someone else's call. */
   isSelf: boolean;
 };
 
-/**
- * Global Admin reads as a role in the picker, but it's stored as the Admin role
- * plus User.globalAdmin, so every "admin" role list in a form still includes
- * them. GLOBAL is the picker's value for it.
- */
-const GLOBAL = "global_admin";
-const GLOBAL_DESCRIPTION = "Everything an Admin can do, plus making, changing and removing Admins and Global Admins. There's always at least one.";
-const pickOf = (d: Pick<Draft, "roleKey" | "globalAdmin">) => (d.roleKey === "admin" && d.globalAdmin ? GLOBAL : d.roleKey);
+/** The role picker's value for a Super Admin, shown but never offered. */
+const SUPER = "super_admin";
+const SUPER_DESCRIPTION = "Everything an Admin can do, plus making, changing and removing Admins. Set on the server, not here.";
 
 /**
  * The status picker offers the moves that make sense from where the person is.
@@ -100,8 +97,7 @@ const pickOf = (d: Pick<Draft, "roleKey" | "globalAdmin">) => (d.roleKey === "ad
  * Reactivating someone who never signed in puts them back to pending.
  */
 function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
-  // Demote first, save, then deactivate: two steps, so it's never by accident.
-  if (d.wasGlobal) return [{ value: d.status, label: STATUS_LABEL[d.status] }];
+  if (d.superAdmin) return [{ value: d.status, label: STATUS_LABEL[d.status] }];
   switch (d.status) {
     case "active":
       return [{ value: "active", label: "Active" }, { value: "deactivated", label: "Deactivated" }];
@@ -135,7 +131,7 @@ function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
 export function AdminPeople() {
   const { can, user: me } = useAuth();
   const everyone = can("users.manage");
-  // Admins are a Global Admin's to make, change or remove; the server refuses anyone else.
+  // Admins are a Super Admin's to make, change or remove; the server refuses anyone else.
   const managesAdmins = can("admins.manage");
   const { data: users, isLoading } = useUsers();
   const { data: roles } = useRoles();
@@ -164,9 +160,8 @@ export function AdminPeople() {
     try {
       // Only an Admin may send the calendar switch; the server refuses it from anyone else.
       const calendar = everyone ? { calendarEditor: draft.calendarEditor } : {};
-      const global = managesAdmins ? { globalAdmin: pickOf(draft) === GLOBAL } : {};
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar, ...global });
-      else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar, ...global });
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar });
+      else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar });
       toast(draft.id ? "Saved." : `Added ${draft.email.trim()}. Their name and title fill in when they first sign in.`);
       // A new account lands in Pending; show it there.
       if (!draft.id) setTab("pending");
@@ -186,20 +181,17 @@ export function AdminPeople() {
       otherSites: u.sites.filter((s) => !mine.has(s.id)).length,
       canEditRole: u.canEditRole && (u.roleKey !== "admin" || managesAdmins),
       calendarEditor: Boolean(u.calendarEditor),
-      globalAdmin: Boolean(u.globalAdmin),
-      wasGlobal: Boolean(u.globalAdmin),
+      superAdmin: Boolean(u.globalAdmin),
       isSelf: u.id === me?.id,
     });
   };
   const role = roles?.find((r) => r.key === draft?.roleKey);
-  const pick = draft ? pickOf(draft) : "";
-  // Global Admin sits just above Admin, and like Admin only a Global Admin gives it.
   // The person's current role stays listed even if this editor can't give it out.
-  const roleOptions = (roles ?? []).flatMap((r) => {
-    const own = r.assignable || r.key === draft?.roleKey ? [{ value: r.key, label: r.name }] : [];
-    return r.key === "admin" && (managesAdmins || pick === GLOBAL) ? [{ value: GLOBAL, label: "Global Admin" }, ...own] : own;
-  });
-  const lockedRole = draft ? !draft.canEditRole || draft.isSelf : true;
+  // A Super Admin's only option is their own: nobody picks it here.
+  const roleOptions = draft?.superAdmin
+    ? [{ value: SUPER, label: "Super Admin" }]
+    : (roles ?? []).filter((r) => r.assignable || r.key === draft?.roleKey).map((r) => ({ value: r.key, label: r.name }));
+  const locked = draft ? draft.superAdmin || !draft.canEditRole || draft.isSelf : true;
 
   return (
     <Page>
@@ -209,7 +201,7 @@ export function AdminPeople() {
           ? "Add people by work email before they sign in, so their role and sites are ready on day one. Partner staff can sign in with Google Workspace once their domain or address is admitted."
           : "People at your sites, and pending accounts waiting to be placed. You can give out the site roles for your own sites."}
         actions={
-          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, globalAdmin: false, wasGlobal: false, isSelf: false })}>
+          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, superAdmin: false, isSelf: false })}>
             <UserPlus className="h-4 w-4" /> Add person
           </Button>
         }
@@ -289,37 +281,37 @@ export function AdminPeople() {
                   Hasn't signed in yet. Their first sign-in fills in their name and job title from Microsoft and makes the account active.
                 </p>
               )}
-              {draft.isSelf ? (
+              {draft.superAdmin ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
-                  This is you. You can't change your own role or status. Another Global Admin has to.
+                  {draft.isSelf ? "You're" : `${draft.name} is`} a Super Admin. Super Admins are set on the server, so nobody can change or remove one here.
                 </p>
-              ) : draft.wasGlobal && draft.canEditRole ? (
+              ) : draft.isSelf ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
-                  A Global Admin can't be deactivated. To remove {draft.name}, change their role first and save, then deactivate them.
+                  This is you. You can't change your own role or status.
                 </p>
               ) : !draft.canEditRole && (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
                   {draft.roleKey === "admin"
-                    ? `Only a Global Admin can change ${draft.name}'s role or status.`
+                    ? `Only a Super Admin can change ${draft.name}'s role or status.`
                     : `${draft.name} also works at a site you don't manage, so only an Admin can change their role or status. You can still change which of your sites they're on.`}
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Role" hint={pick === GLOBAL ? GLOBAL_DESCRIPTION : role?.description}>
-                  <Select value={pick} disabled={lockedRole}
-                    onChange={(e) => setDraft({ ...draft, roleKey: e.target.value === GLOBAL ? "admin" : e.target.value, globalAdmin: e.target.value === GLOBAL })}
+                <Field label="Role" hint={draft.superAdmin ? SUPER_DESCRIPTION : role?.description}>
+                  <Select value={draft.superAdmin ? SUPER : draft.roleKey} disabled={locked}
+                    onChange={(e) => setDraft({ ...draft, roleKey: e.target.value })}
                     options={roleOptions} />
                 </Field>
                 {draft.id && (
                   <Field label="Status">
-                    <Select value={draft.status} disabled={lockedRole || draft.wasGlobal} onChange={(e) => setDraft({ ...draft, status: e.target.value as UserStatus })}
+                    <Select value={draft.status} disabled={locked} onChange={(e) => setDraft({ ...draft, status: e.target.value as UserStatus })}
                       options={statusChoices(draft)} />
                   </Field>
                 )}
               </div>
               {draft.roleKey === "admin" ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
-                  {pick === GLOBAL ? "Global Admins" : "Admins"} can always edit the calendar and its categories.
+                  {draft.superAdmin ? "Super Admins" : "Admins"} can always edit the calendar and its categories.
                 </p>
               ) : everyone ? (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
@@ -335,7 +327,7 @@ export function AdminPeople() {
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can edit the calendar at their sites. Only an Admin can change that.</p>
               ) : null}
               {role?.allSites ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{pick === GLOBAL ? "Global Admin" : role.name} sees every site.</p>
+                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{draft.superAdmin ? "Super Admin" : role.name} sees every site.</p>
               ) : (
                 <Field
                   label={
@@ -365,8 +357,14 @@ export function AdminPeople() {
             </DialogBody>
           )}
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setDraft(null)}>Cancel</Button>
-            <Button onClick={save} disabled={!draft?.id && !looksLikeEmail(draft?.email ?? "")}>{draft?.id ? "Save" : "Add"}</Button>
+            {draft?.superAdmin ? (
+              <Button variant="secondary" onClick={() => setDraft(null)}>Close</Button>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={() => setDraft(null)}>Cancel</Button>
+                <Button onClick={save} disabled={!draft?.id && !looksLikeEmail(draft?.email ?? "")}>{draft?.id ? "Save" : "Add"}</Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
