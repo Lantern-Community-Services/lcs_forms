@@ -21,10 +21,13 @@ import { CALENDAR_SCOPES, graphTokensEnabled } from "../services/graphTokens.js"
  * a short-lived signed cookie that the callback consumes and clears.
  */
 
-// User.Read is delegated and user-consentable — it needs no admin consent. It
-// buys us the Graph /me lookup below, which is the only way to get a job title:
-// no OIDC claim carries one. The calendar scopes only when Outlook is on
-// (OUTLOOK_SYNC=false leaves them out, for an app registration without that consent).
+// User.Read buys us the Graph /me lookup below, which is the only way to get a
+// job title: no OIDC claim carries one. The calendar scopes only when Outlook is
+// on (OUTLOOK_SYNC=false leaves them out, for an app registration without that
+// consent). Lantern's tenant doesn't let people consent to apps themselves, so
+// EVERY scope here needs tenant-wide admin consent on the app registration —
+// openid, profile, email and User.Read included. One missing leaves the person
+// who granted it signing in fine and everyone else stuck at "Need admin approval".
 const scopes = () => ["openid", "profile", "email", "User.Read", ...(graphTokensEnabled() ? CALENDAR_SCOPES : [])];
 
 /** Graph is best-effort: a slow directory must never hold up a sign-in. */

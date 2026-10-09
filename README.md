@@ -431,7 +431,7 @@ denies or deactivates them, and when Microsoft stops honouring it; their next si
   re-check everything now with `POST /api/calendar/outlook/run`. One backend instance only.
 - **Restoring a cancelled day** after Outlook already cancelled it doesn't bring it back in Outlook.
 
-**Setting it up.** On the app registration sign-in uses: delegated Microsoft Graph
+**Setting it up.** On the app registration sign-in uses (which also needs openid, profile, email and User.Read admin-consented): delegated Microsoft Graph
 **Calendars.ReadWrite** and **offline_access**, with admin consent. Set `TOKEN_ENCRYPTION_KEY` (32
 random bytes, base64; Key Vault in Azure). That's all: it's on whenever Microsoft sign-in is
 configured, and each person's calendar starts working at their next Microsoft sign-in.
@@ -649,7 +649,7 @@ pipeline and infrastructure live in `infra/` and `.github/workflows/`.
 | **api settings** | `DATABASE_URL`, `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `MICROSOFT_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` (`https://<web host>/api/auth/microsoft/callback`), `APP_BASE_URL` and `CORS_ORIGIN` (`https://<web host>`), `TRUST_PROXY=2`, `AZURE_STORAGE_ACCOUNT_URL`, `SUPER_ADMINS` (old name `GLOBAL_ADMINS` still read), optional `MAIL_FROM`, `FORM_BACKUP_REPO` / `FORM_BACKUP_TOKEN`, `APP_VERSION` (the commit, shown in Admin → Dev log at each server start) and the dev log's `DEVLOG_SLOW_REQUEST_MS` / `DEVLOG_SLOW_QUERY_MS` / `DEVLOG_RETENTION_DAYS` (2000 / 500 / 30; `DEVLOG=false` turns it off). Never `DEV_AUTH`, `ALLOW_DEMO_DATA` or `SEED_DEMO_QUEUE`. |
 | **Proxies** | The browser reaches the api through the web app's `/api` proxy, so there are two App Service front ends in the way: `TRUST_PROXY=2` makes the rate limiters see the browser's address rather than the web app's. (1 if browsers call the api app directly; then lock the api app to the web app.) |
 | **Files** | `AZURE_STORAGE_ACCOUNT_URL` (`https://<account>.blob.core.windows.net`) and the api app's managed identity with **Storage Blob Data Contributor**; container `form-files` (`AZURE_STORAGE_CONTAINER`), private. A user-assigned identity also needs `AZURE_CLIENT_ID`. |
-| **Entra app** | Redirect URI `https://<web host>/api/auth/microsoft/callback`; delegated User.Read, Calendars.ReadWrite, offline_access with admin consent. Mail.Send (application) only if `MAIL_FROM` is used. |
+| **Entra app** | Redirect URI `https://<web host>/api/auth/microsoft/callback`; delegated openid, profile, email, User.Read, Calendars.ReadWrite and offline_access, all with **tenant-wide admin consent** (Lantern's tenant doesn't allow user consent, so a scope consented only by the person who set it up blocks everyone else at "Need admin approval"). Mail.Send (application) only if `MAIL_FROM` is used. |
 | **Instances** | **One api instance.** The Outlook queue, the form backup, code forms' scheduled actions and the cross-form job worker are timers in the process; a second instance would run them twice. The web app can scale out. |
 
 ---
