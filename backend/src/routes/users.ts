@@ -173,6 +173,18 @@ usersRouter.patch(
       (before.roleKey === "admin" && ((body.roleKey !== undefined && body.roleKey !== before.roleKey) || (body.status !== undefined && body.status !== before.status))) ||
       globalChange;
     if (touchesAdmin && !managesAdmins(req)) throw forbidden(GLOBAL_ONLY);
+    const roleChange = (body.roleKey !== undefined && body.roleKey !== before.roleKey) || globalChange;
+    const statusChange = body.status !== undefined && body.status !== before.status;
+    // Nobody changes their own role or status: that's someone else's call, and
+    // it means nobody locks themselves out by accident.
+    if (before.id === req.user!.userId && (roleChange || statusChange)) {
+      throw forbidden("You can't change your own role or status. Ask another Global Admin.");
+    }
+    // A Global Admin can't be deactivated or denied outright. Another Global
+    // Admin demotes them first, and then deactivates them as a separate step.
+    if (before.globalAdmin && statusChange) {
+      throw badRequest("A Global Admin can't be deactivated. Change their role first and save, then deactivate them.");
+    }
     const calendarChange = body.calendarEditor !== undefined && body.calendarEditor !== before.calendarEditor;
     if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
 
@@ -191,9 +203,10 @@ usersRouter.patch(
       if (body.siteIds) body.siteIds = [...theirs.filter((id) => !mine.includes(id)), ...body.siteIds];
     }
 
-    // Lockout guard: the last active admin cannot demote or disable themselves.
+    // Lockout guard: the last active admin can't be demoted or disabled. Only an
+    // active Admin counts: a pending one changing role takes nobody's access away.
     const losingAdmin =
-      before.roleKey === "admin" &&
+      before.roleKey === "admin" && before.status === "active" &&
       ((body.roleKey && body.roleKey !== "admin") || (body.status && body.status !== "active"));
     if (losingAdmin) {
       const admins = await prisma.user.count({ where: { roleKey: "admin", status: "active" } });
