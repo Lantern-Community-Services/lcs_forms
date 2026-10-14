@@ -16,6 +16,8 @@ name: cd-forms
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -63,6 +65,7 @@ jobs:
 
   deploy-dev:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -104,6 +107,7 @@ jobs:
 
   deploy-prod:
     needs: [build, deploy-dev]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: prod           # required reviewers configured on the environment gate this job
     steps:
