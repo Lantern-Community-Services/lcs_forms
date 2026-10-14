@@ -16,6 +16,11 @@ import { fileStorageLabel } from "./services/fileStore.js";
 // First, so what the startup work below logs is in the dev log too.
 startDevlog();
 
+// A background task's promise that fails with nobody listening (a timer's
+// database call while Azure SQL is waking up) is logged, not fatal: Node would
+// otherwise stop the whole API and App Service would restart it in a loop.
+process.on("unhandledRejection", (err) => console.error("[server] unhandled rejection:", err));
+
 // The catalog starts empty and forms are added as they're rebuilt here; a
 // database seeded with the old WordPress links has them taken out, once.
 // Logged, never fatal.
@@ -45,7 +50,7 @@ syncSuperAdmins()
   .then((r) => r && (r.promoted || r.demoted) && console.log(`  Super Admins: ${r.promoted} made, ${r.demoted} removed (SUPER_ADMINS).`))
   .catch((err) => console.error("[users] could not apply SUPER_ADMINS:", err));
 
-createApp().listen(env.port, env.host, () => {
+const server = createApp().listen(env.port, env.host, () => {
   console.log(`\n  Lantern Forms backend listening on http://${env.host}:${env.port}`);
   console.log(`  Microsoft sign-in: ${ssoConfigured ? "configured" : "NOT configured (set MICROSOFT_* in .env.local)"}`);
   console.log(`  Uploaded files: ${fileStorageLabel()}`);
@@ -53,3 +58,10 @@ createApp().listen(env.port, env.host, () => {
   console.log(`  Public API: http://localhost:${env.port}/api/v1  (API key required)\n`);
   noteBoot();
 });
+
+// Keep idle connections open longer than the proxies in front of this one (the
+// web app's /api proxy, App Service's front end) keep theirs: Node's default of
+// 5 s let a proxy reuse a connection just as it closed, and the request failed
+// with "socket hang up" / ECONNRESET.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;

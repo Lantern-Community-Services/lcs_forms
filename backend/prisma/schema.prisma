@@ -567,7 +567,11 @@ model FormEntry {
   @@index([formId, status])
   @@index([formId, occurredAt])
   @@index([formId, tenantId, occurredAt])
+  /// A site's entries over some days (code forms' per-site lookups: Hot Foods' Record screen).
+  @@index([formId, siteId, occurredAt])
   @@index([siteId])
+  /// Someone's own entries, newest first (the Forms home, "mine" lists, undo).
+  @@index([createdById, createdAt])
 }
 
 /// A note on an entry — typed by a person, or written by the system

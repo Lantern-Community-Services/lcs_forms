@@ -16,7 +16,7 @@ import { Worker } from "node:worker_threads";
 
 const WORKER_SOURCE = String.raw`
 const { parentPort } = require("node:worker_threads");
-const { newQuickJSWASMModule, shouldInterruptAfterDeadline } = require("quickjs-emscripten");
+const { newQuickJSWASMModule } = require("quickjs-emscripten");
 const modP = newQuickJSWASMModule();
 const decoder = new TextDecoder();
 
@@ -30,15 +30,24 @@ parentPort.on("message", async (job) => {
     const rt = mod.newRuntime();
     rt.setMemoryLimit(job.memoryBytes);
     rt.setMaxStackSize(1024 * 1024);
-    rt.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + job.timeoutMs));
+    // The deadline is for the code itself: time spent waiting on the database moves it on, so a slow
+    // query doesn't use up a report's budget. Waits have their own total (job.hostBudgetMs).
+    let deadline = Date.now() + job.timeoutMs;
+    let hostSpent = 0;
+    rt.setInterruptHandler(() => Date.now() > deadline);
     const vm = rt.newContext();
     try {
       const hostCall = vm.newFunction("__hostCall", (nameH, argsH) => {
         const name = vm.getString(nameH);
         const args = vm.getString(argsH);
+        if (hostSpent >= job.hostBudgetMs) return vm.newString(JSON.stringify({ error: "The database took too long to answer." }));
         Atomics.store(ctrl, 0, 0);
+        const started = Date.now();
         parentPort.postMessage({ type: "host", name, args });
-        const waited = Atomics.wait(ctrl, 0, 0, job.hostTimeoutMs);
+        const waited = Atomics.wait(ctrl, 0, 0, Math.min(job.hostTimeoutMs, job.hostBudgetMs - hostSpent));
+        const took = Date.now() - started;
+        hostSpent += took;
+        deadline += took;
         if (waited === "timed-out") return vm.newString(JSON.stringify({ error: "The database took too long to answer." }));
         const len = Atomics.load(ctrl, 1);
         return vm.newString(decoder.decode(bytes.slice(0, len)));
@@ -181,15 +190,24 @@ export type HostHandler = (name: string, args: any) => Promise<unknown>;
 interface Slot {
   worker: Worker;
   busy: boolean;
+  /**
+   * Where host-call replies are written, kept with the worker: it runs one call
+   * at a time. (A fresh 16 MB buffer per call — every save, every action — was
+   * freed only when V8 got round to it, and on a one-core App Service plan the
+   * API ran out of memory between collections.)
+   */
+  sab: SharedArrayBuffer;
 }
 
 const POOL_SIZE = 2;
 const pool: Slot[] = [];
 const waiting: ((s: Slot) => void)[] = [];
 const REPLY_BYTES = 16 * 1024 * 1024;
+/** All of one run's database calls together, on top of its own time budget. */
+const HOST_BUDGET_MS = 20_000;
 
 function spawn(): Slot {
-  const slot: Slot = { worker: new Worker(WORKER_SOURCE, { eval: true }), busy: false };
+  const slot: Slot = { worker: new Worker(WORKER_SOURCE, { eval: true }), busy: false, sab: new SharedArrayBuffer(8 + REPLY_BYTES) };
   slot.worker.unref();
   slot.worker.on("error", (err) => console.error("[apps] sandbox worker failed:", err));
   return slot;
@@ -231,7 +249,7 @@ function replace(slot: Slot) {
 export async function runInSandbox(opts: { bundle: string; call: string; onHost: HostHandler; timeoutMs?: number }): Promise<SandboxResult> {
   const timeoutMs = opts.timeoutMs ?? 3000;
   let slot = await acquire();
-  const sab = new SharedArrayBuffer(8 + REPLY_BYTES);
+  const sab = slot.sab;
   const ctrl = new Int32Array(sab, 0, 2);
   const bytes = new Uint8Array(sab, 8);
   const encoder = new TextEncoder();
@@ -240,7 +258,7 @@ export async function runInSandbox(opts: { bundle: string; call: string; onHost:
     let finished = false;
     // Wall-clock backstop: the interpreter's own deadline stops loops in guest
     // code, but not a guest stuck waiting on a host call that never returns.
-    const killer = setTimeout(() => finish({ ok: false, error: "The server code ran too long and was stopped.", logs: [] }, true), timeoutMs + 5000);
+    const killer = setTimeout(() => finish({ ok: false, error: "The server code ran too long and was stopped.", logs: [] }, true), timeoutMs + HOST_BUDGET_MS + 5000);
 
     const finish = (r: SandboxResult, broken = false) => {
       if (finished) return;
@@ -278,6 +296,7 @@ export async function runInSandbox(opts: { bundle: string; call: string; onHost:
       call: opts.call,
       timeoutMs,
       hostTimeoutMs: 10_000,
+      hostBudgetMs: HOST_BUDGET_MS,
       memoryBytes: 64 * 1024 * 1024,
     });
   });

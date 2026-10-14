@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { BuiltForm, FormEntry, Prisma, Site, Tenant } from "@prisma/client";
+import { Prisma, type BuiltForm, type FormEntry, type Site, type Tenant } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { fileBytes } from "../services/fileStore.js";
 import { HttpError, badRequest, forbidden, notFound } from "../http.js";
@@ -60,6 +60,31 @@ export async function loadApp(form: BuiltForm, draft: boolean): Promise<LoadedAp
   }
   const live = JSON.parse(form.liveSchema) as { files: Files; build: Build };
   return { form, files: live.files, manifest: readManifest(live.files).manifest!, build: live.build, draft: false };
+}
+
+/** Every BuiltForm column but the two big documents (the sources and the build). */
+const FORM_LIGHT = {
+  id: true, kind: true, slug: true, title: true, status: true, liveVersion: true, revision: true, catalogLinkId: true, homeAction: true,
+  createdById: true, createdByName: true, updatedByName: true, publishedAt: true, createdAt: true, updatedAt: true,
+} satisfies Prisma.BuiltFormSelect;
+
+const liveApps = new Map<string, { stamp: number; app: LoadedApp }>();
+
+/**
+ * The published version of a code form, parsed once per change rather than on
+ * every request: each page call, save and action reads it, and the build is
+ * hundreds of KB. Keyed on updatedAt, which every publish, draft save and
+ * status change moves, so another server's change is picked up on the next call.
+ */
+export async function loadLiveApp(slugOrId: string): Promise<LoadedApp> {
+  const light = await prisma.builtForm.findFirst({ where: { kind: "code", OR: [{ slug: slugOrId }, { id: slugOrId }] }, select: FORM_LIGHT });
+  if (!light) throw notFound("No such code form.");
+  const stamp = light.updatedAt.getTime();
+  const hit = liveApps.get(light.id);
+  if (hit && hit.stamp === stamp) return hit.app;
+  const app = await loadApp(await findCodeForm(light.id), false);
+  liveApps.set(light.id, { stamp, app });
+  return app;
 }
 
 // ── Access ───────────────────────────────────────────────────────────────
@@ -125,6 +150,72 @@ export function entryOut(e: FormEntry, sites: Sites, fields?: string[]) {
   };
 }
 
+/** Every FormEntry column but `data`. */
+const ENTRY_META = {
+  id: true, formId: true, formVersion: true, siteId: true, source: true, status: true, occurredAt: true, tenantId: true, overrideReason: true,
+  clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, voidedAt: true, voidedByName: true, voidReason: true,
+  starred: true, updatedByName: true, createdAt: true, updatedAt: true,
+} satisfies Prisma.FormEntrySelect;
+
+/** An entry's data up to this size (bytes, as stored: 2 a character) is sent whole and trimmed here. */
+const SMALL_ENTRY_BYTES = 16_000;
+
+const bigEntryCheck = new Map<string, { at: number; big: boolean }>();
+
+/** Does this form have any entry over SMALL_ENTRY_BYTES? Asked at most every 10 minutes per form. */
+async function hasBigEntries(formId: string): Promise<boolean> {
+  const hit = bigEntryCheck.get(formId);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.big;
+  const rows = await prisma.$queryRaw<unknown[]>`SELECT TOP 1 1 AS x FROM FormEntry WHERE formId = ${formId} AND DATALENGTH(data) > ${SMALL_ENTRY_BYTES}`;
+  bigEntryCheck.set(formId, { at: Date.now(), big: rows.length > 0 });
+  return rows.length > 0;
+}
+
+/** OPENJSON's [type]: how each projected value comes back as text. */
+function jsonValue(v: string | undefined, t: number): unknown {
+  if (t === 0 || v === undefined) return null;
+  if (t === 1) return v;
+  if (t === 2) return Number(v);
+  if (t === 3) return v === "true";
+  return JSON.parse(v);
+}
+
+/**
+ * Entries with only some top-level `data` fields, picked out by the database
+ * (OPENJSON) so the rest of each entry — a signature, a photo, a long list —
+ * never leaves it. Same rows and order as findMany(args); `data` holds just
+ * `keys` (none for []).
+ */
+async function findEntriesWith(formId: string, args: { where: Prisma.FormEntryWhereInput; orderBy: Prisma.FormEntryOrderByWithRelationInput; take: number; skip?: number }, keys: string[]): Promise<FormEntry[]> {
+  // A form whose entries are all small: one ordinary query, trimmed here (two passes would cost the database more).
+  if (!(await hasBigEntries(formId))) return prisma.formEntry.findMany(args);
+  const rows = await prisma.formEntry.findMany({ ...args, select: ENTRY_META });
+  const wanted = [...new Set(keys)].slice(0, 100);
+  const data = new Map<string, string>();
+  if (wanted.length) {
+    for (let i = 0; i < rows.length; i += 1000) {
+      const ids = rows.slice(i, i + 1000).map((r) => r.id);
+      // Small entries come back whole (cheaper than parsing them in the database); only big ones are picked apart there.
+      const got = await prisma.$queryRaw<{ id: string; d: string | null; p: string | null }[]>`
+        SELECT id,
+          CASE WHEN DATALENGTH(data) <= ${SMALL_ENTRY_BYTES} THEN data END AS d,
+          CASE WHEN DATALENGTH(data) > ${SMALL_ENTRY_BYTES} AND ISJSON(data) = 1
+            THEN (SELECT [key] AS k, [value] AS v, [type] AS t FROM OPENJSON(data) WHERE [key] IN (${Prisma.join(wanted)}) FOR JSON PATH) END AS p
+        FROM FormEntry WHERE id IN (${Prisma.join(ids)})`;
+      for (const g of got) {
+        if (g.d !== null) {
+          data.set(g.id, g.d);
+          continue;
+        }
+        const obj: Record<string, unknown> = {};
+        for (const { k, v, t } of JSON.parse(g.p ?? "[]") as { k: string; v?: string; t: number }[]) if (wanted.includes(k)) obj[k] = jsonValue(v, t);
+        data.set(g.id, JSON.stringify(obj));
+      }
+    }
+  }
+  return rows.map((r) => ({ ...r, data: data.get(r.id) ?? "{}" }));
+}
+
 function dateWhere(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
   if (!from && !to) return undefined;
   const w: Prisma.DateTimeFilter = {};
@@ -174,8 +265,9 @@ export async function listEntries(app: LoadedApp, user: CurrentUser, q: ClientEn
   if (q.search?.trim()) and.push({ OR: [{ data: { contains: q.search.trim() } }, { createdByName: { contains: q.search.trim() } }] });
   const where = { AND: and };
   const take = Math.min(2000, Math.max(1, Number(q.limit) || 100));
+  const page = { where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" } as const, take, skip: Math.max(0, Number(q.offset) || 0) };
   const [rows, total, sites] = await Promise.all([
-    prisma.formEntry.findMany({ where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" }, take, skip: Math.max(0, Number(q.offset) || 0) }),
+    q.fields ? findEntriesWith(app.form.id, page, q.fields) : prisma.formEntry.findMany(page),
     prisma.formEntry.count({ where }),
     siteMap(),
   ]);
@@ -455,8 +547,9 @@ interface ServerQuery {
   limit?: number;
 }
 
+/** Only these top-level fields; [] = none, leaving it out = all. */
 function pick(data: Record<string, unknown>, fields?: string[]) {
-  if (!fields?.length) return data;
+  if (!fields) return data;
   return Object.fromEntries(fields.filter((f) => f in data).map((f) => [f, data[f]]));
 }
 
@@ -524,7 +617,9 @@ async function queryForServer(formId: string, q: ServerQuery, includePreview: bo
   if (mode === "count" && !filters.length) return prisma.formEntry.count({ where });
   // Up to 20,000 when the caller asks only for some fields (the reply stays small); 5,000 otherwise.
   const limit = Math.min(q.fields ? 20_000 : 5000, Math.max(1, Number(q.limit) || 500));
-  const rows = await prisma.formEntry.findMany({ where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" }, take: filters.length ? 20_000 : limit });
+  const page = { where, orderBy: { occurredAt: q.order === "oldest" ? "asc" : "desc" } as const, take: filters.length ? 20_000 : limit };
+  // With `fields`, the database picks them out (plus what `where` compares), so big values never load.
+  const rows = q.fields ? await findEntriesWith(formId, page, [...q.fields, ...filters.map(([k]) => k)]) : await prisma.formEntry.findMany(page);
   const hits = rows.filter(matches);
   return mode === "count" ? hits.length : hits.slice(0, limit).map((e) => serverEntry(e, q.fields));
 }
