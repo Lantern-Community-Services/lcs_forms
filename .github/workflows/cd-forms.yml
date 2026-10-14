@@ -1,0 +1,144 @@
+# Lantern Forms – build and deploy
+#
+# push to main  -> build both images, deploy to dev, smoke test
+#               -> wait for approval on the "prod" environment, then deploy the same images to prod
+#
+# Auth is OIDC against the user-assigned managed identity id-forms-deploy (no stored secrets).
+# Per-environment values live in GitHub environment *variables* (Settings -> Environments):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, RG, BACKEND_URL, WEB_HOST
+#
+# Migrations: the api image runs `prisma migrate deploy` on startup when RUN_MIGRATIONS=true.
+# The deploy job sets that flag, deploys, waits for /api/health, then clears the flag so a
+# container restart never re-runs migrations unexpectedly.
+
+name: cd-forms
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR: acrlcsforms.azurecr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: dev            # build once with dev's deploy identity; images are env-agnostic except BACKEND_URL
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - run: az acr login --name acrlcsforms
+
+      - name: Build and push api image
+        run: |
+          docker build -t $ACR/lcs-forms-api:${{ steps.meta.outputs.tag }} backend
+          docker push $ACR/lcs-forms-api:${{ steps.meta.outputs.tag }}
+
+      # BACKEND_URL is baked into the frontend at build time, so one web image per environment.
+      # If Collin moves BACKEND_URL to a runtime rewrite, drop the -prod build and reuse one tag.
+      - name: Build and push web images (dev + prod)
+        run: |
+          docker build --build-arg BACKEND_URL=${{ vars.BACKEND_URL }} \
+            -t $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-dev frontend
+          docker build --build-arg BACKEND_URL=https://app-forms-api-prod.azurewebsites.net \
+            -t $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-prod frontend
+          docker push $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-dev
+          docker push $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-prod
+
+  deploy-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Enable one-shot migrations on api
+        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-dev --settings RUN_MIGRATIONS=true -o none
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-forms-api-dev
+          images: ${{ env.ACR }}/lcs-forms-api:${{ needs.build.outputs.tag }}
+
+      - name: Wait for api health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null https://${{ vars.WEB_HOST }}/api/health 2>/dev/null \
+               || az webapp show -g ${{ vars.RG }} -n app-forms-api-dev --query state -o tsv | grep -q Running; then
+              sleep 20; break; fi
+            sleep 10
+          done
+
+      - name: Disable one-shot migrations
+        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-dev --settings RUN_MIGRATIONS=false -o none
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-forms-web-dev
+          images: ${{ env.ACR }}/lcs-forms-web:${{ needs.build.outputs.tag }}-dev
+
+      - name: Smoke test
+        run: |
+          sleep 30
+          curl -fsS https://${{ vars.WEB_HOST }}/api/health
+
+  deploy-prod:
+    needs: [build, deploy-dev]
+    runs-on: ubuntu-latest
+    environment: prod           # required reviewers configured on the environment gate this job
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Enable one-shot migrations on api
+        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-prod --settings RUN_MIGRATIONS=true -o none
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-forms-api-prod
+          images: ${{ env.ACR }}/lcs-forms-api:${{ needs.build.outputs.tag }}
+
+      - name: Wait for api health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null https://${{ vars.WEB_HOST }}/api/health 2>/dev/null \
+               || az webapp show -g ${{ vars.RG }} -n app-forms-api-prod --query state -o tsv | grep -q Running; then
+              sleep 20; break; fi
+            sleep 10
+          done
+
+      - name: Disable one-shot migrations
+        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-prod --settings RUN_MIGRATIONS=false -o none
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-forms-web-prod
+          images: ${{ env.ACR }}/lcs-forms-web:${{ needs.build.outputs.tag }}-prod
+
+      - name: Smoke test
+        run: |
+          sleep 30
+          curl -fsS https://${{ vars.WEB_HOST }}/api/health
