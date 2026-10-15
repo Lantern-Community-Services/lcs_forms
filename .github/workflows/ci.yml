@@ -1,0 +1,57 @@
+# Lantern Forms – checks on every pull request into main
+#
+# The "build" job is the check main's ruleset (protect-main) requires before a
+# merge. It proves the change builds — type checks, the shared form engine in
+# step, both Docker images — without logging in to Azure or pushing anything.
+# Deploying stays in cd-forms.yml, after the merge.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Backend – install and type-check
+        working-directory: backend
+        run: |
+          npm ci
+          npx prisma generate
+          npm run typecheck
+
+      - name: Shared form engine and recurrence copies match
+        working-directory: backend
+        run: npm run check:engine
+
+      - name: Frontend – install and type-check
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+
+      - name: Build the api image
+        run: docker build -t lcs-forms-api:ci backend
+
+      - name: Build the web image
+        run: docker build --build-arg BACKEND_URL=https://app-forms-api-dev.azurewebsites.net -t lcs-forms-web:ci frontend
