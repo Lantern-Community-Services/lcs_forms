@@ -36,6 +36,26 @@ for (const level of ["log", "info", "warn", "error"] as const) {
 window.addEventListener("error", (e) => post({ t: "crash", message: e.message, stack: e.error?.stack }));
 window.addEventListener("unhandledrejection", (e) => post({ t: "crash", message: String(e.reason?.message ?? e.reason), stack: e.reason?.stack }));
 
+// The on-screen keyboard: the host fits the app — and so this frame — into the space above
+// it, so the frame gets shorter just after a field takes focus, and that field can end up
+// below the new bottom edge. Once the frame has settled, bring the field back into view
+// (centred, so its label shows too) whenever it isn't fully visible.
+const TEXT_FIELD = "input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=range]):not([type=file]):not([type=color]), textarea, [contenteditable=''], [contenteditable='true']";
+let keepTimer = 0;
+function keepFocusedFieldInView(delay: number) {
+  window.clearTimeout(keepTimer);
+  keepTimer = window.setTimeout(() => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || !el.matches(TEXT_FIELD)) return;
+    const r = el.getBoundingClientRect();
+    if (r.top >= 12 && r.bottom <= window.innerHeight - 12) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, delay);
+}
+window.addEventListener("resize", () => keepFocusedFieldInView(80));
+// The keyboard takes a moment to slide up; a resize follows if the frame changes.
+document.addEventListener("focusin", () => keepFocusedFieldInView(400));
+
 window.addEventListener("message", (e) => {
   if (e.source !== parent || !e.data || e.data.__lcsHost !== 1) return;
   const d = e.data;
