@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Plus, Send, Trash2 } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
@@ -53,6 +53,18 @@ export const API_SCOPE_OPTIONS = [
   { scope: "entries:read", label: "Read built forms' entries" },
   { scope: "entries:write", label: "Submit entries to built forms" },
   { scope: "notifications:send", label: "Send notifications to people (the bell and email)" },
+  // Delegated (backend/src/ops/principal.ts): the key acts as you, never with more than you have.
+  { scope: "roster:write", label: "Add and edit residents, mark them still here, take attendance", delegated: true },
+  { scope: "roster:archive", label: "Remove residents from the roster and restore them", delegated: true },
+  { scope: "roster:import", label: "Import a tenant list (CSV)", delegated: true },
+  { scope: "audit:read", label: "Read the audit log", delegated: true },
+  { scope: "sites:manage", label: "Manage sites and their roster rules", delegated: true },
+  { scope: "people:manage", label: "People & roles: invite people, change roles, sites and status (never Admins)", delegated: true },
+  { scope: "calendar:read", label: "Read the calendar", delegated: true },
+  { scope: "calendar:write", label: "Add, change and remove calendar events", delegated: true },
+  { scope: "settings:manage", label: "Change org settings", delegated: true },
+  { scope: "entries:manage", label: "Void, restore, edit and delete form entries", delegated: true },
+  { scope: "devlog:read", label: "Read the dev log", delegated: true },
 ];
 
 export function AdminApiKeys() {
@@ -121,11 +133,18 @@ export function AdminApiKeys() {
             <DialogBody className="grid gap-3">
               <Field label="Name"><Input value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="forms.lanterncommunity.org" /></Field>
               <Field label="Can">
-                {API_SCOPE_OPTIONS.map((o) => (
-                  <label key={o.scope} className="mt-1 flex items-start gap-2 text-[13.5px] text-ink first:mt-0">
-                    <input type="checkbox" className="mt-1" checked={creating.scopes.includes(o.scope)} onChange={(e) => setCreating({ ...creating, scopes: e.target.checked ? [...creating.scopes, o.scope] : creating.scopes.filter((x) => x !== o.scope) })} />
-                    <span>{o.label} (<code>{o.scope}</code>)</span>
-                  </label>
+                {API_SCOPE_OPTIONS.map((o, i) => (
+                  <Fragment key={o.scope}>
+                    {o.delegated && !API_SCOPE_OPTIONS[i - 1]?.delegated && (
+                      <p className="mt-3 text-micro text-muted">
+                        These act as you: the key can do only what you can do in the site, at your sites, and stops when you lose access. Changes are recorded under your name and the key's. A key limited to a site can't use the org-wide ones (settings, import, dev log).
+                      </p>
+                    )}
+                    <label className="mt-1 flex items-start gap-2 text-[13.5px] text-ink first:mt-0">
+                      <input type="checkbox" className="mt-1" checked={creating.scopes.includes(o.scope)} onChange={(e) => setCreating({ ...creating, scopes: e.target.checked ? [...creating.scopes, o.scope] : creating.scopes.filter((x) => x !== o.scope) })} />
+                      <span>{o.label} (<code>{o.scope}</code>)</span>
+                    </label>
+                  </Fragment>
                 ))}
               </Field>
               <Field label="Limit to site" hint="Optional. A site-limited key can't see other sites at all.">

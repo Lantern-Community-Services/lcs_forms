@@ -19,7 +19,8 @@
     "import:tenants": "tsx scripts/import-tenants.ts",
     "sync:engine": "node scripts/sync-engine.mjs",
     "check:engine": "node scripts/sync-engine.mjs --check",
-    "forms": "tsx scripts/forms.ts"
+    "forms": "tsx scripts/forms.ts",
+    "smoke:ops": "tsx scripts/ops-smoke.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
