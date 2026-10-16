@@ -22,6 +22,8 @@ ACR="acrlcsforms"
 LOG="log-forms-shared"
 DEPLOY_ID="id-forms-deploy"
 REPO="Lantern-Community-Services/lcs_forms"
+# GitHub presents the OIDC subject with numeric org/repo IDs for this organization; both forms are registered.
+REPO_WITH_IDS="Lantern-Community-Services@336198487/lcs_forms@1388144506"
 OWNER_TAG="owner=spena@lanterncommunity.org"
 TAGS_COMMON="app=lantern-forms $OWNER_TAG cost-center=IT"
 
@@ -73,6 +75,9 @@ phase_shared() {
     az identity federated-credential create --identity-name $DEPLOY_ID -g $RG_SHARED \
       -n "gh-lcs_forms-$E" --issuer https://token.actions.githubusercontent.com \
       --subject "repo:$REPO:environment:$E" --audiences api://AzureADTokenExchange -o none || true
+    az identity federated-credential create --identity-name $DEPLOY_ID -g $RG_SHARED \
+      -n "gh-lcs_forms-$E-id" --issuer https://token.actions.githubusercontent.com \
+      --subject "repo:$REPO_WITH_IDS:environment:$E" --audiences api://AzureADTokenExchange -o none || true
   done
   ID_PRINCIPAL=$(az identity show -n $DEPLOY_ID -g $RG_SHARED --query principalId -o tsv)
 
