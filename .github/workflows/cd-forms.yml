@@ -16,6 +16,8 @@ name: cd-forms
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -63,6 +65,7 @@ jobs:
 
   deploy-dev:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -80,14 +83,15 @@ jobs:
           app-name: app-forms-api-dev
           images: ${{ env.ACR }}/lcs-forms-api:${{ needs.build.outputs.tag }}
 
-      - name: Wait for api health
+      - name: Wait for api to finish migrations and start (up to 5 min)
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null https://${{ vars.WEB_HOST }}/api/health 2>/dev/null \
-               || az webapp show -g ${{ vars.RG }} -n app-forms-api-dev --query state -o tsv | grep -q Running; then
-              sleep 20; break; fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ vars.WEB_HOST }}/api/health || true)
+            echo "attempt $i: $code"
+            [ "$code" = "200" ] && exit 0
             sleep 10
           done
+          echo "api did not become healthy in time; continuing so the flag is cleared, smoke test will decide"
 
       - name: Disable one-shot migrations
         run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-dev --settings RUN_MIGRATIONS=false -o none
@@ -97,13 +101,17 @@ jobs:
           app-name: app-forms-web-dev
           images: ${{ env.ACR }}/lcs-forms-web:${{ needs.build.outputs.tag }}-dev
 
-      - name: Smoke test
+      - name: Smoke test (retries for 3 min)
         run: |
-          sleep 30
-          curl -fsS https://${{ vars.WEB_HOST }}/api/health
+          for i in $(seq 1 18); do
+            if curl -fsS https://${{ vars.WEB_HOST }}/api/health; then echo; echo "healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "smoke test failed"; exit 1
 
   deploy-prod:
     needs: [build, deploy-dev]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: prod           # required reviewers configured on the environment gate this job
     steps:
@@ -121,14 +129,15 @@ jobs:
           app-name: app-forms-api-prod
           images: ${{ env.ACR }}/lcs-forms-api:${{ needs.build.outputs.tag }}
 
-      - name: Wait for api health
+      - name: Wait for api to finish migrations and start (up to 5 min)
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null https://${{ vars.WEB_HOST }}/api/health 2>/dev/null \
-               || az webapp show -g ${{ vars.RG }} -n app-forms-api-prod --query state -o tsv | grep -q Running; then
-              sleep 20; break; fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ vars.WEB_HOST }}/api/health || true)
+            echo "attempt $i: $code"
+            [ "$code" = "200" ] && exit 0
             sleep 10
           done
+          echo "api did not become healthy in time; continuing so the flag is cleared, smoke test will decide"
 
       - name: Disable one-shot migrations
         run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-prod --settings RUN_MIGRATIONS=false -o none
@@ -138,7 +147,10 @@ jobs:
           app-name: app-forms-web-prod
           images: ${{ env.ACR }}/lcs-forms-web:${{ needs.build.outputs.tag }}-prod
 
-      - name: Smoke test
+      - name: Smoke test (retries for 3 min)
         run: |
-          sleep 30
-          curl -fsS https://${{ vars.WEB_HOST }}/api/health
+          for i in $(seq 1 18); do
+            if curl -fsS https://${{ vars.WEB_HOST }}/api/health; then echo; echo "healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "smoke test failed"; exit 1
