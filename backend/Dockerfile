@@ -60,4 +60,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4200)+'/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "dist/src/index.js"]
+CMD ["node", "--import", "./dist/src/telemetry.js", "dist/src/index.js"]
