@@ -8,6 +8,8 @@ import { displayName, publicTenant, recordActivity } from "../services/roster.js
 import { emitEvent } from "../services/webhooks.js";
 import { parseName } from "../services/tenantImport.js";
 import { apiNotifyBody, sendFromKey } from "../services/notifyApi.js";
+import { OPS, describeKey } from "../ops/index.js";
+import { mountOps } from "../ops/registry.js";
 
 /**
  * Public, versioned API for WordPress, Power Automate and anything else.
@@ -21,6 +23,13 @@ import { apiNotifyBody, sendFromKey } from "../services/notifyApi.js";
  *   GET  /api/v1/tenants/:id
  *   POST /api/v1/activity                      "this person was on a form"
  *   POST /api/v1/notifications                 tell people something (bell + email)
+ *   GET  /api/v1/me                            this key: scopes, site, what it can do now
+ *
+ * Plus every operation in ops/ (forms, entries, residents, attendance, sites,
+ * people, calendar, settings, audit and dev log), mounted at the end of this
+ * file: the same operations the MCP server offers as tools, with the same
+ * names, inputs and checks. GET inputs come from the query string; the rest
+ * from the JSON body; :params from the path.
  */
 export const publicApiRouter = Router();
 
@@ -207,3 +216,14 @@ publicApiRouter.post(
     }
   })
 );
+
+/** This key: name, scopes, site, who it acts for, and what each delegated scope allows now. */
+publicApiRouter.get(
+  "/me",
+  asyncHandler(async (req, res) => {
+    if (!req.apiKey) throw new HttpError(401, "A valid API key is required (Authorization: Bearer lrk_…).");
+    res.json(await describeKey(req.apiKey));
+  })
+);
+
+mountOps(publicApiRouter, OPS);

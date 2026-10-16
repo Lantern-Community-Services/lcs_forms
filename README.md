@@ -173,6 +173,53 @@ Code setup. Tools: `get_reference` (the full format guide), `create_form`, `patc
 someone publishes. With `notifications:send` it can also notify people (`send_notification`;
 `notification_reference` explains how forms send their own, see Notifications).
 
+### The rest of the site over MCP and `/api/v1` (delegated keys)
+
+Every operation in `backend/src/ops/` is both an MCP tool and a REST route under `/api/v1`, with the
+same name, input and checks (`whoami` / `GET /api/v1/me` lists what a key can do right now). GET
+takes its input from the query string, the others from a JSON body.
+
+The original scopes act as the key itself. The **delegated** scopes act on behalf of the admin who
+made the key, and never with more than that person can do in the site *now*: permissions are the
+creator's current permissions ∩ what the scope grants, sites are the creator's sites ∩ the key's
+site. Deactivate or demote the creator and their keys lose it on the next call. Each operation runs
+the site's own route handler in-process (`ops/callRoute.ts`), so permission and site checks,
+optimistic locks, audit events and webhooks are exactly the screen's. Audit rows name the creator
+and the key: `Ada Example (API key: Power Automate)`.
+
+| Scope | Creator needs | Operations |
+|---|---|---|
+| `roster:read` | roster.view | `list_residents`, `get_resident`, `resident_review_queue`, `roster_dashboard`, `list_attendance`, `get_attendance` |
+| `roster:write` | roster.edit | `add_resident`, `update_resident` (needs the `version` it read), `keep_resident`, `take_attendance` |
+| `roster:archive` | roster.archive / roster.restore | `archive_resident`\*, `restore_resident` |
+| `roster:import` | sites.manage | `import_residents` (dry run unless `commit`\*) |
+| `audit:read` | roster.view (audit.view for non-roster events) | `list_audit` |
+| `sites:manage` | sites.manage, or sites.manageRules for `set_site_rules` | `list_sites`, `create_site`, `update_site` (\* to deactivate or recode), `set_site_rules` |
+| `people:manage` | users.manage / users.manageSite | `list_people`, `list_roles`, `invite_person`, `update_person` (\* for role, status, sites) |
+| `calendar:read` | an active account | `list_calendar_categories`, `list_calendar_events`, `get_calendar_event` |
+| `calendar:write` | calendar.manage / calendar.edit | create / update / `delete_calendar_event`\*, `restore_calendar_occurrence`, create / update / `delete_calendar_category`\* |
+| `settings:manage` | settings.manage | `get_settings`, `update_settings` (\* for sign-in access) |
+| `entries:manage` | entries.void; forms.manage to edit, restore or delete | `void_entry`\*, `restore_entry`, `update_entry`\*, `add_entry_note`, `delete_entry`\*, `void_code_entry`\*, `restore_code_entry` |
+| `entries:read` | entries.view | `code_entry_history` (plus the key-only `list_entries`, `get_entry`) |
+| `devlog:read` | devlog.view | `devlog_summary`, `devlog_events` |
+
+\* needs `confirm: true` (MCP) / `"confirm": true` or `?confirm=true` (REST): the tool refuses
+without it, so an assistant has to check with its person first. Operations whose route doesn't
+write an audit event (entry void / restore / edit / delete) write one here (`entries.*`).
+
+A key limited to one site gets only the site-bounded half of a scope (Site Admin's
+users.manageSite, sites.manageRules, calendar.edit) and can't use the org-wide ones
+(`settings:manage`, `roster:import`, `devlog:read`). Never through a key: making, changing or
+removing Admins (admins.manage is never delegated), API keys, webhooks, and anyone's own
+notifications. Keys made before this have no recorded creator for the delegated scopes: make a new
+one. `npm run smoke:ops` checks the rules; `npm run smoke:ops -- --e2e` drives a real server
+against a throwaway database (one with "smoke" in its name).
+
+Also new for `forms:build` / `apps:build`: `get_version`, `form_backup`, `reorder_catalog`,
+`delete_catalog_category`\*, `duplicate_code_form`, `get_code_version`, `restore_code_version`,
+`export_code_form`, `import_code_form`; and `list_forms`, `get_form`, `list_entries`, `get_entry` and
+`submit_entry` now answer on `/api/v1/forms/…` too.
+
 ### Email
 
 Notifications send through Microsoft Graph as the mailbox in `MAIL_FROM`, which needs the
