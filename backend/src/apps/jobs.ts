@@ -168,7 +168,11 @@ function kick(delay = 300) {
 
 export function startJobs() {
   // Anything left "running" by a stopped server goes again.
-  void prisma.formJob.updateMany({ where: { status: "running" }, data: { status: "queued" } }).then(() => kick(2_000));
+  // The database may not be answering yet (a restart, Azure SQL waking up); the timer below picks them up later.
+  void prisma.formJob
+    .updateMany({ where: { status: "running" }, data: { status: "queued" } })
+    .then(() => kick(2_000))
+    .catch((err) => console.error("[jobs] could not requeue interrupted jobs:", err));
   setInterval(() => kick(0), TICK_MS).unref();
 }
 

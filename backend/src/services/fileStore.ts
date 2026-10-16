@@ -108,9 +108,21 @@ export async function deleteFiles(where: Prisma.FormFileWhereInput): Promise<num
   return count;
 }
 
-/** Uploaded but never saved with an entry, after a day: swept when the next file arrives, no scheduler needed. */
-export function sweepUnattachedFiles() {
-  return deleteFiles({ entryId: null, createdAt: { lt: new Date(Date.now() - 86_400_000) } });
+let lastSweep = 0;
+
+/**
+ * Uploaded but never saved with an entry, after a day: swept when a file
+ * arrives (no scheduler needed), at most every 10 minutes. Never fails the
+ * upload — under load, two uploads sweeping at once deadlocked and one of them
+ * lost its file.
+ */
+export async function sweepUnattachedFiles(): Promise<number> {
+  if (Date.now() - lastSweep < 10 * 60_000) return 0;
+  lastSweep = Date.now();
+  return deleteFiles({ entryId: null, createdAt: { lt: new Date(Date.now() - 86_400_000) } }).catch((err) => {
+    console.error("[files] sweeping unattached files failed:", err);
+    return 0;
+  });
 }
 
 /** Move files kept in the database into Blob Storage (scripts/files-to-blob.ts). */

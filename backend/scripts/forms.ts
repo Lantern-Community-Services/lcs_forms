@@ -265,7 +265,19 @@ async function main() {
             const hasData = await prisma.formRecord.count({ where: { formId: row.id } });
             if (existsSync(colDir) && !hasData) {
               for (const file of readdirSync(colDir)) {
-                for (const d of readJson(join(colDir, file)) as { id: string; data: unknown }[]) await collectionPut(row.id, file.replace(/\.json$/, ""), d.id, d.data, actor.name);
+                const name = file.replace(/\.json$/, "");
+                for (const d of readJson(join(colDir, file)) as { id: string; data: unknown }[]) {
+                  // The platform's own collections ("__schedule": the days each scheduled action last ran, so a
+                  // restore doesn't send today's reminders again) aren't open to forms, so collectionPut refuses them.
+                  if (name.startsWith("__")) {
+                    const data = JSON.stringify(d.data ?? null);
+                    await prisma.formRecord.upsert({
+                      where: { formId_collection_docId: { formId: row.id, collection: name, docId: d.id } },
+                      create: { formId: row.id, collection: name, docId: d.id, data, updatedByName: actor.name },
+                      update: { data, updatedByName: actor.name },
+                    });
+                  } else await collectionPut(row.id, name, d.id, d.data, actor.name);
+                }
               }
             }
             console.log(`${existing ? "Restored the draft of" : "Created"} /apps/${row.slug}${flag("publish") ? ` and published v${row.liveVersion}` : ""}.`);

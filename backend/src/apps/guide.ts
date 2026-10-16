@@ -63,6 +63,9 @@ Admins and developers pass every role check.
   live preview plus "Choose a photo" — and gives FileRefs. Put them anywhere in an entry's data; every { fileId }
   is attached when the entry saves. Show one with <Photo file={ref} />. Files: <FileInput accept=".pdf" />, or
   files.choose() from a tap. Photos are shrunk to 1600px JPEG and work offline (they upload ahead of the entry).
+- Signatures: <SignaturePad>, then files.upload(pngBlob, { shrink: false }) and keep the FileRef in the entry; show it
+  with useFileUrl(ref). Never put a data: URL (a signature or photo) inside entry data: it's 50–250 KB, and every
+  list, report and limit check then reads it from the database.
 - Location: device.location() — with roster.sites() latitude/longitude and distanceMeters() to pick the nearest site.
 - Editing: entries.update(id, data, { reason }) — every change is kept; show it with <EntryHistory entryId={id} />.
   Server code can check edits in beforeUpdate.

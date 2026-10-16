@@ -115,8 +115,28 @@ export function AppShell() {
     };
   }, []);
 
+  // With the on-screen keyboard up, the app fits the space above it (and the dock
+  // steps aside), so the field being typed into is already in view: iOS has no
+  // reason to scroll the page, which the reset above would snap back on every
+  // keystroke — a flicker, most of all in code forms, whose fields live in a frame.
+  const keyboard = useKeyboardArea(touch);
+  // Once the app has shrunk above the keyboard, the field being typed into may sit below
+  // the new edge: bring it back into view. (Code forms do the same inside their frame.)
+  useEffect(() => {
+    if (!keyboard) return;
+    const t = window.setTimeout(() => {
+      const el = document.activeElement;
+      if (!(el instanceof HTMLElement) || !el.matches("input, textarea, [contenteditable='true']")) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < keyboard.top + 12 || r.bottom > keyboard.top + keyboard.height - 12) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [keyboard]);
+
   return (
     <div
+      style={keyboard ? { top: keyboard.top, height: keyboard.height, bottom: "auto" } : undefined}
+      data-keyboard={keyboard ? "" : undefined}
       // Pinned to the screen. Sized as 100dvh in the normal flow, iPad Safari
       // could still scroll the page under it (its toolbar showing or hiding, a
       // rubber-band drag, a scrollIntoView or focus reaching past <main>), and
@@ -143,9 +163,63 @@ export function AppShell() {
         {touch && <PullToRefresh scrollRef={mainRef} />}
       </div>
       {touch && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
-      {touch && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
+      {touch && !keyboard && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
     </div>
   );
+}
+
+/**
+ * Where the screen is still visible while the on-screen keyboard is up, in px from
+ * the top of the page (null when it's down). The page's own height
+ * (documentElement.clientHeight) doesn't change with the keyboard; the visual
+ * viewport does — and on iPad Safari so does window.innerHeight, so that can't be
+ * the yardstick. iOS may also have moved the view up to the field already
+ * (offsetTop), so the app is placed exactly over what's visible. Small differences
+ * (Safari's toolbar, a hardware keyboard's shortcut bar) and pinch-zoom don't count.
+ * ?kbdebug on any page shows the numbers, for checking on a device.
+ */
+function useKeyboardArea(enabled: boolean) {
+  const [area, setArea] = useState<{ top: number; height: number } | null>(null);
+  const [debug, setDebug] = useState("");
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!enabled || !vv) return;
+    let show = false;
+    try {
+      if (new URLSearchParams(window.location.search).has("kbdebug")) sessionStorage.setItem("kbdebug", "1");
+      show = sessionStorage.getItem("kbdebug") === "1";
+    } catch {
+      // storage blocked: no readout
+    }
+    const measure = () => {
+      const page = document.documentElement.clientHeight;
+      const covered = Math.round(page - vv.height);
+      const next = vv.scale > 1.01 || covered < 120 ? null : { top: Math.round(vv.offsetTop), height: Math.round(vv.height) };
+      setArea((prev) => (prev?.top === next?.top && prev?.height === next?.height ? prev : next));
+      if (show) setDebug(`page ${page} · inner ${window.innerHeight} · vv ${Math.round(vv.height)} @${Math.round(vv.offsetTop)} · scrollY ${Math.round(window.scrollY)} · ${next ? "keyboard" : "no keyboard"}`);
+    };
+    vv.addEventListener("resize", measure);
+    vv.addEventListener("scroll", measure);
+    window.addEventListener("focusin", measure);
+    measure();
+    return () => {
+      vv.removeEventListener("resize", measure);
+      vv.removeEventListener("scroll", measure);
+      window.removeEventListener("focusin", measure);
+    };
+  }, [enabled]);
+  useEffect(() => {
+    if (!debug) return;
+    let el = document.getElementById("kbdebug");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "kbdebug";
+      el.style.cssText = "position:fixed;left:8px;top:8px;z-index:9999;padding:4px 8px;border-radius:6px;background:#000c;color:#fff;font:12px/1.3 monospace;pointer-events:none";
+      document.body.appendChild(el);
+    }
+    el.textContent = debug;
+  }, [debug]);
+  return area;
 }
 
 /**

@@ -12,7 +12,7 @@ import { SDK_TYPES } from "../apps/sdkText.js";
 import { DESIGN_BRIEF } from "../apps/designBrief.js";
 import {
   collectionGet, collectionList, collectionPut, collectionRemove, createEntry, findCodeForm, getEntry, isDeveloper, listEntries, loadApp,
-  requireOpen, restoreEntry, runAction, voidEntry, updateEntry, entryHistory, type ClientEntryQuery,
+  loadLiveApp, requireOpen, restoreEntry, runAction, voidEntry, updateEntry, entryHistory, type ClientEntryQuery,
 } from "../apps/runtime.js";
 import { readAppFile, uploadAppFile } from "../apps/files.js";
 import { fileBytes } from "../services/fileStore.js";
@@ -159,8 +159,8 @@ appsRouter.delete(
 async function appFor(req: Request) {
   const draft = req.query.draft === "1";
   if (draft && !isDeveloper(req.user)) throw forbidden("Only developers can open a draft.");
-  const form = await findCodeForm(req.params.slug);
-  return loadApp(form, draft);
+  if (!draft) return loadLiveApp(req.params.slug);
+  return loadApp(await findCodeForm(req.params.slug), true);
 }
 
 /** Everything the host needs to show a code form to this person. */
@@ -191,7 +191,8 @@ const entryQuery = (q: Request["query"]): ClientEntryQuery => ({
   status: q.status === "voided" || q.status === "all" ? q.status : "active",
   search: typeof q.search === "string" ? q.search : undefined,
   mine: q.mine === "1" || q.mine === "true",
-  fields: typeof q.fields === "string" && q.fields ? q.fields.split(",").slice(0, 50) : undefined,
+  // "fields=" (an empty list) asks for no data fields; leaving it out asks for all of them.
+  fields: typeof q.fields === "string" ? (q.fields ? q.fields.split(",").slice(0, 50) : []) : undefined,
   order: q.order === "oldest" ? "oldest" : "newest",
   limit: q.limit ? Number(q.limit) : undefined,
   offset: q.offset ? Number(q.offset) : undefined,
