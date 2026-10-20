@@ -140,7 +140,7 @@ export const manifestSchema = z.object({
 
 export type Manifest = z.infer<typeof manifestSchema>;
 
-export const DEFAULT_ENTRY_READERS = ["main_office", "site_admin", "site_manager", "developer"];
+export const DEFAULT_ENTRY_READERS = ["main_office", "site_admin", "site_manager", "site_staff", "developer"];
 
 /** Roles check where "*" (or an empty/missing list) means everyone; admins always pass. */
 export function roleAllowed(roles: string[] | undefined, roleKey: string, isAdmin: boolean): boolean {

@@ -107,8 +107,8 @@ export const ROLES: RoleDef[] = [
     // assigns them — so the forms work on day one and rosters come later.
     key: "site_staff",
     name: "Site Staff",
-    description: "Adds, updates and removes residents at their sites. Cannot see form entries.",
-    permissions: ["roster.view", "roster.edit", "roster.archive"],
+    description: "Adds, updates and removes residents at their sites, and reads form entries made for them.",
+    permissions: ["roster.view", "roster.edit", "roster.archive", "entries.view"],
     allSites: false,
   },
 ];
