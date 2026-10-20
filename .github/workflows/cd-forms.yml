@@ -49,16 +49,17 @@ jobs:
 
       - name: Build and push api image
         run: |
-          docker build -t $ACR/lcs-forms-api:${{ steps.meta.outputs.tag }} backend
+          docker build --build-arg GIT_SHA=${{ steps.meta.outputs.tag }} \
+            -t $ACR/lcs-forms-api:${{ steps.meta.outputs.tag }} backend
           docker push $ACR/lcs-forms-api:${{ steps.meta.outputs.tag }}
 
       # BACKEND_URL is baked into the frontend at build time, so one web image per environment.
       # If Collin moves BACKEND_URL to a runtime rewrite, drop the -prod build and reuse one tag.
       - name: Build and push web images (dev + prod)
         run: |
-          docker build --build-arg BACKEND_URL=${{ vars.BACKEND_URL }} \
+          docker build --build-arg GIT_SHA=${{ steps.meta.outputs.tag }} --build-arg BACKEND_URL=${{ vars.BACKEND_URL }} \
             -t $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-dev frontend
-          docker build --build-arg BACKEND_URL=https://app-forms-api-prod.azurewebsites.net \
+          docker build --build-arg GIT_SHA=${{ steps.meta.outputs.tag }} --build-arg BACKEND_URL=https://app-forms-api-prod.azurewebsites.net \
             -t $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-prod frontend
           docker push $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-dev
           docker push $ACR/lcs-forms-web:${{ steps.meta.outputs.tag }}-prod

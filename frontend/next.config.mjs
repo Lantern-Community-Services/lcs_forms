@@ -1,8 +1,17 @@
+import { readFileSync } from "node:fs";
+
 /** @type {import('next').NextConfig} */
 const API_TARGET = process.env.BACKEND_URL || "http://localhost:4200";
 
+// This build's release number and commit (GIT_SHA, passed by the pipeline), shown
+// in Admin → Dev log beside the server's, so a device running a stale page shows.
+const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+const sha = (process.env.GIT_SHA || "").trim().slice(0, 12);
+const WEB_VERSION = sha ? `${version} (${sha})` : version;
+
 const nextConfig = {
   reactStrictMode: true,
+  env: { NEXT_PUBLIC_WEB_VERSION: WEB_VERSION },
   // `next dev` refuses /_next/* requests from any host but localhost, which leaves a page
   // opened from another device (an iPad on the same Wi-Fi) unhydrated. Allow private LAN IPs.
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*"],

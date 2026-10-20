@@ -1,9 +1,28 @@
+import { readFileSync } from "node:fs";
 import dotenv from "dotenv";
 
 // `.env` holds tracked, non-secret config. `.env.local` holds real secrets
 // (Entra client secret), is git-ignored, and overrides `.env`.
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
+
+/**
+ * The release number (package.json "version", bumped with each dev → main
+ * release) plus the commit it was built from (GIT_SHA, passed by the
+ * pipeline), e.g. "0.2.0 (c5637fbc6ae8)". APP_VERSION replaces it outright.
+ * package.json sits one up from both src/ (tsx) and dist/ (the image).
+ */
+function appVersion(): string {
+  if (process.env.APP_VERSION?.trim()) return process.env.APP_VERSION.trim().slice(0, 64);
+  let version = "";
+  try {
+    version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version ?? "";
+  } catch {
+    // No package.json beside the build: the commit alone still says which deploy this is.
+  }
+  const sha = (process.env.GIT_SHA ?? "").trim().slice(0, 12);
+  return (sha ? (version ? `${version} (${sha})` : sha) : version).slice(0, 64);
+}
 
 const list = (value: string | undefined, fallback = "") =>
   (value ?? fallback)
@@ -139,15 +158,15 @@ export const env = {
    *   DEVLOG_SLOW_REQUEST_MS   a request this slow is logged on its own (2000)
    *   DEVLOG_SLOW_QUERY_MS     likewise a database query (500)
    *   DEVLOG_RETENTION_DAYS    how long the log is kept (30)
-   * APP_VERSION (a commit or build number, set by the pipeline) is shown on
-   * each server start, so a change in the numbers can be matched to a deploy.
+   * appVersion (see appVersion() above) is shown on the dev log and on each
+   * server start, so a change in the numbers can be matched to a deploy.
    */
   devlog: {
     enabled: (process.env.DEVLOG ?? "true").toLowerCase() !== "false",
     slowRequestMs: positive(process.env.DEVLOG_SLOW_REQUEST_MS, 2000),
     slowQueryMs: positive(process.env.DEVLOG_SLOW_QUERY_MS, 500),
     retentionDays: positive(process.env.DEVLOG_RETENTION_DAYS, 30),
-    appVersion: (process.env.APP_VERSION ?? process.env.GIT_SHA ?? "").trim().slice(0, 64),
+    appVersion: appVersion(),
   },
 };
 

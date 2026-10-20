@@ -21,8 +21,11 @@ FROM base AS build
 # https://<api app>.azurewebsites.net). The default is the compose service name.
 ARG BACKEND_URL=http://backend:4200
 ARG NEXT_PUBLIC_API_BASE_URL=
+# The commit being built (the pipeline passes it); shown in Admin → Dev log.
+ARG GIT_SHA=
 ENV BACKEND_URL=${BACKEND_URL} \
     NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    GIT_SHA=${GIT_SHA} \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

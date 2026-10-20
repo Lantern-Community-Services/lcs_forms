@@ -128,6 +128,9 @@ const FILTERS: { key: string; label: string; kinds: string[] }[] = [
   { key: "boot", label: "Server starts", kinds: ["boot"] },
 ];
 
+/** This web build's release and commit (next.config.mjs). */
+const WEB_VERSION = process.env.NEXT_PUBLIC_WEB_VERSION || null;
+
 const num = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("en-US"));
 
 function ms(n: number | null | undefined): string {
@@ -210,13 +213,21 @@ function LiveStrip({ live }: { live: Summary["live"] }) {
     ["Requests this minute", num(live.callsThisMinute)],
     ["Event loop p99", ms(live.loopP99Ms)],
     ["Node", live.node],
-    ["Version", live.version ?? "not set"],
+    ["Server version", live.version ?? "not set"],
+    ["This page's version", WEB_VERSION ?? "not set"],
   ];
+  // Both builds come from one commit, so a difference means this device is on a stale page (or a deploy is mid-way).
+  const mismatch = WEB_VERSION && live.version && WEB_VERSION !== live.version;
   return (
     <div>
       {!live.enabled && (
         <p className="mb-3 flex items-center gap-2 rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
           <TriangleAlert className="h-4 w-4 shrink-0" /> The dev log is off on this server (DEVLOG=false): nothing new is being recorded.
+        </p>
+      )}
+      {mismatch && (
+        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
+          <TriangleAlert className="h-4 w-4 shrink-0" /> This page ({WEB_VERSION}) is a different build from the server ({live.version}). Reload to get the latest.
         </p>
       )}
       {live.lastFlushError && (

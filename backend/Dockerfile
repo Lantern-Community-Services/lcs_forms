@@ -33,8 +33,11 @@ RUN npx prisma generate && npm run build
 # node_modules is kept whole (not pruned): RUN_MIGRATIONS runs the Prisma CLI,
 # and it lets an operator run the importers in the container.
 FROM base AS runtime
+# The commit being built (the pipeline passes it); shown in Admin → Dev log.
+ARG GIT_SHA=
 ENV NODE_ENV=production \
-    PORT=4200
+    PORT=4200 \
+    GIT_SHA=${GIT_SHA}
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
