@@ -8,6 +8,7 @@ import { SITE_ROLE_KEYS, isRoleKey, roleFor, roleNameFor } from "../services/per
 import { markUpcomingDirty } from "../services/outlookSync.js";
 import { dropGraphToken } from "../services/graphTokens.js";
 import { notifyQuietly } from "../services/notifications.js";
+import { randomAvatarColor } from "../services/avatars.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -141,6 +142,7 @@ usersRouter.post(
         roleKey: body.roleKey,
         title: body.title ?? null,
         calendarEditor: body.calendarEditor ?? false,
+        avatarColor: randomAvatarColor(),
         status: "invited",
         sites: { create: body.siteIds.map((siteId) => ({ siteId })) },
       },
