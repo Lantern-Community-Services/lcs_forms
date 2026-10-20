@@ -9,16 +9,73 @@ import { API_BASE, ApiError } from "@/lib/api";
 import type { ImportSummary } from "@/lib/types";
 import { errorMessage } from "@/lib/utils";
 
-async function upload(file: File, commit: boolean): Promise<ImportSummary> {
-  const res = await fetch(`${API_BASE}/admin/import/tenants${commit ? "?commit=1" : ""}`, {
+/** Rows per request: small enough that each part is a quick, short write. */
+const PART_ROWS = 500;
+
+/**
+ * Split the file into header + PART_ROWS-line parts. Works on bytes so a
+ * Windows-1252 export reaches the server untouched (a line feed is the same
+ * byte in either encoding); a line break inside quotes doesn't split a row.
+ */
+function splitCsv(bytes: Uint8Array): Blob[] {
+  const lines: Uint8Array[] = [];
+  let start = 0;
+  let quoted = false;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0x22) quoted = !quoted;
+    else if (bytes[i] === 0x0a && !quoted) {
+      lines.push(bytes.subarray(start, i + 1));
+      start = i + 1;
+    }
+  }
+  if (start < bytes.length) lines.push(bytes.subarray(start));
+  const body = lines.slice(1).filter((l) => l.some((b) => b !== 0x0d && b !== 0x0a && b !== 0x20));
+  if (body.length <= PART_ROWS) return [new Blob([bytes as BlobPart])];
+  const header = lines[0];
+  const parts: Blob[] = [];
+  for (let i = 0; i < body.length; i += PART_ROWS) parts.push(new Blob([header as BlobPart, ...(body.slice(i, i + PART_ROWS) as BlobPart[])]));
+  return parts;
+}
+
+async function upload(part: Blob, commit: boolean, index: number, total: number): Promise<ImportSummary> {
+  const query = new URLSearchParams();
+  if (commit) query.set("commit", "1");
+  if (total > 1) {
+    query.set("part", String(index));
+    query.set("parts", String(total));
+  }
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/admin/import/tenants${qs ? `?${qs}` : ""}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "text/csv" },
-    body: file,
+    body: part,
   });
   const json = await res.json();
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText, json.details);
   return json;
+}
+
+function merge(a: ImportSummary | null, b: ImportSummary): ImportSummary {
+  if (!a) return b;
+  const bySite = new Map(a.bySite.map((s) => [s.site, { ...s }]));
+  for (const s of b.bySite) {
+    const x = bySite.get(s.site);
+    if (x) {
+      x.added += s.added;
+      x.alreadyPresent += s.alreadyPresent;
+    } else bySite.set(s.site, { ...s });
+  }
+  return {
+    committed: b.committed,
+    rows: a.rows + b.rows,
+    skippedBlank: a.skippedBlank + b.skippedBlank,
+    sitesCreated: [...new Set([...a.sitesCreated, ...b.sitesCreated])],
+    added: a.added + b.added,
+    alreadyPresent: a.alreadyPresent + b.alreadyPresent,
+    bySite: [...bySite.values()].sort((x, y) => x.site.localeCompare(y.site)),
+    samples: [...a.samples, ...b.samples].slice(0, 12),
+  };
 }
 
 /**
@@ -30,22 +87,32 @@ export function AdminImport() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportSummary | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const toast = useToast();
   const qc = useQueryClient();
 
   async function run(commit: boolean) {
     if (!file) return;
     setBusy(true);
+    let summary: ImportSummary | null = null;
     try {
-      const summary = await upload(file, commit);
-      setPreview(summary);
-      if (commit) {
-        toast(`Imported ${summary.added} residents.`);
-        await qc.invalidateQueries({ queryKey: ["roster"] });
+      const parts = splitCsv(new Uint8Array(await file.arrayBuffer()));
+      // One part at a time, so a big file never asks the server for one long write.
+      for (let i = 0; i < parts.length; i++) {
+        if (parts.length > 1) setProgress({ done: i, total: parts.length });
+        summary = merge(summary, await upload(parts[i], commit, i + 1, parts.length));
       }
+      setPreview(summary);
+      if (commit && summary) toast(`Imported ${summary.added} residents.`);
     } catch (e) {
-      toast(errorMessage(e, "Import failed."), "error");
+      if (commit && summary) {
+        // The finished parts are in; running it again skips everyone already added.
+        setPreview(summary);
+        toast(`${errorMessage(e, "Import failed.")} ${summary.added} residents were added before it stopped — run it again to finish; nobody is added twice.`, "error");
+      } else toast(errorMessage(e, "Import failed."), "error");
     } finally {
+      if (commit) await qc.invalidateQueries({ queryKey: ["roster"] });
+      setProgress(null);
       setBusy(false);
     }
   }
@@ -63,7 +130,7 @@ export function AdminImport() {
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="secondary" disabled={!file || busy} onClick={() => run(false)}>Preview</Button>
           <Button disabled={!file || busy || !preview || preview.committed || preview.added === 0} onClick={() => run(true)}>
-            {busy ? "Working…" : preview && !preview.committed ? `Import ${preview.added} residents` : "Import"}
+            {busy ? (progress ? `Working… part ${progress.done + 1} of ${progress.total}` : "Working…") : preview && !preview.committed ? `Import ${preview.added} residents` : "Import"}
           </Button>
         </div>
       </Card>
