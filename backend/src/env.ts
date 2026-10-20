@@ -23,6 +23,9 @@ function appVersion(): string {
       // Not here; with no package.json at all, the commit alone still says which deploy this is.
     }
   }
+  // BUILD_NUMBER (the pipeline's run count) replaces the last number, so each deploy is 0.2.<n>.
+  const build = (process.env.BUILD_NUMBER ?? "").trim();
+  if (version && /^\d+$/.test(build)) version = version.replace(/\d+$/, build);
   const sha = (process.env.GIT_SHA ?? "").trim().slice(0, 12);
   return (sha ? (version ? `${version} (${sha})` : sha) : version).slice(0, 64);
 }

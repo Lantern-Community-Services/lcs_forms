@@ -5,7 +5,10 @@ const API_TARGET = process.env.BACKEND_URL || "http://localhost:4200";
 
 // This build's release number and commit (GIT_SHA, passed by the pipeline), shown
 // in Admin → Dev log beside the server's, so a device running a stale page shows.
-const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+// BUILD_NUMBER (the pipeline's run count) replaces the last number, so each deploy is 0.2.<n>.
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
+const build = (process.env.BUILD_NUMBER || "").trim();
+const version = /^\d+$/.test(build) ? pkg.replace(/\d+$/, build) : pkg;
 const sha = (process.env.GIT_SHA || "").trim().slice(0, 12);
 const WEB_VERSION = sha ? `${version} (${sha})` : version;
 
