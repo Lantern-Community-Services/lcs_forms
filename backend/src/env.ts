@@ -10,15 +10,18 @@ dotenv.config({ path: ".env.local", override: true });
  * The release number (package.json "version", bumped with each dev → main
  * release) plus the commit it was built from (GIT_SHA, passed by the
  * pipeline), e.g. "0.2.0 (c5637fbc6ae8)". APP_VERSION replaces it outright.
- * package.json sits one up from both src/ (tsx) and dist/ (the image).
+ * package.json sits one up from src/ (tsx) but two up from dist/src/ (the image).
  */
 function appVersion(): string {
   if (process.env.APP_VERSION?.trim()) return process.env.APP_VERSION.trim().slice(0, 64);
   let version = "";
-  try {
-    version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version ?? "";
-  } catch {
-    // No package.json beside the build: the commit alone still says which deploy this is.
+  for (const rel of ["../package.json", "../../package.json"]) {
+    try {
+      version = JSON.parse(readFileSync(new URL(rel, import.meta.url), "utf8")).version ?? "";
+      if (version) break;
+    } catch {
+      // Not here; with no package.json at all, the commit alone still says which deploy this is.
+    }
   }
   const sha = (process.env.GIT_SHA ?? "").trim().slice(0, 12);
   return (sha ? (version ? `${version} (${sha})` : sha) : version).slice(0, 64);
