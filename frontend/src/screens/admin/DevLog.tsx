@@ -131,6 +131,9 @@ const FILTERS: { key: string; label: string; kinds: string[] }[] = [
 /** This web build's release and commit (next.config.mjs). */
 const WEB_VERSION = process.env.NEXT_PUBLIC_WEB_VERSION || null;
 
+/** The commit in "0.2.0 (abc123)" or a bare "abc123"; the whole string when there's none. */
+const buildId = (v: string) => v.match(/\(([0-9a-f]{7,})\)\s*$/i)?.[1] ?? (/^[0-9a-f]{7,}$/i.test(v.trim()) ? v.trim() : v);
+
 const num = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("en-US"));
 
 function ms(n: number | null | undefined): string {
@@ -217,7 +220,8 @@ function LiveStrip({ live }: { live: Summary["live"] }) {
     ["This page's version", WEB_VERSION ?? "not set"],
   ];
   // Both builds come from one commit, so a difference means this device is on a stale page (or a deploy is mid-way).
-  const mismatch = WEB_VERSION && live.version && WEB_VERSION !== live.version;
+  // Compare the commits, not the whole strings: either side may lack the release number.
+  const mismatch = WEB_VERSION && live.version && buildId(WEB_VERSION) !== buildId(live.version);
   return (
     <div>
       {!live.enabled && (
