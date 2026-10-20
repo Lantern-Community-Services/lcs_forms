@@ -1,7 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "forms-backend", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "backend", "run", "dev"], "port": 4200 },
+    { "name": "forms-backend", "runtimeExecutable": "cmd", "runtimeArgs": ["/c", "cd backend && npx tsx src/index.ts"], "port": 4200 },
     { "name": "forms-frontend", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "frontend", "run", "dev"], "port": 5200 }
   ]
 }
