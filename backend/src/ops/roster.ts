@@ -3,7 +3,7 @@ import { HttpError } from "../http.js";
 import { tenantsRouter, ARCHIVE_REASONS } from "../routes/tenants.js";
 import { attendanceRouter } from "../routes/attendance.js";
 import { activityRouter } from "../routes/activity.js";
-import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
+import { decodeCsv, importTenants, MAX_IMPORT_ROWS, readRows } from "../services/tenantImport.js";
 import { defineOp, int, flag } from "./registry.js";
 
 /**
@@ -149,18 +149,25 @@ export const rosterOps = [
   defineOp({
     name: "import_residents",
     description:
-      "Import a property-management tenant list (CSV text with Property, Unit and Tenant columns, the same file Admin → Import takes). Without commit it's a dry run that shows what would be added, changed and removed; commit: true (with confirm: true) applies it to every site in the file.",
+      "Import a property-management tenant list (CSV text with Property, Unit and Tenant columns, the same file Admin → Import takes). Without commit it's a dry run that shows what would be added; commit: true (with confirm: true) adds them to every site in the file — it only adds, never removes. " +
+      `Up to ${MAX_IMPORT_ROWS} rows per call; for bigger files send parts of ~1000 rows (the header row is optional after the first part) with part/parts to label them. Re-sending a part is safe: people already on the roster are skipped.`,
     scope: "roster:import",
     as: "creator",
     http: { method: "POST", path: "/residents/import" },
-    shape: { csv: z.string().min(1).max(5 * 1024 * 1024).describe("The CSV file's text (up to 1 MB over REST, 5 MB over MCP; bigger files go through Admin → Import)"), commit: flag().optional() },
+    shape: {
+      csv: z.string().min(1).max(5 * 1024 * 1024).describe("The CSV text (up to 1 MB over REST, 5 MB over MCP)"),
+      commit: flag().optional(),
+      part: int(1, 1000).optional().describe("Which part of a split file this is (1-based)"),
+      parts: int(1, 1000).optional().describe("How many parts the file was split into"),
+    },
     confirm: (a) => a.commit === true,
     annotations: { destructiveHint: true },
     run: async (ctx, a) => {
       const rows = readRows(decodeCsv(Buffer.from(a.csv, "utf8")));
       if (rows.length === 0) throw new HttpError(400, "That file has no rows. Expected columns: Property, Unit, Tenant.");
+      const part = a.part && a.parts && a.part <= a.parts ? { index: a.part, total: a.parts } : undefined;
       // importTenants writes its own audit event when it commits.
-      return { committed: a.commit === true, ...(await importTenants(rows, { commit: a.commit === true, actor: ctx.actor })) };
+      return { committed: a.commit === true, ...(await importTenants(rows, { commit: a.commit === true, actor: ctx.actor, part })) };
     },
   }),
 

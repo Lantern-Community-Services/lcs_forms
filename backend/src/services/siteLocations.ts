@@ -64,7 +64,9 @@ export async function ensureSiteLocations(): Promise<number> {
     });
     n++;
   }
-  await setSetting("siteLocationsSeeded", new Date().toISOString());
+  // Only once a known building was actually placed: a database holding just a
+  // test site would otherwise mark this done before the real sites arrive.
+  if (n > 0) await setSetting("siteLocationsSeeded", new Date().toISOString());
   return n;
 }
 

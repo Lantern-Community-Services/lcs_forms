@@ -159,6 +159,8 @@ adminRouter.post(
 /**
  * Upload a property-management CSV as the raw request body (text/csv).
  * ?commit=1 writes; without it the response is a dry-run preview.
+ * Big files come in parts (?part=2&parts=5 labels the audit event); later
+ * parts may leave off the header row.
  */
 adminRouter.post(
   "/import/tenants",
@@ -168,7 +170,10 @@ adminRouter.post(
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw badRequest("Upload a CSV file.");
     const rows = readRows(decodeCsv(req.body));
     if (rows.length === 0) throw badRequest("That file has no rows. Expected columns: Property, Unit, Tenant.");
-    const summary = await importTenants(rows, { commit: req.query.commit === "1", actor: actorOf(req) });
+    const index = Number(req.query.part);
+    const total = Number(req.query.parts);
+    const part = Number.isInteger(index) && Number.isInteger(total) && index >= 1 && index <= total ? { index, total } : undefined;
+    const summary = await importTenants(rows, { commit: req.query.commit === "1", actor: actorOf(req), part });
     res.json({ committed: req.query.commit === "1", ...summary });
   })
 );
