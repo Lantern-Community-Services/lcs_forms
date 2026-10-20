@@ -12,6 +12,7 @@ import { notifyQuietly } from "../services/notifications.js";
 import { DEFAULT_ROLE_KEY, ROLES, SITE_ROLE_KEYS, roleFor, roleNameFor } from "../services/permissions.js";
 import { dropGraphToken, saveGraphToken } from "../services/graphTokens.js";
 import { noteGraphTokenArrived } from "../services/outlookSync.js";
+import { randomAvatarColor } from "../services/avatars.js";
 
 export const authRouter = Router();
 
@@ -106,12 +107,12 @@ authRouter.get(
 
       if (listedSuper && (!user || !user.globalAdmin || user.roleKey !== "admin" || user.status !== "active")) {
         const data = { roleKey: "admin", globalAdmin: true, status: "active" };
-        user = user ? await prisma.user.update({ where: { id: user.id }, data }) : await prisma.user.create({ data: { ...fromDirectory, ...data } });
+        user = user ? await prisma.user.update({ where: { id: user.id }, data }) : await prisma.user.create({ data: { ...fromDirectory, avatarColor: randomAvatarColor(), ...data } });
         await audit({ actor: { id: user.id, name: user.name }, action: "user.super_admin", summary: `${user.name} (${user.email}) signed in as a Super Admin (SUPER_ADMINS)` });
       }
 
       if (!user && isStaffDomain(identity.email) && (await autoApproveStaff())) {
-        user = await prisma.user.create({ data: { ...fromDirectory, roleKey: DEFAULT_ROLE_KEY, status: "active" } });
+        user = await prisma.user.create({ data: { ...fromDirectory, avatarColor: randomAvatarColor(), roleKey: DEFAULT_ROLE_KEY, status: "active" } });
         await audit({
           actor: { id: user.id, name: user.name },
           action: "user.auto_approved",
@@ -120,7 +121,7 @@ authRouter.get(
       }
 
       if (!user) {
-        const requester = await prisma.user.create({ data: { ...fromDirectory, roleKey: DEFAULT_ROLE_KEY, status: "requested" } });
+        const requester = await prisma.user.create({ data: { ...fromDirectory, avatarColor: randomAvatarColor(), roleKey: DEFAULT_ROLE_KEY, status: "requested" } });
         await audit({
           actor: { id: requester.id, name: requester.name },
           action: "user.access_requested",
