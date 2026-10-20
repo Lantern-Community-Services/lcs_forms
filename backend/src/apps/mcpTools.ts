@@ -10,7 +10,7 @@ import { APP_GUIDE } from "./guide.js";
 import { DESIGN_BRIEF } from "./designBrief.js";
 import { buildProject } from "./compile.js";
 import { createEntry, entryOut, findCodeForm, loadApp, runAction } from "./runtime.js";
-import { createProject, draftFiles, listProjects, patchFiles, publishProject } from "./service.js";
+import { createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, patchFiles, publishProject, restoreProjectVersion, versionFiles } from "./service.js";
 
 /**
  * MCP tools for code forms. An assistant works on one the way it would on a
@@ -200,6 +200,50 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
         update: { data: json, updatedByName: actor.name },
       });
       return { id, saved: true };
+    }
+  );
+
+  tool("duplicate_code_form", "Copy a code form's draft into a new code form (title gets \"(copy)\").", { form: ref }, async ({ form }) => {
+    need("apps:build");
+    const row = await duplicateProject((await findCodeForm(form)).id, actor);
+    return { id: row.id, slug: row.slug, title: row.title, ...where(row) };
+  });
+
+  tool("get_code_version", "The files of one published version of a code form (list_versions shows them).", { form: ref, version: z.number().int().min(1) }, async ({ form, version }) => {
+    need("apps:build");
+    const files = await versionFiles((await findCodeForm(form)).id, version);
+    if (!files) throw new HttpError(404, "No such version.");
+    return { version, files };
+  }, { readOnlyHint: true });
+
+  tool("restore_code_version", "Copy an old published version's files back into the draft (publish_code_form to make it live).", { form: ref, version: z.number().int().min(1) }, async ({ form, version }) => {
+    need("apps:build");
+    const row = await restoreProjectVersion((await findCodeForm(form)).id, version, actor);
+    return { id: row.id, slug: row.slug, revision: row.revision, ...where(row) };
+  });
+
+  tool(
+    "export_code_form",
+    "Export a code form as an lcs-app-bundle (its draft files). data: true adds its collections and entries (needs entries:read too).",
+    { form: ref, data: z.boolean().optional() },
+    async ({ form, data }) => {
+      need("apps:build");
+      if (data) need("entries:read");
+      if (data && key.siteId) throw new HttpError(403, "An export with data holds every site's entries, so a key limited to one site can't make one.");
+      return exportProject((await findCodeForm(form)).id, { data });
+    },
+    { readOnlyHint: true }
+  );
+
+  tool(
+    "import_code_form",
+    "Import an lcs-app-bundle (or { files }) as a new code form draft, with its collections. withEntries: true also loads its entries (needs entries:write too).",
+    { payload: z.union([z.record(z.unknown()), z.string()]).describe("The bundle (object or JSON text)"), withEntries: z.boolean().optional() },
+    async ({ payload, withEntries }) => {
+      need("apps:build");
+      if (withEntries) need("entries:write");
+      const row = await importProject(typeof payload === "string" ? JSON.parse(payload) : payload, actor, { withEntries });
+      return row;
     }
   );
 }

@@ -122,4 +122,44 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       return row;
     }
   );
+
+  tool(
+    "reorder_catalog",
+    "Reorder the Forms catalog: categoryIds puts the categories in that order (list every one), and/or categoryId + cardIds orders the cards inside one category (list every card in it, hidden ones too: list_catalog includeHidden).",
+    { categoryIds: z.array(z.string()).min(1).optional(), categoryId: z.string().optional(), cardIds: z.array(z.string()).min(1).optional() },
+    async ({ categoryIds, categoryId, cardIds }) => {
+      need("forms:build");
+      if (!categoryIds && !(categoryId && cardIds)) throw new HttpError(400, "Send categoryIds, or categoryId with cardIds.");
+      if (categoryIds) {
+        const existing = await prisma.formCategory.findMany({ select: { id: true } });
+        if (existing.length !== categoryIds.length || !existing.every((c) => categoryIds.includes(c.id))) throw new HttpError(400, "List every category exactly once (see list_catalog).");
+        await prisma.$transaction(categoryIds.map((id, i) => prisma.formCategory.update({ where: { id }, data: { sortOrder: i } })));
+      }
+      if (categoryId && cardIds) {
+        const existing = await prisma.formLink.findMany({ where: { categoryId }, select: { id: true } });
+        if (existing.length !== cardIds.length || !existing.every((f) => cardIds.includes(f.id))) throw new HttpError(400, "List every card in that category exactly once, hidden ones too (list_catalog includeHidden).");
+        await prisma.$transaction(cardIds.map((id, i) => prisma.formLink.update({ where: { id }, data: { sortOrder: i } })));
+      }
+      await audit({ actor, action: "forms.reordered", summary: categoryIds ? "Reordered form categories" : "Reordered forms in a category" });
+      return { ok: true };
+    },
+    { idempotentHint: true }
+  );
+
+  tool(
+    "delete_catalog_category",
+    "Delete an empty catalog category (move or delete its cards first).",
+    { id: z.string(), confirm: z.boolean().optional().describe("Must be true. Check with the person you're working for first.") },
+    async ({ id, confirm }) => {
+      need("forms:build");
+      if (confirm !== true) throw new HttpError(400, "delete_catalog_category removes something. Check with the person you're working for, then call it again with confirm: true.");
+      const cat = await prisma.formCategory.findUnique({ where: { id }, include: { _count: { select: { forms: true } } } });
+      if (!cat) throw new HttpError(404, "No such category.");
+      if (cat._count.forms > 0) throw new HttpError(400, "Move or delete the cards in this category first.");
+      await prisma.formCategory.delete({ where: { id: cat.id } });
+      await audit({ actor, action: "forms.category_deleted", summary: `Deleted form category “${cat.name}”` });
+      return { deleted: true };
+    },
+    { destructiveHint: true }
+  );
 }

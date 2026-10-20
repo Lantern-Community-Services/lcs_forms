@@ -1,13 +1,13 @@
 {
   "name": "lantern-forms-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Lantern Forms — backend API (Express + Prisma)",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/src/index.js",
+    "start": "node --import ./dist/src/telemetry.js dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -19,16 +19,24 @@
     "import:tenants": "tsx scripts/import-tenants.ts",
     "sync:engine": "node scripts/sync-engine.mjs",
     "check:engine": "node scripts/sync-engine.mjs --check",
-    "forms": "tsx scripts/forms.ts"
+    "forms": "tsx scripts/forms.ts",
+    "smoke:ops": "tsx scripts/ops-smoke.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",
+    "@azure/monitor-opentelemetry": "^1.20.1",
     "@azure/msal-node": "^5.6.0",
     "@azure/storage-blob": "^12.34.0",
     "@modelcontextprotocol/sdk": "^1.31.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/instrumentation": "^0.221.0",
+    "@opentelemetry/instrumentation-express": "^0.69.0",
+    "@opentelemetry/instrumentation-undici": "^0.31.0",
+    "@opentelemetry/resources": "^2.12.0",
+    "@opentelemetry/sdk-trace-base": "^2.12.0",
     "@prisma/client": "^5.22.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

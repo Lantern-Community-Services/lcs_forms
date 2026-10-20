@@ -14,13 +14,15 @@ import {
 } from "./engine.js";
 import { parseFormDoc } from "./schema.js";
 import {
-  DocError, createForm, deleteForm, duplicateForm, exportForms, findAnyForm, findForm, formDetail, importPayload, listForms, listVersions,
+  DocError, createForm, deleteForm, duplicateForm, exportForms, findAnyForm, findForm, importPayload, listVersions,
   publishForm, readDoc, restoreVersion, saveDraft, setCatalog, setFormStatus,
 } from "./service.js";
-import { docForEntry, entryRow, entryWhere, submitEntry } from "./entries.js";
+import { backupStatus, runFormBackup } from "../services/formBackup.js";
 import { registerCodeTools } from "../apps/mcpTools.js";
 import { registerCatalogTools } from "./catalogTools.js";
 import { registerNotificationTools } from "./notifyTools.js";
+import { registerOps } from "../ops/index.js";
+import { summarize } from "../ops/forms.js";
 
 /**
  * MCP server for building forms with an LLM — Claude Code, Claude Desktop,
@@ -29,7 +31,9 @@ import { registerNotificationTools } from "./notifyTools.js";
  *   URL:   <backend>/mcp
  *   Auth:  Authorization: Bearer lrk_…   (Admin → API keys, scope forms:build;
  *          add entries:read / entries:write to let it read or submit entries,
- *          notifications:send to let it notify people)
+ *          notifications:send to let it notify people, and the delegated
+ *          scopes — roster, sites, people, calendar, settings… — to let it act
+ *          on the rest of the site as the admin who made the key: ops/)
  *
  * Stateless: every POST gets a fresh server, so it scales like the rest of the
  * API and needs no session store. Every tool goes through forms/service.ts,
@@ -164,24 +168,6 @@ function fail(err: unknown): ToolResult {
 
 const formRef = z.string().describe("The form's id or its slug (URL name).");
 
-function summarize(row: Awaited<ReturnType<typeof findForm>>) {
-  if (row.kind === "code") {
-    return { id: row.id, slug: row.slug, title: row.title, kind: "code", status: row.status, revision: row.revision, liveVersion: row.liveVersion, url: `${appBaseUrl}/apps/${row.slug}`, editorUrl: `${appBaseUrl}/admin/apps/${row.id}` };
-  }
-  const d = formDetail(row);
-  return {
-    id: d.id,
-    slug: d.slug,
-    title: d.title,
-    status: d.status,
-    revision: d.revision,
-    liveVersion: d.liveVersion,
-    unpublishedChanges: d.unpublishedChanges,
-    url: `${appBaseUrl}/${d.draft.settings.access?.mode === "public" ? "p" : "f"}/${d.slug}`,
-    editorUrl: `${appBaseUrl}/admin/builder/${d.id}`,
-  };
-}
-
 /** One patch operation on a draft. */
 const patchOp = z.discriminatedUnion("op", [
   z.object({
@@ -276,7 +262,7 @@ function buildServer(key: ResolvedKey): McpServer {
   };
   const server = new McpServer(
     { name: "lantern-forms", version: "1.0.0" },
-    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Everything you make is a draft until published." }
+    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Everything you make is a draft until published. With delegated scopes the key can also run the rest of the site — residents and attendance, sites, People & roles, the calendar, settings, the audit and dev logs, entry voiding — acting as the admin who made the key and never with more than they have; call whoami to see what this key can do. Tools marked destructive need confirm: true: check with the person first." }
   );
 
   const tool: ToolRegistrar = <S extends z.ZodRawShape>(
@@ -304,19 +290,6 @@ function buildServer(key: ResolvedKey): McpServer {
   tool("get_reference", "The full guide to the lcs-form format: document shape, every field type and its options, conditional logic, calculations, merge tags, custom code blocks, settings, and a complete example. Read this before building.", {}, async () => MCP_GUIDE(), { readOnlyHint: true });
 
   tool("get_json_schema", "The JSON Schema of an lcs-form document, for exact key names and types.", {}, async () => formJsonSchema(), { readOnlyHint: true });
-
-  tool("list_forms", "Every built form with its status, entry count and URLs.", { includeArchived: z.boolean().optional() }, async ({ includeArchived }) => {
-    need("forms:build");
-    return (await listForms({ includeArchived })).map((f) => ({ ...f, url: `${appBaseUrl}/${f.access === "public" ? "p" : "f"}/${f.slug}`, editorUrl: `${appBaseUrl}/admin/builder/${f.id}` }));
-  }, { readOnlyHint: true });
-
-  tool("get_form", "A form's full document (the draft by default) plus its status and revision.", { form: formRef, which: z.enum(["draft", "live"]).optional().describe("draft (default) or the live published version") }, async ({ form, which }) => {
-    need("forms:build");
-    const row = await findForm(form);
-    const doc = which === "live" ? (row.liveSchema ? readDoc(row.liveSchema) : null) : readDoc(row.draftSchema);
-    if (!doc) throw new HttpError(404, "This form hasn't been published yet — ask for the draft.");
-    return { ...summarize(row), doc };
-  }, { readOnlyHint: true });
 
   tool("validate_form", "Check a document without saving it. Returns every problem with its JSON path.", { doc: z.record(z.unknown()).describe("An lcs-form document") }, async ({ doc }) => {
     const res = parseFormDoc(doc);
@@ -414,6 +387,13 @@ function buildServer(key: ResolvedKey): McpServer {
     }
   );
 
+  tool("form_backup", "The form backup (every form's document, committed to GitHub): its status, and with run: true a backup now (a commit only if something changed).", { run: z.boolean().optional() }, async ({ run }) => {
+    need("forms:build");
+    if (!run) return backupStatus();
+    if (!backupStatus().configured) throw new HttpError(400, "The form backup isn't set up on this server (FORM_BACKUP_TOKEN).");
+    return runFormBackup({ by: actor.name });
+  });
+
   tool("list_catalog_categories", "Categories on the Forms screen, for add_to_catalog (list_catalog shows the cards too).", {}, async () => {
     need("forms:build");
     return prisma.formCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } });
@@ -426,53 +406,10 @@ function buildServer(key: ResolvedKey): McpServer {
     return summarize(await findAnyForm(row.id));
   });
 
-  tool(
-    "list_entries",
-    "Entries of a form, newest first.",
-    {
-      form: formRef,
-      q: z.string().optional().describe("Search text"),
-      from: z.string().optional().describe("YYYY-MM-DD"),
-      to: z.string().optional().describe("YYYY-MM-DD"),
-      status: z.enum(["active", "voided", "all"]).optional(),
-      limit: z.number().int().min(1).max(200).optional(),
-    },
-    async ({ form, q, from, to, status, limit }) => {
-      need("entries:read");
-      const row = await findForm(form);
-      const where = entryWhere(row, undefined, { q, from, to, status });
-      if (key.siteId) (where.AND as object[]).push({ siteId: key.siteId });
-      const [items, total] = await Promise.all([prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take: limit ?? 50 }), prisma.formEntry.count({ where })]);
-      return { total, items: items.map((e) => entryRow(e)) };
-    },
-    { readOnlyHint: true }
-  );
-
-  tool("get_entry", "One entry, with the labels of the form version it was filled against, and its notes.", { form: formRef, id: z.string() }, async ({ form, id }) => {
-    need("entries:read");
-    const row = await findForm(form);
-    const entry = await prisma.formEntry.findFirst({ where: { id, formId: row.id, ...(key.siteId ? { siteId: key.siteId } : {}) } });
-    if (!entry) throw new HttpError(404, "No such entry.");
-    const doc = await docForEntry(row, entry.formVersion);
-    const notes = await prisma.formEntryNote.findMany({ where: { entryId: entry.id }, orderBy: { createdAt: "asc" } });
-    return { entry: entryRow(entry), fields: doc.fields.map((f) => ({ id: f.id, type: f.type, label: f.label })), notes };
-  }, { readOnlyHint: true });
-
-  tool(
-    "submit_entry",
-    "Submit an entry to a live form, validated exactly like a person's submission. Values are keyed by field id.",
-    { form: formRef, values: z.record(z.unknown()), site: z.string().optional().describe("Site code, for forms that require a site") },
-    async ({ form, values, site }) => {
-      need("entries:write");
-      const row = await findForm(form);
-      const { entry } = await submitEntry({ form: row, values, siteCode: site, user: undefined, actorName: actor.name, source: "mcp", machineSiteIds: key.siteId ? [key.siteId] : null });
-      return { id: entry.id, values: JSON.parse(entry.data), url: `${appBaseUrl}/f/${row.slug}/entries/${entry.id}` };
-    }
-  );
-
   registerCodeTools(tool, need, actor, key);
   registerCatalogTools(tool, need, actor);
   registerNotificationTools(tool, need, key);
+  registerOps(tool, key);
   return server;
 }
 

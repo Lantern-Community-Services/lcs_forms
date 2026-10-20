@@ -5,8 +5,10 @@ import { prisma } from "../prisma.js";
  * API keys for machine callers — the WordPress connector, Power Automate.
  *
  * Only a SHA-256 of the key is stored; the plaintext is shown once at creation.
- * A key authenticates as itself with explicit scopes, not as a person, so the
- * public API (routes/publicApi.ts) never has to reason about roles.
+ * The original scopes (roster:read … notifications:send) authenticate the key as
+ * itself, not as a person. The scopes after them are delegated: the key acts on
+ * behalf of the admin who made it, never with more than that person can do now
+ * (see ops/principal.ts).
  */
 export const KEY_PREFIX = "lrk_";
 
@@ -23,6 +25,29 @@ export const API_SCOPES = [
   "entries:write",
   /** Send notifications to people (the bell and email): the MCP's send_notification, POST /api/v1/notifications. */
   "notifications:send",
+  // ── Delegated: on behalf of the key's creator (ops/principal.ts) ──
+  /** Add and edit residents, mark them still here, take attendance. */
+  "roster:write",
+  /** Remove residents from the roster and restore them. */
+  "roster:archive",
+  /** Import a property-management tenant list (CSV). */
+  "roster:import",
+  /** The audit log. */
+  "audit:read",
+  /** Sites: add, edit, deactivate, roster rules. */
+  "sites:manage",
+  /** People & roles: invite people, change roles, sites and status (never Admins). */
+  "people:manage",
+  /** Read the calendar. */
+  "calendar:read",
+  /** Add, change and remove calendar events (and, for an Admin's key, categories). */
+  "calendar:write",
+  /** Org settings (Admin → Settings). */
+  "settings:manage",
+  /** Void, restore, edit, annotate and delete form entries. */
+  "entries:manage",
+  /** Admin → Dev log. */
+  "devlog:read",
 ] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
@@ -44,6 +69,8 @@ export interface ResolvedKey {
   name: string;
   scopes: ApiScope[];
   siteId: string | null;
+  /** The admin who made it: delegated scopes act on their behalf. */
+  createdById: string | null;
 }
 
 export async function resolveApiKey(key: string): Promise<ResolvedKey | null> {
@@ -58,5 +85,6 @@ export async function resolveApiKey(key: string): Promise<ResolvedKey | null> {
     name: row.name,
     scopes: row.scopes.split(",").map((s) => s.trim()).filter(Boolean) as ApiScope[],
     siteId: row.siteId,
+    createdById: row.createdById,
   };
 }
