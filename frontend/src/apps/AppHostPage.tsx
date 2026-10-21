@@ -129,17 +129,20 @@ export function AppHostPage() {
           </div>
         </div>
       </div>
-      <div className={cn("mx-auto min-h-0 w-full flex-1", FRAME_WIDTH[width])}>
-        <AppFrame
-          runtime={runtime}
-          slug={slug}
-          draft={draft}
-          page={current.id}
-          params={params}
-          onNavigate={(p, prm) => navigate(`/apps/${slug}/${p}${withDraft(prm)}`)}
-          onSetParams={(prm) => setSearch(new URLSearchParams(withDraft(prm).slice(1)), { replace: true })}
-          onConsole={relay}
-        />
+      {/* Narrower than the window: a sheet on the gray canvas, full height, so its edges look meant. */}
+      <div className={cn("min-h-0 flex-1", width !== "full" && "bg-appbg")}>
+        <div className={cn("mx-auto h-full w-full", FRAME_WIDTH[width], width !== "full" && "border-x border-hairline bg-surface shadow-[0_0_24px_rgba(35,42,58,0.06)]")}>
+          <AppFrame
+            runtime={runtime}
+            slug={slug}
+            draft={draft}
+            page={current.id}
+            params={params}
+            onNavigate={(p, prm) => navigate(`/apps/${slug}/${p}${withDraft(prm)}`)}
+            onSetParams={(prm) => setSearch(new URLSearchParams(withDraft(prm).slice(1)), { replace: true })}
+            onConsole={relay}
+          />
+        </div>
       </div>
     </div>
   );
