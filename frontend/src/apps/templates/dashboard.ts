@@ -4,7 +4,7 @@ export const DASHBOARD_TEMPLATE = (title: string): Record<string, string> => ({
     {
       title,
       icon: "inbox",
-      access: { roles: ["main_office", "site_admin", "site_manager"] },
+      access: { roles: ["main_office", "site_manager"] },
       pages: [{ id: "overview", label: "Overview", file: "pages/overview.tsx" }],
       // To chart another form, add its slug here and set SOURCE in server/index.ts.
       reads: [],

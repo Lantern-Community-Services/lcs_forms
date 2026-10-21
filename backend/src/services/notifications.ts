@@ -152,8 +152,8 @@ const clean = (s: string, max: number) => s.replace(/[\r\n\t]+/g, " ").replace(/
 
 /** Active people the audience names, with what they need for delivery. */
 export async function resolveAudience(to: Audience) {
-  const select = { id: true, email: true, roleKey: true, calendarEditor: true, globalAdmin: true, notifyEmailMode: true, sites: { select: { siteId: true } } } as const;
-  type Person = { id: string; email: string; roleKey: string; calendarEditor: boolean; globalAdmin: boolean; notifyEmailMode: string; sites: { siteId: string }[] };
+  const select = { id: true, email: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, notifyEmailMode: true, sites: { where: { approved: true }, select: { siteId: true } } } as const;
+  type Person = { id: string; email: string; roleKey: string; calendarEditor: boolean; rosterEditor: boolean; globalAdmin: boolean; notifyEmailMode: string; sites: { siteId: string }[] };
   const found = new Map<string, Person>();
   const unknown: string[] = [];
 
@@ -170,7 +170,7 @@ export async function resolveAudience(to: Audience) {
   const roles = (to.roles ?? []).filter(Boolean);
   const perms = (to.permissions ?? []).filter(Boolean);
   const badRole = roles.find((r) => !isRoleKey(r));
-  if (badRole) throw new Error(`"${badRole}" isn't a role. Roles: admin, developer, main_office, site_admin, site_manager, site_staff.`);
+  if (badRole) throw new Error(`"${badRole}" isn't a role. Roles: admin, developer, main_office, site_manager, site_staff.`);
   const badPerm = perms.find((p) => !(PERMISSIONS as readonly string[]).includes(p));
   if (badPerm) throw new Error(`"${badPerm}" isn't a permission.`);
 

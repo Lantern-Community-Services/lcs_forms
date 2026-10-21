@@ -31,7 +31,7 @@ export const FORM_TEMPLATES: { key: string; name: string; blurb: string; build: 
         { id: "follow_up_needed", type: "consent", label: "Follow-up needed", consentText: "A manager needs to follow up on this." },
         { id: "staff_signature", type: "signature", label: "Your signature", required: true },
       ],
-      settings: { ...emptyForm().settings, submitLabel: "Submit report", entriesRoles: ["site_admin", "site_manager"] },
+      settings: { ...emptyForm().settings, submitLabel: "Submit report", entriesRoles: ["site_manager"] },
     }),
   },
   {

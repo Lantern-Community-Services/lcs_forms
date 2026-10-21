@@ -9,6 +9,7 @@ import { markUpcomingDirty } from "../services/outlookSync.js";
 import { dropGraphToken } from "../services/graphTokens.js";
 import { notifyQuietly } from "../services/notifications.js";
 import { randomAvatarColor } from "../services/avatars.js";
+import { MAIN_OFFICE_LOCATION, parseLocations } from "./onboarding.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -31,25 +32,39 @@ usersRouter.patch(
   })
 );
 
-function shape(u: { roleKey: string; globalAdmin: boolean; sites: { site: { id: string; code: string; name: string } }[] } & Record<string, unknown>) {
+type SiteRow = { siteId: string; approved: boolean; site: { id: string; code: string; name: string } };
+
+/**
+ * A person as People & roles shows them. `sites` are the ones they have;
+ * `requestedSites` are still waiting for that site's manager or an Admin.
+ */
+function shape(u: { roleKey: string; globalAdmin: boolean; locations?: string | null; sites: SiteRow[] } & Record<string, unknown>) {
   const role = roleFor(u.roleKey);
-  return { ...u, sites: u.sites.map((s) => s.site), role: { key: role.key, name: roleNameFor(role, u), allSites: role.allSites } };
+  return {
+    ...u,
+    locations: parseLocations(u.locations),
+    sites: u.sites.filter((s) => s.approved).map((s) => s.site),
+    requestedSites: u.sites.filter((s) => !s.approved).map((s) => s.site),
+    role: { key: role.key, name: roleNameFor(role, u), allSites: role.allSites },
+  };
 }
 
 const SITES_INCLUDE = { sites: { include: { site: { select: { id: true, code: true, name: true } } } } } as const;
+const ROSTER_SWITCH_NOT_YOURS = "You can't change your own roster access.";
 
 /*
  * Two ways into People & roles. users.manage (Admin) sees and changes anyone.
- * users.manageSite (Site Admin) works inside their own sites:
- *   - sees people assigned to one of their sites, plus site-role people with no
- *     site yet (a new sign-in waiting to be placed);
+ * users.manageSite (a Site Manager, in "Site settings") works inside their own sites:
+ *   - sees people with a site role who have, or are asking for, one of their sites;
+ *   - approves or declines requests for their own sites only (per site: a
+ *     request for two sites is two managers' decision);
  *   - hands out only the site roles, and only their own sites;
- *   - may change a person's role, status or name only when every site that
- *     person holds is one of theirs — a role applies everywhere, so one site's
- *     admin must not demote someone another site relies on. Otherwise they can
- *     still add or remove that person at their own sites.
- * Admin and Main Office Staff accounts are never theirs to touch. Nor is the
- * "Can edit the calendar" switch: only an Admin turns that on or off.
+ *   - may change a person's role, status, name or roster switch only when every
+ *     site that person has is one of theirs — a role applies everywhere, so one
+ *     site's manager must not demote someone another site relies on. Otherwise
+ *     they can still add or remove that person at their own sites.
+ * Admin and Developer accounts are never theirs to touch. Nor is the "Can edit
+ * the calendar" switch: only an Admin turns that on or off.
  */
 const managesEveryone = (req: Request) => req.user!.permissions.includes("users.manage");
 
@@ -71,10 +86,15 @@ function managedSiteIds(req: Request): string[] | null {
 }
 
 function siteScopedWhere(mine: string[]) {
-  return {
-    roleKey: { in: SITE_ROLE_KEYS },
-    OR: [{ sites: { some: { siteId: { in: mine } } } }, { sites: { none: {} } }],
-  };
+  return { roleKey: { in: SITE_ROLE_KEYS }, sites: { some: { siteId: { in: mine } } } };
+}
+
+/** Pending and requested accounts that were never used can be deleted outright; anyone else is deactivated. */
+function canDelete(req: Request, u: { status: string; roleKey: string; globalAdmin: boolean; sites: { siteId: string }[] }) {
+  if (u.globalAdmin || !["invited", "requested"].includes(u.status)) return false;
+  const mine = managedSiteIds(req);
+  if (!mine) return u.roleKey !== "admin" || managesAdmins(req);
+  return SITE_ROLE_KEYS.includes(roleFor(u.roleKey).key) && u.sites.length > 0 && u.sites.every((s) => mine.includes(s.siteId));
 }
 
 usersRouter.get(
@@ -87,11 +107,17 @@ usersRouter.get(
       include: SITES_INCLUDE,
       orderBy: [{ status: "asc" }, { name: "asc" }],
     });
+    // "Where do you work?" answers, as names (any site, not only the caller's).
+    const siteNames = new Map((await prisma.site.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
+    const locationName = (l: string) => (l === MAIN_OFFICE_LOCATION ? "Main Office" : siteNames.get(l) ?? "A site that's gone");
     res.json(
       users.map((u) => ({
         ...shape(u),
+        locationNames: parseLocations(u.locations).map(locationName),
         // What this caller may do to the row, so the editor can say so up front.
-        canEditRole: !u.globalAdmin && (!mine || u.sites.every((s) => mine.includes(s.siteId))),
+        canEditRole: !u.globalAdmin && (!mine || u.sites.filter((s) => s.approved).every((s) => mine.includes(s.siteId))),
+        canApproveSiteIds: u.sites.filter((s) => !s.approved && (!mine || mine.includes(s.siteId))).map((s) => s.siteId),
+        canDelete: canDelete(req, u),
       }))
     );
   })
@@ -164,10 +190,13 @@ usersRouter.patch(
         siteIds: z.array(z.string()).optional(),
         name: z.string().trim().min(1).max(120).optional(),
         calendarEditor: z.boolean().optional(),
+        rosterEditor: z.boolean().optional(),
       })
       .parse(req.body);
-    const before = await prisma.user.findUnique({ where: { id: req.params.id }, include: { sites: { select: { siteId: true } } } });
-    if (!before) throw notFound();
+    const found = await prisma.user.findUnique({ where: { id: req.params.id }, include: { sites: { select: { siteId: true, approved: true } } } });
+    if (!found) throw notFound();
+    // `sites` here are the ones they have; requested ones are approve/decline's business.
+    const before = { ...found, sites: found.sites.filter((s) => s.approved), requested: found.sites.filter((s) => !s.approved).map((s) => s.siteId) };
     // A Super Admin is changed only through SUPER_ADMINS, never here.
     if (before.globalAdmin) throw forbidden(SUPER_LOCKED);
     const roleChange = body.roleKey !== undefined && body.roleKey !== before.roleKey;
@@ -181,15 +210,20 @@ usersRouter.patch(
     }
     const calendarChange = body.calendarEditor !== undefined && body.calendarEditor !== before.calendarEditor;
     if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
+    const rosterChange = body.rosterEditor !== undefined && body.rosterEditor !== before.rosterEditor;
+    if (rosterChange && before.id === req.user!.userId) throw forbidden(ROSTER_SWITCH_NOT_YOURS);
 
     const mine = managedSiteIds(req);
     if (mine) {
       const theirs = before.sites.map((s) => s.siteId);
-      const inScope = SITE_ROLE_KEYS.includes(roleFor(before.roleKey).key) && (theirs.length === 0 || theirs.some((id) => mine.includes(id)));
+      const inScope = SITE_ROLE_KEYS.includes(roleFor(before.roleKey).key) && [...theirs, ...before.requested].some((id) => mine.includes(id));
       if (!inScope) throw notFound();
       assertAssignable(req, body.roleKey, body.siteIds);
       const touchesPerson =
-        (body.roleKey && body.roleKey !== before.roleKey) || (body.status && body.status !== before.status) || (body.name && body.name !== before.name);
+        (body.roleKey && body.roleKey !== before.roleKey) ||
+        (body.status && body.status !== before.status) ||
+        (body.name && body.name !== before.name) ||
+        rosterChange;
       if (touchesPerson && !theirs.every((id) => mine.includes(id))) {
         throw forbidden("This person also works at a site you don't manage. You can change which of your sites they're on, but an Admin has to change their role or status.");
       }
@@ -209,12 +243,19 @@ usersRouter.patch(
 
     const user = await prisma.$transaction(async (tx) => {
       if (body.siteIds) {
-        await tx.userSite.deleteMany({ where: { userId: before.id } });
+        // Giving someone a site they'd asked for settles that request too.
+        await tx.userSite.deleteMany({ where: { userId: before.id, OR: [{ approved: true }, { siteId: { in: body.siteIds } }] } });
         if (body.siteIds.length) await tx.userSite.createMany({ data: body.siteIds.map((siteId) => ({ userId: before.id, siteId })) });
       }
       return tx.user.update({
         where: { id: before.id },
-        data: { roleKey: body.roleKey, status: body.status, name: body.name, calendarEditor: calendarChange ? body.calendarEditor : undefined },
+        data: {
+          roleKey: body.roleKey,
+          status: body.status,
+          name: body.name,
+          calendarEditor: calendarChange ? body.calendarEditor : undefined,
+          rosterEditor: rosterChange ? body.rosterEditor : undefined,
+        },
         include: SITES_INCLUDE,
       });
     });
@@ -223,6 +264,7 @@ usersRouter.patch(
       body.status && body.status !== before.status ? `status → ${body.status}` : null,
       body.siteIds ? `sites → ${body.siteIds.length || "none"}` : null,
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
+      rosterChange ? `roster management ${body.rosterEditor ? "on" : "off"}` : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });
     // Tell them, if they can sign in: let in, or given a different role or sites.
@@ -232,7 +274,7 @@ usersRouter.patch(
       const roleChanged = body.roleKey !== undefined && roleFor(body.roleKey).key !== roleFor(before.roleKey).key;
       if (letIn || roleChanged || sitesChanged) {
         const role = roleNameFor(roleFor(user.roleKey), user);
-        const where = user.sites.length ? user.sites.map((s) => s.site.name).join(", ") : roleFor(user.roleKey).allSites ? "every site" : "no sites yet";
+        const where = whereText(user);
         notifyQuietly({
           to: { users: [user.id] },
           type: "account",
@@ -248,5 +290,133 @@ usersRouter.patch(
     // Their sites, role or status decide which Outlook invites they get.
     if (body.siteIds || body.roleKey || body.status) await markUpcomingDirty();
     res.json(shape(user));
+  })
+);
+
+function whereText(user: { roleKey: string; sites: SiteRow[] }) {
+  const have = user.sites.filter((s) => s.approved).map((s) => s.site.name);
+  return have.length ? have.join(", ") : roleFor(user.roleKey).allSites ? "every site" : "no sites yet";
+}
+
+/** The person, or a 404 when a Site Manager has no site of theirs on the row (had or asked for). */
+async function personInScope(req: Request, id: string) {
+  const u = await prisma.user.findUnique({ where: { id }, include: SITES_INCLUDE });
+  if (!u) throw notFound();
+  if (u.globalAdmin) throw forbidden(SUPER_LOCKED);
+  const mine = managedSiteIds(req);
+  if (mine && !(SITE_ROLE_KEYS.includes(roleFor(u.roleKey).key) && u.sites.some((s) => mine.includes(s.siteId)))) throw notFound();
+  return { u, mine };
+}
+
+/**
+ * Approve requested sites. A Site Manager approves only their own sites; the
+ * rest of the request stays for those sites' managers. The first approval
+ * lets the person in, with the role chosen here (Site Staff unless said).
+ */
+usersRouter.post(
+  "/:id/approve",
+  requirePermission("users.manage", "users.manageSite"),
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        siteIds: z.array(z.string()).min(1, "Choose at least one site to approve."),
+        roleKey: z.string().refine(isRoleKey, "Unknown role").optional(),
+      })
+      .parse(req.body);
+    const { u, mine } = await personInScope(req, req.params.id);
+    if (u.id === req.user!.userId) throw forbidden("You can't approve your own request.");
+    if (!["requested", "active"].includes(u.status)) throw badRequest("Only a request, or an active person asking for more sites, can be approved.");
+    const waiting = u.sites.filter((s) => !s.approved).map((s) => s.siteId);
+    if (body.siteIds.some((id) => !waiting.includes(id))) throw badRequest("They didn't ask for one of those sites, or it's already been decided.");
+    if (mine && body.siteIds.some((id) => !mine.includes(id))) throw forbidden("You can only approve your own sites. The others are for their own site's manager.");
+
+    const letIn = u.status === "requested";
+    let roleKey = body.roleKey;
+    if (letIn) roleKey ??= u.roleKey;
+    else if (roleKey && roleFor(roleKey).key === roleFor(u.roleKey).key) roleKey = undefined;
+    if (roleKey) {
+      assertAssignable(req, roleKey, undefined);
+      if (roleKey === "admin" && !managesAdmins(req)) throw forbidden(SUPER_ONLY);
+      // Changing an active person's role is for whoever has all their sites.
+      if (!letIn && mine && !u.sites.filter((s) => s.approved).every((s) => mine.includes(s.siteId))) {
+        throw forbidden("This person also works at a site you don't manage. Approve the site; an Admin has to change their role.");
+      }
+    }
+
+    const user = await prisma.$transaction(async (tx) => {
+      await tx.userSite.updateMany({ where: { userId: u.id, siteId: { in: body.siteIds } }, data: { approved: true } });
+      return tx.user.update({ where: { id: u.id }, data: { roleKey, status: letIn ? "active" : undefined }, include: SITES_INCLUDE });
+    });
+    const names = user.sites.filter((s) => body.siteIds.includes(s.siteId)).map((s) => s.site.name);
+    const role = roleNameFor(roleFor(user.roleKey), user);
+    await audit({
+      actor: actorOf(req),
+      action: "user.approved",
+      summary: `Approved ${user.name} for ${names.join(", ")}${letIn || roleKey ? ` as ${role}` : ""}`,
+    });
+    notifyQuietly({
+      to: { users: [user.id] },
+      type: "account",
+      title: letIn ? "You can now sign in to Lantern Forms" : "You've been given more sites in Lantern Forms",
+      body: `${req.user!.name} approved ${names.join(", ")}. You're ${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}, at ${whereText(user)}.`,
+      link: "/forms",
+      sourceLabel: "People & roles",
+    });
+    await markUpcomingDirty();
+    res.json(shape(user));
+  })
+);
+
+/**
+ * Turn down requested sites (a Site Manager: their own). When a request is
+ * left with no sites at all, had or asked for, the request itself goes.
+ */
+usersRouter.post(
+  "/:id/decline",
+  requirePermission("users.manage", "users.manageSite"),
+  asyncHandler(async (req, res) => {
+    const body = z.object({ siteIds: z.array(z.string()).min(1, "Choose at least one site to decline.") }).parse(req.body);
+    const { u, mine } = await personInScope(req, req.params.id);
+    const waiting = u.sites.filter((s) => !s.approved).map((s) => s.siteId);
+    if (body.siteIds.some((id) => !waiting.includes(id))) throw badRequest("They didn't ask for one of those sites, or it's already been decided.");
+    if (mine && body.siteIds.some((id) => !mine.includes(id))) throw forbidden("You can only decline your own sites.");
+    await prisma.userSite.deleteMany({ where: { userId: u.id, approved: false, siteId: { in: body.siteIds } } });
+    const names = u.sites.filter((s) => body.siteIds.includes(s.siteId)).map((s) => s.site.name);
+    const removed = u.status === "requested" && (await prisma.userSite.count({ where: { userId: u.id } })) === 0;
+    if (removed) await prisma.user.delete({ where: { id: u.id } });
+    await audit({
+      actor: actorOf(req),
+      action: removed ? "user.request_removed" : "user.declined",
+      summary: `Declined ${u.name} (${u.email}) for ${names.join(", ")}${removed ? "; nothing was left, so the request was removed" : ""}`,
+    });
+    const person = removed ? null : await prisma.user.findUnique({ where: { id: u.id }, include: SITES_INCLUDE });
+    res.json({ removed, person: person ? shape(person) : null });
+  })
+);
+
+/**
+ * Delete a pending or requested account that was never used: a mistaken
+ * invite, or a request nobody will approve. Anyone who's been let in is
+ * deactivated instead, so their history keeps a name.
+ */
+usersRouter.delete(
+  "/:id",
+  requirePermission("users.manage", "users.manageSite"),
+  asyncHandler(async (req, res) => {
+    const { u } = await personInScope(req, req.params.id);
+    if (!canDelete(req, u)) {
+      throw forbidden(
+        ["invited", "requested"].includes(u.status)
+          ? "This person also has a site you don't manage. Decline your sites instead, or ask an Admin."
+          : "Only pending accounts and requests can be deleted. Deactivate this person instead."
+      );
+    }
+    await prisma.user.delete({ where: { id: u.id } });
+    await audit({
+      actor: actorOf(req),
+      action: "user.deleted",
+      summary: `Deleted ${u.status === "invited" ? "the pending account" : "the request"} for ${u.name === u.email ? u.email : `${u.name} (${u.email})`}`,
+    });
+    res.json({ ok: true });
   })
 );

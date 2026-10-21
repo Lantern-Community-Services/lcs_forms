@@ -20,7 +20,7 @@ export const apiNotifyShape = {
   to: z
     .object({
       users: z.array(z.string().max(255)).max(500).optional().describe("Email addresses (or user ids) of people with an account here"),
-      roles: z.array(z.string().max(64)).max(10).optional().describe("Role keys: admin, developer, main_office, site_admin, site_manager, site_staff"),
+      roles: z.array(z.string().max(64)).max(10).optional().describe("Role keys: admin, developer, main_office, site_manager, site_staff"),
       permissions: z.array(z.string().max(64)).max(10).optional().describe("Everyone who holds one of these permissions, e.g. users.manage"),
       sites: z.array(z.string().max(64)).max(50).optional().describe("Site codes: narrows roles / permissions / everyone to people at these sites (people who work at every site always count)"),
       everyone: z.boolean().optional().describe("Every active person"),

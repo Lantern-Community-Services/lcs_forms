@@ -12,6 +12,7 @@ import { currentDeviceKind, useDeviceKind } from "./lib/device";
 import { lazyScreen } from "./lib/lazyScreen";
 
 import { SignInPage } from "./screens/SignIn";
+import { WelcomePage } from "./screens/Welcome";
 import { FormsPage } from "./screens/Forms";
 import { DashboardPage } from "./screens/Dashboard";
 import { RosterPage } from "./screens/Roster";
@@ -106,6 +107,20 @@ function DesktopOnly() {
 }
 
 /**
+ * People & roles: inside the admin rail on a computer, on its own on a phone
+ * or iPad, where the rest of admin isn't offered.
+ */
+function PeopleFrame() {
+  const device = useDeviceKind();
+  const desktop = device === "desktop" && currentDeviceKind() === "desktop";
+  return (
+    <Suspense fallback={<div className="grid h-full place-items-center"><LoadingState /></div>}>
+      {desktop ? <ConfigLayout /> : <Outlet />}
+    </Suspense>
+  );
+}
+
+/**
  * Where "/" goes: the person's chosen landing page, or Forms. A roster page is
  * only honoured while they can still see the roster, otherwise a demoted
  * person would bounce between "/" and a screen that sends them back to "/".
@@ -162,6 +177,8 @@ export function App() {
   return (
     <Routes>
       <Route path="/signin" element={user && !loading ? <HomeRedirect /> : <SignInPage />} />
+      {/* A first sign-in choosing their sites: no session yet, no app chrome. */}
+      <Route path="/welcome" element={user && !loading ? <HomeRedirect /> : <WelcomePage />} />
       {/* Public built forms: no sign-in, no app chrome. */}
       <Route path="/p/:slug" element={<FillPage publicView />} />
 
@@ -200,6 +217,13 @@ export function App() {
           <Route path="/attendance/:id" element={<MovedAttendanceEntry />} />
         </Route>
 
+        {/* People & roles is a Site Manager's "Site settings": they approve from an iPad too. */}
+        <Route element={<RequirePermission anyOf={["users.manage", "users.manageSite"]} />}>
+          <Route element={<PeopleFrame />}>
+            <Route path="/admin/people" element={<AdminPeople />} />
+          </Route>
+        </Route>
+
         <Route element={<DesktopOnly />}>
         <Route element={<RequirePermission anyOf={ADMIN_AREA} />}>
           <Route path="/admin" element={<AdminHome />} />
@@ -222,9 +246,6 @@ export function App() {
             <Route element={<RequirePermission anyOf={["sites.manage"]} />}>
               <Route path="/admin/sites" element={<AdminSites />} />
               <Route path="/admin/import" element={<AdminImport />} />
-            </Route>
-            <Route element={<RequirePermission anyOf={["users.manage", "users.manageSite"]} />}>
-              <Route path="/admin/people" element={<AdminPeople />} />
             </Route>
             <Route element={<RequirePermission anyOf={["settings.manage"]} />}>
               <Route path="/admin/sign-in" element={<AdminSignInAccess />} />
