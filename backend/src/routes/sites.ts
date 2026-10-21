@@ -135,7 +135,7 @@ sitesRouter.patch(
 
 /**
  * One site's own roster rules — today just its review threshold. Separate from
- * PATCH /:id so a Site Admin (sites.manageRules) can tune their sites without
+ * PATCH /:id so anyone with sites.manageRules can tune their sites without
  * being able to rename or deactivate them. Null = use the org-wide default.
  */
 sitesRouter.patch(

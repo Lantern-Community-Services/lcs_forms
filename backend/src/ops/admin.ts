@@ -101,7 +101,7 @@ export const adminOps = [
 
   defineOp({
     name: "set_site_rules",
-    description: "Set one site's review threshold (hours before an unconfirmed resident needs attention); null = the org default. A Site Admin's key can do this for their own sites.",
+    description: "Set one site's review threshold (hours before an unconfirmed resident needs attention); null = the org default. Admin keys only (Site Managers no longer set roster rules).",
     scope: "sites:manage",
     as: "creator",
     http: { method: "PATCH", path: "/sites/:id/rules" },
@@ -113,7 +113,7 @@ export const adminOps = [
   // ── People & roles ──
   defineOp({
     name: "list_people",
-    description: "People with an account (active, pending, requests, deactivated), with role, sites and whether this key may change their role. A Site Admin's key sees their sites' people.",
+    description: "People with an account (active, pending, requests, deactivated), with role, sites and whether this key may change their role. A Site Manager's key sees their sites' people and the requests for them (requestedSites, canApproveSiteIds).",
     scope: "people:manage",
     as: "creator",
     http: { method: "GET", path: "/people" },
@@ -152,7 +152,7 @@ export const adminOps = [
 
   defineOp({
     name: "update_person",
-    description: "Change someone's role, sites, status (active, invited, denied, deactivated), name or calendar switch. Admins and Super Admins can't be changed through a key.",
+    description: "Change someone's role, sites, status (active, invited, denied, deactivated), name, calendar switch (Admin keys only) or roster switch (\"Can manage the roster\"). Admins and Super Admins can't be changed through a key. Requests are approved with approve_person, not here.",
     scope: "people:manage",
     as: "creator",
     http: { method: "PATCH", path: "/people/:id" },
@@ -160,18 +160,62 @@ export const adminOps = [
       id: z.string().describe("The person's id (list_people)"),
       roleKey: z.string().optional(),
       status: z.enum(["active", "invited", "denied", "deactivated"]).optional(),
-      siteIds: z.array(z.string()).optional(),
+      siteIds: z.array(z.string()).optional().describe("The sites they have (replaces them); giving a requested site settles that request"),
       name: z.string().max(120).optional(),
       calendarEditor: z.boolean().optional(),
+      rosterEditor: z.boolean().optional().describe("Can manage the roster (add, edit, keep, remove, restore residents) whatever their role"),
     },
-    confirm: (a) => a.roleKey !== undefined || a.status !== undefined || a.siteIds !== undefined || a.calendarEditor !== undefined,
+    confirm: (a) => a.roleKey !== undefined || a.status !== undefined || a.siteIds !== undefined || a.calendarEditor !== undefined || a.rosterEditor !== undefined,
     run: (ctx, { id, ...body }) => ctx.route(usersRouter, { method: "PATCH", path: `/${enc(id)}`, body }),
+  }),
+
+  defineOp({
+    name: "approve_person",
+    description:
+      "Approve sites someone asked for at their first sign-in (list_people: requestedSites). A Site Manager's key approves only its own sites; the rest wait for their own managers. The first approval lets the person in with roleKey (Site Staff if left out).",
+    scope: "people:manage",
+    as: "creator",
+    http: { method: "POST", path: "/people/:id/approve" },
+    shape: {
+      id: z.string().describe("The person's id (list_people)"),
+      siteIds: z.array(z.string()).min(1).describe("Requested site ids to approve"),
+      roleKey: z.string().optional().describe("A role key from list_roles"),
+    },
+    confirm: true,
+    run: (ctx, { id, ...body }) => ctx.route(usersRouter, { method: "POST", path: `/${enc(id)}/approve`, body }),
+  }),
+
+  defineOp({
+    name: "decline_person",
+    description: "Decline sites someone asked for (a Site Manager's key: its own). A request left with no sites at all is removed.",
+    scope: "people:manage",
+    as: "creator",
+    http: { method: "POST", path: "/people/:id/decline" },
+    shape: {
+      id: z.string().describe("The person's id (list_people)"),
+      siteIds: z.array(z.string()).min(1).describe("Requested site ids to decline"),
+    },
+    confirm: true,
+    annotations: { destructiveHint: true },
+    run: (ctx, { id, ...body }) => ctx.route(usersRouter, { method: "POST", path: `/${enc(id)}/decline`, body }),
+  }),
+
+  defineOp({
+    name: "delete_person",
+    description: "Delete a pending account (invited, never signed in) or a request. Anyone who has been let in can only be deactivated (update_person status).",
+    scope: "people:manage",
+    as: "creator",
+    http: { method: "DELETE", path: "/people/:id" },
+    shape: { id: z.string().describe("The person's id (list_people)") },
+    confirm: true,
+    annotations: { destructiveHint: true },
+    run: (ctx, a) => ctx.route(usersRouter, { method: "DELETE", path: `/${enc(a.id)}` }),
   }),
 
   // ── Settings ──
   defineOp({
     name: "get_settings",
-    description: "Org settings: the default review threshold (attentionHours), guest sign-in domains, undo window, and whether Lantern staff are approved automatically.",
+    description: "Org settings: the default review threshold (attentionHours), guest sign-in domains, and undo window. (Every first sign-in is a request now; there is no automatic approval.)",
     scope: "settings:manage",
     as: "creator",
     http: { method: "GET", path: "/settings" },
@@ -182,7 +226,7 @@ export const adminOps = [
 
   defineOp({
     name: "update_settings",
-    description: "Change org settings. guestDomains and autoApproveStaff decide who can get in, so they need confirm: true.",
+    description: "Change org settings. guestDomains decides who can get in, so it needs confirm: true.",
     scope: "settings:manage",
     as: "creator",
     http: { method: "PATCH", path: "/settings" },
@@ -190,9 +234,8 @@ export const adminOps = [
       attentionHours: z.number().int().min(1).max(24 * 60).optional(),
       guestDomains: z.array(z.string()).optional().describe("Replaces the whole list"),
       undoSeconds: z.number().int().min(3).max(60).optional(),
-      autoApproveStaff: z.boolean().optional(),
     },
-    confirm: (a) => a.guestDomains !== undefined || a.autoApproveStaff !== undefined,
+    confirm: (a) => a.guestDomains !== undefined,
     run: (ctx, a) => ctx.route(adminRouter, { method: "PATCH", path: "/settings", body: a }),
   }),
 

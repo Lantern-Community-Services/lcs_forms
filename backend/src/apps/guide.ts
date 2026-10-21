@@ -22,9 +22,9 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "access": { "roles": ["*"] },                     // who can open it (omit = anyone signed in)
   "pages": [
     { "id": "record", "label": "Record", "file": "pages/record.tsx", "fullHeight": true },
-    { "id": "reports", "label": "Reports", "file": "pages/reports.tsx", "roles": ["main_office", "site_admin", "site_manager"] }
+    { "id": "reports", "label": "Reports", "file": "pages/reports.tsx", "roles": ["main_office", "site_manager"] }
   ],
-  "entries": { "read": ["main_office", "site_admin", "site_manager"], "void": ["site_admin", "site_manager"], "undoMinutes": 10 },
+  "entries": { "read": ["main_office", "site_manager", "site_staff"], "void": ["admin"], "undoMinutes": 10 },
   "collections": { "mealTypes": { "read": ["*"], "write": ["admin"] } },
   "reads": ["other-form-slug"],
   "share": { "forms": ["other-form-slug"] },                       // let that form's server code read this one's entries
@@ -36,7 +36,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
 }
 entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
 "editOwnMinutes": N (people can change their own entry for N minutes; default 0).
-Role keys: admin, developer, main_office, site_admin, site_manager, site_staff. "*" = everyone with access.
+Role keys: admin, developer, main_office, site_manager, site_staff. "*" = everyone with access.
 Admins and developers pass every role check.
 
 ## How data flows

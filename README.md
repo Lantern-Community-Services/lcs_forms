@@ -84,8 +84,8 @@ Admin → Hot Foods), which was removed with its data on 2026-10-07.
 
 | Tab | Who | What |
 |---|---|---|
-| **Record** | Admin, Developer, Site Admin, Site Manager, Site Staff | Meal → Resident → Sign, then Saved with Next resident and Undo. The meal is picked once per shift; most frequent residents first. Works offline: entries queue on the device and upload behind the scenes. |
-| **Entries** | Main Office, Site Admin, Site Manager, Developer | Filter by sites, dates, status and search; Print, and Export (CSV, Excel, PDF) of everything the filters match. Each entry opens with its signature, Print, and **Void** (Site Admin, Site Manager). |
+| **Record** | Admin, Developer, Site Manager, Site Staff | Meal → Resident → Sign, then Saved with Next resident and Undo. The meal is picked once per shift; most frequent residents first. Works offline: entries queue on the device and upload behind the scenes. |
+| **Entries** | Main Office, Site Manager, Developer | Filter by sites, dates, status and search; Print, and Export (CSV, Excel, PDF) of everything the filters match. Each entry opens with its signature, Print, and **Void** (Admin). |
 | **Reports** | same as Entries | Meals served, residents, meals per day (with a table), by site, by meal type, a weekday × hour grid and entries by staff member. Print, or export as a PDF report (charts drawn in) or an Excel workbook (one sheet per breakdown). |
 | **Settings** | Admin | Meals per day (supportive, shelter), the shelter cooldown, and the meal types with their report colors. |
 
@@ -207,8 +207,8 @@ and the key: `Ada Example (API key: Power Automate)`.
 without it, so an assistant has to check with its person first. Operations whose route doesn't
 write an audit event (entry void / restore / edit / delete) write one here (`entries.*`).
 
-A key limited to one site gets only the site-bounded half of a scope (Site Admin's
-users.manageSite, sites.manageRules, calendar.edit) and can't use the org-wide ones
+A key limited to one site gets only the site-bounded half of a scope (users.manageSite,
+sites.manageRules, calendar.edit) and can't use the org-wide ones
 (`settings:manage`, `roster:import`, `devlog:read`). Never through a key: making, changing or
 removing Admins (admins.manage is never delegated), API keys, webhooks, and anyone's own
 notifications. Keys made before this have no recorded creator for the delegated scopes: make a new
@@ -374,9 +374,11 @@ top of the phone's **All forms** sheet.
     in Admin → People & roles (`User.calendarEditor`, which gives `calendar.edit`). They add,
     change and remove events for their own sites only. They can't make an every-site event, touch
     one that also reaches a site they aren't at, or edit the categories. A Site Manager keeps all of
-    their roster access. Only an Admin can turn the switch on or off. Site Admins see it but can't
+    their roster access. Only an Admin can turn the switch on or off. Site Managers see it but can't
     change it, and it's in the audit log. People with it carry a "Calendar" tag in the list.
-  - **Everyone else** gets the same screens without New event, Edit or Delete.
+  - **Everyone else** gets the same screens without New event, Edit or Delete, and a **Request
+    an event** button that opens the Event Requests code form (`/apps/events`) when it's published
+    to them.
 
   The server decides each event: every occurrence comes back with `canEdit`, and writes outside a
   person's reach are refused (403). All checked for each role against every write endpoint.
@@ -707,17 +709,24 @@ pipeline and infrastructure live in `infra/` and `.github/workflows/`.
 | Role | Can |
 |---|---|
 | Super Admin | Administrator + makes people Admins, and changes or removes Admins. Set **only** on the server, in `SUPER_ADMINS` (comma-separated emails): the app and the API can't make, change or remove a Super Admin. Applied at every start-up (listed people become active Super Admins; anyone taken off goes back to a plain Admin) and at sign-in, which is how a new environment gets its first Admins. An empty list changes nobody. Stored as `User.globalAdmin`. |
-| Staff member | Use the Forms screen. No rosters. **Every new Lantern account starts here.** |
-| Viewer | Staff member + see rosters at their sites |
-| Site staff | Add, edit, keep, remove at their sites |
-| Site manager | Site staff + restore removed residents + full audit history |
-| Administrator | Everything, every site: forms catalog, sites, people, sign-in access, integrations, rules |
+| Administrator | Everything, every site: forms catalog, sites, people, sign-in access, integrations, roster rules, voiding entries, the audit log. The only role that adds calendar events directly. |
+| Site Manager | Site Staff + roster management (add, edit, keep, remove, restore residents; attendance) + **Site settings**: People & roles for their own sites, where they approve, decline and remove requests for those sites and turn "Can manage the roster" on for their staff. |
+| Main Office Staff | Same as Site Staff for now, at the sites they're approved for (it no longer sees every site); its own role so it can get main-office duties later. |
+| Site Staff | Submit and read forms, look at the roster, read the calendar, at their approved sites. Events are asked for through Event Requests. |
+| Developer | Builds code forms; reads entries and rosters at assigned sites. |
 
-**Admin → Sign-in access → Let Lantern staff in on their first sign-in** is on by default. With it
-on, anyone who signs in with a `lanterncommunity.org` account (`SSO_ALLOWED_DOMAINS`) gets in
-straight away as a Staff member, so the forms work for everyone on day one. Roster access is always
-a deliberate promotion in **People & roles**. Partner domains file an access request that an admin
-approves, and so does everyone when the switch is off.
+Two per-person switches add to a role: **Can manage the roster** (Site Managers or Admins turn it on)
+and **Can edit the calendar** (Admins only). The old Site Admin role was folded into Site Manager
+on 2026-10-21; stored `site_admin` keys are rewritten at start-up.
+
+**Every first sign-in is a request.** The person lands on `/welcome` (an onboarding cookie, not a
+session), says where they work (sites and/or Main Office) and which sites they want to see, and
+waits. Each chosen site's Site Managers, and every Admin, are notified; in **People & roles →
+Requests** each manager approves or declines only their own sites, so a request for two sites is
+two decisions. The first approval lets the person in, with the role chosen then; the rest stay
+waiting for their own managers. Declining a request's last site removes it. Someone an admin adds
+by email ahead of time signs straight in. Pending accounts and requests can be deleted; anyone
+who has been let in is deactivated instead.
 
 Unlike the WordPress site, this site needs a sign-in to see the forms list. That's deliberate:
 forms rebuilt here will show resident names from the roster. The WordPress forms themselves are

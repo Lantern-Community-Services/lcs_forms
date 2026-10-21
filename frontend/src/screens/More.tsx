@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { Bell, ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, Webhook } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/badge";
-import { ADMIN_AREA, useAuth } from "@/lib/auth";
+import { ADMIN_AREA, isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { currentDeviceKind, useDeviceKind } from "@/lib/device";
 import { useSites, useUsers } from "@/lib/queries";
 import { useUnreadCount } from "@/lib/notifications";
@@ -31,7 +31,7 @@ export function MorePage() {
         <ChevronRight className="h-[17px] w-[17px] shrink-0 text-muted" />
       </NavLink>
 
-      {isAdmin && <AdminSection />}
+      {isAdmin ? <AdminSection /> : (can("users.manage") || can("users.manageSite")) && <PeopleSection />}
       <Section title="You">
         <Row to="/notifications" icon={Bell} label="Notifications" badge={unread ? `${unread} unread` : undefined} />
         <Row to="/profile" icon={UserRound} label="Profile & settings" />
@@ -49,9 +49,9 @@ function AdminSection() {
   const { data: sites } = useSites(false, can("sites.manage"));
   const people = can("users.manage") || can("users.manageSite");
   const { data: users } = useUsers(people);
-  const waiting = (users ?? []).filter((u) => u.status === "requested").length;
+  const waiting = waitingCount(users);
   return (
-    <Section title="Admin">
+    <Section title={isSiteSettingsOnly(can) ? "Site settings" : "Admin"}>
       {can("forms.manage") && <Row to="/admin/forms" icon={FileText} label="Forms catalog" />}
       {can("sites.manage") && <Row to="/admin/sites" icon={Layers} label="Sites" meta={sites?.length} />}
       {can("sites.manage") && <Row to="/admin/import" icon={Upload} label="Import tenant list" />}
@@ -62,6 +62,23 @@ function AdminSection() {
       {can("integrations.manage") && <Row to="/admin/api-keys" icon={Plug} label="API keys" />}
       {can("integrations.manage") && <Row to="/admin/webhooks" icon={Webhook} label="Webhooks" />}
       {(can("settings.manage") || can("sites.manageRules")) && <Row to="/admin/settings" icon={Settings2} label="Roster rules" />}
+    </Section>
+  );
+}
+
+/** Requests, and people already in who are waiting on a site this person decides. */
+function waitingCount(users: ReturnType<typeof useUsers>["data"]) {
+  return (users ?? []).filter((u) => u.status === "requested" || (u.status === "active" && u.canApproveSiteIds.length > 0)).length;
+}
+
+/** On a phone or iPad, admin is just People & roles: a Site Manager's "Site settings". */
+function PeopleSection() {
+  const { can } = useAuth();
+  const { data: users } = useUsers(true);
+  const waiting = waitingCount(users);
+  return (
+    <Section title={isSiteSettingsOnly(can) ? "Site settings" : "Admin"}>
+      <Row to="/admin/people" icon={Users} label="People & roles" badge={waiting ? `${waiting} waiting` : undefined} />
     </Section>
   );
 }

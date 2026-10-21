@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { CalendarDays, ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
+import { isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
 import { CountBadge, UnreadBubble } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
@@ -203,8 +203,10 @@ function DockAccount({ active, open, onClick, phone }: { active: boolean; open: 
  * the scrim so the next tap on it still goes where it says.
  */
 function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }) {
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
   const unread = useUnreadCount();
+  // The one admin screen offered on a touch screen: approving people for your sites.
+  const people = can("users.manage") || can("users.manageSite");
   return (
     <>
       <button type="button" tabIndex={-1} aria-label="Close" onClick={onClose} className="fixed inset-0 z-40 cursor-default" />
@@ -228,6 +230,12 @@ function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }
           {unread > 0 && <CountBadge count={unread} max={99} label={`${unread} unread`} />}
           <ChevronRight className="h-4 w-4 text-muted" />
         </NavLink>
+        {people && (
+          <NavLink to="/admin/people" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+            <span className="flex-1">{isSiteSettingsOnly(can) ? "Site settings" : "People & roles"}</span>
+            <ChevronRight className="h-4 w-4 text-muted" />
+          </NavLink>
+        )}
         <NavLink to="/profile" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
           <span className="flex-1">Profile &amp; settings</span>
           <ChevronRight className="h-4 w-4 text-muted" />

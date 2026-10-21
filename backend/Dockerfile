@@ -34,10 +34,13 @@ RUN npx prisma generate && npm run build
 # and it lets an operator run the importers in the container.
 FROM base AS runtime
 # The commit being built (the pipeline passes it); shown in Admin → Dev log.
+# BUILD_NUMBER (the pipeline's run count) becomes the version's last number.
 ARG GIT_SHA=
+ARG BUILD_NUMBER=
 ENV NODE_ENV=production \
     PORT=4200 \
-    GIT_SHA=${GIT_SHA}
+    GIT_SHA=${GIT_SHA} \
+    BUILD_NUMBER=${BUILD_NUMBER}
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

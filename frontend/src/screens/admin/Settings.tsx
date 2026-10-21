@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -18,7 +17,7 @@ import { errorMessage } from "@/lib/utils";
 /**
  * The review threshold and friends. The org-wide default is an Admin's
  * (settings.manage); each site's own override belongs to whoever holds
- * sites.manageRules for it — a Site Admin sees just their sites.
+ * sites.manageRules for it — an Admin sets each site.
  */
 export function AdminSettings() {
   const { can } = useAuth();
@@ -129,32 +128,17 @@ export function AdminSignInAccess() {
     }
   }
 
-  async function setAutoApprove(on: boolean) {
-    try {
-      await api.patch("/admin/settings", { autoApproveStaff: on });
-      await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
-      toast(on ? "Lantern staff now get in on their first sign-in." : "New Lantern staff now need an admin's approval.");
-    } catch (e) {
-      toast(errorMessage(e, "Could not save."), "error");
-    }
-  }
-
   if (isLoading) return <LoadingState />;
   return (
     <Page className="max-w-[760px]">
       <PageHeader title="Sign-in access" subtitle="Everyone signs in through Lantern's Microsoft Entra ID. Partner organisations can use their own Google Workspace or Microsoft accounts." />
       <Card className="mb-4 p-5">
-        <label className="flex items-start gap-3">
-          <Switch className="mt-0.5" checked={data?.autoApproveStaff === "true"} onCheckedChange={(on) => void setAutoApprove(on)} />
-          <span>
-            <span className="block text-[14px] font-semibold text-ink">Let Lantern staff in on their first sign-in</span>
-            <span className="mt-0.5 block text-[13px] text-muted">
-              Anyone with a <b className="text-ink">lanterncommunity.org</b> account gets in as <b className="text-ink">Site Staff</b>:
-              they can use the forms, but see no rosters until an Admin or Site Admin assigns them to a site in People &amp; roles.
-              Turn this off to approve every new person by hand. Partner domains below always need approval.
-            </span>
-          </span>
-        </label>
+        <p className="kicker mb-2">New people</p>
+        <p className="text-[13px] text-muted">
+          Everyone's first sign-in is a request. They choose where they work and which sites they want to see, and each of
+          those sites' managers — or an Admin — approves it in <b className="text-ink">People &amp; roles → Requests</b>.
+          Someone you add by email ahead of time signs straight in.
+        </p>
       </Card>
       <Card className="mb-4 p-5">
         <p className="kicker mb-2">Admitted domains</p>

@@ -3,7 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { CountBadge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/ui/misc";
-import { useAuth } from "@/lib/auth";
+import { isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { useApiKeys, useForms, useSites, useUsers, useWebhooks } from "@/lib/queries";
 import type { PermissionKey } from "@/lib/types";
 
@@ -67,12 +67,13 @@ export function ConfigLayout() {
     apiKeys: keys?.filter((k) => !k.revokedAt).length,
     webhooks: hooks?.items.length,
   };
-  const waiting = (users ?? []).filter((u) => u.status === "requested").length;
+  // Requests, and people already in who are waiting on a site this person decides.
+  const waiting = (users ?? []).filter((u) => u.status === "requested" || (u.status === "active" && u.canApproveSiteIds.length > 0)).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       <nav className="w-full shrink-0 border-b border-hairline bg-surface px-3 pb-2 pt-safe-top md:h-full md:w-[222px] md:overflow-y-auto md:scroll-thin md:flex md:flex-col md:border-b-0 md:border-r md:py-5">
-        <p className="mb-2 px-2 text-micro font-bold uppercase tracking-[0.04em] text-muted">Admin</p>
+        <p className="mb-2 px-2 text-micro font-bold uppercase tracking-[0.04em] text-muted">{isSiteSettingsOnly(can) ? "Site settings" : "Admin"}</p>
         <div className="chiprow -mx-1 flex gap-1.5 px-1 md:mx-0 md:block md:overflow-visible md:px-0">
           {GROUPS.map((g) => {
             const items = g.items.filter((it) => it.needs.some(can));

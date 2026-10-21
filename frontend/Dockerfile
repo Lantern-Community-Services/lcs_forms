@@ -22,10 +22,13 @@ FROM base AS build
 ARG BACKEND_URL=http://backend:4200
 ARG NEXT_PUBLIC_API_BASE_URL=
 # The commit being built (the pipeline passes it); shown in Admin → Dev log.
+# BUILD_NUMBER (the pipeline's run count) becomes the version's last number.
 ARG GIT_SHA=
+ARG BUILD_NUMBER=
 ENV BACKEND_URL=${BACKEND_URL} \
     NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
     GIT_SHA=${GIT_SHA} \
+    BUILD_NUMBER=${BUILD_NUMBER} \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
