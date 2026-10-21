@@ -55,10 +55,16 @@ export function useTutorialProgress(userId: string | null) {
   });
 }
 
-/** The version of `key` they finished or skipped, here or on any device: 0 for never. */
+/**
+ * The version of `key` they finished or skipped, here or on any device: 0 for never.
+ * The server's record decides. This device's own record counts only until it has
+ * reached the server (offline), so a reset in People & roles takes effect on every
+ * device. With no account (a public form) the device's record is all there is.
+ */
 export function seenVersion(data: ProgressData | undefined, userId: string | null, key: string): number {
   const server = data?.items.find((r) => r.key === key)?.version ?? 0;
-  const local = readLocal(userId)[key]?.version ?? 0;
+  const mine = readLocal(userId)[key];
+  const local = mine && (!userId || mine.unsynced) ? mine.version : 0;
   return Math.max(server, local);
 }
 
