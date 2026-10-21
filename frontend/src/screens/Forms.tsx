@@ -10,7 +10,9 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { canOpenForm, formIcon, formLinkIcon, formNeeds, isInternalForm } from "@/lib/formIcons";
-import { formsApi, useForms, useHome, useHomeApps } from "@/lib/queries";
+import { formsApi, sampleKey, useForms, useHome, useHomeApps } from "@/lib/queries";
+import { isSample } from "@/lib/tour/sampleData";
+import { useTourSample } from "@/lib/tour/store";
 import type { FormCatalog, FormCategory, FormLink, HomeActivityItem, HomeAppTile, HomeAttentionItem, HomeData } from "@/lib/types";
 import { useSearchParam } from "@/lib/useSearchParam";
 import { cn, errorMessage } from "@/lib/utils";
@@ -56,6 +58,12 @@ export function FormsPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const phoneSearchRef = useRef<HTMLInputElement>(null);
   const first = user?.name.split(" ")[0];
+
+  // The welcome tour has its search typed in here; its sample forms leave with it, and so does the search.
+  const sample = useTourSample();
+  useEffect(() => {
+    if (!sample) setQ("");
+  }, [sample]);
 
   // "/" jumps to whichever search box is on screen.
   useEffect(() => {
@@ -281,9 +289,9 @@ function matchingFlatFor(categories: FormCategory[], pick: Selection, favorites:
 function useFavoriteToggle() {
   const qc = useQueryClient();
   const toast = useToast();
-  const key = ["forms", "visible"];
-
   return async (form: FormLink, isFavorite: boolean) => {
+    // The welcome tour's sample forms keep their pins in their own cache (formsApi doesn't send them).
+    const key = isSample(form.id) ? sampleKey("forms") : ["forms", "visible"];
     const before = qc.getQueryData<FormCatalog>(key);
     if (before) {
       qc.setQueryData<FormCatalog>(key, {

@@ -12,6 +12,9 @@ import { SearchInput } from "@/components/ui/input";
 import type { Site } from "./types";
 
 const KEY = "ln.sites";
+/** The desktop popover's width, and the room it keeps from the screen's edge. */
+const POPOVER_W = 300;
+const MARGIN = 12;
 
 function remembered(): string[] | null {
   const parsed = readStoredJson(KEY);
@@ -109,6 +112,12 @@ export function SitePicker({
   const phone = useIsPhone();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  /**
+   * Which edge of the trigger the desktop popover lines up with. Left, opening
+   * rightward, unless that runs off the screen: leftward it can slide under the
+   * sidebar, which the page's column clips (the roster's picker on an iPad).
+   */
+  const [align, setAlign] = useState<"left" | "right">("left");
   const wrap = useRef<HTMLDivElement>(null);
 
   // Close the desktop popover on an outside click or Escape.
@@ -151,7 +160,11 @@ export function SitePicker({
   const trigger = (
     <button
       type="button"
-      onClick={() => setOpen((o) => !o)}
+      onClick={() => {
+        const r = wrap.current?.getBoundingClientRect();
+        if (r) setAlign(r.left + POPOVER_W <= window.innerWidth - MARGIN ? "left" : "right");
+        setOpen((o) => !o);
+      }}
       aria-haspopup="listbox"
       aria-expanded={open}
       className="flex min-h-[44px] w-full items-center gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-[14px] font-semibold text-ink hover:border-strongline focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy md:min-h-9"
@@ -163,37 +176,35 @@ export function SitePicker({
     </button>
   );
 
-  const body = (
-    <>
-      {list.length > 8 && (
-        <SearchInput
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Find a site"
-          aria-label="Find a site"
-          autoFocus={!phone}
-          wrapperClassName="mb-2"
-          className="min-h-[40px] md:min-h-9"
-        />
+  const search = list.length > 8 && (
+    <SearchInput
+      value={q}
+      onChange={(e) => setQ(e.target.value)}
+      placeholder="Find a site"
+      aria-label="Find a site"
+      autoFocus={!phone}
+      wrapperClassName="mb-2"
+      className="min-h-[40px] md:min-h-9"
+    />
+  );
+  const options = (
+    <div role="listbox" aria-multiselectable="true" aria-label="Sites">
+      {!q && (
+        <Row checked={all} label="All my sites" meta={`${list.length} sites`} onClick={() => onChange([])} strong />
       )}
-      <div role="listbox" aria-multiselectable="true" aria-label="Sites">
-        {!q && (
-          <Row checked={all} label="All my sites" meta={`${list.length} sites`} onClick={() => onChange([])} strong />
-        )}
-        {shown.map((s) => (
-          <Row
-            key={s.code}
-            checked={all || codes.includes(s.code)}
-            dim={all}
-            label={s.name}
-            meta={counts ? `${s.activeCount}` : undefined}
-            badge={counts ? s.attentionCount || undefined : undefined}
-            onClick={() => toggle(s.code)}
-          />
-        ))}
-        {shown.length === 0 && <p className="px-2 py-3 text-[13px] text-muted">No site matches “{q}”.</p>}
-      </div>
-    </>
+      {shown.map((s) => (
+        <Row
+          key={s.code}
+          checked={all || codes.includes(s.code)}
+          dim={all}
+          label={s.name}
+          meta={counts ? `${s.activeCount}` : undefined}
+          badge={counts ? s.attentionCount || undefined : undefined}
+          onClick={() => toggle(s.code)}
+        />
+      ))}
+      {shown.length === 0 && <p className="px-2 py-3 text-[13px] text-muted">No site matches “{q}”.</p>}
+    </div>
   );
 
   if (phone) {
@@ -203,7 +214,10 @@ export function SitePicker({
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent aria-describedby={undefined}>
             <SheetHeader title="Sites" />
-            <SheetBody className="px-2">{body}</SheetBody>
+            <SheetBody className="px-2">
+              {search}
+              {options}
+            </SheetBody>
             <SheetFooter>
               <Button variant="secondary" onClick={() => onChange([])} className="min-h-[48px] flex-1">All my sites</Button>
               <Button onClick={() => setOpen(false)} className="min-h-[48px] flex-1">Done</Button>
@@ -218,8 +232,16 @@ export function SitePicker({
     <div ref={wrap} className={cn("relative min-w-0", className)}>
       {trigger}
       {open && (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-[300px] rounded-panel border border-hairline bg-surface p-2 shadow-panel">
-          <div className="max-h-[360px] overflow-y-auto scroll-thin">{body}</div>
+        <div
+          className={cn(
+            "absolute top-[calc(100%+6px)] z-50 flex max-w-[calc(100vw-24px)] flex-col rounded-panel border border-hairline bg-surface p-2 shadow-panel",
+            align === "right" ? "right-0" : "left-0"
+          )}
+          style={{ width: POPOVER_W }}
+        >
+          {/* The search box sits outside the scrolling list, so its focus ring isn't clipped. */}
+          {search}
+          <div className="max-h-[320px] overflow-y-auto scroll-thin">{options}</div>
         </div>
       )}
     </div>
