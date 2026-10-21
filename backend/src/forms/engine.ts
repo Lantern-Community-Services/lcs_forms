@@ -236,9 +236,140 @@ export interface FormDoc {
   description?: string;
   fields: Field[];
   settings: FormSettings;
+  /** The guided tutorial shown the first time someone opens the form. */
+  tutorial?: FormTutorial;
 }
 
 export type Values = Record<string, unknown>;
+
+// ───────────────────────── Tutorials ─────────────────────────
+//
+// A form's tutorial walks someone through it the first time they open it: one
+// thing highlighted at a time, the rest of the screen dimmed and locked. Basic
+// forms keep it in the document ("tutorial"); code forms in form.json. Both use
+// this shape. The app's own welcome tour is built in code (frontend lib/tour).
+
+/** Named spots on a basic form a step can highlight (`target`), besides a field (`field`). */
+export const FORM_TUTORIAL_TARGETS: Record<string, string> = {
+  title: "The form's title and description at the top.",
+  site: "The “Which site is this for?” picker (forms with requireSite).",
+  progress: "The page progress bar (forms with more than one page).",
+  next: "The Next button (forms with more than one page).",
+  back: "The Back button (from the second page on).",
+  submit: "The Submit button.",
+  entries: "The Entries link (people who can read entries).",
+  help: "The “Show me how” button that replays this tutorial.",
+};
+
+/** Spots the app puts around every code form, besides a page's own data-tour anchors. */
+export const APP_TUTORIAL_TARGETS: Record<string, string> = {
+  tabs: "The row of tabs (pages) across the top.",
+  "tab:<page id>": "One tab, e.g. tab:entries.",
+  help: "The “Show me how” button that replays this tutorial.",
+};
+
+export type TutorialAction = "next" | "click" | "fill";
+export type TutorialPlacement = "auto" | "top" | "bottom" | "left" | "right";
+export type TutorialDevice = "phone" | "tablet" | "desktop";
+
+export interface TutorialStep {
+  /** Your own name for the step (unique), used in progress reports. */
+  id?: string;
+  title: string;
+  /** Plain text: a blank line starts a paragraph, **bold** works, and {user:first} / {user:name} are filled in. */
+  body?: string;
+  /** Basic forms: the id of the field to highlight. */
+  field?: string;
+  /**
+   * A named spot to highlight. Basic forms: a FORM_TUTORIAL_TARGETS key. Code forms: the value of a
+   * data-tour="…" attribute in the page, or tabs / tab:<page id> / help. Neither field nor target: a
+   * card in the middle of the screen.
+   */
+  target?: string;
+  /** Code forms: the page (tab) the step is on; the tutorial opens it. Default: the previous step's page. */
+  page?: string;
+  /** Where the card goes, next to the highlighted spot. Default auto. Phones always use the top or bottom edge. */
+  placement?: TutorialPlacement;
+  /**
+   * next (default): they look, then press Next. click: they have to tap the highlighted thing,
+   * which moves the tutorial on. fill: they have to answer the highlighted field before Next unlocks.
+   * Everything outside the highlighted spot is locked whichever it is.
+   */
+  action?: TutorialAction;
+  /** Only for these roles (role keys). Admins see every step. */
+  roles?: string[];
+  /** Only on these kinds of device. */
+  devices?: TutorialDevice[];
+}
+
+export interface FormTutorial {
+  /** Raise it to show the tutorial again to everyone who saw an older one. Default 1. */
+  version?: number;
+  /** The tutorial's name on its cards ("How to record a meal"). Default: “How to use <form title>”. */
+  title?: string;
+  /** Start it by itself the first time someone opens the form. Default true. False: only from “Show me how”. */
+  autoStart?: boolean;
+  /** Who it starts by itself for (role keys). Default: everyone who can open the form. “Show me how” works for anyone. */
+  roles?: string[];
+  steps: TutorialStep[];
+}
+
+export const TUTORIAL_MAX_STEPS = 30;
+
+/** The steps one person gets, on this kind of device. */
+export function tutorialStepsFor(t: FormTutorial, who: { roleKey: string; device: TutorialDevice }): TutorialStep[] {
+  return t.steps.filter(
+    (s) => (!s.roles?.length || who.roleKey === "admin" || s.roles.includes(who.roleKey)) && (!s.devices?.length || s.devices.includes(who.device))
+  );
+}
+
+/** Whether the tutorial starts by itself for this role (it can always be started by hand). */
+export function tutorialAutoStartsFor(t: FormTutorial, roleKey: string): boolean {
+  return t.autoStart !== false && (!t.roles?.length || t.roles.includes(roleKey));
+}
+
+/**
+ * Problems with a tutorial that its JSON shape can't express: a step pointing at
+ * a field or page that doesn't exist, an unknown spot, an action with nothing to act on.
+ * A code form's own data-tour anchors live in its page code, so they're checked
+ * (as warnings) where the pages are: apps/tutorialAnchors.ts.
+ */
+export function lintTutorial(
+  t: FormTutorial,
+  ctx: { kind: "basic"; fieldIds: Set<string> } | { kind: "code"; pages: Set<string> },
+  base = "tutorial"
+): { path: string; message: string }[] {
+  const problems: { path: string; message: string }[] = [];
+  if (!t.steps.length) problems.push({ path: `${base}.steps`, message: "A tutorial needs at least one step." });
+  if (t.steps.length > TUTORIAL_MAX_STEPS) problems.push({ path: `${base}.steps`, message: `Keep a tutorial to ${TUTORIAL_MAX_STEPS} steps or fewer.` });
+  const ids = new Set<string>();
+  t.steps.forEach((s, i) => {
+    const p = `${base}.steps[${i}]`;
+    if (s.id) {
+      if (ids.has(s.id)) problems.push({ path: `${p}.id`, message: `Two steps use the id "${s.id}".` });
+      ids.add(s.id);
+    }
+    if (s.field && s.target) problems.push({ path: p, message: "A step highlights a field or a target, not both." });
+    const action = s.action ?? "next";
+    if (ctx.kind === "basic") {
+      if (s.page) problems.push({ path: `${p}.page`, message: "page is for code forms. On a basic form, add a step on the Next button (target: \"next\", action: \"click\") to move on a page." });
+      if (s.field && !ctx.fieldIds.has(s.field)) problems.push({ path: `${p}.field`, message: `No field with id "${s.field}".` });
+      if (s.target && !(s.target in FORM_TUTORIAL_TARGETS)) problems.push({ path: `${p}.target`, message: `Unknown target "${s.target}". Targets: ${Object.keys(FORM_TUTORIAL_TARGETS).join(", ")} (or use field for a field).` });
+      if (action === "fill" && !s.field) problems.push({ path: `${p}.action`, message: "A fill step needs a field to fill in." });
+      if (action === "click" && s.target === "submit") problems.push({ path: `${p}.action`, message: "A click on Submit would send a real entry in the middle of the tutorial. Use next, and let them press it once the tutorial is over." });
+    } else {
+      if (s.field) problems.push({ path: `${p}.field`, message: "Code forms have no fields: put data-tour=\"…\" on the element in the page and use target." });
+      if (s.page && !ctx.pages.has(s.page)) problems.push({ path: `${p}.page`, message: `No page "${s.page}". Pages: ${[...ctx.pages].join(", ")}.` });
+      if (s.target?.startsWith("tab:") && !ctx.pages.has(s.target.slice(4))) problems.push({ path: `${p}.target`, message: `No page "${s.target.slice(4)}" for ${s.target}.` });
+      if (s.target !== undefined && !/^(tab:)?[A-Za-z][\w-]{0,63}$/.test(s.target)) problems.push({ path: `${p}.target`, message: "A target is a data-tour name: letters, digits, - and _." });
+    }
+    if ((action === "click" || action === "fill") && !s.field && !s.target) problems.push({ path: `${p}.action`, message: `A ${action} step needs something highlighted (field or target).` });
+    if (action === "fill" && s.target && ["tabs", "help", "submit", "next", "back", "progress", "title", "entries"].includes(s.target)) {
+      problems.push({ path: `${p}.action`, message: `"${s.target}" can't be filled in; use click or next.` });
+    }
+  });
+  return problems;
+}
 
 // ───────────────────────── Field catalog ─────────────────────────
 
@@ -1108,7 +1239,7 @@ export function cleanValues(doc: Pick<FormDoc, "fields">, values: Values, opts: 
  * parse. Returned as { path, message } so the code editor and the MCP server
  * can point at the exact spot.
  */
-export function lintForm(doc: Pick<FormDoc, "fields" | "settings">): { path: string; message: string }[] {
+export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?: FormTutorial }): { path: string; message: string }[] {
   const problems: { path: string; message: string }[] = [];
   const ids = new Map<string, number>();
   doc.fields.forEach((f, i) => {
@@ -1178,6 +1309,7 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings">): { path: str
     });
     if (doc.settings.requireSite) problems.push({ path: "settings.requireSite", message: "A public form can't require a site." });
   }
+  if (doc.tutorial) problems.push(...lintTutorial(doc.tutorial, { kind: "basic", fieldIds: known }));
   return problems;
 }
 

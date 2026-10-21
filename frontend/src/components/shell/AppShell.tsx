@@ -16,6 +16,7 @@ import { startSnapshot } from "@/lib/snapshot";
 import { OfflineBar, useOfflineBarVisible } from "./OfflineBar";
 import { useCascade } from "@/lib/cascade";
 import { useNewNotificationToast } from "@/lib/notifications";
+import { SiteTourStarter } from "@/lib/tour/SiteTourStarter";
 import { cn } from "@/lib/utils";
 
 /**
@@ -162,6 +163,8 @@ export function AppShell() {
         {/* Installed to the home screen there's no reload button: pull down from the top instead. */}
         {touch && <PullToRefresh scrollRef={mainRef} />}
       </div>
+      {/* The welcome tour, the first time someone reaches their home screen. */}
+      <SiteTourStarter />
       {touch && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
       {touch && !keyboard && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
     </div>

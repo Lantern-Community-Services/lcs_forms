@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { lintTutorial } from "../forms/engine.js";
+import { tutorialSchema } from "../tutorials/schema.js";
 
 /**
  * A code form's project: a map of file paths to source text, with form.json as
@@ -136,6 +138,12 @@ export const manifestSchema = z.object({
    * anything — offline it would look as if it had.
    */
   offline: z.object({ actions: z.array(z.string().min(1).max(60)).max(50).optional() }).strict().optional(),
+  /**
+   * The guided tutorial shown the first time someone opens the form (FormTutorial in
+   * forms/engine.ts). Steps point at data-tour="…" anchors in the pages, or at the
+   * app's own tabs / tab:<page id> / help; `page` opens the tab a step is on.
+   */
+  tutorial: tutorialSchema.optional(),
 }).strict();
 
 export type Manifest = z.infer<typeof manifestSchema>;
@@ -186,6 +194,9 @@ export function readManifest(files: Files): { manifest: Manifest | null; problem
     }
   }
   if (m.server && files[m.server] === undefined) problems.push({ file: "form.json", message: `server points at ${m.server}, which doesn't exist.` });
+  if (m.tutorial) {
+    for (const p of lintTutorial(m.tutorial, { kind: "code", pages: ids })) problems.push({ file: "form.json", message: `${p.path}: ${p.message}` });
+  }
   return { manifest: problems.length ? null : m, problems };
 }
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FIELD_ID_RE, FIELD_TYPE_KEYS, FORMAT, FORMAT_VERSION, lintForm, type FormDoc } from "./engine.js";
+import { tutorialSchema } from "../tutorials/schema.js";
 
 /**
  * The lcs-form document, as a zod schema. Strict on purpose: an unknown key is
@@ -141,6 +142,7 @@ export const formDocSchema = z.object({
   description: z.string().max(10_000).optional(),
   fields: z.array(field).max(500),
   settings: settings.default({}),
+  tutorial: tutorialSchema.optional(),
 }).strict();
 
 export interface DocProblem {

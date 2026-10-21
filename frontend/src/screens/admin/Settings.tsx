@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { LoadingState } from "@/components/ui/misc";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -128,6 +129,17 @@ export function AdminSignInAccess() {
     }
   }
 
+  async function setWelcomeTour(on: boolean) {
+    try {
+      await api.patch("/admin/settings", { welcomeTour: on });
+      await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
+      await qc.invalidateQueries({ queryKey: ["tutorials"] });
+      toast(on ? "New people get the welcome tour the first time they sign in." : "The welcome tour no longer starts by itself.");
+    } catch (e) {
+      toast(errorMessage(e, "Could not save."), "error");
+    }
+  }
+
   if (isLoading) return <LoadingState />;
   return (
     <Page className="max-w-[760px]">
@@ -139,6 +151,17 @@ export function AdminSignInAccess() {
           those sites' managers — or an Admin — approves it in <b className="text-ink">People &amp; roles → Requests</b>.
           Someone you add by email ahead of time signs straight in.
         </p>
+        <label className="mt-4 flex items-start gap-3 border-t border-hairline pt-4">
+          <Switch className="mt-0.5" checked={data?.welcomeTour !== "false"} onCheckedChange={(on) => void setWelcomeTour(on)} />
+          <span>
+            <span className="block text-[14px] font-semibold text-ink">Show new people the welcome tour</span>
+            <span className="mt-0.5 block text-[13px] text-muted">
+              The first time someone reaches their home screen (on a computer, and again on a phone or iPad), a short guided tour
+              shows them the parts of the site their role can use. They can skip it, and replay it from their Profile.
+              Forms' own tutorials are set on each form. To show it to one person again, use their tutorials in People &amp; roles.
+            </span>
+          </span>
+        </label>
       </Card>
       <Card className="mb-4 p-5">
         <p className="kicker mb-2">Admitted domains</p>

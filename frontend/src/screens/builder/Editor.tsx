@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, Copy, Download, ExternalLink, Eye, GripVertical, History, Loader2, Monitor,
-  Plus, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock,
+  Plus, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock, GraduationCap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { FieldView, FormRenderer } from "@/components/formkit/FormRenderer";
 import { DevicePreview } from "@/components/preview/DevicePreview";
 import { FieldProperties } from "./FieldProperties";
 import { SettingsPanel } from "./SettingsPanel";
+import { TutorialEditor, tutorialShapeProblems, type TutorialTargets } from "./TutorialEditor";
 import { StatusBadge, ProblemList } from "./BuilderList";
 import { moveItem, referencesTo, renameFieldId } from "./docOps";
 import { FIELD_BLURBS, FieldThumb } from "./FieldThumb";
@@ -27,13 +28,13 @@ import {
 } from "@/lib/builder";
 import { ApiError } from "@/lib/api";
 import {
-  FIELD_TYPES, cleanValues, lintForm, makeFieldId, newField, typeInfo, validateValues,
-  type Field, type FieldType, type FormDoc, type Values,
+  FIELD_TYPES, cleanValues, lintForm, makeFieldId, newField, pagesOf, typeInfo, validateValues,
+  type Field, type FieldType, type FormDoc, type FormTutorial, type Values,
 } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 
-type Tab = "build" | "code" | "settings" | "preview" | "history";
+type Tab = "build" | "code" | "settings" | "tutorial" | "preview" | "history";
 
 /** The editor/preview split, as the editor's share of the width; kept per device. */
 const SPLIT_KEY = "ln.builder.split";
@@ -83,7 +84,20 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
   const [, bump] = useState(0);
 
   const dirty = JSON.stringify(doc) !== saved.json || slug !== saved.slug;
-  const problems = useMemo(() => lintForm(doc), [doc]);
+  const problems = useMemo(() => [...lintForm(doc), ...(doc.tutorial ? tutorialShapeProblems(doc.tutorial) : [])], [doc]);
+  const [tutorialFocus, setTutorialFocus] = useState<{ step: number; n: number } | undefined>();
+  const [trying, setTrying] = useState(false);
+  const tutorialTargets = useMemo<TutorialTargets>(() => {
+    const pages = pagesOf(doc);
+    const pageOf = new Map(pages.flatMap((p, i) => p.fields.map((f) => [f.id, i + 1] as const)));
+    return {
+      kind: "basic",
+      fields: doc.fields.filter((f) => f.type !== "hidden" && f.type !== "page").map((f) => ({ id: f.id, label: f.label || f.id, page: pageOf.get(f.id) ?? 1 })),
+      fieldIds: new Set(doc.fields.map((f) => f.id)),
+      pages: pages.length,
+      requireSite: Boolean(doc.settings.requireSite),
+    };
+  }, [doc.fields, doc.settings.requireSite]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Change the document, with undo. Rapid edits (typing) collapse into one step. */
   const commit = useCallback((next: FormDoc | ((d: FormDoc) => FormDoc)) => {
@@ -196,6 +210,26 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
     }
   }
 
+  /** The saved draft with its tutorial running, in a new tab (/f/<slug>/preview reads the saved draft). Saves first. */
+  async function tryTutorial() {
+    const url = (s: string) => `/f/${s}/preview?tour=1`;
+    if (!dirty) return void window.open(url(form.slug), "_blank");
+    // Opened now, while the click still counts, so it isn't blocked as a pop-up.
+    const win = window.open("", "_blank");
+    setTrying(true);
+    const row = await save();
+    setTrying(false);
+    if (!row) return void win?.close();
+    if (win) win.location.href = url(row.slug);
+    else window.open(url(row.slug), "_blank");
+  }
+
+  const setTutorial = (t: FormTutorial | undefined) =>
+    commit((d) => {
+      const { tutorial: _gone, ...rest } = d;
+      return t ? { ...rest, tutorial: t } : rest;
+    });
+
   const access = doc.settings.access?.mode;
   const h = history.current;
 
@@ -224,7 +258,12 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
             <DropdownMenuContent align="end" className="max-w-sm">
               <DropdownMenuLabel>Fix before publishing</DropdownMenuLabel>
               {problems.map((p, i) => (
-                <DropdownMenuItem key={i} onSelect={() => { const m = /^fields\[(\d+)\]/.exec(p.path); if (m) { setSelected(doc.fields[Number(m[1])]?.id ?? null); setTab("build"); } }}>
+                <DropdownMenuItem key={i} onSelect={() => {
+                  const m = /^fields\[(\d+)\]/.exec(p.path);
+                  if (m) { setSelected(doc.fields[Number(m[1])]?.id ?? null); setTab("build"); }
+                  const t = /^tutorial(?:\.steps\[(\d+)\])?/.exec(p.path);
+                  if (t) { if (t[1]) setTutorialFocus({ step: Number(t[1]), n: Date.now() }); setTab("tutorial"); }
+                }}>
                   <span className="text-[12.5px]"><code className="text-muted">{p.path}</code> {p.message}</span>
                 </DropdownMenuItem>
               ))}
@@ -250,7 +289,7 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
           style={split ? { width: `clamp(${MIN_EDITOR}px, ${ratio * 100}%, calc(100% - ${MIN_PREVIEW + 9}px))`, transition: resizing || prefersReducedMotion() ? undefined : `width 300ms ${EASE}` } : undefined}
         >
           <div className="flex flex-none gap-1 overflow-x-auto border-b border-hairline bg-surface px-3 md:px-4">
-            {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
+            {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["tutorial", "Tutorial", GraduationCap], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
               .filter(([k]) => !(split && k === "preview"))
               .map(([k, label, Icon]) => (
                 <button key={k} onClick={() => setTab(k)} className={cn("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold", view === k ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
@@ -273,6 +312,22 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
             {view === "settings" && (
               <div className="h-full overflow-y-auto scroll-thin">
                 <SettingsPanel doc={doc} onChange={commit} slug={slug} onSlug={setSlug} reference={reference} form={form} onCatalog={setCatalog} />
+              </div>
+            )}
+            {view === "tutorial" && (
+              <div className="h-full overflow-y-auto scroll-thin">
+                <TutorialEditor
+                  value={doc.tutorial}
+                  onChange={setTutorial}
+                  targets={tutorialTargets}
+                  live={form.live?.tutorial ?? null}
+                  formId={form.id}
+                  formTitle={doc.title}
+                  focus={tutorialFocus}
+                  onTry={() => void tryTutorial()}
+                  trying={trying}
+                  dirty={dirty}
+                />
               </div>
             )}
             {view === "preview" && <PreviewPane doc={doc} slug={form.slug} />}

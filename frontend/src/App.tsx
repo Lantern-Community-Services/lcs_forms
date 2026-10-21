@@ -10,6 +10,7 @@ import { Button } from "./components/ui/button";
 import { EmptyState, LoadingState } from "./components/ui/misc";
 import { currentDeviceKind, useDeviceKind } from "./lib/device";
 import { lazyScreen } from "./lib/lazyScreen";
+import { TourProvider } from "./lib/tour/TourProvider";
 
 import { SignInPage } from "./screens/SignIn";
 import { WelcomePage } from "./screens/Welcome";
@@ -175,6 +176,8 @@ export function App() {
   const { user, loading } = useAuth();
 
   return (
+    // Guided tours (lib/tour): the welcome tour and forms' tutorials, public forms' included.
+    <TourProvider>
     <Routes>
       <Route path="/signin" element={user && !loading ? <HomeRedirect /> : <SignInPage />} />
       {/* A first sign-in choosing their sites: no session yet, no app chrome. */}
@@ -273,5 +276,6 @@ export function App() {
 
       <Route path="*" element={<HomeRedirect />} />
     </Routes>
+    </TourProvider>
   );
 }

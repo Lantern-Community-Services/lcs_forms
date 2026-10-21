@@ -30,11 +30,13 @@ adminRouter.patch(
         attentionHours: z.number().int().min(1).max(24 * 60).optional(),
         guestDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "Not a domain")).optional(),
         undoSeconds: z.number().int().min(3).max(60).optional(),
+        welcomeTour: z.boolean().optional(),
       })
       .parse(req.body);
     if (body.attentionHours !== undefined) await setSetting("attentionHours", String(body.attentionHours));
     if (body.guestDomains !== undefined) await setSetting("guestDomains", [...new Set(body.guestDomains)].join(","));
     if (body.undoSeconds !== undefined) await setSetting("undoSeconds", String(body.undoSeconds));
+    if (body.welcomeTour !== undefined) await setSetting("welcomeTour", String(body.welcomeTour));
     await audit({ actor: actorOf(req), action: "settings.updated", summary: `Updated settings: ${Object.keys(body).join(", ")}`, changes: body });
     res.json(await getAllSettings());
   })

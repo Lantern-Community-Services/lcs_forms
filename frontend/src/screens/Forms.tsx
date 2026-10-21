@@ -115,7 +115,7 @@ export function FormsPage() {
     <div className="flex min-h-full flex-col">
       {/* ── Phone ─────────────────────────────────────────────────────── */}
       <PhoneHeader title={greeting} subtitle={today} enter>
-        <div className="enter-up mt-3">
+        <div data-tour="home-search" className="enter-up mt-3">
           <SearchInput ref={phoneSearchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all forms" aria-label="Search forms" />
         </div>
       </PhoneHeader>
@@ -156,7 +156,7 @@ export function FormsPage() {
                   </div>
                 </section>
               )}
-              <section>
+              <section data-tour="home-forms">
                 <div className="enter-up mb-2 flex items-baseline justify-between">
                   <h2 className="text-[15px] font-heading font-extrabold text-ink">All forms</h2>
                   <span className="text-[12.5px] text-muted">{totalForms} forms</span>
@@ -196,7 +196,7 @@ export function FormsPage() {
             <h1 className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">{greeting}</h1>
             <p className="mt-1 text-[13.5px] text-muted">{subtitle}</p>
           </div>
-          <div className="w-[300px] xl:w-[380px]">
+          <div data-tour="home-search" className="w-[300px] xl:w-[380px]">
             <SearchInput ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all forms" aria-label="Search forms" />
           </div>
         </div>
@@ -209,7 +209,7 @@ export function FormsPage() {
           <ActivityPanel home={home.data} loading={home.isLoading} failed={home.isError} limit={3} wideLimit={6} />
         </div>
 
-        <section id="forms" aria-labelledby="all-forms">
+        <section id="forms" aria-labelledby="all-forms" data-tour="home-forms">
           <div className="enter-up mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 id="all-forms" className="text-[18px] font-heading font-extrabold text-ink xl:text-[21px]">All forms</h2>
@@ -328,6 +328,7 @@ function StarButton({ form, favorite, onToggle, className }: { form: FormLink; f
       type="button"
       onClick={onToggle}
       aria-pressed={favorite}
+      data-tour="pin"
       aria-label={favorite ? `Unpin ${form.title}` : `Pin ${form.title}`}
       title={favorite ? "Unpin" : "Pin"}
       className={cn("relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-input text-muted hover:bg-subtle hover:text-ink", className)}
@@ -580,7 +581,7 @@ function PanelNote({ children }: { children: React.ReactNode }) {
 function AttentionPanel({ home, loading, failed }: { home?: HomeData; loading: boolean; failed: boolean }) {
   const items = home?.attention ?? [];
   return (
-    <section id="attention" className="enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card">
+    <section id="attention" data-tour="home-attention" className="enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card">
       <PanelHeader title="Needs your attention" count={items.length} />
       {loading ? (
         <PanelNote>Checking…</PanelNote>

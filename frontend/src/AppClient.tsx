@@ -13,8 +13,8 @@ import { RoutedErrorBoundary } from "./components/RoutedErrorBoundary";
 
 /**
  * Client entry point — the React-Router SPA and its provider tree. Mounted by
- * the Next catch-all route with SSR disabled so browser-only state (auth,
- * theme, localStorage) is safe.
+ * app/(spa)/layout.tsx with SSR disabled so browser-only state (auth, theme,
+ * localStorage) is safe.
  */
 export function AppClient() {
   const [queryClient] = useState(

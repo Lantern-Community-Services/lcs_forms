@@ -394,6 +394,63 @@ usersRouter.post(
   })
 );
 
+// ── Their guided tutorials (frontend lib/tour, routes/tutorials.ts) ─────────
+
+const TOUR_NAMES: Record<string, string> = { "site:desktop": "Welcome tour on a computer", "site:touch": "Welcome tour on a phone or iPad" };
+
+/** What they've finished or skipped: the welcome tour per kind of device, and each form's tutorial by name. */
+async function tutorialsOf(userId: string) {
+  const rows = await prisma.tutorialProgress.findMany({ where: { userId }, orderBy: { updatedAt: "desc" } });
+  const formIds = rows.filter((r) => r.key.startsWith("form:")).map((r) => r.key.slice(5));
+  const forms = new Map((await prisma.builtForm.findMany({ where: { id: { in: formIds } }, select: { id: true, title: true } })).map((f) => [f.id, f.title]));
+  return rows.map((r) => ({
+    key: r.key,
+    name: TOUR_NAMES[r.key] ?? forms.get(r.key.slice(5)) ?? "A form that's been deleted",
+    kind: r.key.startsWith("site:") ? "site" : "form",
+    status: r.status,
+    version: r.version,
+    step: r.step,
+    steps: r.steps,
+    updatedAt: r.updatedAt,
+  }));
+}
+
+/** Anyone this caller manages in People & roles (an Admin: everyone; a Site Manager: people at their sites). */
+usersRouter.get(
+  "/:id/tutorials",
+  requirePermission("users.manage", "users.manageSite"),
+  asyncHandler(async (req, res) => {
+    const { u } = await personInScope(req, req.params.id);
+    res.json(await tutorialsOf(u.id));
+  })
+);
+
+/**
+ * Forget what they've seen, so the tutorials start again for them: ?key=<one>
+ * (site:desktop, site:touch, form:<id>), or everything without it. The welcome
+ * tour starts the next time they reach their home screen, and a form's
+ * tutorial the next time they open the form.
+ */
+usersRouter.delete(
+  "/:id/tutorials",
+  requirePermission("users.manage", "users.manageSite"),
+  asyncHandler(async (req, res) => {
+    const { u } = await personInScope(req, req.params.id);
+    const { key } = z.object({ key: z.string().regex(/^(site:(desktop|touch)|form:[A-Za-z0-9_-]{1,64})$/).optional() }).parse(req.query);
+    const before = key ? (await tutorialsOf(u.id)).find((t) => t.key === key) : null;
+    const { count } = await prisma.tutorialProgress.deleteMany({ where: { userId: u.id, ...(key ? { key } : {}) } });
+    if (count) {
+      const who = u.name === u.email ? u.email : u.name;
+      await audit({
+        actor: actorOf(req),
+        action: "user.tutorials_reset",
+        summary: key ? `Reset ${who}'s tutorial: ${before?.name ?? key}` : `Reset all of ${who}'s tutorials (${count})`,
+      });
+    }
+    res.json({ reset: count, tutorials: await tutorialsOf(u.id) });
+  })
+);
+
 /**
  * Delete a pending or requested account that was never used: a mistaken
  * invite, or a request nobody will approve. Anyone who's been let in is

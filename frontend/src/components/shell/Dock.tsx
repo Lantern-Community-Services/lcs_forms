@@ -66,15 +66,15 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
-  const home = <DockLink key="home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} onClick={onCloseLauncher} />;
+  const home = <DockLink key="home" tour="dock-home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} onClick={onCloseLauncher} />;
   const rosterItem = roster && (
-    <DockLink key="roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
+    <DockLink key="roster" tour="dock-roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
   );
   const calendarItem = (
-    <DockLink key="calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} onClick={onCloseLauncher} />
+    <DockLink key="calendar" tour="dock-calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} onClick={onCloseLauncher} />
   );
   const all = (
-    <DockButton key="all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
+    <DockButton key="all" tour="dock-all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
   );
   const account = (
     <DockAccount key="account" active={menuOpen || pathname === "/profile" || pathname.startsWith("/notifications")} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
@@ -85,6 +85,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
     <nav
       ref={navRef}
       aria-label="Main"
+      data-tour="dock"
       // While the launcher is open its scrim covers the whole screen and the dock
       // floats on top of it: the band goes clear, so there's no edge between the
       // dimmed page and a white strip.
@@ -163,9 +164,9 @@ function Badge({ count }: { count: number }) {
 }
 
 /** onClick closes the launcher: tapping the page you are already on changes no route, so nothing else would. */
-function DockLink({ to, end, label, Icon, active, count = 0, phone, onClick }: { to: string; end?: boolean; label: string; Icon: React.ElementType; active: boolean; count?: number; phone: boolean; onClick: () => void }) {
+function DockLink({ to, end, label, Icon, active, count = 0, phone, onClick, tour }: { to: string; end?: boolean; label: string; Icon: React.ElementType; active: boolean; count?: number; phone: boolean; onClick: () => void; tour?: string }) {
   return (
-    <NavLink to={to} end={end} onClick={onClick} className={itemClass(active, phone)}>
+    <NavLink to={to} end={end} onClick={onClick} data-tour={tour} className={itemClass(active, phone)}>
       <Icon className="h-[22px] w-[22px]" />
       <span className="max-w-full truncate">{label}</span>
       {count > 0 && <Badge count={count} />}
@@ -173,9 +174,9 @@ function DockLink({ to, end, label, Icon, active, count = 0, phone, onClick }: {
   );
 }
 
-function DockButton({ label, Icon, active, onClick, phone, expanded }: { label: string; Icon: React.ElementType; active: boolean; onClick: () => void; phone: boolean; expanded: boolean }) {
+function DockButton({ label, Icon, active, onClick, phone, expanded, tour }: { label: string; Icon: React.ElementType; active: boolean; onClick: () => void; phone: boolean; expanded: boolean; tour?: string }) {
   return (
-    <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" className={itemClass(active, phone)}>
+    <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" data-tour={tour} className={itemClass(active, phone)}>
       <Icon className="h-[22px] w-[22px]" />
       <span className="max-w-full truncate">{label}</span>
     </button>
@@ -187,7 +188,7 @@ function DockAccount({ active, open, onClick, phone }: { active: boolean; open: 
   const { user } = useAuth();
   const unread = useUnreadCount();
   return (
-    <button type="button" onClick={onClick} aria-expanded={open} aria-haspopup="dialog" className={itemClass(active, phone)}>
+    <button type="button" onClick={onClick} aria-expanded={open} aria-haspopup="dialog" data-tour="dock-account" className={itemClass(active, phone)}>
       <span className="relative">
         <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={26} />
         <UnreadBubble count={unread} className="-right-2.5 -top-1.5" />
