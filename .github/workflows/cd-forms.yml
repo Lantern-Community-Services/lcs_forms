@@ -134,7 +134,7 @@ jobs:
 
   deploy-prod:
     needs: [build, deploy-dev]
-        if: ${{github.event_name != 'pull_request' && vars.PROD_READY == 'true'}}
+    if: ${{ github.event_name != 'pull_request' && vars.PROD_READY == 'true' }}
     runs-on: ubuntu-latest
     environment: prod           # required reviewers configured on the environment gate this job
     steps:
