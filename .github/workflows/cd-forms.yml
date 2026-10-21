@@ -7,9 +7,13 @@
 # Per-environment values live in GitHub environment *variables* (Settings -> Environments):
 #   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, RG, BACKEND_URL, WEB_HOST
 #
-# Migrations: the api image runs `prisma migrate deploy` on startup when RUN_MIGRATIONS=true.
-# The deploy job sets that flag, deploys, waits for /api/health, then clears the flag so a
-# container restart never re-runs migrations unexpectedly.
+# Migrations: only the api app reaches the database (private endpoint), so they run there.
+# The deploy job sets RUN_MIGRATIONS=then-start (the container runs `prisma migrate deploy`,
+# then starts the API, or exits if the migration fails), deploys the new image, and waits for
+# /api/health/deploy to report the new commit AND the newest migration in this commit. Only
+# then is the flag cleared. A bare 200 from /api/health proves nothing: the old container
+# keeps answering while the new one starts (that's how 2026-10-21 shipped unmigrated).
+# If the wait fails, the api goes back to the image it had and the job fails.
 
 name: cd-forms
 
@@ -34,11 +38,17 @@ jobs:
     environment: dev            # build once with dev's deploy identity; images are env-agnostic except BACKEND_URL
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
+      migration: ${{ steps.meta.outputs.migration }}
     steps:
       - uses: actions/checkout@v4
 
       - id: meta
-        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          # The newest migration this commit ships; the deploy waits until the database has it.
+          migration=$(find backend/prisma/migrations -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)
+          [ -n "$migration" ] || { echo "::error::no migrations found in backend/prisma/migrations"; exit 1; }
+          echo "migration=$migration" >> "$GITHUB_OUTPUT"
 
       - uses: azure/login@v2
         with:
@@ -77,26 +87,37 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Enable one-shot migrations on api
-        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-dev --settings RUN_MIGRATIONS=true -o none
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Record the api's current image (to go back to if migrations fail)
+        id: prev
+        run: echo "image=$(az webapp config show -g ${{ vars.RG }} -n app-forms-api-dev --query linuxFxVersion -o tsv)" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate on the next api start
+        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-dev --settings RUN_MIGRATIONS=then-start -o none
 
       - uses: azure/webapps-deploy@v3
         with:
           app-name: app-forms-api-dev
           images: ${{ env.ACR }}/lcs-forms-api:${{ needs.build.outputs.tag }}
 
-      - name: Wait for api to finish migrations and start (up to 5 min)
-        run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ vars.WEB_HOST }}/api/health || true)
-            echo "attempt $i: $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 10
-          done
-          echo "api did not become healthy in time; continuing so the flag is cleared, smoke test will decide"
+      - name: Wait for the new api with migrations applied (up to 10 min)
+        run: bash .github/scripts/wait-for-api.sh https://${{ vars.WEB_HOST }} ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.migration }} 600
 
-      - name: Disable one-shot migrations
+      # The new image never came up migrated: don't leave it set to start (unmigrated) once the
+      # flag is cleared below. Put the old image back; the job still fails.
+      - name: Roll the api back to its previous image
+        if: failure() && steps.prev.outputs.image != ''
+        run: az webapp config set -g ${{ vars.RG }} -n app-forms-api-dev --linux-fx-version "${{ steps.prev.outputs.image }}" -o none
+
+      - name: Stop migrating on api start
+        if: always()
         run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-dev --settings RUN_MIGRATIONS=false -o none
+
+      - name: Wait for the api to come back without the flag (up to 5 min)
+        run: bash .github/scripts/wait-for-api.sh https://${{ vars.WEB_HOST }} ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.migration }} 300
 
       - uses: azure/webapps-deploy@v3
         with:
@@ -123,26 +144,37 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Enable one-shot migrations on api
-        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-prod --settings RUN_MIGRATIONS=true -o none
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Record the api's current image (to go back to if migrations fail)
+        id: prev
+        run: echo "image=$(az webapp config show -g ${{ vars.RG }} -n app-forms-api-prod --query linuxFxVersion -o tsv)" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate on the next api start
+        run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-prod --settings RUN_MIGRATIONS=then-start -o none
 
       - uses: azure/webapps-deploy@v3
         with:
           app-name: app-forms-api-prod
           images: ${{ env.ACR }}/lcs-forms-api:${{ needs.build.outputs.tag }}
 
-      - name: Wait for api to finish migrations and start (up to 5 min)
-        run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ vars.WEB_HOST }}/api/health || true)
-            echo "attempt $i: $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 10
-          done
-          echo "api did not become healthy in time; continuing so the flag is cleared, smoke test will decide"
+      - name: Wait for the new api with migrations applied (up to 10 min)
+        run: bash .github/scripts/wait-for-api.sh https://${{ vars.WEB_HOST }} ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.migration }} 600
 
-      - name: Disable one-shot migrations
+      # The new image never came up migrated: don't leave it set to start (unmigrated) once the
+      # flag is cleared below. Put the old image back; the job still fails.
+      - name: Roll the api back to its previous image
+        if: failure() && steps.prev.outputs.image != ''
+        run: az webapp config set -g ${{ vars.RG }} -n app-forms-api-prod --linux-fx-version "${{ steps.prev.outputs.image }}" -o none
+
+      - name: Stop migrating on api start
+        if: always()
         run: az webapp config appsettings set -g ${{ vars.RG }} -n app-forms-api-prod --settings RUN_MIGRATIONS=false -o none
+
+      - name: Wait for the api to come back without the flag (up to 5 min)
+        run: bash .github/scripts/wait-for-api.sh https://${{ vars.WEB_HOST }} ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.migration }} 300
 
       - uses: azure/webapps-deploy@v3
         with:

@@ -5,6 +5,7 @@
 #
 #   docker run -e DATABASE_URL=… <image>                          the API, on 0.0.0.0:4200
 #   docker run -e DATABASE_URL=… -e RUN_MIGRATIONS=true <image>   apply migrations and exit
+#   … -e RUN_MIGRATIONS=then-start <image>   apply migrations, then the API (what the deploy uses)
 
 ARG NODE_VERSION=22
 
