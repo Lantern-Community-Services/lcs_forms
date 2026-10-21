@@ -171,7 +171,9 @@ Code setup. Tools: `get_reference` (the full format guide), `create_form`, `patc
 `publish_form`, `import_forms`, `export_forms`, `list_entries`, `submit_entry` and more
 (`backend/src/forms/mcp.ts`). The assistant acts as its key, and its changes are drafts until
 someone publishes. With `notifications:send` it can also notify people (`send_notification`;
-`notification_reference` explains how forms send their own, see Notifications).
+`notification_reference` explains how forms send their own, see Notifications). Forms' guided tutorials
+have their own tools (`get_tutorial_reference`, `get_tutorial`, `set_tutorial`, `tutorial_progress`; see
+Tutorials).
 
 ### The rest of the site over MCP and `/api/v1` (delegated keys)
 
@@ -518,6 +520,55 @@ leaves the app, so titles must not carry resident details or answers (a builder 
 answer tags). A worker in the API process sends them (`startNotificationMail`), claiming each row first
 so two servers never send the same one, retrying a failed send up to three times. Without `MAIL_FROM`,
 notifications still appear in the app.
+
+## Tutorials
+
+Guided walkthroughs: one thing highlighted at a time, the rest of the screen dimmed and **locked**. A
+click, tap, key or form submit anywhere outside the highlighted spot is swallowed, and a tap there gives
+the card a shake. **Skip** or **Esc** always gets out. Two kinds share one engine (`frontend/src/lib/tour/`,
+`components/tour/TourOverlay.tsx`):
+
+- **The welcome tour** (`lib/tour/siteTour.ts`) starts the first time someone reaches their home screen.
+  It covers only what their role can use: Roster tabs only with `roster.view` (and "you aren't assigned
+  to a site yet" when they have none), adding events only for calendar editors, Admin only for admin
+  permissions, worded for that role. It comes in a sidebar version for computers and a dock version for
+  phones and iPads (with offline and pull-to-refresh). Each runs once per kind of device, so someone who
+  took it on a computer gets the dock version on their phone. Some steps make them do it ("Click
+  **Calendar**"), not just read. **Profile → Tutorials → Take the tour** replays it, and **Show form
+  tutorials again** resets every form's. **Admin → Sign-in access → Show new people the welcome tour**
+  turns the automatic start off. Raise `SITE_TOUR_VERSION` to show a changed tour to everyone again.
+- **A form's tutorial** runs the first time someone opens that form, and from its **Show me how** button.
+  It lives in the form: the `tutorial` key of a basic form's document, or of a code form's `form.json`, so
+  it's drafted, published, versioned and backed up with the form. Steps point at a basic form's fields
+  (`"field": "site"`) or its named spots (`submit`, `next`, `back`, `progress`, `site`, `title`,
+  `entries`, `help`), or at a code form's `data-tour="…"` elements and the app's `tabs` / `tab:<page>` /
+  `help`; a code form's step names its `page`, and the tutorial opens it. Each step is **next** (look),
+  **click** (they must tap the spot, which moves it on), or **fill** (Next unlocks once the field has an
+  answer). Steps can be limited by role and by device. Answers are real (it runs on the live form), but
+  nothing is sent while a tutorial is showing, and a basic form refuses a click step on Submit. Raising
+  `version` (MCP `set_tutorial` with `showAgain`) shows it again to people who saw an older one.
+  `?tour=1` runs it whatever you've seen and records nothing: on `/f/<slug>/preview` for a basic form's
+  draft, and on `/apps/<slug>?draft=1` for a code form's.
+
+**Code forms' half** lives inside the sandboxed frame (`frontend/app-runtime/tour.ts`). The page can't be
+reached from the app, so the app says which `data-tour` element a step is about. The frame finds it,
+reports where it is as it moves, reports taps and answers, and keeps the same lock inside the page
+(`lib/tour/frameBridge.ts` ↔ `apps/AppFrame.tsx`). A custom control can say it's answered with
+`data-tour-filled="true"`. Pages can call `tutorial.start()` (a Help button) and `tutorial.next()` from
+`@lcs/sdk`. The build warns about a step whose `data-tour` isn't written in its page
+(`backend/src/apps/tutorialAnchors.ts`).
+
+**Building them with AI (MCP, `forms:build` / `apps:build`):** `get_tutorial_reference` (the format, and
+how to write for site staff on phones), `get_tutorial` (the draft and live tutorial, plus every field, page
+and `data-tour` anchor a step can point at), `set_tutorial` (checked like the rest of the form: unknown
+fields, pages or targets are refused), `remove_tutorial`, and `tutorial_progress` (how many finished or
+skipped, which step people skip at, who). Both are drafts until the form is published.
+
+**Who has seen what** is `TutorialProgress` (one row per person and tutorial: `site:desktop`,
+`site:touch`, `form:<id>`; version, finished or skipped, and where) through `/api/tutorials`, so a
+tutorial never starts twice on any of someone's devices. Each record is kept on the device first, so with
+no connection it doesn't start again on the next screen, and it reaches the server the next time
+progress loads.
 
 ## Offline mode
 

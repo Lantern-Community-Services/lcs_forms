@@ -698,6 +698,7 @@ model User {
   graphToken        UserGraphToken?
   notifications     Notification[]
   notificationPrefs NotificationPref[]
+  tutorials         TutorialProgress[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -964,4 +965,30 @@ model NotificationPref {
   updatedAt DateTime @updatedAt
 
   @@id([userId, key])
+}
+
+// ───────────────────────── Tutorials ─────────────────────────
+
+/// A guided tutorial someone finished or skipped, so it isn't started for them
+/// again on any device. No row = they haven't seen it. See routes/tutorials.ts.
+model TutorialProgress {
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String   @db.NVarChar(64)
+  /// "site:desktop" | "site:touch" (the welcome tour, per kind of device) |
+  /// "form:<BuiltForm id>" (a form's own tutorial).
+  key       String   @db.NVarChar(255)
+  /// The tutorial's version when they saw it. A form's tutorial with a higher
+  /// version ("show it again") starts again for them.
+  version   Int      @default(1)
+  /// "completed" | "skipped"
+  status    String   @db.NVarChar(255)
+  /// Where they stopped (0-based), for a skipped one.
+  step      Int?
+  /// How many steps it had for them.
+  steps     Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, key])
+  @@index([key])
 }

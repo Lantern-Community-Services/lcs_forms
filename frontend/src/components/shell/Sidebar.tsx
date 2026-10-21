@@ -83,7 +83,7 @@ const iconBox = (active: boolean, collapsed: boolean) =>
 const wrapRow = (collapsed: boolean) =>
   cn("h-auto min-h-10 items-start transition-[max-height,background-color,color] duration-[240ms] motion-reduce:transition-none", EASE, collapsed ? "max-h-10" : "max-h-[96px]");
 
-function NavItem({ to, label, Icon, collapsed, end, lit, count }: {
+function NavItem({ to, label, Icon, collapsed, end, lit, count, tour }: {
   to: string;
   label: string;
   Icon: React.ElementType;
@@ -93,10 +93,12 @@ function NavItem({ to, label, Icon, collapsed, end, lit, count }: {
   lit?: boolean;
   /** Amber count, e.g. people waiting in the Roster's review queue. */
   count?: number;
+  /** Its name for the welcome tour (lib/tour/siteTour.ts). */
+  tour?: string;
 }) {
   const waiting = (count ?? 0) > 0;
   return (
-    <NavLink to={to} end={end} title={collapsed ? label : undefined} className={({ isActive }) => itemClass(lit ?? isActive, collapsed)}>
+    <NavLink to={to} end={end} data-tour={tour} title={collapsed ? label : undefined} className={({ isActive }) => itemClass(lit ?? isActive, collapsed)}>
       {({ isActive }) => (
         <>
           <span className={iconBox(lit ?? isActive, collapsed)}>
@@ -343,6 +345,7 @@ export function Sidebar() {
   return (
     <aside
       {...swipe}
+      data-tour="nav"
       style={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH, touchAction: "pan-y" }}
       // `hidden md:flex` as well as AppShell's choice, so even the very first
       // paint on a phone (before the device is known) never shows it.
@@ -367,7 +370,7 @@ export function Sidebar() {
 
       {/* Search: the field when open, its icon when collapsed. Both stay
           mounted so the height doesn't jump as the sidebar folds. */}
-      <div className="relative mb-2 h-10 shrink-0">
+      <div data-tour="nav-search" className="relative mb-2 h-10 shrink-0">
         <button
           type="button"
           onClick={openSearch}
@@ -412,9 +415,9 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            <NavItem to="/forms" label="Home" Icon={Home} collapsed={collapsed} end />
-            {can("roster.view") && <NavItem to={ROSTER_URL} label="Roster" Icon={Contact} collapsed={collapsed} lit={lit(ROSTER_URL)} count={reviewCount} />}
-            <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} />
+            <NavItem to="/forms" label="Home" Icon={Home} collapsed={collapsed} end tour="nav-home" />
+            {can("roster.view") && <NavItem to={ROSTER_URL} label="Roster" Icon={Contact} collapsed={collapsed} lit={lit(ROSTER_URL)} count={reviewCount} tour="nav-roster" />}
+            <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} tour="nav-calendar" />
 
             {pinned.length > 0 && (
               <>
@@ -453,7 +456,7 @@ export function Sidebar() {
             {isAdmin && (
               <>
                 <div className="mx-2 my-2.5 h-px shrink-0 bg-hairline" />
-                <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} />
+                <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
               </>
             )}
           </>
@@ -463,6 +466,7 @@ export function Sidebar() {
       {/* Notifications, just above you: the bell carries the unread bubble open or collapsed. */}
       <NavLink
         to="/notifications"
+        data-tour="nav-notifications"
         title={collapsed ? (unread ? `Notifications (${unread} unread)` : "Notifications") : undefined}
         aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         className={({ isActive }) => cn(itemClass(isActive, collapsed), "mt-2")}
@@ -495,6 +499,7 @@ export function Sidebar() {
         <div className="flex w-full items-center">
           <NavLink
             to="/profile"
+            data-tour="nav-profile"
             title={collapsed ? `${user?.name} · Profile & settings` : "Profile & settings"}
             className={({ isActive }) =>
               cn(

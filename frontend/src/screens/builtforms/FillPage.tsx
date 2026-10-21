@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
-import { CheckCircle2, ClipboardList, CloudOff, Lock, PencilRuler } from "lucide-react";
+import { CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler } from "lucide-react";
+import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { useAuth } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
 import { isOnline } from "@/lib/offline";
@@ -43,6 +44,19 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   const [clientId, setClientId] = useState(newClientId);
   const [round, setRound] = useState(0);
   const draftKey = `lcs-form-draft:${slug}`;
+
+  // The form's tutorial (its "tutorial"): the first time someone opens it, and from "Show me how".
+  const values = useRef<Values>({});
+  const tutorial = useFormTutorial({
+    formId: data?.form.id ?? null,
+    tutorial: data?.doc.tutorial,
+    ready: Boolean(data) && !done && !data?.closed,
+    scope: (p) => p === `/f/${slug}` || p === `/p/${slug}`,
+    build: (record) =>
+      data?.doc.tutorial
+        ? basicFormTour({ formId: data.form.id, title: data.doc.title, tutorial: data.doc.tutorial, roleKey: user?.roleKey ?? "", userName: user?.name, values: () => values.current, record })
+        : null,
+  });
 
   const Shell = publicView ? PublicShell : InAppShell;
 
@@ -130,15 +144,24 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
           {canOpenBuilder && <Link to={`/admin/builder/${form.id}`} className="inline-flex items-center gap-1 font-semibold text-accent"><PencilRuler className="h-3.5 w-3.5" /> Edit form</Link>}
         </div>
       )}
-      {data.canReadEntries && !publicView && (
-        <div className="mb-3 flex justify-end">
-          <Link to={`/f/${slug}/entries`} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> Entries</Link>
+      {((data.canReadEntries && !publicView) || (tutorial.available && !done)) && (
+        <div className="mb-3 flex justify-end gap-5">
+          {tutorial.available && !done && (
+            <button type="button" data-tour="form-help" onClick={tutorial.start} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent dark:text-white">
+              <CircleHelp className="h-3.5 w-3.5" /> Show me how
+            </button>
+          )}
+          {data.canReadEntries && !publicView && (
+            <Link to={`/f/${slug}/entries`} data-tour="form-entries" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> Entries</Link>
+          )}
         </div>
       )}
 
       <Card className="p-5 md:p-8">
-        <h1 className="font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]">{doc.title}</h1>
-        {doc.description && !done && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+        <div data-tour="form-title">
+          <h1 className="font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]">{doc.title}</h1>
+          {doc.description && !done && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+        </div>
         <div className="mt-6">
           {done ? (
             <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} />
@@ -154,6 +177,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
               onSubmit={submit}
               submitting={submitting}
               serverErrors={serverErrors}
+              onValuesChange={(v) => (values.current = v)}
             />
           )}
         </div>

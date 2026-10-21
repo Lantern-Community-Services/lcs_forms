@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { setNavMode } from "@/lib/shellNav";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CloudOff, Code2, RefreshCw } from "lucide-react";
+import { CircleHelp, CloudOff, Code2, RefreshCw } from "lucide-react";
+import { codeFormTour, useFormTutorial } from "@/lib/tour/formTours";
+import { setFrameTutorialStarter } from "@/lib/tour/frameBridge";
 import { LoadingState, EmptyState } from "@/components/ui/misc";
 import { Card } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
@@ -27,6 +29,32 @@ export function AppHostPage() {
     setNavMode(navPref);
     return () => setNavMode(null);
   }, [navPref]);
+
+  // The form's tutorial (form.json "tutorial"): the first time someone opens it, from "Show me how",
+  // and from the page itself (tutorial.start() in @lcs/sdk). A draft's only runs on request, unrecorded.
+  const tutorial = useFormTutorial({
+    formId: runtime?.form.id ?? null,
+    tutorial: runtime?.tutorial,
+    ready: Boolean(runtime),
+    preview: draft,
+    scope: (p) => p === `/apps/${slug}` || p.startsWith(`/apps/${slug}/`),
+    build: (record) =>
+      runtime?.tutorial
+        ? codeFormTour({
+            formId: runtime.form.id,
+            slug,
+            title: runtime.form.title,
+            draft,
+            pages: runtime.pages,
+            tutorial: runtime.tutorial,
+            roleKey: runtime.user.roleKey,
+            userName: runtime.user.name,
+            record,
+          })
+        : null,
+  });
+  const startTutorial = tutorial.start;
+  useEffect(() => setFrameTutorialStarter(startTutorial), [startTutorial]);
 
   if (isLoading) return <LoadingState />;
   if (error || !runtime) {
@@ -60,10 +88,11 @@ export function AppHostPage() {
           <div className="min-w-0 flex-1">
             <h1 className="hidden font-heading text-[24px] font-extrabold text-ink md:block">{runtime.form.title}</h1>
             {visible.length > 1 ? (
-              <nav aria-label={runtime.form.title} className="chiprow flex px-1.5 md:mt-1 md:gap-1 md:px-0">
+              <nav aria-label={runtime.form.title} data-tour="app-tabs" className="chiprow flex px-1.5 md:mt-1 md:gap-1 md:px-0">
                 {visible.map((p) => (
                   <NavLink
                     key={p.id}
+                    data-tour={`app-tab-${p.id}`}
                     to={`/apps/${slug}/${p.id}${withDraft({})}`}
                     className={({ isActive }) =>
                       cn(
@@ -84,6 +113,11 @@ export function AppHostPage() {
           <div className="flex items-center gap-2 pb-2 pr-3 md:pr-0">
             {draft && <span className="rounded-pill bg-status-violetBg px-2 py-0.5 text-micro font-bold text-status-violetText">Draft</span>}
             <QueueBadge slug={slug} />
+            {tutorial.available && (
+              <button type="button" data-tour="app-help" onClick={() => tutorial.start()} className="inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Show me how this form works">
+                <CircleHelp className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Show me how</span>
+              </button>
+            )}
             {runtime.canEdit && canOpenEditor && (
               <Link to={`/admin/apps/${runtime.form.id}`} className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Edit this code form">
                 <Code2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Edit</span>

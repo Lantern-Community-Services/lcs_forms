@@ -448,6 +448,20 @@ declare module "@lcs/sdk" {
     discard(clientId: string): Promise<void>;
   };
 
+  /**
+   * The form's guided tutorial (form.json "tutorial"; see the guide). It starts by itself the
+   * first time someone opens the form, and from the app's "Show me how" button. Steps point at
+   * elements with a data-tour="name" attribute: <Card data-tour="meal-picker">.
+   */
+  export const tutorial: {
+    /** Run it now (from a Help button, say), whatever the person has seen. False if the form has none for them. */
+    start(): Promise<boolean>;
+    /** Move a click step on from code — for a target that isn't one tappable element (a custom picker). */
+    next(): void;
+    /** Whether a tutorial is showing right now. */
+    active(): Promise<boolean>;
+  };
+
   /** A tiny data hook: runs fn, re-runs when `deps` change or refresh() is called. */
   export function useData<T>(fn: () => Promise<T>, deps?: unknown[]): { data: T | undefined; error: Error | null; loading: boolean; refresh: () => void };
 

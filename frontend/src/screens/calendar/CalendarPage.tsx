@@ -24,6 +24,7 @@ import { EventDetail, ScopeDialog } from "./EventDetail";
 import { EventEditor, type EditorTarget } from "./EventEditor";
 import { CategoriesDialog } from "./CategoriesDialog";
 import { OutlookDialog } from "./OutlookDialog";
+import { useTour } from "@/lib/tour/TourProvider";
 
 const HIDDEN_KEY = "ln.calendar.hidden";
 /** The filter's stand-in for "no category". */
@@ -101,14 +102,16 @@ export function CalendarPage() {
   const { data: outlook } = useOutlookPrefs();
   const [showOutlook, setShowOutlook] = useState(false);
   const [askedOutlook, setAskedOutlook] = useState(false);
+  // Not in the middle of the welcome tour: it asks once the tour is over.
+  const touring = Boolean(useTour().active);
   useEffect(() => {
-    if (outlook && !outlook.answered && !askedOutlook) {
+    if (outlook && !outlook.answered && !askedOutlook && !touring) {
       setAskedOutlook(true);
       setShowOutlook(true);
     }
-  }, [outlook, askedOutlook]);
+  }, [outlook, askedOutlook, touring]);
   const outlookButton = (
-    <Button variant="secondary" size={phone ? "icon" : "md"} onClick={() => setShowOutlook(true)} aria-label="Add to my Outlook" title="Add to my Outlook" className={phone ? "h-9 w-9" : undefined}>
+    <Button data-tour="calendar-outlook" variant="secondary" size={phone ? "icon" : "md"} onClick={() => setShowOutlook(true)} aria-label="Add to my Outlook" title="Add to my Outlook" className={phone ? "h-9 w-9" : undefined}>
       <Mail className="h-4 w-4" />
       {!phone && "Outlook"}
     </Button>
@@ -203,7 +206,7 @@ export function CalendarPage() {
     </div>
   );
   const viewSwitch = (
-    <div role="tablist" aria-label="View" className="flex rounded-input border border-hairline bg-surface p-0.5">
+    <div role="tablist" aria-label="View" data-tour="calendar-views" className="flex rounded-input border border-hairline bg-surface p-0.5">
       {(Object.keys(VIEWS) as CalendarView[])
         .filter((v) => !(phone && v === "week"))
         .map((v) => (
@@ -276,14 +279,14 @@ export function CalendarPage() {
   return (
     <div data-fit-screen className="flex h-full min-h-0 flex-col">
       {phone ? (
-        <div className="flex-none border-b border-hairline bg-sidebar px-4 pb-2.5 pt-safe-top">
+        <div data-tour="calendar-header" className="flex-none border-b border-hairline bg-sidebar px-4 pb-2.5 pt-safe-top">
           <div className="flex items-center gap-2">
             <h1 className="flex-1 text-[23px] font-heading font-extrabold text-ink">Calendar</h1>
             {isFetching && <Spinner className="h-4 w-4" />}
             {outlookButton}
             <Button variant="secondary" size="sm" onClick={() => go({ date: today })} className="h-9">Today</Button>
             {canAdd && (
-              <Button size="icon" onClick={newEvent} aria-label="New event" className="h-9 w-9">
+              <Button data-tour="calendar-new" size="icon" onClick={newEvent} aria-label="New event" className="h-9 w-9">
                 <Plus className="h-5 w-5" />
               </Button>
             )}
@@ -299,7 +302,7 @@ export function CalendarPage() {
           </div>
         </div>
       ) : (
-        <div className="flex-none border-b border-hairline px-4 pb-3 pt-safe-top md:px-7 md:pt-6">
+        <div data-tour="calendar-header" className="flex-none border-b border-hairline px-4 pb-3 pt-safe-top md:px-7 md:pt-6">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-[24px] font-heading font-extrabold text-ink">Calendar</h1>
             <div className="flex items-center gap-1">
@@ -318,7 +321,7 @@ export function CalendarPage() {
                 </Button>
               )}
               {canAdd && (
-                <Button onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined}>
+                <Button data-tour="calendar-new" onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined}>
                   <Plus className="h-4 w-4" /> New event
                 </Button>
               )}

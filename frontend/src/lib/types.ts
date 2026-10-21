@@ -205,6 +205,8 @@ export interface Settings {
   guestDomains: string;
   undoSeconds: string;
   autoApproveStaff: string;
+  /** "false" stops the welcome tour starting by itself (lib/tour/SiteTourStarter.tsx). */
+  welcomeTour: string;
 }
 
 export interface FormLink {

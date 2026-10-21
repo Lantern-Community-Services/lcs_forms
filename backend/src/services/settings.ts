@@ -17,6 +17,12 @@ export const SETTING_DEFAULTS = {
    * one. Partner domains still file an access request either way.
    */
   autoApproveStaff: "true",
+  /**
+   * "true": the welcome tour (frontend lib/tour/siteTour.ts) starts by itself for
+   * anyone who hasn't finished or skipped it on that kind of device. "false"
+   * stops it starting; Profile → Take the tour still runs it.
+   */
+  welcomeTour: "true",
   /** Set when a build that wrote a default forms catalog had written it; see formCatalog.ts. */
   formCatalogSeeded: "",
   /** Set once the old default catalog has been taken out; see formCatalog.ts retireLegacyCatalog. */

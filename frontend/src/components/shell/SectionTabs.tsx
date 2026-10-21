@@ -43,7 +43,7 @@ export function SectionTabsLayout({ title, tabs, enter = false }: { title: strin
       <div className="flex-none border-b border-hairline bg-sidebar pt-safe-top md:bg-surface md:pt-6">
         <div className="mx-auto max-w-[1240px] md:px-7">
           <h1 className={cn("hidden text-[24px] font-heading font-extrabold text-ink md:block", enter && "enter-up")}>{title}</h1>
-          <nav ref={navRef} aria-label={title} className={cn("chiprow flex px-1.5 md:mt-2 md:gap-1 md:px-0", enter && "enter-up")}>
+          <nav ref={navRef} aria-label={title} data-tour="section-tabs" className={cn("chiprow flex px-1.5 md:mt-2 md:gap-1 md:px-0", enter && "enter-up")}>
             {tabs.map((t) => (
               <NavLink
                 key={t.to}

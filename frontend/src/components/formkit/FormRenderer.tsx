@@ -181,7 +181,7 @@ export function FormRenderer({
       )}
 
       {progress && (
-        <div className="mb-5">
+        <div className="mb-5" data-tour="form-progress">
           <div className="mb-1.5 flex justify-between text-micro font-semibold text-muted">
             <span>{current.pageField?.label || "Start"}</span>
             <span>Page {page + 1} of {pages.length}</span>
@@ -229,18 +229,20 @@ export function FormRenderer({
 
       <div className="mt-7 flex flex-wrap items-center gap-2 border-t border-hairline pt-5">
         {page > 0 && (
-          <Button type="button" variant="secondary" size="lg" onClick={() => { setPage((p) => p - 1); topRef.current?.scrollIntoView({ behavior: "smooth" }); }}>
+          <Button type="button" variant="secondary" size="lg" data-tour="form-back" onClick={() => { setPage((p) => p - 1); topRef.current?.scrollIntoView({ behavior: "smooth" }); }}>
             <ChevronLeft className="h-4 w-4" /> Back
           </Button>
         )}
         <div className="flex-1" />
         {Object.keys(errors).length > 0 && <p className="text-[13px] font-semibold text-status-redText">Some answers need a look.</p>}
+        {/* Keyed apart: as one element, React turned the Next button into the Submit button in
+            the middle of its own click, and the browser then submitted the form from page 1. */}
         {!last ? (
-          <Button type="button" size="lg" onClick={next}>
+          <Button key="next" type="button" size="lg" data-tour="form-next" onClick={next}>
             {pages[page + 1]?.pageField?.nextLabel || current.pageField?.nextLabel || "Next"} <ChevronRight className="h-4 w-4" />
           </Button>
         ) : (
-          <Button type="submit" size="lg" disabled={disabled || submitting || (mode === "preview" && !onSubmit)}>
+          <Button key="submit" type="submit" size="lg" data-tour="form-submit" disabled={disabled || submitting || (mode === "preview" && !onSubmit)}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             {submitLabel ?? doc.settings.submitLabel ?? "Submit"}
           </Button>
@@ -269,7 +271,7 @@ function SitePickerRow({ value, onChange, error }: { value: string | null; onCha
     if (!value && sites?.length === 1) onChange(sites[0].code);
   }, [sites]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="mb-5" data-field-error={error ? true : undefined}>
+    <div className="mb-5" data-tour="form-site" data-field-error={error ? true : undefined}>
       <FieldLabel label="Site" required />
       <Select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} placeholder="Pick a site…" options={(sites ?? []).map((s) => ({ value: s.code, label: s.name }))} />
       {error && <FieldError message={error} />}

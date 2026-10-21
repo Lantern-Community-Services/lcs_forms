@@ -244,6 +244,13 @@ export const queue = {
   discard: (clientId: string) => call("queue.discard", clientId),
 };
 
+/** The form's guided tutorial (form.json "tutorial"); the host runs it (src/lib/tour). */
+export const tutorial = {
+  start: () => call<boolean>("tutorial.start"),
+  next: () => post({ t: "tour:next" }),
+  active: () => call<boolean>("tutorial.active"),
+};
+
 export function useData<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [state, setState] = useState<{ data: T | undefined; error: Error | null; loading: boolean }>({ data: undefined, error: null, loading: true });
   const [tick, setTick] = useState(0);

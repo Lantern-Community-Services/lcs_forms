@@ -12,6 +12,7 @@ import * as Lucide from "lucide-react";
 import * as sdk from "./sdk";
 import * as ui from "./ui";
 import * as charts from "./charts";
+import { onTourCommand } from "./tour";
 
 declare global {
   interface Window {
@@ -60,6 +61,7 @@ window.addEventListener("message", (e) => {
   if (e.source !== parent || !e.data || e.data.__lcsHost !== 1) return;
   const d = e.data;
   if (d.t === "theme") applyTheme(d.theme);
+  else if (typeof d.t === "string" && d.t.startsWith("tour:")) onTourCommand(d);
   else onHostMessage(d);
 });
 

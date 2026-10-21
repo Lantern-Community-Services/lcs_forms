@@ -10,6 +10,7 @@ import { forcedDevice } from "@/lib/device";
 import { mobileBrowser, printPdf } from "@/lib/exportPipeline";
 import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
 import { CameraCapture, shrinkImage, type CameraRequest } from "./CameraCapture";
+import { attachFrame, frameLoaded, fromFrame, startTutorialFromFrame, tourActive, type FrameCommand, type FrameReport } from "@/lib/tour/frameBridge";
 
 /**
  * One page of a code form, in a sandboxed iframe.
@@ -171,6 +172,10 @@ export function AppFrame({
   latest.current = { runtime, params, page, onNavigate, onSetParams, onConsole, device };
 
   const send = (msg: Record<string, unknown>) => ref.current?.contentWindow?.postMessage({ __lcsHost: 1, ...msg }, "*");
+
+  // The guided tutorial's line into this frame (lib/tour/frameBridge.ts).
+  const tourFrame = useRef({ element: () => ref.current, send: (msg: FrameCommand) => send(msg) }).current;
+  useEffect(() => attachFrame(tourFrame), [tourFrame]);
 
   const context = () => {
     const l = latest.current;
@@ -432,6 +437,8 @@ export function AppFrame({
         if (opts?.date) p.set("date", opts.date);
         await api.delete(`/calendar/events/${encodeURIComponent(String(id))}?${p}`);
       },
+      "tutorial.start": async () => startTutorialFromFrame(),
+      "tutorial.active": async () => tourActive(),
       "queue.status": async () => queueStatus(slug),
       "queue.retry": async () => retryFailed(slug),
       "queue.discard": async (clientId: string) => discard(clientId),
@@ -442,8 +449,10 @@ export function AppFrame({
       const d = e.data as { t: string; id?: number; method?: string; args?: unknown[]; level?: ConsoleLine["level"]; message?: string; stack?: string };
       if (d.t === "hello" || d.t === "ready") {
         send({ t: "context", context: context() });
+        frameLoaded(tourFrame);
         return;
       }
+      if (typeof d.t === "string" && d.t.startsWith("tour:")) return fromFrame(d as unknown as FrameReport);
       if (d.t === "console") return log(d.level ?? "log", (d.args as string[] | undefined)?.join(" ") ?? "");
       if (d.t === "crash") return log("error", `${d.message}${d.stack ? `\n${d.stack}` : ""}`);
       if (d.t !== "call" || !d.method) return;
