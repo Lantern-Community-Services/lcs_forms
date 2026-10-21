@@ -52,7 +52,9 @@ The `environment` tag is the source of truth for what is production, not the nam
 1. Branch from `main`, open a PR. `main` is protected; nobody pushes to it directly.
 2. Merge → `.github/workflows/cd-forms.yml` builds both images, tags them with the commit SHA, pushes
    to `acrlcsforms`, and deploys to **dev**. The api runs `prisma migrate deploy` on that first start
-   (`RUN_MIGRATIONS=true` for the deploy, cleared after).
+   (`RUN_MIGRATIONS=then-start` for the deploy). The job waits until `/api/health/deploy` reports the
+   new commit and the commit's newest migration, then clears the flag; if that never happens it puts
+   the previous api image back and fails.
 3. The **prod** job waits for an approval in GitHub (Environments → prod → required reviewers).
    Approve, and the same images go to production.
 4. Rollback = rerun the workflow on the last good commit, or set the previous image tag on the web apps.

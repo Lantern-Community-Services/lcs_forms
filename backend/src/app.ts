@@ -54,6 +54,22 @@ async function databaseUp(timeoutMs = 3000): Promise<boolean> {
   }
 }
 
+/**
+ * The newest migration `prisma migrate deploy` has finished applying, or null
+ * when there's no migrations table (a `db push` database) or no answer.
+ */
+async function latestMigration(): Promise<string | null> {
+  try {
+    const rows = await prisma.$queryRaw<{ migration_name: string }[]>`
+      SELECT TOP 1 migration_name FROM _prisma_migrations
+      WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+      ORDER BY migration_name DESC`;
+    return rows[0]?.migration_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function createApp() {
   const app = express();
   // Behind App Service the client's address is in X-Forwarded-For, so the rate
@@ -69,6 +85,8 @@ export function createApp() {
   //   /api/health/live   the process answers (no database call)
   //   /api/health        200, with whether the database answered
   //   /api/health/ready  503 while the database doesn't answer (for a deploy check, not a restart probe)
+  //   /api/health/deploy which build is answering and the newest applied migration
+  //                      (the pipeline waits on both, see cd-forms.yml)
   app.get("/api/health/live", (_req, res) => {
     res.json({ ok: true });
   });
@@ -78,6 +96,9 @@ export function createApp() {
   app.get("/api/health/ready", async (_req, res) => {
     const up = await databaseUp();
     res.status(up ? 200 : 503).json({ ok: up, database: up ? "up" : "unreachable" });
+  });
+  app.get("/api/health/deploy", async (_req, res) => {
+    res.json({ ok: true, commit: env.commit || null, migration: await latestMigration() });
   });
 
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
