@@ -101,13 +101,13 @@ Code form (form.json):
 ${JSON.stringify(
   {
     title: "How to record a meal",
-    roles: ["site_staff", "site_manager", "site_admin"],
+    roles: ["site_staff", "site_manager"],
     steps: [
       { title: "Hot Foods", body: "Record each meal as you hand it out. It works without Wi-Fi: entries upload by themselves." },
       { page: "record", target: "meal-picker", action: "click", title: "Pick the meal", body: "Tap the meal you're serving. You only pick it once per shift." },
       { target: "resident-search", action: "fill", title: "Find the resident", body: "Start typing their name. Regulars are at the top." },
       { target: "sign", title: "They sign", body: "Hand them the device to sign, then tap **Save**." },
-      { target: "tab:entries", roles: ["site_manager", "site_admin"], title: "Entries", body: "Everything recorded at your sites, with export and void." },
+      { target: "tab:entries", roles: ["site_manager"], title: "Entries", body: "Everything recorded at your sites, with export and void." },
     ],
   },
   null,

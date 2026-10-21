@@ -4,7 +4,7 @@ import {
   Settings, Home, Contact, CalendarDays, Bell, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ADMIN_AREA, useAuth } from "@/lib/auth";
+import { ADMIN_AREA, isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
 import { Avatar } from "@/components/ui/avatar";
 import { CountBadge, UnreadBubble } from "@/components/ui/badge";
@@ -282,6 +282,8 @@ export function Sidebar() {
   const searchRef = useRef<HTMLInputElement>(null);
   const focusSearch = useRef(false);
   const isAdmin = ADMIN_AREA.some(can);
+  // A Site Manager's admin is just their sites' people: "Site settings".
+  const siteSettingsOnly = isSiteSettingsOnly(can);
 
   const countFor = (form: FormLink) => (form.url === ROSTER_URL ? reviewCount : 0);
   const hereId = categories.find((c) => c.forms.some((f) => isInternalForm(f.url) && lit(f.url)))?.category.id;
@@ -456,7 +458,11 @@ export function Sidebar() {
             {isAdmin && (
               <>
                 <div className="mx-2 my-2.5 h-px shrink-0 bg-hairline" />
-                <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
+                {siteSettingsOnly ? (
+                  <NavItem to="/admin/people" label="Site settings" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
+                ) : (
+                  <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
+                )}
               </>
             )}
           </>

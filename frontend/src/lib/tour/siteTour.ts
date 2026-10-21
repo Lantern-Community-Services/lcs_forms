@@ -1,4 +1,4 @@
-import { ADMIN_AREA } from "@/lib/auth";
+import { ADMIN_AREA, isSiteSettingsOnly } from "@/lib/auth";
 import type { DeviceKind } from "@/lib/device";
 import type { PermissionKey, User } from "@/lib/types";
 import type { TourDef, TourStep } from "./types";
@@ -133,7 +133,7 @@ export function buildSiteTour(
       target: at("section-tabs"),
       title: "The roster",
       body: noSites
-        ? "Residents at your sites. You aren't assigned to a site yet, so it's empty for now: ask your Site Admin, and your residents will show up here."
+        ? "Residents at your sites. You aren't assigned to a site yet, so it's empty for now: ask your Site Manager, and your residents will show up here."
         : `Residents at ${user.allSites ? "every site" : "your sites"}. **Review** lists people nobody has seen in a while: ${tap.toLowerCase()} **Keep** for anyone still here.` +
           `${can("roster.edit") ? " Add, update or remove residents under **Residents**." : ""} **Attendance** and **Activity** have their own tabs.`,
     });
@@ -155,7 +155,16 @@ export function buildSiteTour(
       body: `Choose the page you land on${roster ? ", your default site" : ""}, light or dark, and how notifications reach you. **Take the tour** is there too.`,
     });
     const admin = ADMIN_AREA.some(can);
-    if (admin) {
+    if (admin && isSiteSettingsOnly(can)) {
+      // A Site Manager's corner of Admin, named Site settings in the sidebar.
+      add({
+        id: "admin",
+        target: at("nav-admin"),
+        placement: "right",
+        title: "Site settings",
+        body: "When someone asks to work at one of your sites, approve them here, and change what the people at your sites can do.",
+      });
+    } else if (admin) {
       const areas = [
         can("forms.manage") && "the form builder and the Forms catalog",
         can("apps.develop") && "code forms",

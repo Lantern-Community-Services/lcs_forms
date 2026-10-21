@@ -148,7 +148,7 @@ export async function recipientsFor(ev: { allSites: boolean; categoryId: string 
       ...(ev.categoryId ? { calendarMutes: { none: { categoryId: ev.categoryId } } } : { calendarSkipUncategorized: false }),
     },
     select: {
-      id: true, name: true, email: true, roleKey: true, sites: { select: { siteId: true } },
+      id: true, name: true, email: true, roleKey: true, sites: { where: { approved: true }, select: { siteId: true } },
       calendarEmailTeams: true, calendarEmailOther: true, calendarReminderMinutes: true, calendarAllDayFree: true,
     },
     orderBy: { email: "asc" },

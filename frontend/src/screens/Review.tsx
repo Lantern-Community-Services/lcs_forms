@@ -299,7 +299,9 @@ export function ReviewPage() {
                 </div>
               )}
               <p className="mt-3 text-center text-micro text-muted">
-                Swipe left to remove · down to skip · right if they're still here
+                {canAct || canRemove
+                  ? "Swipe left to remove · down to skip · right if they're still here"
+                  : "You can look through who needs review. Your Site Manager decides who stays."}
               </p>
               </div>
             </div>

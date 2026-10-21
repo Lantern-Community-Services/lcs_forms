@@ -199,7 +199,7 @@ export interface FormSettings {
    * the listed roles. "public": anyone with the link, no sign-in (/p/<slug>).
    */
   access?: { mode: "signed_in" | "roles" | "public"; roles?: string[] };
-  /** Roles (besides Admin) that can read entries. Default: Main Office, Site Admin, Site Manager. */
+  /** Roles (besides Admin) that can read entries. Default: Main Office, Site Manager, Site Staff. */
   entriesRoles?: string[];
   /** Ask which site the entry is for (entries are then limited to that site's staff). */
   requireSite?: boolean;

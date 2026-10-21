@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, ChevronLeft, ChevronRight, Filter, Mail, Plus, Tags } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useNavCatalog } from "@/components/shell/navData";
 import { useDeviceKind } from "@/lib/device";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { api } from "@/lib/api";
@@ -12,7 +13,7 @@ import { addMonths, categoryColor, fetchRange, nyNowMinutes, nyToday, shortDay, 
 import { readStoredJson, writeStorage } from "@/lib/storage";
 import { cn, errorMessage } from "@/lib/utils";
 import type { CalendarOccurrence, CalendarScope, CalendarSeries } from "@/lib/types";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState, LoadingState, Spinner } from "@/components/ui/misc";
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
@@ -50,6 +51,10 @@ export function CalendarPage() {
   const manage = can("calendar.manage");
   // Admins, and anyone with the switch (for their own sites; the server checks each event).
   const canAdd = manage || can("calendar.edit");
+  // Everyone else asks for an event through the Event Requests code form, when
+  // it's published and theirs to open; the event lands here once it's approved.
+  const { categories: navCategories } = useNavCatalog();
+  const requestForm = canAdd ? undefined : navCategories.flatMap((c) => c.forms).find((f) => /^\/apps\/events(\/|$)/.test(f.url));
   const device = useDeviceKind();
   const phone = device === "phone";
   const qc = useQueryClient();
@@ -290,6 +295,11 @@ export function CalendarPage() {
                 <Plus className="h-5 w-5" />
               </Button>
             )}
+            {requestForm && (
+              <Link to={requestForm.url} aria-label="Request an event" className={cn(buttonVariants({ size: "icon" }), "h-9 w-9")}>
+                <Plus className="h-5 w-5" />
+              </Link>
+            )}
           </div>
           <div className="mt-2 flex items-center gap-1">
             {arrows}
@@ -324,6 +334,11 @@ export function CalendarPage() {
                 <Button data-tour="calendar-new" onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined}>
                   <Plus className="h-4 w-4" /> New event
                 </Button>
+              )}
+              {requestForm && (
+                <Link to={requestForm.url} className={buttonVariants()}>
+                  <Plus className="h-4 w-4" /> Request an event
+                </Link>
               )}
             </div>
           </div>

@@ -1,9 +1,9 @@
 import { prisma } from "../prisma.js";
 
 /**
- * Roles are defined in code. Five match how Lantern is organised: the central
- * admin, main office staff who look across every site, and three levels of
- * staff at a site. If Lantern later needs editable roles, this table becomes a
+ * Roles are defined in code: the central admin, developers, and the people at
+ * sites — main office staff, site managers and site staff. Everyone but an
+ * Admin sees only the sites they've been approved for. If Lantern later needs editable roles, this table becomes a
  * Role model the way the AP app did it, and nothing that calls `can()` changes.
  */
 export const PERMISSIONS = [
@@ -12,7 +12,7 @@ export const PERMISSIONS = [
   "roster.archive",
   "roster.restore",
   "audit.view",
-  /** Form submissions (built and code forms: entries and reports). Site Staff record forms but can't read them back. */
+  /** Form submissions (built and code forms: entries and reports) at the person's sites. */
   "entries.view",
   /** Void a form entry recorded in error (with a reason). The entry stays, marked void. */
   "entries.void",
@@ -20,7 +20,7 @@ export const PERMISSIONS = [
   /** Each assigned site's own roster rules (review threshold) — not the org-wide default. */
   "sites.manageRules",
   "users.manage",
-  /** People & roles, limited to the caller's sites and the site roles. */
+  /** People & roles (Site settings), limited to the caller's sites and the site roles: approve, decline and remove requests. */
   "users.manageSite",
   "integrations.manage",
   "settings.manage",
@@ -29,7 +29,7 @@ export const PERMISSIONS = [
   "apps.develop",
   /**
    * The whole calendar: categories, events for every site, and any event at
-   * all. Deliberately Admin only: no other role gets it, Site Admin included.
+   * all. Deliberately Admin only: no other role gets it, Site Manager included.
    * Everyone signed in can read the calendar.
    */
   "calendar.manage",
@@ -61,7 +61,13 @@ export interface RoleDef {
   allSites: boolean;
 }
 
-const SITE_ROSTER: PermissionKey[] = ["roster.view", "roster.edit", "roster.archive", "roster.restore", "audit.view"];
+/**
+ * Roster management: add and edit residents, the review queue's Keep and
+ * Remove, attendance, and restoring removed residents. Site Managers have it;
+ * anyone else gets it from the per-person "Can manage the roster" switch
+ * (User.rosterEditor). See permissionsFor().
+ */
+export const ROSTER_MANAGEMENT: PermissionKey[] = ["roster.edit", "roster.archive", "roster.restore"];
 
 /** Most privileged first — the order People & roles lists them in. */
 export const ROLES: RoleDef[] = [
@@ -82,48 +88,48 @@ export const ROLES: RoleDef[] = [
     allSites: false,
   },
   {
+    // Its own role so it can be given main-office duties later. For now it can
+    // do what Site Staff can, at the sites the person is approved for.
     key: "main_office",
     name: "Main Office Staff",
-    description: "Can look up residents on every site's roster. Cannot change anything.",
+    description: "Submits and reads forms, and looks up residents, at the sites they're approved for.",
     permissions: ["roster.view", "entries.view"],
-    allSites: true,
-  },
-  {
-    key: "site_admin",
-    name: "Site Admin",
-    description: "Everything a Site Manager can do, plus people, roles and roster rules for their sites.",
-    permissions: [...SITE_ROSTER, "entries.view", "entries.void", "users.manageSite", "sites.manageRules"],
     allSites: false,
   },
   {
     key: "site_manager",
     name: "Site Manager",
-    description: "Adds, updates and removes residents at their sites; restores removed residents and sees the audit history.",
-    permissions: [...SITE_ROSTER, "entries.view", "entries.void"],
+    description: "Everything Site Staff can do, plus managing the roster and approving people for their sites (Site settings).",
+    permissions: ["roster.view", "entries.view", ...ROSTER_MANAGEMENT, "users.manageSite"],
     allSites: false,
   },
   {
-    // What a new Lantern sign-in starts as, with no sites until someone
-    // assigns them — so the forms work on day one and rosters come later.
+    // What a new person is requested as. Approved per site in People & roles.
     key: "site_staff",
     name: "Site Staff",
-    description: "Adds, updates and removes residents at their sites, and reads form entries made for them.",
-    permissions: ["roster.view", "roster.edit", "roster.archive", "entries.view"],
+    description: "Submits and reads forms, and looks up residents, at their sites. A Site Manager can let them manage the roster.",
+    permissions: ["roster.view", "entries.view"],
     allSites: false,
   },
 ];
 
 export const DEFAULT_ROLE_KEY = "site_staff";
 
-/** Roles from before the five above, and what each became (see migrateLegacyRoles). */
+/** Roles that were retired, and what each became (see migrateLegacyRoles). */
 export const LEGACY_ROLES: Record<string, string> = {
   member: "site_staff",
   viewer: "site_staff",
   staff: "site_staff",
+  // Site Admin's people powers moved to Site Manager (2026-10-21).
+  site_admin: "site_manager",
 };
 
-/** Roles a Site Admin may hand out: the ones bounded by site assignment. */
-export const SITE_ROLE_KEYS = ROLES.filter((r) => !r.allSites).map((r) => r.key);
+/**
+ * The roles a Site Manager may give out and see in Site settings. Listed, not
+ * worked out from allSites: Developer is bounded by sites too but only an
+ * Admin hands it out.
+ */
+export const SITE_ROLE_KEYS = ["site_manager", "site_staff", "main_office"];
 
 export function roleFor(key: string): RoleDef {
   const k = LEGACY_ROLES[key] ?? key;
@@ -139,9 +145,13 @@ export function roleFor(key: string): RoleDef {
  * form or code form includes them) with User.globalAdmin on, which adds
  * admins.manage: only they make, change or remove Admins.
  */
-export function permissionsFor(role: RoleDef, person: { calendarEditor?: boolean | null; globalAdmin?: boolean | null }): PermissionKey[] {
+export function permissionsFor(
+  role: RoleDef,
+  person: { calendarEditor?: boolean | null; rosterEditor?: boolean | null; globalAdmin?: boolean | null }
+): PermissionKey[] {
   const extra: PermissionKey[] = [];
   if (person.calendarEditor && !role.permissions.includes("calendar.edit")) extra.push("calendar.edit");
+  if (person.rosterEditor) for (const p of ROSTER_MANAGEMENT) if (!role.permissions.includes(p)) extra.push(p);
   if (person.globalAdmin && role.key === "admin") extra.push("admins.manage");
   return extra.length ? [...role.permissions, ...extra] : role.permissions;
 }

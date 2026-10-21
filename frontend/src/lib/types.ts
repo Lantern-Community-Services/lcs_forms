@@ -55,6 +55,8 @@ export interface User {
   lastSignInAt?: string | null;
   /** The "Can edit the calendar" switch: events for their own sites, whatever their role. */
   calendarEditor?: boolean;
+  /** The "Can manage the roster" switch: roster management whatever their role (Site Managers have it already). */
+  rosterEditor?: boolean;
   /** A Super Admin: an Admin who also makes, changes and removes Admins. Set only by the server (SUPER_ADMINS); the field keeps its first name. */
   globalAdmin?: boolean;
 }
@@ -168,11 +170,19 @@ export interface ManagedUser extends Omit<User, "permissions" | "allSites" | "ro
   role: RoleSummary;
   createdAt: string;
   /**
-   * False when a Site Admin is looking at someone who also works at a site
+   * False when a Site Manager is looking at someone who also works at a site
    * they don't manage: they can move them between their own sites, but not
    * change the role or status.
    */
   canEditRole: boolean;
+  /** Sites they asked for at their first sign-in that are still waiting. */
+  requestedSites: SiteRef[];
+  /** The ones of those this viewer may approve or decline (their own sites; all, for an Admin). */
+  canApproveSiteIds: string[];
+  /** "Where do you work?", as names (sites and/or Main Office). */
+  locationNames: string[];
+  /** A pending account or request this viewer may delete outright. */
+  canDelete: boolean;
 }
 
 export interface ApiKeyRow {
@@ -204,7 +214,6 @@ export interface Settings {
   attentionHours: string;
   guestDomains: string;
   undoSeconds: string;
-  autoApproveStaff: string;
   /** "false" stops the welcome tour starting by itself (lib/tour/SiteTourStarter.tsx). */
   welcomeTour: string;
 }

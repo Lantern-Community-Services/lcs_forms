@@ -692,7 +692,7 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
   }
   const rows = await prisma.user.findMany({
     where: { AND: and },
-    select: { id: true, name: true, email: true, roleKey: true, status: true, avatarColor: true, sites: { select: { site: { select: { id: true, code: true } } } } },
+    select: { id: true, name: true, email: true, roleKey: true, status: true, avatarColor: true, sites: { where: { approved: true }, select: { site: { select: { id: true, code: true } } } } },
     orderBy: { name: "asc" },
     take: 2000,
   });

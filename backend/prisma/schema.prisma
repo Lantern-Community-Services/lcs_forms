@@ -660,6 +660,12 @@ model User {
   /// Can add, change and remove calendar events for their own sites, whatever
   /// their role. Only an Admin turns it on. Admins can always edit the calendar.
   calendarEditor            Boolean                @default(false)
+  /// Can manage the roster (add, edit, keep, remove, restore) whatever their
+  /// role. Site Managers have this already; they or an Admin switch it on.
+  rosterEditor              Boolean                @default(false)
+  /// Where the person works, chosen on their first sign-in: a JSON list of
+  /// site ids and/or "main_office". Shown on their request; not access.
+  locations                 String?                @db.NVarChar(Max)
   /// A Super Admin (the column keeps its first name, Global Admin): an Admin who
   /// can also make, change and remove Admins (admins.manage). Only on with
   /// roleKey "admin". Set only from the SUPER_ADMINS setting, at start-up and at
@@ -727,6 +733,9 @@ model UserSite {
   userId String @db.NVarChar(64)
   site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
   siteId String @db.NVarChar(64)
+  /// false while the site is only requested (chosen at first sign-in and
+  /// waiting for that site's manager or an Admin). Only approved rows give access.
+  approved Boolean @default(true)
 
   @@id([userId, siteId])
 }

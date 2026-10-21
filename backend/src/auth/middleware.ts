@@ -38,7 +38,7 @@ declare global {
 export async function currentUserById(id: string): Promise<CurrentUser | null> {
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, globalAdmin: true, sites: { select: { siteId: true } } },
+    select: { id: true, name: true, email: true, status: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, sites: { where: { approved: true }, select: { siteId: true } } },
   });
   if (!user || user.status !== "active") return null;
   const role = roleFor(user.roleKey);

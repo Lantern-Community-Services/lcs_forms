@@ -105,7 +105,7 @@ notifications: [{ id, name, enabled, kind: "email"|"webhook"|"notify", to, subje
   (answer tags dropped: it may be emailed); body is shown in the app only, so answer tags and {all_fields} work.
   link (a site path, merge tags allowed) defaults to the entry. Each person chooses on their Profile whether
   new-entry notifications also come by email. See the notification_reference tool.
-Role keys: admin, main_office, site_admin, site_manager, site_staff.
+Role keys: admin, main_office, site_manager, site_staff.
 
 ## Example
 ${JSON.stringify(EXAMPLE, null, 2)}

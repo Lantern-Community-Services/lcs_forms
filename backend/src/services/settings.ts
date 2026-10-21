@@ -12,12 +12,6 @@ export const SETTING_DEFAULTS = {
   /** Undo window for a removal, in seconds — how long the Undo toast stays. */
   undoSeconds: "10",
   /**
-   * "true": a first sign-in from Lantern's own domain (SSO_ALLOWED_DOMAINS) is
-   * let straight in as a Staff member, so the forms work for everyone on day
-   * one. Partner domains still file an access request either way.
-   */
-  autoApproveStaff: "true",
-  /**
    * "true": the welcome tour (frontend lib/tour/siteTour.ts) starts by itself for
    * anyone who hasn't finished or skipped it on that kind of device. "false"
    * stops it starting; Profile → Take the tour still runs it.
@@ -68,10 +62,3 @@ export async function guestDomains(): Promise<string[]> {
   }
 }
 
-export async function autoApproveStaff(): Promise<boolean> {
-  try {
-    return (await getSetting("autoApproveStaff")) === "true";
-  } catch {
-    return false;
-  }
-}
