@@ -58,6 +58,8 @@ function trustProxy(value: string | undefined): number | false {
 }
 
 export const env = {
+  /** The commit this image was built from (GIT_SHA, 12 characters), or "" outside the pipeline. */
+  commit: (process.env.GIT_SHA ?? "").trim().slice(0, 12),
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 4200),
   /** Containers listen on every interface; App Service reaches them from outside. */
