@@ -13,6 +13,7 @@ import { attendanceRouter } from "./routes/attendance.js";
 import { sitesRouter } from "./routes/sites.js";
 import { activityRouter } from "./routes/activity.js";
 import { usersRouter } from "./routes/users.js";
+import { onboardingRouter } from "./routes/onboarding.js";
 import { adminRouter } from "./routes/admin.js";
 import { publicApiRouter } from "./routes/publicApi.js";
 import { formsRouter } from "./routes/forms.js";
@@ -97,6 +98,7 @@ export function createApp() {
 
   app.use("/api/auth/microsoft", authLimiter);
   app.use("/api/auth", authRouter);
+  app.use("/api/onboarding", onboardingRouter);
   app.use("/api/forms", formsRouter);
   app.use("/api/home", homeRouter);
   app.use("/api/calendar", calendarRouter);

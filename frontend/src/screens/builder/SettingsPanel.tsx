@@ -111,7 +111,7 @@ export function SettingsPanel({
       </Section>
 
       <Section title="Who can read entries" hint="Admins always can.">
-        <CheckboxList options={roles} value={s.entriesRoles ?? ["main_office", "site_admin", "site_manager", "site_staff"]} onChange={(v) => set({ entriesRoles: v })} />
+        <CheckboxList options={roles} value={s.entriesRoles ?? ["main_office", "site_manager", "site_staff"]} onChange={(v) => set({ entriesRoles: v })} />
       </Section>
 
       <Section title="Limits & schedule">

@@ -22,7 +22,7 @@ import { assertDemoDataAllowed } from "../src/env.js";
 const DEMO_USERS = [
   { name: "Collin Falkowski", email: "cfalkowski@lanterncommunity.org", roleKey: "admin", avatarColor: "#1d4ed8", title: "Systems" },
   { name: "Jordan Main Office", email: "mainoffice.demo@lanterncommunity.org", roleKey: "main_office", avatarColor: "#be185d" },
-  { name: "Avery Site Admin", email: "siteadmin.demo@lanterncommunity.org", roleKey: "site_admin", avatarColor: "#0369a1" },
+  { name: "Avery Site Manager", email: "siteadmin.demo@lanterncommunity.org", roleKey: "site_manager", avatarColor: "#0369a1" },
   { name: "Morgan Site Manager", email: "manager.demo@lanterncommunity.org", roleKey: "site_manager", avatarColor: "#7c3aed" },
   { name: "Riley Case Worker", email: "staff.demo@lanterncommunity.org", roleKey: "site_staff", avatarColor: "#0f766e" },
   { name: "Pat Partner", title: "Partner org (Google Workspace)", email: "partner.demo@partnerorg.org", roleKey: "site_staff", avatarColor: "#c2410c", identityProvider: "google.com" },
@@ -52,7 +52,7 @@ async function main() {
   // Scope the demo staff to a couple of sites so site access is visible.
   const scoped = await prisma.site.findMany({ where: { code: { in: ["amber-hall", "rockaway-terrace"] } } });
   // Assignment is strict: a non-admin with no sites sees no rosters.
-  const staff = await prisma.user.findMany({ where: { roleKey: { in: ["site_admin", "site_manager", "site_staff"] } } });
+  const staff = await prisma.user.findMany({ where: { roleKey: { in: ["main_office", "site_manager", "site_staff"] } } });
   for (const u of staff) {
     for (const s of scoped) {
       await prisma.userSite.upsert({ where: { userId_siteId: { userId: u.id, siteId: s.id } }, create: { userId: u.id, siteId: s.id }, update: {} });

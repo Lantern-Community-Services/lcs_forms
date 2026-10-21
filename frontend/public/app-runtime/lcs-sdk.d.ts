@@ -795,7 +795,7 @@ declare module "@lcs/server" {
     };
     /**
      * Active staff: to choose approvers or find who to email (e.g. a site's managers: roles
-     * ["site_manager", "site_admin"], site "AUD"). site matches people assigned to it and those who
+     * ["site_manager", "admin"], site "AUD"). site matches people assigned to it and those who
      * see every site. Up to 500, by name.
      */
     directory(q?: { search?: string; roles?: string[]; site?: string; ids?: string[]; limit?: number }): StaffMember[];

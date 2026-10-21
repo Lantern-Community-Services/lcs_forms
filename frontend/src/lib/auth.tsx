@@ -9,6 +9,14 @@ export const ADMIN_AREA: PermissionKey[] = [
   "forms.manage", "apps.develop", "sites.manage", "sites.manageRules", "users.manage", "users.manageSite", "integrations.manage", "settings.manage", "devlog.view",
 ];
 
+/**
+ * A Site Manager's only way into admin is People & roles for their own sites.
+ * The navigation calls that "Site settings" instead of "Admin".
+ */
+export function isSiteSettingsOnly(can: (p: PermissionKey) => boolean): boolean {
+  return can("users.manageSite") && !ADMIN_AREA.filter((p) => p !== "users.manageSite").some(can);
+}
+
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
@@ -108,7 +116,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function devSignIn(userId: string) {
-    await api.post("/auth/dev-login", { userId });
+    const out = await api.post<{ onboarding?: boolean }>("/auth/dev-login", { userId });
+    // A request: off to choose their sites, as a real first sign-in does.
+    if (out?.onboarding) {
+      window.location.assign("/welcome");
+      return;
+    }
     await refresh();
   }
 

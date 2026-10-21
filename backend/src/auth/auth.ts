@@ -32,3 +32,25 @@ export function verifySession(token: string): SessionPayload | null {
     return null;
   }
 }
+
+/**
+ * A new person's pass to /welcome, where they choose where they work and which
+ * sites they want to see. It isn't a session: it opens only the onboarding
+ * routes (routes/onboarding.ts), for someone whose account is still a request.
+ */
+export const ONBOARDING_COOKIE = "lantern_onboarding";
+const ONBOARDING_TTL = "2h";
+
+export function signOnboarding(userId: string): string {
+  return jwt.sign({ userId, purpose: "onboarding" }, env.jwtSecret, { expiresIn: ONBOARDING_TTL });
+}
+
+export function verifyOnboarding(token: string | undefined): string | null {
+  if (!token) return null;
+  try {
+    const p = jwt.verify(token, env.jwtSecret) as { userId?: string; purpose?: string };
+    return p.purpose === "onboarding" && p.userId ? p.userId : null;
+  } catch {
+    return null;
+  }
+}

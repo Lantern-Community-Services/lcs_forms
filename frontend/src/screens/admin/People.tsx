@@ -33,8 +33,10 @@ const STATUS_LABEL: Record<UserStatus, string> = {
 /**
  * People sit in four lists. Pending is accounts an admin made ahead of time:
  * just an email until that person's first Microsoft sign-in fills in their
- * name and job title. Requests is people who signed in without one and are
- * waiting for an admin. Deactivated holds denied requests too.
+ * name and job title. Requests is people who signed in, chose where they work
+ * and which sites they want to see, and are waiting for those sites' managers
+ * (or an Admin) — plus anyone already in who asked for a site this viewer
+ * decides. Deactivated holds denied requests too.
  */
 type Tab = "active" | "pending" | "requests" | "deactivated";
 const TABS: { key: Tab; label: string }[] = [
@@ -47,6 +49,9 @@ const TAB_OF: Record<UserStatus, Tab> = {
   active: "active", invited: "pending", requested: "requests", denied: "deactivated", deactivated: "deactivated",
 };
 const tabOf = (status: UserStatus): Tab => TAB_OF[status];
+/** In Requests: a request, or someone already in who's waiting on a site this viewer decides. */
+const waitingOnMe = (u: ManagedUser) => u.status === "requested" || (u.status === "active" && u.canApproveSiteIds.length > 0);
+const inTab = (u: ManagedUser, t: Tab) => (t === "requests" ? waitingOnMe(u) : tabOf(u.status) === t);
 
 const EMPTY_STATE: Record<Tab, string> = {
   active: "Nobody has signed in yet.",
@@ -54,6 +59,9 @@ const EMPTY_STATE: Record<Tab, string> = {
   requests: "No one is waiting for access.",
   deactivated: "Nobody has been deactivated.",
 };
+
+/** Roles whose own permissions already include roster management: the switch would add nothing. */
+const MANAGES_ROSTER = ["admin", "site_manager"];
 
 /** A pending account's name is its email until the first sign-in brings the real one. */
 const hasName = (u: { name: string; email: string }) => u.name.trim().toLowerCase() !== u.email.toLowerCase();
@@ -77,6 +85,10 @@ type Draft = {
   canEditRole: boolean;
   /** "Can edit the calendar": events for their own sites. Only an Admin changes it. */
   calendarEditor: boolean;
+  /** "Can manage the roster": add, edit, keep and remove residents. A Site Manager or Admin changes it. */
+  rosterEditor: boolean;
+  /** A pending account (never signed in) this viewer may delete. */
+  canDelete: boolean;
   /**
    * A Super Admin (User.globalAdmin): an Admin who also makes, changes and
    * removes Admins. Read-only here: Super Admins are set only on the server
@@ -105,9 +117,9 @@ function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
     case "invited":
       return [{ value: "invited", label: "Pending (not signed in yet)" }, { value: "deactivated", label: "Deactivated" }];
     case "requested":
+      // Approving happens per site, in the request dialog.
       return [
         { value: "requested", label: "Waiting for approval" },
-        { value: "active", label: "Approve (active)" },
         { value: "denied", label: "Deny" },
       ];
     case "denied":
@@ -124,10 +136,11 @@ function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
  * Pending, Requests and Deactivated (see TABS). Name and job title always come from
  * Microsoft at sign-in; an admin only ever types an email.
  *
- * An Admin sees everyone. A Site Admin sees the people at their sites (and new
- * sign-ins not placed anywhere yet), can hand out only the site roles, and can
+ * An Admin sees everyone. A Site Manager (this screen is their "Site settings")
+ * sees the people at their sites and the requests for them, approves or
+ * declines only their own sites, can hand out only the site roles, and can
  * only tick their own sites — the server enforces the same. The "Can edit the
- * calendar" switch is an Admin's alone: a Site Admin sees it but can't change it.
+ * calendar" switch is an Admin's alone; "Can manage the roster" is theirs too.
  */
 export function AdminPeople() {
   const { can, user: me } = useAuth();
@@ -139,6 +152,7 @@ export function AdminPeople() {
   // Everyone but an Admin gets exactly their assigned sites back.
   const { data: sites } = useSites(true);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [request, setRequest] = useState<ManagedUser | null>(null);
   // In the address, so a notification about a request can open the Requests tab.
   const [tabParam, setTabParam] = useSearchParam("tab");
   const tab: Tab = TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "active";
@@ -149,13 +163,13 @@ export function AdminPeople() {
 
   const counts = useMemo(() => {
     const out: Record<Tab, number> = { active: 0, pending: 0, requests: 0, deactivated: 0 };
-    for (const u of users ?? []) out[tabOf(u.status)]++;
+    for (const u of users ?? []) for (const t of TABS) if (inTab(u, t.key)) out[t.key]++;
     return out;
   }, [users]);
 
   const needle = search.trim().toLowerCase();
   const shown = (users ?? [])
-    .filter((u) => tabOf(u.status) === tab)
+    .filter((u) => inTab(u, tab))
     .filter((u) => !needle || [u.name, u.email, u.title ?? ""].some((v) => v.toLowerCase().includes(needle)))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
@@ -164,7 +178,9 @@ export function AdminPeople() {
     try {
       // Only an Admin may send the calendar switch; the server refuses it from anyone else.
       const calendar = everyone ? { calendarEditor: draft.calendarEditor } : {};
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar });
+      // The roster switch goes only when this editor may change the person.
+      const roster = draft.canEditRole && !draft.isSelf ? { rosterEditor: draft.rosterEditor } : {};
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar, ...roster });
       else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar });
       toast(draft.id ? "Saved." : `Added ${draft.email.trim()}. Their name and title fill in when they first sign in.`);
       // A new account lands in Pending; show it there.
@@ -176,7 +192,22 @@ export function AdminPeople() {
     }
   }
 
+  async function remove() {
+    if (!draft?.id) return;
+    if (!window.confirm(`Delete the pending account for ${draft.email}? It can't be undone. If they sign in later, they'll make a new request.`)) return;
+    try {
+      await api.delete(`/users/${draft.id}`);
+      toast(`Deleted ${draft.email}.`);
+      setDraft(null);
+      await qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    } catch (e) {
+      toast(errorMessage(e, "Could not delete."), "error");
+    }
+  }
+
   const edit = (u: ManagedUser) => {
+    // Requests open the request dialog: they're approved per site, not edited.
+    if (tab === "requests" && waitingOnMe(u)) return setRequest(u);
     const mine = new Set((sites ?? []).map((s) => s.id));
     setDraft({
       id: u.id, name: hasName(u) ? u.name : u.email, email: u.email, title: u.title, roleKey: u.roleKey, status: u.status,
@@ -185,6 +216,8 @@ export function AdminPeople() {
       otherSites: u.sites.filter((s) => !mine.has(s.id)).length,
       canEditRole: u.canEditRole && (u.roleKey !== "admin" || managesAdmins),
       calendarEditor: Boolean(u.calendarEditor),
+      rosterEditor: Boolean(u.rosterEditor),
+      canDelete: u.canDelete,
       superAdmin: Boolean(u.globalAdmin),
       isSelf: u.id === me?.id,
     });
@@ -202,10 +235,10 @@ export function AdminPeople() {
       <PageHeader
         title="People & roles"
         subtitle={everyone
-          ? "Add people by work email before they sign in, so their role and sites are ready on day one. Partner staff can sign in with Google Workspace once their domain or address is admitted."
-          : "People at your sites, and pending accounts waiting to be placed. You can give out the site roles for your own sites."}
+          ? "New people choose where they work and which sites they want to see when they first sign in; approve them in Requests. You can also add someone by work email ahead of time."
+          : "People at your sites, and requests to see them. Approve or decline requests for your own sites; the rest wait for their own site's manager."}
         actions={
-          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, superAdmin: false, isSelf: false })}>
+          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, rosterEditor: false, canDelete: false, superAdmin: false, isSelf: false })}>
             <UserPlus className="h-4 w-4" /> Add person
           </Button>
         }
@@ -232,7 +265,9 @@ export function AdminPeople() {
           <ul>
             {shown.map((u) => {
               const named = hasName(u);
-              const where = u.role.allSites ? "all sites" : u.sites.length ? u.sites.map((s) => s.name).join(", ") : "no sites assigned";
+              const asking = u.requestedSites.length ? `asking for ${u.requestedSites.map((s) => s.name).join(", ")}` : "";
+              const has = u.role.allSites ? "all sites" : u.sites.length ? u.sites.map((s) => s.name).join(", ") : u.status === "requested" ? "" : "no sites assigned";
+              const where = [has, asking || (u.status === "requested" ? "still choosing their sites" : "")].filter(Boolean).join(" · ");
               const via = u.identityProvider && u.identityProvider !== "microsoft" ? ` · via ${u.identityProvider === "google.com" ? "Google" : u.identityProvider}` : "";
               return (
                 <li key={u.id}>
@@ -251,6 +286,7 @@ export function AdminPeople() {
                       {u.lastSignInAt ? `signed in ${relativeTime(u.lastSignInAt)}` : u.status === "invited" ? `added ${relativeTime(u.createdAt)}` : u.status === "requested" ? `asked ${relativeTime(u.createdAt)}` : "never signed in"}
                     </span>
                     {u.calendarEditor && u.roleKey !== "admin" && <Tag tone="accent" title="Can edit the calendar">Calendar</Tag>}
+                    {u.rosterEditor && !MANAGES_ROSTER.includes(u.roleKey) && <Tag tone="accent" title="Can manage the roster">Roster</Tag>}
                     <span className="hidden text-[13px] text-ink sm:block">{u.role.name}</span>
                     {/* Only Deactivated mixes statuses (denied and deactivated); the other tabs say it already. */}
                     {tab === "deactivated" && <ToneBadge tone={STATUS_TONE[u.status]}>{STATUS_LABEL[u.status]}</ToneBadge>}
@@ -331,6 +367,17 @@ export function AdminPeople() {
               ) : draft.calendarEditor ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can edit the calendar at their sites. Only an Admin can change that.</p>
               ) : null}
+              {!draft.superAdmin && !MANAGES_ROSTER.includes(draft.roleKey) && (
+                <label className={`flex items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5 ${locked ? "opacity-70" : "cursor-pointer"}`}>
+                  <span>
+                    <span className="block text-[13.5px] font-semibold text-ink">Can manage the roster</span>
+                    <span className="block text-micro text-muted">
+                      Add and edit residents, confirm or remove them in the review queue, and take attendance at their sites. Without it they can only look.
+                    </span>
+                  </span>
+                  <Switch checked={draft.rosterEditor} disabled={locked} onCheckedChange={(rosterEditor) => setDraft({ ...draft, rosterEditor })} className="mt-0.5" />
+                </label>
+              )}
               {draft.superAdmin ? null : role?.allSites ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{role.name} sees every site.</p>
               ) : (
@@ -344,7 +391,7 @@ export function AdminPeople() {
                       </span>
                     </span>
                   }
-                  hint={`They'll only see — and only be able to change — the rosters of these sites.${draft.otherSites ? ` They're also on ${draft.otherSites} site${draft.otherSites === 1 ? "" : "s"} you don't manage; those stay as they are.` : ""}`}
+                  hint={`They'll only see these sites — their rosters, form entries and calendar.${draft.otherSites ? ` They're also on ${draft.otherSites} site${draft.otherSites === 1 ? "" : "s"} you don't manage; those stay as they are.` : ""}`}
                 >
                   {draft.siteIds.length === 0 && draft.otherSites === 0 && (
                     <p className="mb-2 rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
@@ -366,6 +413,9 @@ export function AdminPeople() {
               <Button variant="secondary" onClick={() => setDraft(null)}>Close</Button>
             ) : (
               <>
+                {draft?.id && draft.canDelete && (
+                  <Button variant="outlineDanger" className="mr-auto" onClick={remove}>Delete</Button>
+                )}
                 <Button variant="secondary" onClick={() => setDraft(null)}>Cancel</Button>
                 <Button onClick={save} disabled={!draft?.id && !looksLikeEmail(draft?.email ?? "")}>{draft?.id ? "Save" : "Add"}</Button>
               </>
@@ -373,6 +423,113 @@ export function AdminPeople() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RequestDialog person={request} onClose={() => setRequest(null)} />
     </Page>
+  );
+}
+
+/**
+ * One request: where they work, the sites they asked for, and the ones this
+ * viewer decides (their own sites; every site, for an Admin). Approving lets
+ * them in with the chosen role; sites run by other managers stay waiting for
+ * them. Declining the last site, or deleting, removes the request.
+ */
+function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClose: () => void }) {
+  const { data: roles } = useRoles();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [picked, setPicked] = useState<string[]>([]);
+  const [roleKey, setRoleKey] = useState("site_staff");
+  const [busy, setBusy] = useState(false);
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  // Fresh choices each time a different request opens.
+  if (person && openFor !== person.id) {
+    setOpenFor(person.id);
+    setPicked(person.canApproveSiteIds);
+    setRoleKey(person.roleKey);
+  }
+  if (!person && openFor) setOpenFor(null);
+
+  const firstApproval = person?.status === "requested";
+  const mineToDecide = (person?.requestedSites ?? []).filter((s) => person!.canApproveSiteIds.includes(s.id));
+  const othersWaiting = (person?.requestedSites ?? []).filter((s) => !person!.canApproveSiteIds.includes(s.id));
+  const roleOptions = (roles ?? []).filter((r) => r.assignable && r.key !== "admin").map((r) => ({ value: r.key, label: r.name }));
+  const role = roles?.find((r) => r.key === roleKey);
+
+  async function act(kind: "approve" | "decline" | "delete") {
+    if (!person) return;
+    if (kind === "delete" && !window.confirm(`Delete ${person.name}'s request? If they sign in again they'll start a new one.`)) return;
+    setBusy(true);
+    try {
+      if (kind === "approve") {
+        await api.post(`/users/${person.id}/approve`, { siteIds: picked, ...(firstApproval ? { roleKey } : {}) });
+        toast(`Approved ${person.name} for ${mineToDecide.filter((s) => picked.includes(s.id)).map((s) => s.name).join(", ")}.`);
+      } else if (kind === "decline") {
+        const out = await api.post<{ removed: boolean }>(`/users/${person.id}/decline`, { siteIds: picked });
+        toast(out.removed ? `Declined. ${person.name}'s request had nothing left, so it was removed.` : "Declined those sites.");
+      } else {
+        await api.delete(`/users/${person.id}`);
+        toast(`Deleted ${person.name}'s request.`);
+      }
+      onClose();
+      await qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    } catch (e) {
+      toast(errorMessage(e, "Could not save."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={Boolean(person)} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader
+          title={person?.name ?? ""}
+          subtitle={[person?.title, person?.email].filter(Boolean).join(" · ") || undefined}
+        />
+        {person && (
+          <DialogBody className="grid gap-3">
+            <div className="grid gap-1 text-[13px]">
+              <p><span className="text-muted">Works at: </span><span className="text-ink">{person.locationNames.length ? person.locationNames.join(", ") : "not said"}</span></p>
+              {person.sites.length > 0 && (
+                <p><span className="text-muted">Already has: </span><span className="text-ink">{person.sites.map((s) => s.name).join(", ")}</span></p>
+              )}
+              <p className="text-micro text-muted">Asked {relativeTime(person.createdAt)}</p>
+            </div>
+            {person.requestedSites.length === 0 ? (
+              <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                They signed in but haven't chosen their sites yet. They'll be asked again next time they sign in.
+              </p>
+            ) : (
+              <Field label={`Sites they want to see (${mineToDecide.length} for you to decide)`} hint="Tick the ones to approve or decline.">
+                {mineToDecide.length > 0 ? (
+                  <CheckboxList options={mineToDecide.map((s) => ({ value: s.id, label: s.name }))} value={picked} onChange={setPicked} />
+                ) : (
+                  <p className="text-[13px] text-muted">None of these are your sites.</p>
+                )}
+                {othersWaiting.length > 0 && (
+                  <p className="mt-2 text-micro text-muted">
+                    Waiting for their own site's manager: {othersWaiting.map((s) => s.name).join(", ")}
+                  </p>
+                )}
+              </Field>
+            )}
+            {firstApproval && mineToDecide.length > 0 && (
+              <Field label="Role" hint={role?.description}>
+                <Select value={roleKey} onChange={(e) => setRoleKey(e.target.value)} options={roleOptions} />
+              </Field>
+            )}
+          </DialogBody>
+        )}
+        <DialogFooter>
+          {person?.canDelete && (
+            <Button variant="outlineDanger" className="mr-auto" disabled={busy} onClick={() => act("delete")}>Delete request</Button>
+          )}
+          <Button variant="secondary" disabled={busy || picked.length === 0} onClick={() => act("decline")}>Decline</Button>
+          <Button disabled={busy || picked.length === 0} onClick={() => act("approve")}>Approve</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

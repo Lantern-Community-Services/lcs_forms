@@ -27,7 +27,7 @@ import { readDoc, versionDoc } from "./service.js";
  *   edit / delete an entry — forms.manage only
  */
 
-export const DEFAULT_ENTRIES_ROLES = ["main_office", "site_admin", "site_manager", "site_staff"];
+export const DEFAULT_ENTRIES_ROLES = ["main_office", "site_manager", "site_staff"];
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export type Viewer = CurrentUser | undefined;

@@ -64,7 +64,7 @@ function registry() {
 
 // ── Who a delegated key acts as ──────────────────────────────────────────
 
-function person(roleKey: string, siteIds: string[] | null, extra: { calendarEditor?: boolean; globalAdmin?: boolean } = {}): CurrentUser {
+function person(roleKey: string, siteIds: string[] | null, extra: { calendarEditor?: boolean; rosterEditor?: boolean; globalAdmin?: boolean } = {}): CurrentUser {
   const role = ROLES.find((r) => r.key === roleKey)!;
   return { userId: `u-${roleKey}`, name: `Jane Example (${roleKey})`, email: "jane@example.org", roleKey, roleName: role.name, permissions: permissionsFor(role, extra), siteIds } as CurrentUser;
 }
@@ -73,8 +73,9 @@ const key = (siteId: string | null = null) => ({ name: "smoke", siteId });
 async function principals() {
   const admin = person("admin", null);
   const superAdmin = person("admin", null, { globalAdmin: true });
-  const siteAdmin = person("site_admin", ["s1", "s2"]);
+  const manager = person("site_manager", ["s1", "s2"]);
   const staff = person("site_staff", ["s1"]);
+  const rosterStaff = person("site_staff", ["s1"], { rosterEditor: true });
 
   const p = delegatedUser(admin, key(), "people:manage");
   check(p.permissions.includes("users.manage") && p.permissions.length === 2, "admin + people:manage → users.manage, users.manageSite only");
@@ -86,12 +87,14 @@ async function principals() {
   await rejects(Promise.resolve().then(() => delegatedUser(admin, key("s9"), "settings:manage")), 403, "settings:manage refuses a pinned key");
   await rejects(Promise.resolve().then(() => delegatedUser(admin, key("s9"), "roster:import")), 403, "roster:import refuses a pinned key");
 
-  const sa = delegatedUser(siteAdmin, key(), "sites:manage");
-  check(sa.permissions.join() === "sites.manageRules" && sa.siteIds?.join() === "s1,s2", "site admin + sites:manage → only their sites' rules");
-  check(delegatedUser(siteAdmin, key("s2"), "roster:write").siteIds?.join() === "s2", "pin ∩ creator's sites");
-  check(delegatedUser(siteAdmin, key("s7"), "roster:write").siteIds?.length === 0, "a pin outside the creator's sites reaches no site");
+  const sm = delegatedUser(manager, key(), "people:manage");
+  check(sm.permissions.join() === "users.manageSite" && sm.siteIds?.join() === "s1,s2", "site manager + people:manage → their sites' people only");
+  await rejects(Promise.resolve().then(() => delegatedUser(manager, key(), "sites:manage")), 403, "a site manager has no roster rules to delegate");
+  check(delegatedUser(manager, key("s2"), "roster:write").siteIds?.join() === "s2", "pin ∩ creator's sites");
+  check(delegatedUser(manager, key("s7"), "roster:write").siteIds?.length === 0, "a pin outside the creator's sites reaches no site");
   await rejects(Promise.resolve().then(() => delegatedUser(staff, key(), "settings:manage")), 403, "a creator without the permission can't use the scope");
-  check(!delegatedUser(staff, key(), "roster:archive").permissions.includes("roster.restore"), "site staff + roster:archive: archive, not restore");
+  check(!delegatedUser(staff, key(), "roster:write").permissions.includes("roster.edit"), "site staff only look at the roster: roster:write gives them no edit");
+  check(delegatedUser(rosterStaff, key(), "roster:archive").permissions.includes("roster.archive"), "the roster switch gives site staff roster management");
   check(delegatedUser(staff, key(), "calendar:read").permissions.length === 0, "calendar:read needs no permission");
   const scopes: ApiScope[] = Object.keys(SCOPE_GRANTS) as ApiScope[];
   check(scopes.every((s) => !delegatedUser(superAdmin, key(), s).permissions.includes("admins.manage")), "no delegated scope grants admins.manage");
@@ -134,7 +137,7 @@ async function e2e() {
   const siteX = await prisma.site.create({ data: { code: `smoke-x-${stamp}`, name: "Smoke Hall X", entityName: `Smoke Hall X ${stamp} LP` } });
   const siteY = await prisma.site.create({ data: { code: `smoke-y-${stamp}`, name: "Smoke Hall Y" } });
   const admin = await prisma.user.create({ data: { name: "Ada Example", email: `ada.${stamp}@example.org`, roleKey: "admin", status: "active" } });
-  const siteAdmin = await prisma.user.create({ data: { name: "Sam Sample", email: `sam.${stamp}@example.org`, roleKey: "site_admin", status: "active", sites: { create: [{ siteId: siteX.id }] } } });
+  const siteAdmin = await prisma.user.create({ data: { name: "Sam Sample", email: `sam.${stamp}@example.org`, roleKey: "site_manager", status: "active", sites: { create: [{ siteId: siteX.id }] } } });
   const makeKey = async (createdById: string | null, scopes: string[], siteId: string | null = null) => {
     const k = generateKey();
     await prisma.apiKey.create({ data: { name: `smoke ${stamp}`, prefix: k.prefix, hash: k.hash, scopes: scopes.join(","), siteId, createdById } });
@@ -142,7 +145,7 @@ async function e2e() {
   };
   const delegated = Object.keys(SCOPE_GRANTS);
   const kAdmin = await makeKey(admin.id, [...delegated, "forms:build", "entries:write"]);
-  const kSite = await makeKey(siteAdmin.id, ["roster:read", "roster:write", "people:manage", "sites:manage"]);
+  const kSite = await makeKey(siteAdmin.id, ["roster:read", "roster:write", "people:manage"]);
   const kPinned = await makeKey(admin.id, ["settings:manage", "people:manage"], siteX.id);
   const kOrphan = await makeKey(null, ["roster:read"]);
 
@@ -200,19 +203,39 @@ async function e2e() {
     const att = await api(kAdmin, "POST", "/attendance", { site: siteX.code, title: "Smoke meeting", description: "Invented", entries: [{ tenantId: rid }] });
     check(att.status === 201 || att.status === 200, `take attendance (${att.status})`);
 
-    // A Site Admin's key stays a Site Admin
-    check((await api(kSite, "POST", "/residents", { site: siteY.code, firstName: "Sam", lastName: "Sample" })).status === 403, "site admin's key can't add at a site they don't have");
-    check((await api(kSite, "POST", "/people", { email: `x.${stamp}@example.org`, roleKey: "admin", confirm: true })).status === 403, "site admin's key can't make an Admin");
+    // A Site Manager's key stays a Site Manager
+    check((await api(kSite, "POST", "/residents", { site: siteY.code, firstName: "Sam", lastName: "Sample" })).status === 403, "site manager's key can't add at a site they don't have");
+    check((await api(kSite, "POST", "/people", { email: `x.${stamp}@example.org`, roleKey: "admin", confirm: true })).status === 403, "site manager's key can't make an Admin");
+    check((await api(kSite, "POST", "/people", { email: `d.${stamp}@example.org`, roleKey: "developer", siteIds: [siteX.id] })).status === 403, "site manager's key can't make a Developer");
     const invited = await api(kSite, "POST", "/people", { email: `pat.${stamp}@example.org`, roleKey: "site_staff", siteIds: [siteX.id] });
-    check(invited.status === 201 || invited.status === 200, `site admin's key invites site staff at their site (${invited.status})`);
-    check((await api(kSite, "POST", "/sites", { name: "Nope", code: `nope-${stamp}` })).status === 403, "site admin's key can't create a site");
-    check((await api(kSite, "PATCH", `/sites/${siteX.id}/rules`, { attentionHours: 48 })).status === 200, "site admin's key sets their site's rules");
+    check(invited.status === 201 || invited.status === 200, `site manager's key invites site staff at their site (${invited.status})`);
+    check((await api(kSite, "POST", "/sites", { name: "Nope", code: `nope-${stamp}` })).status === 403, "site manager's key can't create a site");
+
+    // A first sign-in's request, approved per site
+    const req1 = await prisma.user.create({
+      data: { name: "Rae Request", email: `rae.${stamp}@example.org`, status: "requested", sites: { create: [{ siteId: siteX.id, approved: false }, { siteId: siteY.id, approved: false }] } },
+    });
+    const seen = await api(kSite, "GET", "/people");
+    const row = seen.body.find((u: { id: string }) => u.id === req1.id);
+    check(row && row.canApproveSiteIds.join() === siteX.id && row.requestedSites.length === 2, "the manager sees the request, and may approve only their site");
+    check((await api(kSite, "POST", `/people/${req1.id}/approve`, { siteIds: [siteY.id], confirm: true })).status === 403, "the manager can't approve another site");
+    const ok1 = await api(kSite, "POST", `/people/${req1.id}/approve`, { siteIds: [siteX.id], roleKey: "site_staff", confirm: true });
+    check(ok1.status === 200 && ok1.body.status === "active" && ok1.body.sites.length === 1 && ok1.body.requestedSites.length === 1, "approving their site lets the person in; the other site still waits");
+    const dec = await api(kAdmin, "POST", `/people/${req1.id}/decline`, { siteIds: [siteY.id], confirm: true });
+    check(dec.status === 200 && dec.body.removed === false && dec.body.person.requestedSites.length === 0, "an Admin declines the other site; the person stays");
+    check((await api(kSite, "PATCH", `/people/${req1.id}`, { rosterEditor: true, confirm: true })).status === 200, "the manager turns roster management on for their staff");
+    check((await api(kSite, "DELETE", `/people/${req1.id}`, { confirm: true })).status === 403, "an active person can't be deleted, only deactivated");
+    const req2 = await prisma.user.create({ data: { name: "Lee Request", email: `lee.${stamp}@example.org`, status: "requested", sites: { create: [{ siteId: siteX.id, approved: false }] } } });
+    const gone = await api(kSite, "POST", `/people/${req2.id}/decline`, { siteIds: [siteX.id], confirm: true });
+    check(gone.status === 200 && gone.body.removed === true && !(await prisma.user.findUnique({ where: { id: req2.id } })), "declining a request's only site removes the request");
 
     // An Admin's key never touches Admins
     const pat = await prisma.user.findUniqueOrThrow({ where: { email: `pat.${stamp}@example.org` } });
     check((await api(kAdmin, "PATCH", `/people/${pat.id}`, { roleKey: "admin", confirm: true })).status === 403, "an Admin's key can't make someone an Admin");
     check((await api(kAdmin, "PATCH", `/people/${pat.id}`, { roleKey: "site_manager" })).status === 400, "a role change needs confirm");
     check((await api(kAdmin, "PATCH", `/people/${pat.id}`, { roleKey: "site_manager", confirm: true })).status === 200, "role change with confirm");
+    check((await api(kAdmin, "DELETE", `/people/${pat.id}`)).status === 400, "deleting needs confirm");
+    check((await api(kAdmin, "DELETE", `/people/${pat.id}`, { confirm: true })).status === 200 && !(await prisma.user.findUnique({ where: { id: pat.id } })), "a pending account is deleted");
 
     // The creator loses access → so does the key
     await prisma.user.update({ where: { id: admin.id }, data: { status: "deactivated" } });
@@ -221,7 +244,7 @@ async function e2e() {
 
     // Settings, dev log, calendar
     check((await api(kAdmin, "GET", "/settings")).status === 200, "GET /settings");
-    check((await api(kAdmin, "PATCH", "/settings", { autoApproveStaff: false })).status === 400, "access settings need confirm");
+    check((await api(kAdmin, "PATCH", "/settings", { guestDomains: [] })).status === 400, "access settings need confirm");
     check((await api(kAdmin, "GET", "/devlog/summary?range=1h")).status === 200, "GET /devlog/summary");
     const cat = await api(kAdmin, "POST", "/calendar/categories", { name: `Smoke ${stamp}`, colorSlot: 2 });
     check(cat.status === 201 || cat.status === 200, `create a calendar category (${cat.status})`);
