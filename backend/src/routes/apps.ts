@@ -215,7 +215,7 @@ appsRouter.get(
     const u = req.user!;
     res.json({
       form: { id: app.form.id, slug: app.form.slug, title: app.manifest.title, status: app.form.status, version: app.form.liveVersion, draft: app.draft },
-      pages: a.pages.map((p) => ({ id: p.id, label: p.label, fullHeight: Boolean(p.fullHeight), hidden: Boolean(p.hidden), nav: p.nav ?? "auto" })),
+      pages: a.pages.map((p) => ({ id: p.id, label: p.label, fullHeight: Boolean(p.fullHeight), hidden: Boolean(p.hidden), nav: p.nav ?? "auto", width: p.width ?? "tablet" })),
       code: Object.fromEntries(Object.entries(app.build.pages).filter(([k]) => a.pages.some((p) => p.id === k.split("@")[0]))),
       css: app.build.css,
       hash: app.build.hash,

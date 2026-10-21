@@ -10,7 +10,7 @@ import { ApiError } from "@/lib/api";
 import { useDeviceKind } from "@/lib/device";
 import { cn, errorMessage } from "@/lib/utils";
 import { AppFrame, type ConsoleLine } from "./AppFrame";
-import { useAppRuntime } from "./api";
+import { useAppRuntime, type PageWidth } from "./api";
 import { onQueueChange, queueStatus, type QueueStatus } from "./queue";
 
 /** A code form: its tabs across the top, the current page in a sandboxed frame below. */
@@ -19,7 +19,8 @@ export function AppHostPage() {
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
   // The code editor is desktop only, so no way into it elsewhere.
-  const canOpenEditor = useDeviceKind() === "desktop";
+  const desktop = useDeviceKind() === "desktop";
+  const canOpenEditor = desktop;
   // ?draft=1: the unsaved-to-live draft, for developers — what the code editor's device previews load.
   const draft = search.get("draft") === "1";
   const { data: runtime, isLoading, error } = useAppRuntime(slug, draft);
@@ -78,13 +79,15 @@ export function AppHostPage() {
     return s ? `?${s}` : "";
   };
   // Inside the editor's device preview: send the page's console to the editor.
+  // On a desktop the page sits in a centered column (form.json "width"), the tabs above lined up with it.
+  const width = desktop ? (current.width ?? "tablet") : "full";
   const relay = draft && window.parent !== window
     ? (line: ConsoleLine) => window.parent.postMessage({ lcsConsole: line }, window.location.origin)
     : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-none border-b border-hairline bg-sidebar pt-safe-top md:bg-surface md:pt-5">
-        <div className="mx-auto flex max-w-[1240px] items-end gap-3 md:px-7">
+        <div className={cn("mx-auto flex items-end gap-3 md:px-7", HEADER_WIDTH[width])}>
           <div className="min-w-0 flex-1">
             <h1 className="hidden font-heading text-[24px] font-extrabold text-ink md:block">{runtime.form.title}</h1>
             {visible.length > 1 ? (
@@ -126,7 +129,7 @@ export function AppHostPage() {
           </div>
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className={cn("mx-auto min-h-0 w-full flex-1", FRAME_WIDTH[width])}>
         <AppFrame
           runtime={runtime}
           slug={slug}
@@ -141,6 +144,10 @@ export function AppHostPage() {
     </div>
   );
 }
+
+// The tabs row keeps its side padding, so it's 56px (md:px-7) wider than the page below to line up with it.
+const FRAME_WIDTH: Record<PageWidth, string> = { narrow: "max-w-[760px]", tablet: "max-w-[1024px]", wide: "max-w-[1240px]", full: "" };
+const HEADER_WIDTH: Record<PageWidth, string> = { narrow: "max-w-[816px]", tablet: "max-w-[1080px]", wide: "max-w-[1296px]", full: "max-w-[1240px]" };
 
 /** Entries waiting on this device, or refused by the server. */
 export function QueueBadge({ slug }: { slug: string }) {

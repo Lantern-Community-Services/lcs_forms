@@ -31,9 +31,12 @@ export interface Project {
 
 export type ProjectSummary = Omit<Project, "files"> & { icon: string | null; fileCount: number; entryCount: number };
 
+/** How wide a page gets on a desktop (form.json page "width"). */
+export type PageWidth = "narrow" | "tablet" | "wide" | "full";
+
 export interface AppRuntime {
   form: { id: string; slug: string; title: string; status: string; version: number; draft: boolean };
-  pages: { id: string; label: string; fullHeight: boolean; hidden: boolean; nav: "auto" | "tablet" | "always" | "never" }[];
+  pages: { id: string; label: string; fullHeight: boolean; hidden: boolean; nav: "auto" | "tablet" | "always" | "never"; width: PageWidth }[];
   code: Record<string, string>;
   css: string;
   hash: string;
