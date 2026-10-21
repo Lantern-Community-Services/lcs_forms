@@ -52,6 +52,13 @@ export const manifestSchema = z.object({
          * "always": folds on every screen. "never": stays as the person left it.
          */
         nav: z.enum(["auto", "tablet", "always", "never"]).optional(),
+        /**
+         * How wide the page gets on a desktop, centered: "narrow" (760px, a single column of fields),
+         * "tablet" (1024px, default — an iPad's width, so iPad-designed pages look as they do there),
+         * "wide" (1240px, like the app's own screens) or "full" (the whole window, for big dashboards).
+         * Phones and iPads always get their whole screen.
+         */
+        width: z.enum(["narrow", "tablet", "wide", "full"]).optional(),
       }).strict()
     )
     .min(1, "Add at least one page."),

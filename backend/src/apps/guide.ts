@@ -134,6 +134,10 @@ Admins and developers pass every role check.
   "views": { "phone": "pages/record.phone.tsx", "tablet": "pages/record.ipad.tsx" } (others use "file").
 - The app's sidebar: page option "nav": "auto" (folds on a portrait iPad, the default), "tablet" (folds on any
   tablet), "always", or "never".
+- How wide a page gets on a desktop: page option "width": "tablet" (1024px centered, the default, so a page
+  designed on an iPad looks the same), "narrow" (760px, one column of fields), "wide" (1240px, like the app's
+  own screens) or "full" (the whole window, for a big dashboard or table). Phones and iPads always get the
+  whole screen.
 
 ## Patterns
 - Guided steps on an iPad: set "fullHeight": true on the page and lay out with h-screen flex columns.
