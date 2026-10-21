@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { recordTour } from "./progress";
 import { setTourActiveProbe, tellFrame } from "./frameBridge";
+import { getRun, setRun, subscribe } from "./store";
 import type { TourDef, TourEnd } from "./types";
 
 interface TourApi {
@@ -21,35 +22,6 @@ interface TourApi {
 }
 
 const TourContext = createContext<TourApi | null>(null);
-
-interface Run {
-  def: TourDef;
-  /** Tells one showing of a tour from the next. */
-  n: number;
-  scope?: (pathname: string) => boolean;
-  /** The step showing. */
-  index: number;
-  /** Whose tour it is (null on a public form). */
-  userId: string | null;
-}
-
-/*
- * The tour on screen lives here, outside React, so a tour carries on through
- * anything that remounts the app around it: a tour step that opens another
- * page can do that (the Next page hosting the app is re-created on some
- * navigations), and so can a hot reload while developing.
- */
-let current: Run | null = null;
-const listeners = new Set<() => void>();
-const getRun = () => current;
-const setRun = (next: Run | null) => {
-  current = next;
-  listeners.forEach((l) => l());
-};
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => listeners.delete(l);
-};
 
 /**
  * Runs the one tour on screen. The welcome tour (SiteTourStarter) and forms'
@@ -74,7 +46,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
     [userId]
   );
 
-  const close = useCallback(() => {    setRun(null);
+  const close = useCallback(() => {
+    setRun(null);
     tellFrame({ t: "tour:clear" });
   }, []);
 

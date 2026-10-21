@@ -2,6 +2,8 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
+import { useTourSample } from "./tour/store";
+import { isSample, sampleCatalog, sampleHome, sampleRoster } from "./tour/sampleData";
 import type {
   ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeAppCards, HomeData,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
@@ -24,6 +26,13 @@ export const qk = {
   attendanceEntry: (id: string) => ["attendance", "detail", id] as const,
 };
 
+/**
+ * While the welcome tour shows (TourDef.sample), the forms home, the roster and
+ * the review queue read made-up data (lib/tour/sampleData.ts) under keys of
+ * their own: the real caches are left alone and come straight back after.
+ */
+export const sampleKey = (...key: readonly unknown[]) => ["tour-sample", ...key] as const;
+
 /** `?site=` for a selection: a comma list of codes, or nothing for all my sites. */
 const siteQs = (site: string | undefined) => (site ? `site=${encodeURIComponent(site)}` : "");
 
@@ -35,25 +44,32 @@ export function useSites(all = false, enabled = true) {
 export function useTenants(site: string | undefined, status: "active" | "archived" | "attention", enabled = true) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const sample = useTourSample();
   const key = qk.tenants(site ?? "all", status);
   return useQuery({
-    queryKey: key,
+    queryKey: sample ? sampleKey(...key) : key,
     queryFn: () =>
       // The active roster comes from the device's own copy (lib/rosterStore.ts):
       // instant, and offline. A refetch (after an edit, or on focus) pulls the
       // changes first. Archived is rarely opened and isn't kept.
-      status === "active"
-        ? loadTenants(site, { fresh: qc.getQueryData(key) !== undefined, userId: user?.id })
-        : api.get<{ items: Tenant[]; attentionHours: number; truncated: boolean }>(`/tenants?${new URLSearchParams({ ...(site ? { site } : {}), status })}`),
+      sample
+        ? Promise.resolve(sampleRoster(status))
+        : status === "active"
+          ? loadTenants(site, { fresh: qc.getQueryData(key) !== undefined, userId: user?.id })
+          : api.get<{ items: Tenant[]; attentionHours: number; truncated: boolean }>(`/tenants?${new URLSearchParams({ ...(site ? { site } : {}), status })}`),
     enabled,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useReviewQueue(site: string | undefined) {
+  const sample = useTourSample();
   return useQuery({
-    queryKey: qk.review(site ?? "all"),
-    queryFn: () => api.get<{ items: Tenant[]; attentionHours: number }>(`/tenants/review?${siteQs(site)}`),
+    queryKey: sample ? sampleKey(...qk.review("all")) : qk.review(site ?? "all"),
+    queryFn: () =>
+      sample
+        ? Promise.resolve(sampleRoster("attention"))
+        : api.get<{ items: Tenant[]; attentionHours: number }>(`/tenants/review?${siteQs(site)}`),
   });
 }
 
@@ -87,22 +103,28 @@ export function useRosterMutation<TVars, TResult = Tenant>(fn: (vars: TVars) => 
   return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ["roster"] }) });
 }
 
+/** A write to the welcome tour's sample data (lib/tour/sampleData.ts) never leaves this device. */
+function unlessSample<T>(id: string, send: () => Promise<T>): Promise<T> {
+  return isSample(id) ? Promise.resolve(undefined as T) : send();
+}
+
 export const rosterApi = {
   create: (body: Record<string, unknown>) => api.post<Tenant>("/tenants", body),
   update: (id: string, body: Record<string, unknown>) => api.patch<Tenant>(`/tenants/${id}`, body),
-  archive: (id: string, body: { reason: string; note?: string }) => api.post<Tenant>(`/tenants/${id}/archive`, body),
-  restore: (id: string) => api.post<Tenant>(`/tenants/${id}/restore`),
-  keep: (id: string) => api.post<Tenant>(`/tenants/${id}/keep`),
-  undoKeep: (id: string) => api.post<Tenant>(`/tenants/${id}/undo-keep`),
+  archive: (id: string, body: { reason: string; note?: string }) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/archive`, body)),
+  restore: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/restore`)),
+  keep: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/keep`)),
+  undoKeep: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/undo-keep`)),
 };
 
 // ── Forms ────────────────────────────────────────────────────────────────
 
 /** `editing`: the admin view — hidden forms and empty categories included. */
 export function useForms(editing = false) {
+  const sample = useTourSample() && !editing;
   return useQuery({
-    queryKey: ["forms", editing ? "all" : "visible"],
-    queryFn: () => api.get<FormCatalog>(`/forms${editing ? "?all=1" : ""}`),
+    queryKey: sample ? sampleKey("forms") : ["forms", editing ? "all" : "visible"],
+    queryFn: () => (sample ? Promise.resolve(sampleCatalog()) : api.get<FormCatalog>(`/forms${editing ? "?all=1" : ""}`)),
     // The catalog changes a few times a year; don't refetch it on every focus.
     staleTime: 5 * 60_000,
   });
@@ -110,26 +132,29 @@ export function useForms(editing = false) {
 
 /** The Forms home dashboard: attention items, recent activity, counts. */
 export function useHome() {
+  const sample = useTourSample();
+  const { can } = useAuth();
   return useQuery({
-    queryKey: ["home"],
-    queryFn: () => api.get<HomeData>("/home"),
+    queryKey: sample ? sampleKey("home") : ["home"],
+    queryFn: () => (sample ? Promise.resolve(sampleHome(can("roster.view"))) : api.get<HomeData>("/home")),
     staleTime: 60_000,
   });
 }
 
 /** Code forms' own cards on the Forms home; separate so a slow form can't hold up the rest. */
 export function useHomeApps() {
+  const sample = useTourSample();
   return useQuery({
-    queryKey: ["home", "apps"],
-    queryFn: () => api.get<HomeAppCards>("/home/apps"),
+    queryKey: sample ? sampleKey("home", "apps") : ["home", "apps"],
+    queryFn: () => (sample ? Promise.resolve<HomeAppCards>({ tiles: [], attention: [] }) : api.get<HomeAppCards>("/home/apps")),
     staleTime: 60_000,
     retry: false,
   });
 }
 
 export const formsApi = {
-  favorite: (id: string) => api.put<{ ok: true }>(`/forms/${id}/favorite`),
-  unfavorite: (id: string) => api.delete<{ ok: true }>(`/forms/${id}/favorite`),
+  favorite: (id: string) => unlessSample(id, () => api.put<{ ok: true }>(`/forms/${id}/favorite`)),
+  unfavorite: (id: string) => unlessSample(id, () => api.delete<{ ok: true }>(`/forms/${id}/favorite`)),
   create: (body: Record<string, unknown>) => api.post("/forms", body),
   update: (id: string, body: Record<string, unknown>) => api.patch(`/forms/${id}`, body),
   remove: (id: string) => api.delete(`/forms/${id}`),

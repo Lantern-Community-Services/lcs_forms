@@ -16,6 +16,7 @@ import { rosterApi, useReviewQueue } from "@/lib/queries";
 import { useToast } from "@/components/ui/toast";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
+import { useTourSample } from "@/lib/tour/store";
 import { errorMessage, formatDate, quietFor, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
@@ -61,14 +62,15 @@ export function ReviewPage() {
   /** Someone just brought back by Undo — shown on top, ahead of everyone. */
   const [pinned, setPinned] = useState<string | null>(null);
 
-  // New selection, new queue.
+  // New selection, new queue. The welcome tour's sample queue (lib/tour/sampleData.ts) starts and ends with the tour.
+  const sample = useTourSample();
   useEffect(() => {
     setHandled(new Set());
     setSkipped([]);
     setDone(0);
     setHistory([]);
     setPinned(null);
-  }, [param]);
+  }, [param, sample]);
 
   const queue = useMemo(() => {
     const items = (data?.items ?? []).filter((t) => !handled.has(t.id));
@@ -263,7 +265,7 @@ export function ReviewPage() {
                   sliding over the counts above or the tab bar below, and the band's
                   edges fade (.deck-band) so the cut is soft. */}
               <div className="deck-band -mx-4 -mb-3 overflow-y-clip px-4 pb-3 pt-3 md:-mx-6 md:px-6">
-              <div className={DECK_CLASS}>
+              <div className={DECK_CLASS} data-tour="review-card">
                 {queue.slice(0, 3).reverse().map((t) => {
                   const depth = queue.indexOf(t);
                   return (
@@ -293,7 +295,7 @@ export function ReviewPage() {
                   <RoundAction label="Skip" tone="blue" size="sm" disabled={Boolean(pose) || queue.length < 2} onClick={() => skip(top)}>
                     <ChevronsDown className="h-6 w-6" strokeWidth={2.4} />
                   </RoundAction>
-                  <RoundAction label="Keep" tone="green" disabled={!canAct || Boolean(pose)} onClick={() => void doKeep(top)}>
+                  <RoundAction label="Keep" tone="green" tour="review-keep" disabled={!canAct || Boolean(pose)} onClick={() => void doKeep(top)}>
                     <Check className="h-7 w-7" strokeWidth={2.6} />
                   </RoundAction>
                 </div>

@@ -245,9 +245,11 @@ export function SwipeNote({ tone, icon, title, children }: { tone: string; icon:
 }
 
 export function RoundAction({
-  label, tone, size = "md", disabled, onClick, children,
+  label, tone, size = "md", disabled, onClick, children, tour,
 }: {
   label: string;
+  /** A data-tour anchor (lib/tour/siteTour.ts). */
+  tour?: string;
   tone: "red" | "green" | "blue";
   size?: "sm" | "md";
   disabled?: boolean;
@@ -260,6 +262,7 @@ export function RoundAction({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
+      data-tour={tour}
       className="flex flex-col items-center gap-1.5 disabled:opacity-40"
     >
       <span

@@ -49,6 +49,7 @@ export function SectionTabsLayout({ title, tabs, enter = false }: { title: strin
                 key={t.to}
                 to={t.to}
                 end={t.end}
+                data-tour={`tab-${t.label.toLowerCase()}`}
                 className={({ isActive }) =>
                   cn(
                     "-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-[13px] font-semibold transition-colors md:min-h-[42px] md:px-3 md:text-[13.5px]",

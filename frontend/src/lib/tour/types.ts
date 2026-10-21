@@ -42,6 +42,12 @@ export interface TourDef {
   record: boolean;
   /** How long a step looks for its spot before it's skipped. Default 6s. */
   waitMs?: number;
+  /**
+   * While it shows, the screens it visits show sample forms and residents
+   * (sampleData.ts) instead of real ones, so a step that asks for a tap
+   * (pin a form, keep a resident) changes nothing real.
+   */
+  sample?: boolean;
 }
 
 export type TourEnd = "completed" | "skipped";
