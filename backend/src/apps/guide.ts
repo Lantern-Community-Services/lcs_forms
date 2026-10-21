@@ -32,7 +32,8 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
   "email": { "to": ["vendor@example.com", "@partner.org"] },        // who server code may email besides Lantern addresses
-  "schedule": [{ "action": "digest", "at": "08:00", "on": "weekdays" }, { "action": "monthly", "at": "08:00", "on": "monthly", "day": 3 }]
+  "schedule": [{ "action": "digest", "at": "08:00", "on": "weekdays" }, { "action": "monthly", "at": "08:00", "on": "monthly", "day": 3 }],
+  "tutorial": { "steps": [{ "page": "record", "target": "meal-picker", "action": "click", "title": "Pick the meal" }] }  // see below
 }
 entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
 "editOwnMinutes": N (people can change their own entry for N minutes; default 0).
@@ -118,6 +119,12 @@ Admins and developers pass every role check.
   later that day. Test one with MCP run_action (also as nobody).
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
   (MCP save_catalog_card), not in a code form.
+- Tutorial: form.json "tutorial" walks someone through the form the first time they open it, one highlighted element
+  at a time with the rest of the screen locked. Mark elements in the pages with data-tour="name" and point steps at
+  them ({ "page": "record", "target": "name", "action": "next" | "click" | "fill" }); "tabs", "tab:<page id>" and "help"
+  are the app's own. The build warns about a target no page has. tutorial.start() runs it from a page (a Help button);
+  tutorial.next() moves a click step on from code. The full format, and how to write one: MCP get_tutorial_reference;
+  set_tutorial edits just that key.
 
 ## Phones, iPads and desktops
 - Tailwind breakpoints (sm: md: lg: xl:) and portrait: / landscape: follow the DEVICE's window, not the
@@ -127,6 +134,10 @@ Admins and developers pass every role check.
   "views": { "phone": "pages/record.phone.tsx", "tablet": "pages/record.ipad.tsx" } (others use "file").
 - The app's sidebar: page option "nav": "auto" (folds on a portrait iPad, the default), "tablet" (folds on any
   tablet), "always", or "never".
+- How wide a page gets on a desktop: page option "width": "tablet" (1024px centered, the default, so a page
+  designed on an iPad looks the same), "narrow" (760px, one column of fields), "wide" (1240px, like the app's
+  own screens) or "full" (the whole window, for a big dashboard or table). Phones and iPads always get the
+  whole screen.
 
 ## Patterns
 - Guided steps on an iPad: set "fullHeight": true on the page and lay out with h-screen flex columns.

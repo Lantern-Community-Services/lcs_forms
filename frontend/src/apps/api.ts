@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "@/lib/api";
+import type { FormTutorial } from "@/lib/formEngine";
 
 /** Code forms: the developer API (projects) and the runtime API the bridge calls. */
 
@@ -30,9 +31,12 @@ export interface Project {
 
 export type ProjectSummary = Omit<Project, "files"> & { icon: string | null; fileCount: number; entryCount: number };
 
+/** How wide a page gets on a desktop (form.json page "width"). */
+export type PageWidth = "narrow" | "tablet" | "wide" | "full";
+
 export interface AppRuntime {
   form: { id: string; slug: string; title: string; status: string; version: number; draft: boolean };
-  pages: { id: string; label: string; fullHeight: boolean; hidden: boolean; nav: "auto" | "tablet" | "always" | "never" }[];
+  pages: { id: string; label: string; fullHeight: boolean; hidden: boolean; nav: "auto" | "tablet" | "always" | "never"; width: PageWidth }[];
   code: Record<string, string>;
   css: string;
   hash: string;
@@ -40,6 +44,8 @@ export interface AppRuntime {
   canEdit: boolean;
   /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */
   offlineActions?: string[];
+  /** form.json "tutorial": the guided tutorial, all of it (lib/tour/formTours.ts picks this person's steps). */
+  tutorial?: FormTutorial | null;
 }
 
 export const appKeys = {
@@ -71,6 +77,9 @@ export const projectsApi = {
   save: (id: string, files: Record<string, string>, revision: number) => api.put<Project>(`/apps/projects/${id}`, { files, revision }),
   build: (id: string, files?: Record<string, string>) =>
     api.post<{ ok: true; warnings: FileProblem[]; hash: string } | { ok: false; problems: FileProblem[]; warnings: FileProblem[] }>(`/apps/projects/${id}/build`, files ? { files } : {}),
+  /** What a tutorial step can point at (each page's data-tour anchors, in these unsaved files) and the live tutorial. */
+  tutorialTargets: (id: string, files?: Record<string, string>) =>
+    api.post<{ pages: { id: string; label: string; file: string; hidden: boolean; anchors: string[] }[]; live: FormTutorial | null }>(`/apps/projects/${id}/tutorial`, { files }),
   publish: (id: string, note?: string) => api.post<Project>(`/apps/projects/${id}/publish`, { note }),
   setStatus: (id: string, status: string) => api.post<Project>(`/apps/projects/${id}/status`, { status }),
   duplicate: (id: string) => api.post<Project>(`/apps/projects/${id}/duplicate`),

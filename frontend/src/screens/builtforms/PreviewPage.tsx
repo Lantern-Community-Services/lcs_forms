@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Eye, RotateCcw } from "lucide-react";
+import { CircleHelp, Eye, RotateCcw } from "lucide-react";
+import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { Page } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/misc";
@@ -48,19 +49,38 @@ export function BuiltFormPreviewPage() {
     return () => window.removeEventListener("message", onMessage);
   }, [slug, embedded]);
 
+  // The draft's tutorial: only with ?tour=1 or "Try the tutorial", and never recorded.
+  const answers = useRef<Values>({});
+  const tutorial = useFormTutorial({
+    formId: slug,
+    tutorial: doc?.tutorial,
+    ready: Boolean(doc) && !done,
+    preview: true,
+    scope: (p) => p === `/f/${slug}/preview`,
+    build: () =>
+      doc?.tutorial ? basicFormTour({ formId: slug, title: doc.title, tutorial: doc.tutorial, roleKey: user?.roleKey ?? "", userName: user?.name, values: () => answers.current, record: false }) : null,
+  });
+
   if (!doc) return <LoadingState label="Waiting for the form…" />;
   return (
     <Page className="max-w-[820px]">
       <div className="mb-3 flex items-center gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-[12.5px] text-muted">
         <Eye className="h-3.5 w-3.5" /> Preview — nothing is saved.
         <div className="flex-1" />
+        {tutorial.available && !done && (
+          <button type="button" data-tour="form-help" onClick={() => tutorial.start()} className="inline-flex items-center gap-1 font-semibold text-accent dark:text-white">
+            <CircleHelp className="h-3.5 w-3.5" /> Try the tutorial
+          </button>
+        )}
         <button type="button" onClick={() => { setRound((r) => r + 1); setDone(false); }} className="inline-flex items-center gap-1 font-semibold text-accent dark:text-white">
           <RotateCcw className="h-3.5 w-3.5" /> Start over
         </button>
       </div>
       <Card className="p-5 md:p-8">
-        <h1 className="font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]">{doc.title}</h1>
-        {doc.description && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+        <div data-tour="form-title">
+          <h1 className="font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]">{doc.title}</h1>
+          {doc.description && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+        </div>
         <div className="mt-6">
           {done ? (
             <div className="rounded-card border border-status-greenDot/40 bg-status-greenBg p-4 text-[14px] text-ink">
@@ -73,7 +93,10 @@ export function BuiltFormPreviewPage() {
               doc={doc}
               mode="preview"
               user={user ? { name: user.name, email: user.email } : null}
-              onValuesChange={(values) => toParent.current({ lcsPreview: "values", values })}
+              onValuesChange={(values) => {
+                answers.current = values;
+                toParent.current({ lcsPreview: "values", values });
+              }}
               onSubmit={(values: Values) => {
                 toParent.current({ lcsPreview: "submitted", values: cleanValues(doc, values), errors: validateValues(doc, values) });
                 setDone(true);

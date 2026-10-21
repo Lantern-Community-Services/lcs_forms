@@ -4,6 +4,7 @@ import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import { frameTheme, framePlugin } from "./tailwindTheme.js";
 import { readManifest, serverEntry, type FileProblem, type Files } from "./project.js";
+import { tutorialAnchorWarnings } from "./tutorialAnchors.js";
 
 /**
  * Compile a code form: each page to a self-contained script for the sandboxed
@@ -178,6 +179,7 @@ export async function buildProject(files: Files): Promise<BuildResult> {
 
   const css = await buildCss(files);
   all.push(...css.problems);
+  warnings.push(...tutorialAnchorWarnings(files, manifest));
   if (all.length) return { ok: false, problems: all, warnings };
 
   const build: Build = { hash, pages, server, css: css.css, warnings };

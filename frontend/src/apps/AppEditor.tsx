@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, BookOpen, ChevronDown, Palette, ChevronLeft, ChevronRight, ExternalLink, FilePlus, FileText, Folder, History, Loader2, Monitor, Pencil,
+  AlertTriangle, BookOpen, ChevronDown, Palette, ChevronLeft, ChevronRight, ExternalLink, FilePlus, FileText, Folder, GraduationCap, History, Loader2, Monitor, Pencil,
   Play, Rocket, Save, Smartphone, Tablet, Terminal, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@
 import { useToast } from "@/components/ui/toast";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { StatusBadge } from "@/screens/builder/BuilderList";
+import { TutorialEditor, type TutorialTargets } from "@/screens/builder/TutorialEditor";
+import type { FormTutorial } from "@/lib/formEngine";
 import { ApiError } from "@/lib/api";
 import { useForms } from "@/lib/queries";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
@@ -22,6 +24,27 @@ import { appKeys, projectsApi, useAppRuntime, useProject, type FileProblem, type
 import { download, handoffHtml } from "./design";
 
 type Panel = "problems" | "console" | "versions" | "reference" | "settings";
+
+/** The tutorial panel's place among the open tabs (no file path can contain ":"). */
+const TUTORIAL = ":tutorial";
+
+/** form.json as an object, or null while it isn't valid JSON. */
+function parseManifest(text: string | undefined): Record<string, unknown> | null {
+  try {
+    const v = JSON.parse(text ?? "");
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** form.json's tutorial, if it's in a shape the editor can show (a hand edit may leave it half-written). */
+function readTutorial(raw: Record<string, unknown> | null): { tutorial?: FormTutorial; unreadable: boolean } {
+  const t = raw?.tutorial as FormTutorial | undefined;
+  if (t === undefined) return { unreadable: false };
+  const ok = t && typeof t === "object" && Array.isArray(t.steps) && t.steps.every((s) => s && typeof s === "object" && typeof s.title === "string");
+  return ok ? { tutorial: t, unreadable: false } : { unreadable: true };
+}
 
 const langOf = (path: string) => (path.endsWith(".css") ? "css" : path.endsWith(".json") ? "json" : /\.(md|txt)$/.test(path) ? "html" : "typescript") as "css" | "json" | "html" | "typescript";
 
@@ -54,7 +77,10 @@ function AppEditor({ initial }: { initial: Project }) {
   const [width, setWidth] = useState<"phone" | "tablet" | "full">("full");
   const [showPreview, setShowPreview] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [trying, setTrying] = useState(false);
+  const buildOk = useRef(true);
   const dirty = JSON.stringify(files) !== saved;
+  const tutorialSteps = useMemo(() => readTutorial(parseManifest(files["form.json"])).tutorial?.steps.length ?? 0, [files]);
 
   const runtime = useAppRuntime(project.slug, true, nonce);
   const buildProblems = runtime.error instanceof ApiError && runtime.error.status === 422 ? ((runtime.error.details as { problems?: FileProblem[] })?.problems ?? []) : [];
@@ -83,6 +109,7 @@ function AppEditor({ initial }: { initial: Project }) {
       qc.setQueryData(appKeys.project(row.id), row);
       void qc.invalidateQueries({ queryKey: ["apps", "projects"] });
       const build = await projectsApi.build(row.id);
+      buildOk.current = build.ok;
       setProblems(build.ok ? [] : build.problems);
       if (!build.ok) {
         setPanel("problems");
@@ -117,7 +144,7 @@ function AppEditor({ initial }: { initial: Project }) {
   }, [dirty]);
 
   const openFile = (path: string, line?: number, column?: number) => {
-    if (files[path] === undefined) return;
+    if (path !== TUTORIAL && files[path] === undefined) return;
     setOpen((o) => (o.includes(path) ? o : [...o, path]));
     setActive(path);
     if (line) setJump({ line, column, n: Date.now() });
@@ -160,6 +187,27 @@ function AppEditor({ initial }: { initial: Project }) {
     delete next[path];
     setFiles(next);
     closeFile(path);
+  }
+
+  /** The saved draft with its tutorial running, in a new tab. Saves (and builds) first. */
+  async function tryTutorial() {
+    const url = `/apps/${project.slug}?draft=1&tour=1`;
+    if (!dirty) {
+      if (allProblems.length) return toast("The draft doesn't build yet: see Problems.", "error");
+      return void window.open(url, "_blank");
+    }
+    // Opened now, while the click still counts, so it isn't blocked as a pop-up.
+    const win = window.open("", "_blank");
+    setTrying(true);
+    const row = await save();
+    setTrying(false);
+    if (!row || !buildOk.current) {
+      win?.close();
+      if (row) toast("Saved, but the draft doesn't build yet: see Problems.", "error");
+      return;
+    }
+    if (win) win.location.href = url;
+    else window.open(url, "_blank");
   }
 
   const pages = runtime.data?.pages ?? [];
@@ -212,20 +260,29 @@ function AppEditor({ initial }: { initial: Project }) {
             <button onClick={newFile} className="rounded p-1 text-muted hover:bg-subtle hover:text-ink" title="New file" aria-label="New file"><FilePlus className="h-4 w-4" /></button>
           </div>
           <FileTree files={files} active={active} onOpen={openFile} onRename={renameFile} onDelete={deleteFile} problems={allProblems} />
+          <div className="mt-2 border-t border-hairline pt-2">
+            <span className="mb-1 block px-3 text-micro font-bold uppercase tracking-[0.04em] text-muted">Form</span>
+            <button onClick={() => openFile(TUTORIAL)} className={cn("flex w-full items-center gap-1.5 py-1 pl-[10px] pr-2 text-left text-[12.5px]", active === TUTORIAL ? "bg-navsel font-semibold text-ink" : "text-ink hover:bg-rowhover")}>
+              <GraduationCap className="h-3.5 w-3.5 shrink-0 text-muted" /> Tutorial
+              <span className="ml-auto text-micro text-muted">{tutorialSteps ? `${tutorialSteps} step${tutorialSteps === 1 ? "" : "s"}` : "none"}</span>
+            </button>
+          </div>
         </aside>
 
         {/* Editor */}
         <section className="flex min-h-0 flex-col border-r border-hairline">
           <div className="flex flex-none overflow-x-auto border-b border-hairline bg-surface">
-            {open.filter((p) => files[p] !== undefined).map((p) => (
+            {open.filter((p) => p === TUTORIAL || files[p] !== undefined).map((p) => (
               <div key={p} className={cn("group flex shrink-0 items-center gap-1 border-r border-hairline px-3 py-1.5 text-[12.5px]", p === active ? "bg-appbg font-semibold text-ink" : "text-muted hover:text-ink")}>
-                <button onClick={() => setActive(p)}>{p.split("/").pop()}</button>
-                <button onClick={() => closeFile(p)} className="rounded opacity-50 hover:opacity-100" aria-label={`Close ${p}`}><X className="h-3 w-3" /></button>
+                <button onClick={() => setActive(p)} className="inline-flex items-center gap-1">{p === TUTORIAL ? <><GraduationCap className="h-3.5 w-3.5" /> Tutorial</> : p.split("/").pop()}</button>
+                <button onClick={() => closeFile(p)} className="rounded opacity-50 hover:opacity-100" aria-label={`Close ${p === TUTORIAL ? "Tutorial" : p}`}><X className="h-3 w-3" /></button>
               </div>
             ))}
           </div>
-          <div className="min-h-0 flex-1 p-2">
-            {active && files[active] !== undefined ? (
+          <div className={cn("min-h-0 flex-1", active !== TUTORIAL && "p-2")}>
+            {active === TUTORIAL ? (
+              <TutorialPanel project={project} files={files} onFiles={setFiles} onOpenFile={openFile} onTry={() => void tryTutorial()} trying={trying} dirty={dirty} />
+            ) : active && files[active] !== undefined ? (
               <CodeEditor key={active} value={files[active]} onChange={(v) => setFiles((f) => ({ ...f, [active]: v }))} language={langOf(active)} jump={jump} fill className="h-full" minHeight={200} />
             ) : (
               <div className="grid h-full place-items-center text-[13px] text-muted">Open a file on the left.</div>
@@ -284,6 +341,88 @@ function AppEditor({ initial }: { initial: Project }) {
       </div>
 
       <PublishDialog open={publishing} onClose={() => setPublishing(false)} project={project} dirty={dirty} save={save} onDone={(row) => { setProject(row); qc.setQueryData(appKeys.project(row.id), row); toast(`Published version ${row.liveVersion}.`); }} onProblems={(p) => { setProblems(p); setPanel("problems"); setPanelOpen(true); }} />
+    </div>
+  );
+}
+
+/**
+ * form.json's "tutorial", point and click (screens/builder/TutorialEditor). An
+ * edit rewrites form.json, as MCP set_tutorial does. What a step can point at —
+ * each page's data-tour anchors — is read from the unsaved page code.
+ */
+function TutorialPanel({ project, files, onFiles, onOpenFile, onTry, trying, dirty }: {
+  project: Project;
+  files: Record<string, string>;
+  onFiles: (update: (f: Record<string, string>) => Record<string, string>) => void;
+  onOpenFile: (path: string) => void;
+  onTry: () => void;
+  trying: boolean;
+  dirty: boolean;
+}) {
+  const text = files["form.json"];
+  const raw = useMemo(() => parseManifest(text), [text]);
+  const { tutorial, unreadable } = readTutorial(raw);
+  // Anchors live in the page code: read again when a page file or the page list changes, not on every tutorial edit.
+  const pagesJson = JSON.stringify(raw?.pages ?? null);
+  const sig = useMemo(
+    () => `${pagesJson}|${Object.entries(files).filter(([k]) => k !== "form.json").map(([k, v]) => `${k}:${v.length}`).join(",")}`,
+    [pagesJson, files]
+  );
+  const found = useQuery({
+    queryKey: ["apps", "tutorial-targets", project.id, project.liveVersion, sig],
+    queryFn: () => projectsApi.tutorialTargets(project.id, files),
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
+  });
+  const targets = useMemo<TutorialTargets>(() => {
+    const anchors = new Map(found.data?.pages.map((p) => [p.id, p.anchors]));
+    const list = (Array.isArray(raw?.pages) ? (raw!.pages as Record<string, unknown>[]) : []).filter((p) => p && typeof p.id === "string");
+    return {
+      kind: "code",
+      pages: list.map((p) => ({
+        id: p.id as string,
+        label: typeof p.label === "string" ? p.label : (p.id as string),
+        file: typeof p.file === "string" ? p.file : undefined,
+        hidden: p.hidden === true,
+        anchors: anchors.get(p.id as string) ?? [],
+      })),
+      anchorsLoaded: Boolean(found.data),
+    };
+  }, [raw, found.data]);
+
+  if (!raw || unreadable) {
+    return (
+      <div className="p-4">
+        <div className="rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-[13px] text-status-redText">
+          <p className="font-bold">{!raw ? "form.json isn't valid JSON yet." : "form.json's \"tutorial\" isn't in a shape this editor can read."}</p>
+          <p className="mt-1">Fix it in form.json first; the tutorial editor picks it up from there.</p>
+          <Button size="sm" variant="secondary" className="mt-3" onClick={() => onOpenFile("form.json")}><FileText className="h-3.5 w-3.5" /> Open form.json</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto scroll-thin">
+      <TutorialEditor
+        value={tutorial}
+        onChange={(t) =>
+          onFiles((f) => {
+            const m = parseManifest(f["form.json"]);
+            if (!m) return f;
+            const { tutorial: _gone, ...rest } = m;
+            return { ...f, "form.json": `${JSON.stringify(t ? { ...m, tutorial: t } : rest, null, 2)}\n` };
+          })
+        }
+        targets={targets}
+        live={found.data?.live ?? null}
+        formId={project.id}
+        formTitle={typeof raw.title === "string" ? raw.title : project.title}
+        onTry={onTry}
+        trying={trying}
+        dirty={dirty}
+        compact
+      />
     </div>
   );
 }

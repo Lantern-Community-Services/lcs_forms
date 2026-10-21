@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Search, UserPlus } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { RotateCcw, Search, UserPlus } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -406,6 +406,8 @@ export function AdminPeople() {
                   />
                 </Field>
               )}
+              {/* Super Admins are changed only on the server, tutorials included: theirs reset from their own Profile. */}
+              {draft.id && !draft.superAdmin && <PersonTutorials userId={draft.id} name={draft.name} isSelf={draft.isSelf} />}
             </DialogBody>
           )}
           <DialogFooter>
@@ -531,5 +533,93 @@ function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClos
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface PersonTutorial {
+  key: string;
+  name: string;
+  kind: "site" | "form";
+  status: "completed" | "skipped";
+  version: number;
+  step: number | null;
+  steps: number | null;
+  updatedAt: string;
+}
+
+/**
+ * The guided tutorials this person has finished or skipped (lib/tour): the
+ * welcome tour on each kind of device, and each form's tutorial. Resetting one
+ * shows it to them again — the welcome tour the next time they reach their home
+ * screen, a form's the next time they open the form. It happens straight away,
+ * not with the dialog's Save.
+ */
+function PersonTutorials({ userId, name, isSelf }: { userId: string; name: string; isSelf: boolean }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const key = ["admin", "users", userId, "tutorials"];
+  const { data, isLoading } = useQuery({ queryKey: key, queryFn: () => api.get<PersonTutorial[]>(`/users/${userId}/tutorials`) });
+  const [busy, setBusy] = useState<string | null>(null);
+  const first = name.split(" ")[0];
+
+  async function reset(one?: PersonTutorial) {
+    setBusy(one?.key ?? "all");
+    try {
+      const out = await api.delete<{ reset: number; tutorials: PersonTutorial[] }>(`/users/${userId}/tutorials${one ? `?key=${encodeURIComponent(one.key)}` : ""}`);
+      qc.setQueryData(key, out.tutorials);
+      // Your own: this device forgets them too, so they start here without a reload.
+      if (isSelf) await qc.invalidateQueries({ queryKey: ["tutorials"] });
+      toast(
+        one
+          ? `${one.kind === "site" ? "The welcome tour" : `“${one.name}”`} will show ${isSelf ? "you" : first} again.`
+          : `All of ${isSelf ? "your" : `${first}'s`} tutorials will run again.`
+      );
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't reset that. Try again."), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const describe = (t: PersonTutorial) =>
+    t.status === "completed"
+      ? `Finished ${relativeTime(t.updatedAt)}`
+      : `Skipped ${t.step !== null && t.steps ? `at step ${t.step + 1} of ${t.steps} ` : ""}${relativeTime(t.updatedAt)}`;
+
+  return (
+    <div className="rounded-input border border-hairline">
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+        <span>
+          <span className="block text-[13.5px] font-semibold text-ink">Tutorials</span>
+          <span className="block text-micro text-muted">Reset one to show it to {isSelf ? "you" : first} again.</span>
+        </span>
+        {(data?.length ?? 0) > 1 && (
+          <Button size="sm" variant="secondary" onClick={() => void reset()} disabled={busy !== null}>
+            <RotateCcw className="h-3.5 w-3.5" /> Reset all
+          </Button>
+        )}
+      </div>
+      {isLoading ? (
+        <p className="border-t border-hairline px-3 py-2.5 text-[13px] text-muted">Loading…</p>
+      ) : !data?.length ? (
+        <p className="border-t border-hairline px-3 py-2.5 text-[13px] text-muted">
+          {isSelf ? "You haven't" : `${first} hasn't`} finished or skipped any yet. The welcome tour starts the next time {isSelf ? "you reach your" : "they reach their"} home screen.
+        </p>
+      ) : (
+        <ul>
+          {data.map((t) => (
+            <li key={t.key} className="flex items-center gap-3 border-t border-hairline px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold text-ink">{t.name}</span>
+                <span className="block text-micro text-muted">{describe(t)}</span>
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => void reset(t)} disabled={busy !== null} aria-label={`Reset ${t.name}`}>
+                Reset
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

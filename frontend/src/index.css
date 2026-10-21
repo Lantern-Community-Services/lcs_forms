@@ -299,6 +299,40 @@ h6 {
   .enter-up, .enter-pop { animation: none; }
 }
 
+/* Guided tours (components/tour/TourOverlay.tsx). The card moves with
+   `translate`, not `transform`, so a card centred with a transform keeps it.
+   The dimming is deeper in dark mode, where a light veil barely shows. */
+:root { --tour-dim: rgba(15, 19, 30, 0.58); }
+.dark { --tour-dim: rgba(0, 0, 0, 0.72); }
+@keyframes tour-card-in {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes tour-card-nudge {
+  0%, 100% { translate: 0 0; }
+  20% { translate: -7px 0; }
+  40% { translate: 7px 0; }
+  60% { translate: -4px 0; }
+  80% { translate: 4px 0; }
+}
+/* A spot waiting to be tapped or filled in breathes. */
+@keyframes tour-spot-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(var(--c-accent) / 0.5); }
+  100% { box-shadow: 0 0 0 14px rgb(var(--c-accent) / 0); }
+}
+.tour-card { animation: tour-card-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.tour-card-nudge { animation: tour-card-nudge 400ms ease-in-out; }
+.tour-spot-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: tour-spot-pulse 1.6s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-card, .tour-card-nudge, .tour-spot-live::after { animation: none; }
+}
+
 /* A batch of bills just loaded into a ledger group.
 
    These rows arrive already tinted, hold for a beat, then settle back to the

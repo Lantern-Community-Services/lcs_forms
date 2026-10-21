@@ -14,7 +14,7 @@ import type { BuilderReference, BuiltFormDetail } from "@/lib/builder";
 import type { FormDoc, FormSettings, Notification } from "@/lib/formEngine";
 import { cn } from "@/lib/utils";
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <Card className="p-5">
       <p className="font-heading text-[15px] font-extrabold text-ink">{title}</p>
@@ -24,7 +24,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="mb-1 block text-[12px] font-semibold text-muted">{label}</label>
@@ -34,7 +34,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   );
 }
 
-function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>

@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Compass, LogOut, RotateCcw } from "lucide-react";
+import { resetTours } from "@/lib/tour/progress";
 import { MobileBackLink, Page, PageHeader } from "@/components/shell/AppShell";
 import { SnapshotSummary } from "@/components/shell/OfflineBar";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -68,6 +71,23 @@ export function ProfilePage() {
       rollback();
       setPreferenceStatus("error");
       toast(errorMessage(error, "Could not save preferences."), "error");
+    }
+  }
+
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [resetting, setResetting] = useState(false);
+  /** Forget which forms' tutorials they've seen, so each runs again next time they open it. */
+  async function showFormTutorialsAgain() {
+    if (!user) return;
+    setResetting(true);
+    try {
+      await resetTours(qc, user.id, "forms");
+      toast("Done. Each form's tutorial will run again the next time you open it.");
+    } catch (error) {
+      toast(errorMessage(error, "Couldn't reset the tutorials. Try again."), "error");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -169,6 +189,21 @@ export function ProfilePage() {
       </Card>
 
       <NotificationSettings delay="80ms" />
+
+      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "84ms" }}>
+        <p className="kicker">Tutorials</p>
+        <p className="mt-1 text-[13px] text-muted">
+          The welcome tour shows you around the site. Forms can have their own tutorial too, the first time you open them.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => navigate("/forms?tour=site")}>
+            <Compass className="h-4 w-4" /> Take the tour
+          </Button>
+          <Button variant="secondary" onClick={() => void showFormTutorialsAgain()} disabled={resetting}>
+            <RotateCcw className="h-4 w-4" /> Show form tutorials again
+          </Button>
+        </div>
+      </Card>
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "88ms" }}>
         <p className="kicker">Offline</p>

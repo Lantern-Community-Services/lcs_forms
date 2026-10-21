@@ -26,6 +26,7 @@ import { calendarRouter } from "./routes/calendar.js";
 import { devlogRouter } from "./routes/devlog.js";
 import { requestMetrics } from "./services/devlog.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { tutorialsRouter } from "./routes/tutorials.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false });
@@ -129,6 +130,7 @@ export function createApp() {
   app.use("/api/activity", activityRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/notifications", notificationsRouter);
+  app.use("/api/tutorials", tutorialsRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/v1", apiLimiter, publicApiRouter);
   app.use("/api/builder", builderRouter);

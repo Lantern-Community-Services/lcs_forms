@@ -6,7 +6,9 @@ import { actorOf, audit } from "../services/audit.js";
 import { buildExport, exportSpec } from "../apps/exports.js";
 import { deleteForm, listVersions, setCatalog, setFormStatus } from "../forms/service.js";
 import { buildProject } from "../apps/compile.js";
-import { checkFiles } from "../apps/project.js";
+import { checkFiles, type Files, type Manifest } from "../apps/project.js";
+import { pageAnchors } from "../apps/tutorialAnchors.js";
+import type { FormTutorial } from "../forms/engine.js";
 import { APP_GUIDE } from "../apps/guide.js";
 import { SDK_TYPES } from "../apps/sdkText.js";
 import { DESIGN_BRIEF } from "../apps/designBrief.js";
@@ -80,6 +82,47 @@ appsRouter.post(
     if (!files) throw badRequest("Those files aren't valid.");
     const r = await buildProject(files);
     res.json(r.ok ? { ok: true, warnings: r.build.warnings, hash: r.build.hash } : r);
+  })
+);
+
+/**
+ * For the editor's tutorial panel: each page with the data-tour anchors written in
+ * it (the given unsaved files, or the saved draft), and the live tutorial, so "show
+ * it again" can go past its version. Lenient about the rest of form.json, so the
+ * picker keeps working while something else in it is half-typed.
+ */
+appsRouter.post(
+  "/projects/:id/tutorial",
+  dev,
+  asyncHandler(async (req, res) => {
+    const form = await findCodeForm(req.params.id);
+    const files = req.body?.files ? checkFiles(req.body.files).files : draftFiles(form);
+    if (!files) throw badRequest("Those files aren't valid.");
+    const json = (text: string | undefined): Record<string, unknown> | null => {
+      try {
+        const v = JSON.parse(text ?? "");
+        return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+      } catch {
+        return null;
+      }
+    };
+    const raw = json(files["form.json"]);
+    const pages = (Array.isArray(raw?.pages) ? (raw.pages as Record<string, unknown>[]) : [])
+      .filter((p) => p && typeof p.id === "string" && typeof p.file === "string")
+      .map((p) => ({
+        id: p.id as string,
+        label: typeof p.label === "string" ? p.label : (p.id as string),
+        file: p.file as string,
+        hidden: p.hidden === true,
+        views: p.views && typeof p.views === "object" && !Array.isArray(p.views) ? (p.views as Record<string, string>) : undefined,
+      }));
+    const anchors = pageAnchors(files, { pages } as unknown as Manifest);
+    let live: FormTutorial | null = null;
+    if (form.liveSchema) {
+      const published = json(form.liveSchema) as { files?: Files } | null;
+      live = (json(published?.files?.["form.json"])?.tutorial as FormTutorial | undefined) ?? null;
+    }
+    res.json({ pages: pages.map(({ views: _v, ...p }) => ({ ...p, anchors: anchors[p.id] ?? [] })), live });
   })
 );
 
@@ -172,13 +215,15 @@ appsRouter.get(
     const u = req.user!;
     res.json({
       form: { id: app.form.id, slug: app.form.slug, title: app.manifest.title, status: app.form.status, version: app.form.liveVersion, draft: app.draft },
-      pages: a.pages.map((p) => ({ id: p.id, label: p.label, fullHeight: Boolean(p.fullHeight), hidden: Boolean(p.hidden), nav: p.nav ?? "auto" })),
+      pages: a.pages.map((p) => ({ id: p.id, label: p.label, fullHeight: Boolean(p.fullHeight), hidden: Boolean(p.hidden), nav: p.nav ?? "auto", width: p.width ?? "tablet" })),
       code: Object.fromEntries(Object.entries(app.build.pages).filter(([k]) => a.pages.some((p) => p.id === k.split("@")[0]))),
       css: app.build.css,
       hash: app.build.hash,
       user: { id: u.userId, name: u.name, email: u.email, roleKey: u.roleKey, roleName: u.roleName, permissions: u.permissions, siteIds: u.siteIds },
       canEdit: isDeveloper(u),
       offlineActions: app.manifest.offline?.actions ?? [],
+      // The client picks this person's steps (tutorialStepsFor); roles aren't secret.
+      tutorial: app.manifest.tutorial ?? null,
     });
   })
 );
