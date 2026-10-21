@@ -1,6 +1,7 @@
 import { ADMIN_AREA, isSiteSettingsOnly } from "@/lib/auth";
 import type { DeviceKind } from "@/lib/device";
 import type { PermissionKey, User } from "@/lib/types";
+import { SAMPLE_FORM_TITLE, SAMPLE_SEARCH } from "./sampleData";
 import type { TourDef, TourStep } from "./types";
 
 /**
@@ -11,7 +12,9 @@ import type { TourDef, TourStep } from "./types";
  * gets the dock version the first time they use their phone.
  *
  * Every step points at a data-tour="…" anchor in the shell or a screen. One
- * that isn't on screen (a form-less catalog, a role without Admin) is passed over.
+ * that isn't on screen (a role without Admin) is passed over. The steps that
+ * ask for a tap (search, pin, keep) work on sample forms and residents
+ * (sampleData.ts, TourDef.sample), never real ones.
  *
  * Raise SITE_TOUR_VERSION when the tour changes enough to show everyone again.
  */
@@ -23,6 +26,12 @@ const at = (name: string) => ({ in: "page" as const, selector: `[data-tour="${na
 
 /** "a Site Manager", "an Admin", "Site Staff". */
 const withArticle = (role: string) => (/staff$/i.test(role) ? role : `${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}`);
+
+/** Whether the home's search box on screen (there's one per layout) holds `word`. */
+function searchTyped(word: string) {
+  const box = Array.from(document.querySelectorAll<HTMLInputElement>('[data-tour="home-search"] input')).find((i) => i.getClientRects().length > 0);
+  return Boolean(box?.value.toLowerCase().includes(word));
+}
 
 function list(items: string[]) {
   return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
@@ -73,20 +82,32 @@ export function buildSiteTour(
     target: at("home-forms"),
     title: "Your forms",
     body:
-      device === "phone"
+      (device === "phone"
         ? "Every form you can fill in, in groups. Tap a group to see its forms, or search at the top."
-        : "Every form you can fill in. Pick a group, or type in the search box. A form that opens on another site is marked with an arrow.",
+        : "Every form you can fill in. Pick a group, or type in the search box. A form that opens on another site is marked with an arrow.") +
+      "\n\nFor this tour these are **sample** forms. Try anything: nothing you do here is saved, and your real forms come back when the tour ends.",
+  });
+
+  add({
+    id: "search",
+    route: "/forms",
+    target: at("home-search"),
+    action: "fill",
+    filled: () => searchTyped(SAMPLE_SEARCH),
+    title: "Find a form",
+    body: `Type **${SAMPLE_SEARCH}** to find the ${SAMPLE_FORM_TITLE} form.`,
   });
 
   add({
     id: "pin",
     route: "/forms",
-    target: at("pin"),
+    target: { in: "page", selector: `[data-tour="pin"][aria-label$="${SAMPLE_FORM_TITLE}"]` },
     placement: "left",
-    // No forms in the catalog yet: no pins, and nothing to wait for.
+    action: "click",
+    // Phones show pins on a form's own list, not here: nothing to wait for.
     waitMs: 2500,
     title: "Pin the ones you use",
-    body: `${tap} the pin on a form to keep it at the top of Home${touch ? " and in the dock" : " and the sidebar"}, on every device you sign in on.`,
+    body: `${tap} the pin on **${SAMPLE_FORM_TITLE}**. A pinned form stays at the top of Home${touch ? " and in the dock" : " and the sidebar"}, on every device you sign in on.`,
   });
 
   if (!touch || device === "tablet") {
@@ -134,9 +155,36 @@ export function buildSiteTour(
       title: "The roster",
       body: noSites
         ? "Residents at your sites. You aren't assigned to a site yet, so it's empty for now: ask your Site Manager, and your residents will show up here."
-        : `Residents at ${user.allSites ? "every site" : "your sites"}. **Review** lists people nobody has seen in a while: ${tap.toLowerCase()} **Keep** for anyone still here.` +
-          `${can("roster.edit") ? " Add, update or remove residents under **Residents**." : ""} **Attendance** and **Activity** have their own tabs.`,
+        : `Residents at ${user.allSites ? "every site" : "your sites"}.${can("roster.edit") ? " Add, update or remove residents under **Residents**." : ""} **Attendance** and **Activity** have their own tabs.` +
+          "\n\nThe residents you see during the tour are **sample** people at Sample House.",
     });
+    add({
+      id: "open-review",
+      target: at("tab-review"),
+      action: "click",
+      title: "Open Review",
+      body: `**Review** lists people nobody has seen in a while. ${tap} **Review**.`,
+    });
+    if (can("roster.edit")) {
+      add({
+        id: "review-keep",
+        route: "/roster/review",
+        target: at("review-keep"),
+        // Beside the button where there's room, so the card doesn't cover Jordan's.
+        placement: "right",
+        action: "click",
+        title: "Keep someone who's still here",
+        body: `Jordan Example (a sample resident) hasn't been on a form in a few days. They're still living here, so ${tap.toLowerCase()} **Keep**.\n\nYou can also swipe the card: right to keep, left to remove, down to skip.`,
+      });
+    } else {
+      add({
+        id: "review-card",
+        route: "/roster/review",
+        target: at("review-card"),
+        title: "Who needs a look",
+        body: "One card per person nobody has seen in a while (these are sample residents). Your Site Manager decides who stays on the roster.",
+      });
+    }
   }
 
   if (!touch) {
@@ -204,5 +252,5 @@ export function buildSiteTour(
     body: "Open a form from Home to get started. The first time you open a form that has a tutorial, it shows you how that form works.\n\nTake this tour again any time from your **Profile**.",
   });
 
-  return { key: siteTourKey(device), version: SITE_TOUR_VERSION, title: "Welcome tour", steps, record: opts.record, waitMs: 5000 };
+  return { key: siteTourKey(device), version: SITE_TOUR_VERSION, title: "Welcome tour", steps, record: opts.record, waitMs: 5000, sample: true };
 }
