@@ -31,6 +31,7 @@ import { BuiltFormEntryPage } from "./screens/builtforms/EntryDetail";
 import { BuiltFormPreviewPage } from "./screens/builtforms/PreviewPage";
 import { AppHostPage } from "./apps/AppHostPage";
 import { CalendarPage } from "./screens/calendar/CalendarPage";
+import { ConnectClaudePage } from "./screens/ConnectClaude";
 
 /*
  * Admin's screens are their own downloads, fetched the first time an Admin
@@ -184,6 +185,8 @@ export function App() {
       <Route path="/welcome" element={user && !loading ? <HomeRedirect /> : <WelcomePage />} />
       {/* Public built forms: no sign-in, no app chrome. */}
       <Route path="/p/:slug" element={<FillPage publicView />} />
+      {/* Claude's connector sends people here to allow it (backend oauth/). */}
+      <Route path="/connect/claude" element={<Protected><ConnectClaudePage /></Protected>} />
 
       <Route element={<Protected><AppShell /></Protected>}>
         <Route index element={<HomeRedirect />} />

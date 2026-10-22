@@ -175,6 +175,35 @@ someone publishes. With `notifications:send` it can also notify people (`send_no
 have their own tools (`get_tutorial_reference`, `get_tutorial`, `set_tutorial`, `tutorial_progress`; see
 Tutorials).
 
+### Connecting Claude (everyone, no key)
+
+Anyone with an account can connect their own Claude to the same `/api/mcp` address and ask it about
+the site: counts, summaries and reports. There's no key. The site is its own small OAuth 2.1 server
+(`backend/src/oauth/`), and the flow works like this:
+
+1. Claude registers itself.
+2. Claude sends the person to **/connect/claude**.
+3. They sign in with Microsoft as usual and choose **Allow**.
+4. Claude gets tokens that read the site **as that person, read only**.
+
+The tools are in `backend/src/ops/person.ts`. Each one runs the route the site's own screens use, so
+the person's role, sites, each form's entry roles and site limits apply exactly as on screen. Tokens
+last an hour and refresh for 30 days. Only their hashes are stored. They open `/api/mcp` and
+nothing else, and they stop working when the person is deactivated or disconnects.
+
+People see and disconnect their connections on **Profile**. Admins see everyone's under **Admin → API
+keys**. Connecting and disconnecting are audited.
+
+- **Set up once in Claude (Team/Enterprise):** an org owner goes to Admin settings → Connectors → Add
+  custom connector, names it "Lantern Forms", and sets the URL to `<site>/api/mcp`. No client ID or
+  secret is needed. Staff then see Lantern Forms under Settings → Connectors → Connect.
+- **Claude Code:** `claude mcp add --transport http lantern <site>/api/mcp`. It opens the browser to
+  sign in.
+- **Redirects:** codes only go back to `OAUTH_REDIRECT_URIS`. The default is claude.ai, claude.com and
+  any localhost address, for Claude Desktop and Claude Code. Any other client's registration is refused.
+- Anthropic's servers call the site from the internet. If App Service ever gets IP restrictions,
+  allow Anthropic's published outbound ranges.
+
 ### The rest of the site over MCP and `/api/v1` (delegated keys)
 
 Every operation in `backend/src/ops/` is both an MCP tool and a REST route under `/api/v1`, with the

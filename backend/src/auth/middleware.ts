@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { forbidden, unauthorized } from "../http.js";
 import { permissionsFor, roleFor, roleNameFor, type PermissionKey } from "../services/permissions.js";
 import { looksLikeApiKey, resolveApiKey, type ApiScope, type ResolvedKey } from "../services/apiKeys.js";
+import { looksLikeAccessToken, resolveAccessToken, type ResolvedGrant } from "../oauth/provider.js";
 
 /** The signed-in person, with what their role currently grants. */
 export interface CurrentUser extends SessionPayload {
@@ -23,6 +24,12 @@ declare global {
     interface Request {
       user?: CurrentUser;
       apiKey?: ResolvedKey;
+      /**
+       * A Claude connection's access token (oauth/). It opens /api/mcp only,
+       * which loads the person itself: req.user stays unset, so the token
+       * can't be used on the site's own routes.
+       */
+      oauthGrant?: ResolvedGrant;
     }
   }
 }
@@ -61,6 +68,11 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
     if (presented) {
       const key = await resolveApiKey(presented);
       if (key) req.apiKey = key;
+      return next();
+    }
+    if (looksLikeAccessToken(bearer)) {
+      const grant = await resolveAccessToken(bearer);
+      if (grant) req.oauthGrant = grant;
       return next();
     }
 
