@@ -110,10 +110,40 @@ export function buildSiteTour(
     body: `${tap} the pin on **${SAMPLE_FORM_TITLE}**. A pinned form stays at the top of Home${touch ? " and in the dock" : " and the sidebar"}, on every device you sign in on.`,
   });
 
+  // The home dashboard starts blank on a computer or an iPad: set it up together (HomeDashboard).
   if (!touch || device === "tablet") {
+    add({
+      id: "dashboard-edit",
+      route: "/forms",
+      target: at("home-edit"),
+      placement: "bottom",
+      action: "click",
+      title: "Make Home yours",
+      body: `The top of Home is your own dashboard: counts, lists and shortcuts you choose. ${tap} **Edit dashboard** to set it up.`,
+    });
+    add({
+      id: "dashboard-layout",
+      route: "/forms",
+      target: at("home-presets"),
+      placement: "left",
+      action: "click",
+      title: "Pick a layout to start from",
+      body: "Choose one of these four. You can add, move and resize widgets afterwards, or change it any time.",
+    });
+    add({
+      id: "dashboard-save",
+      route: "/forms",
+      target: at("home-save"),
+      placement: "top",
+      action: "click",
+      title: "Save it",
+      body: `${tap} **Save dashboard** to keep this layout. Whenever you like, ${tap.toLowerCase()} **Edit dashboard** again to add widgets, drag them to new spots${touch ? " (press and hold one first)" : ""} or change their width.`,
+    });
     add({
       id: "attention",
       route: "/forms",
+      // Only there when the chosen layout has it.
+      waitMs: 1500,
       target: at("home-attention"),
       title: "Needs your attention",
       body: roster

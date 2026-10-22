@@ -17,6 +17,8 @@ homeRouter.use(requireAuth);
  * the same way the screen it links to is, so a card never leads to a 403:
  * roster items need roster.view and stay inside the person's sites, drafts
  * belong to whoever started them. Code forms add their own cards (apps/home.ts).
+ * Which of these the screen shows is the person's choice (frontend
+ * components/home/dashboard); this sends them all.
  */
 
 type Tone = "warn" | "info";
@@ -195,6 +197,34 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null): P
   return items.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 20);
 }
 
+export interface RecentForm {
+  id: string;
+  title: string;
+  href: string;
+  lastAt: Date;
+  /** Entries among the person's last 60. */
+  uses: number;
+}
+
+/** The forms this person submitted most recently, newest first: the "Recently used" widget. */
+async function recentForms(req: Request): Promise<RecentForm[]> {
+  const entries = await prisma.formEntry.findMany({
+    where: { createdById: req.user!.userId, status: "active", source: { not: "preview" } },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+    select: { createdAt: true, form: { select: { id: true, title: true, slug: true, kind: true, status: true } } },
+  });
+  const byForm = new Map<string, RecentForm>();
+  for (const e of entries) {
+    // A form since unpublished would only lead to an error page.
+    if (e.form.status !== "published") continue;
+    const seen = byForm.get(e.form.id);
+    if (seen) seen.uses++;
+    else byForm.set(e.form.id, { id: e.form.id, title: e.form.title, href: e.form.kind === "code" ? `/apps/${e.form.slug}` : `/f/${e.form.slug}`, lastAt: e.createdAt, uses: 1 });
+  }
+  return [...byForm.values()].slice(0, 6);
+}
+
 homeRouter.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -202,10 +232,11 @@ homeRouter.get(
     const weekAgo = new Date(Date.now() - 7 * 86400_000);
     const rosterSites = has(req, "roster.view") ? await sitesInScope(req, undefined) : null;
 
-    const [roster, drafts, activity, entriesWeek, residents] = await Promise.all([
+    const [roster, drafts, activity, recent, entriesWeek, residents] = await Promise.all([
       rosterSites ? rosterAttention(rosterSites) : Promise.resolve({ items: [], total: 0 }),
       myDrafts(req),
       recentActivity(req, rosterSites),
+      recentForms(req),
       prisma.formEntry.count({ where: { createdById: me, status: "active", source: { not: "preview" }, createdAt: { gte: weekAgo } } }),
       rosterSites?.length ? prisma.tenant.count({ where: { siteId: { in: rosterSites.map((s) => s.id) }, status: "active" } }) : Promise.resolve(null),
     ]);
@@ -214,6 +245,7 @@ homeRouter.get(
     res.json({
       attention,
       activity,
+      recentForms: recent,
       stats: {
         attention: attention.length,
         urgent: attention.filter((a) => a.tone === "warn").length,

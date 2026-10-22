@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, Lock, PencilLine, Pin, Users } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, Lock, Pin } from "lucide-react";
+import { HomeDashboard } from "@/components/home/dashboard/HomeDashboard";
+import type { WidgetSize } from "@/components/home/dashboard/layout";
+import { ActivityPanel, AppTiles, PhoneAttention } from "@/components/home/panels";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Tag } from "@/components/ui/badge";
@@ -13,7 +16,7 @@ import { canOpenForm, formIcon, formLinkIcon, formNeeds, isInternalForm } from "
 import { formsApi, sampleKey, useForms, useHome, useHomeApps } from "@/lib/queries";
 import { isSample } from "@/lib/tour/sampleData";
 import { useTourSample } from "@/lib/tour/store";
-import type { FormCatalog, FormCategory, FormLink, HomeActivityItem, HomeAppTile, HomeAttentionItem, HomeData } from "@/lib/types";
+import type { FormCatalog, FormCategory, FormLink, HomeData } from "@/lib/types";
 import { useSearchParam } from "@/lib/useSearchParam";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -22,9 +25,10 @@ import { cn, errorMessage } from "@/lib/utils";
  * and every form Lantern staff fill out underneath.
  *
  * Two layouts, one set of state:
- * - tablet and desktop: attention beside activity (desktop adds a row of
- *   counts above), then a two-pane browser: groups down the left (All forms,
- *   Pinned, each category), that group's cards on the right;
+ * - tablet and desktop: the person's own dashboard of widgets (see
+ *   components/home/dashboard). One of them, near the top by default, is All forms: a
+ *   two-pane browser with groups down the left (All forms, Pinned, each
+ *   category) and that group's cards on the right;
  * - phone: one attention banner, pinned forms, and category tiles that open a
  *   list, so the forms are reachable without scrolling past the dashboard.
  *
@@ -119,6 +123,39 @@ export function FormsPage() {
     <EmptyState title="No forms yet" hint={can("forms.manage") ? "Add some in Admin → Forms catalog." : "An administrator hasn't set up the forms yet."} />
   ) : null;
 
+  /** The "All forms" widget: every form, groups down the left (see FormsBrowser). */
+  const renderForms = (size: WidgetSize) => (
+    <section id="forms" aria-labelledby="all-forms" data-tour="home-forms">
+      <div className="enter-up mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="all-forms" className="text-[18px] font-heading font-extrabold text-ink xl:text-[21px]">All forms</h2>
+          <p className="mt-0.5 text-[13px] text-muted" aria-live="polite">
+            {searching
+              ? `${searchResults.length === 0 ? "No forms match" : `${searchResults.length} of ${totalForms} forms match`} “${q.trim()}”`
+              : `${totalForms} forms · pin one to keep it close at hand`}
+          </p>
+        </div>
+      </div>
+
+      {formsBody ?? (
+        // Groups on the left, that group's cards on the right. Nothing
+        // picked yet: Favorites when there are some, otherwise everything.
+        <FormsBrowser
+          size={size}
+          categories={categories}
+          pick={browsePick}
+          onPick={setPick}
+          favoriteCount={favorites.size}
+          totalForms={totalForms}
+          entries={searching ? searchResults : matchingFlatFor(categories, browsePick, favorites)}
+          searching={searching}
+          q={q.trim()}
+          cardProps={cardProps}
+        />
+      )}
+    </section>
+  );
+
   return (
     <div className="flex min-h-full flex-col">
       {/* ── Phone ─────────────────────────────────────────────────────── */}
@@ -199,52 +236,21 @@ export function FormsPage() {
 
       {/* ── Tablet and desktop ────────────────────────────────────────── */}
       <Page className="hidden w-full md:block">
-        <div className="enter-up mb-5 flex flex-wrap items-center justify-between gap-4 xl:mb-6">
-          <div className="min-w-0">
-            <h1 className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">{greeting}</h1>
-            <p className="mt-1 text-[13.5px] text-muted">{subtitle}</p>
-          </div>
-          <div data-tour="home-search" className="w-[300px] xl:w-[380px]">
-            <SearchInput ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all forms" aria-label="Search forms" />
-          </div>
-        </div>
-
-        <StatStrip home={home.data} totalForms={totalForms} />
-        <AppTiles tiles={appTiles} className="mb-5" />
-
-        <div className="mb-7 grid gap-3.5 md:grid-cols-2 xl:grid-cols-[7fr_5fr] xl:gap-5">
-          <AttentionPanel home={home.data} loading={home.isLoading} failed={home.isError} />
-          <ActivityPanel home={home.data} loading={home.isLoading} failed={home.isError} limit={3} wideLimit={6} />
-        </div>
-
-        <section id="forms" aria-labelledby="all-forms" data-tour="home-forms">
-          <div className="enter-up mb-3 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 id="all-forms" className="text-[18px] font-heading font-extrabold text-ink xl:text-[21px]">All forms</h2>
-              <p className="mt-0.5 text-[13px] text-muted" aria-live="polite">
-                {searching
-                  ? `${searchResults.length === 0 ? "No forms match" : `${searchResults.length} of ${totalForms} forms match`} “${q.trim()}”`
-                  : `${totalForms} forms · pin one to keep it close at hand`}
-              </p>
+        {/* The person's own dashboard: which widgets, in what order, how wide (see HomeDashboard). */}
+        <HomeDashboard
+          heading={
+            <>
+              <h1 className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">{greeting}</h1>
+              <p className="mt-1 text-[13.5px] text-muted">{subtitle}</p>
+            </>
+          }
+          search={
+            <div data-tour="home-search" className="w-[300px] xl:w-[380px]">
+              <SearchInput ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all forms" aria-label="Search forms" />
             </div>
-          </div>
-
-          {formsBody ?? (
-            // Groups on the left, that group's cards on the right. Nothing
-            // picked yet: Favorites when there are some, otherwise everything.
-            <FormsBrowser
-              categories={categories}
-              pick={browsePick}
-              onPick={setPick}
-              favoriteCount={favorites.size}
-              totalForms={totalForms}
-              entries={searching ? searchResults : matchingFlatFor(categories, browsePick, favorites)}
-              searching={searching}
-              q={q.trim()}
-              cardProps={cardProps}
-            />
-          )}
-        </section>
+          }
+          ctx={{ home: home.data, homeLoading: home.isLoading, homeFailed: home.isError, appTiles, appTilesLoading: homeApps.isLoading, categories, favoriteForms, totalForms, renderForms, searching }}
+        />
       </Page>
     </div>
   );
@@ -420,7 +426,9 @@ function NoMatch({ searching, favorites }: { searching: boolean; favorites: bool
  * category), that group's cards on the right. Searching replaces the right
  * pane with matches from every group.
  */
-function FormsBrowser({ categories, pick, onPick, favoriteCount, totalForms, entries, searching, q, cardProps }: {
+function FormsBrowser({ size, categories, pick, onPick, favoriteCount, totalForms, entries, searching, q, cardProps }: {
+  /** The widget's width: two thirds of a desktop row fits two columns of cards, the whole row three. */
+  size: WidgetSize;
   categories: FormCategory[];
   pick: string;
   onPick: (id: string | null) => void;
@@ -478,7 +486,7 @@ function FormsBrowser({ categories, pick, onPick, favoriteCount, totalForms, ent
             {entries.length === 0 ? (
               <NoMatch searching={searching} favorites={pick === FAVORITES} />
             ) : (
-              <ul className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 xl:gap-3.5">
+              <ul className={cn("grid gap-3 lg:grid-cols-2 xl:gap-3.5", size === "full" && "xl:grid-cols-3")}>
                 {entries.map((e) => (
                   <FormCard key={e.form.id} {...cardProps(e)} showCategory={mixed} />
                 ))}
@@ -547,305 +555,6 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
       <p className="enter-up flex items-center gap-1.5 text-[12px] text-muted">
         <ExternalLink className="h-3 w-3" /> Opens the old forms site in a new tab
       </p>
-    </section>
-  );
-}
-
-// ── Dashboard panels ─────────────────────────────────────────────────────
-
-const ATTENTION_ICON = { roster: Users, draft: PencilLine } as const;
-
-function AttentionIcon({ item, size = "md" }: { item: HomeAttentionItem; size?: "sm" | "md" }) {
-  const Icon = item.kind === "app" ? formIcon(item.icon ?? "clipboard") : ATTENTION_ICON[item.kind] ?? AlertTriangle;
-  return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center justify-center",
-        size === "md" ? "h-10 w-10 rounded-[10px]" : "h-[34px] w-[34px] rounded-[9px]",
-        item.tone === "warn" ? "bg-status-amberBg text-status-amberText" : "bg-navsel text-accent dark:text-white"
-      )}
-    >
-      <Icon className={size === "md" ? "h-[19px] w-[19px]" : "h-[17px] w-[17px]"} />
-    </span>
-  );
-}
-
-function PanelHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
-  return (
-    <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-hairline px-4 py-2.5 xl:px-5">
-      <h2 className="flex items-center gap-2 text-[15px] font-heading font-extrabold text-ink xl:text-[16px]">
-        {title}
-        {count !== undefined && count > 0 && <span className="rounded-pill bg-navy px-2 py-px text-[11.5px] font-bold text-white">{count}</span>}
-      </h2>
-      {children}
-    </div>
-  );
-}
-
-function PanelNote({ children }: { children: React.ReactNode }) {
-  return <p className="px-4 py-6 text-center text-[13px] text-muted xl:px-5">{children}</p>;
-}
-
-function AttentionPanel({ home, loading, failed }: { home?: HomeData; loading: boolean; failed: boolean }) {
-  const items = home?.attention ?? [];
-  return (
-    <section id="attention" data-tour="home-attention" className="enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card">
-      <PanelHeader title="Needs your attention" count={items.length} />
-      {loading ? (
-        <PanelNote>Checking…</PanelNote>
-      ) : failed ? (
-        <PanelNote>This didn't load. Refresh the page to try again.</PanelNote>
-      ) : items.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-5 py-7 text-center">
-          <CheckCircle2 className="h-6 w-6 text-status-greenDot" />
-          <p className="text-[14px] font-bold text-ink">You're all caught up</p>
-          <p className="text-[12.5px] text-muted">Anything that needs you will show up here.</p>
-        </div>
-      ) : (
-        <ul>
-          {items.map((a, i) => (
-            <li key={a.id} className={cn("border-b border-hairline/70 last:border-b-0", i >= 3 && "hidden xl:block")}>
-              {/* Tablet: the whole row is the link. Desktop: a row with its own button. */}
-              <Link to={a.href} className="flex items-center gap-3 px-4 py-2.5 hover:bg-rowhover xl:hidden">
-                <AttentionIcon item={a} size="sm" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold text-ink">{a.title}</span>
-                  <span className="block truncate text-[12px] text-muted">{a.detail}</span>
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
-              </Link>
-              <div className="hidden items-center gap-3.5 px-5 py-4 xl:flex">
-                <AttentionIcon item={a} />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14.5px] font-bold text-ink">{a.title}</span>
-                  <span className="mt-0.5 block text-[13px] text-muted">{a.detail}</span>
-                </span>
-                <Link
-                  to={a.href}
-                  className={cn(
-                    "inline-flex h-9 shrink-0 items-center rounded-input px-4 text-[13px] font-bold",
-                    i === 0 ? "bg-navy text-white hover:bg-navy-700" : "bg-subtle text-accent hover:bg-subtle2 dark:text-white"
-                  )}
-                >
-                  {a.action}
-                </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function dayLabel(d: Date) {
-  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const diff = Math.round((start(new Date()) - start(d)) / 86400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?";
-}
-
-function ActivityPanel({ home, loading, failed, limit, wideLimit, className }: {
-  home?: HomeData;
-  loading: boolean;
-  failed: boolean;
-  /** Rows shown below xl. */
-  limit: number;
-  /** Rows shown at xl and up (defaults to `limit`). */
-  wideLimit?: number;
-  className?: string;
-}) {
-  const [justMe, setJustMe] = useState(false);
-  const all = home?.activity ?? [];
-  // Without roster access everything listed is already yours, so the toggle would do nothing.
-  const canFilter = Boolean(home?.stats.sites?.length) && all.some((a) => !a.mine);
-  const items = (justMe ? all.filter((a) => a.mine) : all).slice(0, Math.max(limit, wideLimit ?? limit));
-
-  let lastDay = "";
-  return (
-    <section className={cn("enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card", className)}>
-      <PanelHeader title="Recent activity">
-        {canFilter && (
-          <div className="flex rounded-input bg-subtle p-[3px]" role="group" aria-label="Whose activity">
-            {[false, true].map((mine) => (
-              <button
-                key={String(mine)}
-                type="button"
-                aria-pressed={justMe === mine}
-                onClick={() => setJustMe(mine)}
-                className={cn(
-                  "h-8 rounded-[5px] px-3 text-[12.5px]",
-                  justMe === mine ? "bg-surface font-bold text-ink shadow-card" : "font-semibold text-muted hover:text-ink"
-                )}
-              >
-                {mine ? "Just me" : "My sites"}
-              </button>
-            ))}
-          </div>
-        )}
-      </PanelHeader>
-      {loading ? (
-        <PanelNote>Loading…</PanelNote>
-      ) : failed ? (
-        <PanelNote>This didn't load. Refresh the page to try again.</PanelNote>
-      ) : items.length === 0 ? (
-        <PanelNote>Nothing yet. Forms you submit will show up here.</PanelNote>
-      ) : (
-        <ul className="py-1">
-          {items.map((a, i) => {
-            const at = new Date(a.at);
-            const day = dayLabel(at);
-            const showDay = day !== lastDay;
-            lastDay = day;
-            const wideOnly = i >= limit;
-            return (
-              <li key={a.id} className={cn(wideOnly && "hidden xl:block")}>
-                {showDay && <p className="px-4 pb-1 pt-2.5 text-micro font-bold uppercase tracking-[0.08em] text-muted xl:px-5">{day}</p>}
-                <ActivityRow item={a} at={at} />
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function ActivityRow({ item, at }: { item: HomeActivityItem; at: Date }) {
-  const time = at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  const body = (
-    <>
-      <span
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
-          item.mine ? "bg-navy text-white" : "bg-navsel text-accent dark:text-white"
-        )}
-        aria-hidden
-      >
-        {initials(item.actorName)}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] text-ink">
-          {item.verb} <b className="font-bold">{item.subject}</b>
-        </span>
-        <span className="block truncate text-[12px] text-muted">{[item.detail, time].filter(Boolean).join(" · ")}</span>
-      </span>
-    </>
-  );
-  const cls = "flex items-center gap-3 px-4 py-2 xl:px-5";
-  return item.href ? (
-    <Link to={item.href} className={cn(cls, "hover:bg-rowhover")}>{body}</Link>
-  ) : (
-    <div className={cls}>{body}</div>
-  );
-}
-
-function StatStrip({ home, totalForms }: { home?: HomeData; totalForms: number }) {
-  const s = home?.stats;
-  const tiles: { label: string; value: string; note: React.ReactNode; href?: string }[] = [
-    {
-      label: "Needs your attention",
-      value: s ? String(s.attention) : "–",
-      note: s && s.urgent > 0 ? <Tag className="text-[12px]">{s.urgent} urgent</Tag> : "items",
-      href: "#attention",
-    },
-    { label: "Your submissions", value: s ? String(s.submissionsWeek) : "–", note: "last 7 days" },
-    s?.residents !== null && s?.residents !== undefined
-      ? { label: "Residents at your sites", value: String(s.residents), note: `across ${s.sites?.length ?? 0} ${s.sites?.length === 1 ? "site" : "sites"}`, href: "/roster" }
-      : { label: "Forms you can open", value: String(totalForms), note: "in the catalog", href: "#forms" },
-  ];
-  return (
-    <div className="mb-5 hidden grid-cols-3 gap-4 xl:grid">
-      {tiles.map((t) => {
-        const body = (
-          <>
-            <span className="text-[13px] font-semibold text-muted">{t.label}</span>
-            <span className="flex items-baseline gap-2.5">
-              <span className="text-[28px] font-heading font-extrabold leading-tight text-ink">{t.value}</span>
-              <span className="text-[13px] text-muted">{t.note}</span>
-            </span>
-          </>
-        );
-        const cls = "enter-up flex flex-col gap-1 rounded-card border border-hairline bg-surface px-5 py-4 shadow-card";
-        return t.href?.startsWith("/") ? (
-          <Link key={t.label} to={t.href} className={cn(cls, "hover:border-strongline")}>{body}</Link>
-        ) : t.href ? (
-          <a key={t.label} href={t.href} className={cn(cls, "hover:border-strongline")}>{body}</a>
-        ) : (
-          <div key={t.label} className={cls}>{body}</div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Stat tiles from code forms (form.json "home"), each opening its form. */
-function AppTiles({ tiles, className }: { tiles: HomeAppTile[]; className?: string }) {
-  if (!tiles.length) return null;
-  return (
-    <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-3 xl:gap-4", className)}>
-      {tiles.map((t) => {
-        const Icon = formIcon(t.icon ?? "clipboard");
-        return (
-          <Link key={t.id} to={t.href} className="enter-up flex min-w-0 flex-col gap-1 rounded-card border border-hairline bg-surface px-4 py-3.5 shadow-card hover:border-strongline xl:px-5 xl:py-4">
-            <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-muted">
-              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{t.formTitle}</span>
-            </span>
-            <span className="truncate text-[13px] font-semibold text-ink">{t.label}</span>
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="text-[24px] font-heading font-extrabold leading-tight text-ink xl:text-[28px]">{t.value}</span>
-              {t.hint && <span className="truncate text-[12.5px] text-muted">{t.hint}</span>}
-            </span>
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Phone: the attention list folded into one banner that opens in place. */
-function PhoneAttention({ home }: { home?: HomeData }) {
-  const [open, setOpen] = useState(false);
-  const items = home?.attention ?? [];
-  if (!items.length) return null;
-  const warn = items.some((a) => a.tone === "warn");
-  return (
-    <section className={cn("enter-up overflow-hidden rounded-card border bg-surface", warn ? "border-status-amberDot/50" : "border-hairline")}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3.5 py-3 text-left">
-        <AttentionIcon item={items[0]} size="sm" />
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14.5px] font-bold text-ink">
-            {items.length === 1 ? "1 thing needs your attention" : `${items.length} things need your attention`}
-          </span>
-          <span className="block truncate text-[12.5px] text-muted">
-            {items[0].title}
-            {items.length > 1 ? `, and ${items.length - 1} more` : ""}
-          </span>
-        </span>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", open && "rotate-180")} aria-hidden />
-      </button>
-      {open && (
-        <ul className="border-t border-hairline">
-          {items.map((a) => (
-            <li key={a.id} className="border-b border-hairline/70 last:border-b-0">
-              <Link to={a.href} className="flex items-center gap-3 px-3.5 py-3 active:bg-rowhover">
-                <AttentionIcon item={a} size="sm" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-bold text-ink">{a.title}</span>
-                  <span className="block text-[12.5px] text-muted">{a.detail}</span>
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }
