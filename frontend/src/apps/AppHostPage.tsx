@@ -129,9 +129,9 @@ export function AppHostPage() {
           </div>
         </div>
       </div>
-      {/* Narrower than the window: a sheet on the gray canvas, full height, so its edges look meant. */}
-      <div className={cn("min-h-0 flex-1", width !== "full" && "bg-appbg")}>
-        <div className={cn("mx-auto h-full w-full", FRAME_WIDTH[width], width !== "full" && "border-x border-hairline bg-surface shadow-[0_0_24px_rgba(35,42,58,0.06)]")}>
+      {/* Narrower than the window: a sheet on a white canvas, full height, its edges marked by a hairline and a soft shadow. */}
+      <div className={cn("min-h-0 flex-1", width !== "full" && "bg-surface")}>
+        <div className={cn("mx-auto h-full w-full", FRAME_WIDTH[width], width !== "full" && "border-x border-hairline bg-surface shadow-[0_0_32px_rgba(35,42,58,0.10)]")}>
           <AppFrame
             runtime={runtime}
             slug={slug}
