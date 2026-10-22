@@ -294,9 +294,20 @@ export interface HomeAppCards {
   tiles: HomeAppTile[];
 }
 
+/** A form the person submitted lately (the "Recently used" widget). */
+export interface HomeRecentForm {
+  id: string;
+  title: string;
+  href: string;
+  lastAt: string;
+  uses: number;
+}
+
 export interface HomeData {
   attention: HomeAttentionItem[];
   activity: HomeActivityItem[];
+  /** Optional: an older server, or the welcome tour's sample, may leave it out. */
+  recentForms?: HomeRecentForm[];
   stats: {
     attention: number;
     urgent: number;
