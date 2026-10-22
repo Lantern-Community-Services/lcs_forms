@@ -7,6 +7,8 @@ import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
 import type { Actor } from "../services/audit.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
+import { currentUserById, type CurrentUser } from "../auth/middleware.js";
+import type { ResolvedGrant } from "../oauth/provider.js";
 import { formJsonSchema } from "../routes/builder.js";
 import {
   ADDRESS_PARTS, CODE_BLOCK_API, EXPRESSION_FUNCTIONS, FIELD_TYPES, NAME_PARTS, newField,
@@ -24,13 +26,17 @@ import { registerNotificationTools } from "./notifyTools.js";
 import { registerTutorialTools } from "../tutorials/mcpTools.js";
 import { registerOps } from "../ops/index.js";
 import { summarize } from "../ops/forms.js";
+import { PERSON_INSTRUCTIONS, registerPersonTools } from "../ops/person.js";
+import { resourceMetadataUrl } from "../oauth/router.js";
 
 /**
  * MCP server for building forms with an LLM — Claude Code, Claude Desktop,
  * anything that speaks MCP over Streamable HTTP.
  *
  *   URL:   <backend>/mcp
- *   Auth:  Authorization: Bearer lrk_…   (Admin → API keys, scope forms:build;
+ *   Auth:  either a person who connected Claude (OAuth sign-in, oauth/): read
+ *          only, as them — see buildPersonServer and ops/person.ts — or
+ *          Authorization: Bearer lrk_…   (Admin → API keys, scope forms:build;
  *          add entries:read / entries:write to let it read or submit entries,
  *          notifications:send to let it notify people, and the delegated
  *          scopes — roster, sites, people, calendar, settings… — to let it act
@@ -256,18 +262,9 @@ function applyOps(doc: FormDoc, ops: PatchOp[]): FormDoc {
   return next;
 }
 
-function buildServer(key: ResolvedKey): McpServer {
-  const actor: Actor = { id: null, name: `API key: ${key.name} (MCP)` };
-  const can = (scope: string) => key.scopes.includes(scope as never);
-  const need = (scope: string) => {
-    if (!can(scope)) throw new HttpError(403, `This API key lacks the ${scope} scope. An admin can add it in Admin → API keys.`);
-  };
-  const server = new McpServer(
-    { name: "lantern-forms", version: "1.0.0" },
-    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Either kind of form can have a guided tutorial that runs the first time someone opens it (get_tutorial_reference, get_tutorial, set_tutorial, tutorial_progress); offer one when you build a form for site staff. Everything you make is a draft until published. With delegated scopes the key can also run the rest of the site — residents and attendance, sites, People & roles, the calendar, settings, the audit and dev logs, entry voiding — acting as the admin who made the key and never with more than they have; call whoami to see what this key can do. Tools marked destructive need confirm: true: check with the person first." }
-  );
-
-  const tool: ToolRegistrar = <S extends z.ZodRawShape>(
+/** Registers a tool whose answer (or error) becomes MCP content. */
+function registrarFor(server: McpServer): ToolRegistrar {
+  return <S extends z.ZodRawShape>(
     name: string,
     description: string,
     shape: S,
@@ -281,6 +278,27 @@ function buildServer(key: ResolvedKey): McpServer {
         return fail(err);
       }
     }) as never);
+}
+
+/** A person's Claude connection: read only, as them (ops/person.ts). */
+function buildPersonServer(user: CurrentUser, grant: ResolvedGrant): McpServer {
+  const server = new McpServer({ name: "lantern-forms", version: "1.0.0" }, { instructions: PERSON_INSTRUCTIONS(user) });
+  registerPersonTools(registrarFor(server), user, grant);
+  return server;
+}
+
+function buildServer(key: ResolvedKey): McpServer {
+  const actor: Actor = { id: null, name: `API key: ${key.name} (MCP)` };
+  const can = (scope: string) => key.scopes.includes(scope as never);
+  const need = (scope: string) => {
+    if (!can(scope)) throw new HttpError(403, `This API key lacks the ${scope} scope. An admin can add it in Admin → API keys.`);
+  };
+  const server = new McpServer(
+    { name: "lantern-forms", version: "1.0.0" },
+    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Either kind of form can have a guided tutorial that runs the first time someone opens it (get_tutorial_reference, get_tutorial, set_tutorial, tutorial_progress); offer one when you build a form for site staff. Everything you make is a draft until published. With delegated scopes the key can also run the rest of the site — residents and attendance, sites, People & roles, the calendar, settings, the audit and dev logs, entry voiding — acting as the admin who made the key and never with more than they have; call whoami to see what this key can do. Tools marked destructive need confirm: true: check with the person first." }
+  );
+
+  const tool = registrarFor(server);
 
   server.registerResource("guide", "lcs-forms://guide", { title: "How to build a Lantern form", mimeType: "text/markdown" }, async (uri) => ({
     contents: [{ uri: uri.href, mimeType: "text/markdown", text: MCP_GUIDE() }],
@@ -418,15 +436,21 @@ function buildServer(key: ResolvedKey): McpServer {
 
 /** POST /mcp — one JSON-RPC exchange. GET/DELETE aren't used in stateless mode. */
 export async function handleMcp(req: Request, res: Response) {
-  if (!req.apiKey) {
-    res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Send an API key: Authorization: Bearer lrk_… (Admin → API keys, scope forms:build)." }, id: null });
+  // A connection's person is loaded here, not in loadUser, so its token opens nothing but this.
+  const person = req.oauthGrant ? await currentUserById(req.oauthGrant.userId) : null;
+  if (!req.apiKey && !person) {
+    // The header tells Claude where to find the sign-in (RFC 9728), which starts the connect flow.
+    res
+      .status(401)
+      .set("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl()}"`)
+      .json({ jsonrpc: "2.0", error: { code: -32001, message: "Sign in to connect Lantern Forms, or send an API key: Authorization: Bearer lrk_… (Admin → API keys, scope forms:build)." }, id: null });
     return;
   }
   if (req.method !== "POST") {
     res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "This MCP server is stateless; use POST." }, id: null });
     return;
   }
-  const server = buildServer(req.apiKey);
+  const server = req.apiKey ? buildServer(req.apiKey) : buildPersonServer(person!, req.oauthGrant!);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => {
     void transport.close();

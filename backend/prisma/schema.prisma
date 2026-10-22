@@ -705,6 +705,8 @@ model User {
   notifications     Notification[]
   notificationPrefs NotificationPref[]
   tutorials         TutorialProgress[]
+  oauthGrants       OAuthGrant[]
+  oauthCodes        OAuthCode[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -758,6 +760,66 @@ model ApiKey {
   createdById String?   @db.NVarChar(64)
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
+}
+
+// ───────────────────────── Claude (OAuth) ─────────────────────────
+//
+// The site is its own OAuth 2.1 server for MCP clients (Claude): a person
+// connects Claude by signing in and allowing it, and Claude then reads the
+// site as that person through /api/mcp. See oauth/provider.ts.
+
+/// A client that registered itself (RFC 7591 dynamic registration), e.g. Claude.
+model OAuthClient {
+  /// The client_id handed out at registration.
+  id        String       @id @db.NVarChar(64)
+  name      String       @db.NVarChar(255)
+  /// The full registration as JSON (redirect_uris, secret, auth method…).
+  info      String       @db.NVarChar(Max)
+  createdAt DateTime     @default(now())
+  codes     OAuthCode[]
+  grants    OAuthGrant[]
+}
+
+/// An authorization code: single use, ten minutes. Only a hash is stored.
+model OAuthCode {
+  hash          String      @id @db.NVarChar(64)
+  client        OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId      String      @db.NVarChar(64)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String      @db.NVarChar(64)
+  codeChallenge String      @db.NVarChar(255)
+  redirectUri   String      @db.NVarChar(Max)
+  scope         String      @db.NVarChar(255)
+  resource      String?     @db.NVarChar(Max)
+  expiresAt     DateTime
+  createdAt     DateTime    @default(now())
+
+  @@index([clientId])
+  @@index([userId])
+}
+
+/// One connection: a person allowed a client to use the site as them. Holds
+/// hashes of the current access token (an hour) and refresh token (rotated on
+/// every use, 30 days). Revoking it, or the person losing their account, ends it.
+model OAuthGrant {
+  id               String      @id @default(cuid()) @db.NVarChar(64)
+  client           OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId         String      @db.NVarChar(64)
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String      @db.NVarChar(64)
+  /// "read" for now: Claude can look, not change.
+  scope            String      @db.NVarChar(255)
+  resource         String?     @db.NVarChar(Max)
+  accessHash       String      @unique @db.NVarChar(64)
+  accessExpiresAt  DateTime
+  refreshHash      String      @unique @db.NVarChar(64)
+  refreshExpiresAt DateTime
+  lastUsedAt       DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime    @default(now())
+
+  @@index([userId])
+  @@index([clientId])
 }
 
 /// Outbound webhook: roster changes are POSTed here, HMAC-signed.

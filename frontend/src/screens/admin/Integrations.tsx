@@ -14,6 +14,7 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useApiKeys, useSites, useWebhooks } from "@/lib/queries";
+import { ClaudeConnectionsAdmin } from "@/components/ClaudeConnections";
 import { errorMessage, formatDate, relativeTime } from "@/lib/utils";
 
 function useCopy() {
@@ -159,6 +160,7 @@ export function AdminApiKeys() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ClaudeConnectionsAdmin />
       {secret && <OnceSecret label="Your new API key" value={secret} onDone={() => setSecret(null)} />}
     </Page>
   );
