@@ -75,6 +75,10 @@ export function sampleHome(roster: boolean): HomeData {
       { id: `${SAMPLE_ID}a2`, actorName: "Sam", mine: false, verb: "Sam submitted", subject: "Meal count", detail: "Sample House", at: ago(5), href: null },
       { id: `${SAMPLE_ID}a3`, actorName: "Riley", mine: false, verb: "Riley added", subject: "Jordan Example", detail: "to the roster", at: ago(26), href: null },
     ],
+    recentForms: [
+      { id: `${SAMPLE_ID}check-in`, title: SAMPLE_FORM_TITLE, href: "/forms", lastAt: ago(2), uses: 9 },
+      { id: `${SAMPLE_ID}meals`, title: "Meal count", href: "/forms", lastAt: ago(30), uses: 3 },
+    ],
     stats: { attention: roster ? 2 : 1, urgent: roster ? 1 : 0, submissionsWeek: 12, residents: roster ? 3 : null, sites: [SITE.name] },
   };
 }

@@ -264,6 +264,21 @@ h6 {
   will-change: transform, opacity;
 }
 
+/* The home dashboard's editor: widgets rock gently, like apps on an iPhone
+   being rearranged. Each widget sets --jiggle (wide ones rock less) and its
+   own negative delay, so they don't move in step. */
+@keyframes dashboard-jiggle {
+  from { transform: rotate(calc(var(--jiggle, 0.3deg) * -1)); }
+  to { transform: rotate(var(--jiggle, 0.3deg)); }
+}
+.dashboard-jiggle {
+  animation: dashboard-jiggle 0.27s ease-in-out infinite alternate;
+  transform-origin: 50% 50%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-jiggle { animation: none; }
+}
+
 /* Transactional lists use quieter motion than the dashboard widgets. */
 @keyframes page-list-item-enter {
   from { opacity: 0; transform: translateY(9px); }
