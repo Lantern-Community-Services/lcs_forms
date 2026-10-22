@@ -30,7 +30,7 @@ export interface RouteResult {
  * A thrown error (HttpError, ZodError) is rethrown to the caller unchanged.
  * Nothing here is logged: the bodies can hold resident details.
  */
-export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey: ResolvedKey }): Promise<RouteResult> {
+export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey?: ResolvedKey }): Promise<RouteResult> {
   const query = Object.fromEntries(Object.entries(call.query ?? {}).filter(([, v]) => v !== undefined && v !== "")) as Record<string, string>;
   const qs = new URLSearchParams(query).toString();
   const url = call.path + (qs ? `?${qs}` : "");
@@ -112,7 +112,7 @@ export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUs
 }
 
 /** callRoute(), treating a 4xx/5xx answer as an error with the route's own message. */
-export async function callRouteOk(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey: ResolvedKey }): Promise<unknown> {
+export async function callRouteOk(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey?: ResolvedKey }): Promise<unknown> {
   const out = await callRoute(router, call, as);
   if (out.status >= 400) {
     const b = out.body as { error?: string; details?: unknown } | null;

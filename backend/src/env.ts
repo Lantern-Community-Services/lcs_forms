@@ -107,6 +107,17 @@ export const env = {
   appBaseUrl: (process.env.APP_BASE_URL ?? "").replace(/\/$/, ""),
 
   /**
+   * Where the Claude connector (oauth/) may send people back to after they
+   * allow it: exact URLs, plus "loopback" for any http://localhost or
+   * 127.0.0.1 address (Claude Desktop, Claude Code, the MCP Inspector). A
+   * client that registers any other redirect is refused.
+   */
+  oauthRedirectUris: list(
+    process.env.OAUTH_REDIRECT_URIS,
+    "https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,loopback"
+  ),
+
+  /**
    * Mailbox form notifications are sent from (Graph sendMail, app-only). Empty
    * = email notifications are recorded on the entry but not sent. See
    * services/mailer.ts for the Entra permission it needs.

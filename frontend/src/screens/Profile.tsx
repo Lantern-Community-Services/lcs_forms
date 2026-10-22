@@ -6,6 +6,7 @@ import { resetTours } from "@/lib/tour/progress";
 import { MobileBackLink, Page, PageHeader } from "@/components/shell/AppShell";
 import { SnapshotSummary } from "@/components/shell/OfflineBar";
 import { NotificationSettings } from "@/components/NotificationSettings";
+import { ClaudeProfileCard } from "@/components/ClaudeConnections";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -189,6 +190,8 @@ export function ProfilePage() {
       </Card>
 
       <NotificationSettings delay="80ms" />
+
+      <ClaudeProfileCard delay="82ms" />
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "84ms" }}>
         <p className="kicker">Tutorials</p>

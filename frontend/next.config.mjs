@@ -45,6 +45,9 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${API_TARGET}/api/:path*` },
+      // Discovery documents for the Claude connector (backend oauth/router.ts).
+      { source: "/.well-known/oauth-authorization-server", destination: `${API_TARGET}/.well-known/oauth-authorization-server` },
+      { source: "/.well-known/oauth-protected-resource/:path*", destination: `${API_TARGET}/.well-known/oauth-protected-resource/:path*` },
     ];
   },
 };

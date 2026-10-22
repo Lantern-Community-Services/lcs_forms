@@ -27,6 +27,7 @@ import { devlogRouter } from "./routes/devlog.js";
 import { requestMetrics } from "./services/devlog.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
+import { oauthDiscoveryRouter, oauthRouter } from "./oauth/router.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false });
@@ -137,7 +138,10 @@ export function createApp() {
   app.use("/api/f", fillRouter);
   app.use("/api/apps", appsRouter);
   app.use("/api/devlog", devlogRouter);
-  // MCP server for building forms with an LLM (API key, scope forms:build).
+  // Connecting Claude: sign-in for the MCP server below (oauth/).
+  app.use("/api/oauth", authLimiter, oauthRouter);
+  app.use(oauthDiscoveryRouter);
+  // MCP server: a person's Claude connection (read only), or an API key (scope forms:build).
   app.all(["/mcp", "/api/mcp"], apiLimiter, (req, res, next) => {
     handleMcp(req, res).catch(next);
   });
