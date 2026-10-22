@@ -601,7 +601,8 @@ function EmptyDashboard({ editing, presetList, onPreset, onBuild }: { editing: b
  * The side panel of layouts and widgets to add, each widget with a live,
  * scaled-down preview. It opens with the editor and floats over the page
  * without a backdrop: the dashboard keeps its full width underneath, so what
- * you arrange is what you'll see after saving.
+ * you arrange is what you'll see after saving. On a phone or iPad it stops
+ * at the top of the dock, so its Save button isn't hidden behind the bar.
  */
 function WidgetPalette({ available, placed, ctx, presetList, current, unchanged, onAdd, onApply, onClear, onSave, onClose }: {
   available: WidgetDef[];
@@ -617,10 +618,15 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
   onClose: () => void;
 }) {
   const toAdd = available.filter((w) => !placed.has(w.id));
+  const dock = useDockHeight();
   return (
     <aside
       aria-label="Widgets"
-      className="dashboard-palette fixed inset-y-0 right-0 z-40 flex w-[380px] max-w-[calc(100vw-1rem)] flex-col border-l border-hairline bg-surface shadow-modal"
+      style={{ bottom: dock }}
+      className={cn(
+        "dashboard-palette fixed right-0 top-0 z-40 flex w-[380px] max-w-[calc(100vw-1rem)] flex-col border-l border-hairline bg-surface shadow-modal",
+        dock > 0 && "rounded-bl-card border-b"
+      )}
     >
       <div className="flex items-center gap-2 border-b border-hairline px-4 py-3 pt-safe-top">
         <h2 className="flex-1 text-[17px] font-heading font-extrabold text-ink">Edit dashboard</h2>
@@ -662,7 +668,8 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
           </ul>
         )}
       </div>
-      <div className="flex items-center gap-2 border-t border-hairline px-4 py-3 pb-safe-bottom">
+      {/* Above the dock, the dock has already cleared the home indicator. */}
+      <div className={cn("flex items-center gap-2 border-t border-hairline px-4 py-3", dock === 0 && "pb-safe-bottom")}>
         <Button variant="ghost" size="sm" className="text-status-redText" onClick={onClear} disabled={current.length === 0}>
           Clear all
         </Button>
@@ -686,4 +693,35 @@ function PresetSketch({ items, big }: { items: LayoutItem[]; big: boolean }) {
       ))}
     </span>
   );
+}
+
+/**
+ * How tall the phone / iPad dock is (AppShell's bottom bar), or 0 where there's
+ * none (a computer, or while the on-screen keyboard has hidden it). It's a
+ * flex sibling of the page, so a panel fixed to the screen has to stop above it.
+ */
+function useDockHeight() {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    let dock: HTMLElement | null = null;
+    const read = () => setHeight(dock?.offsetHeight ?? 0);
+    const ro = new ResizeObserver(read);
+    const watch = () => {
+      const now = document.querySelector<HTMLElement>('nav[data-tour="dock"]');
+      if (now === dock) return;
+      ro.disconnect();
+      dock = now;
+      if (dock) ro.observe(dock);
+      read();
+    };
+    watch();
+    // The dock comes and goes with the keyboard: notice when it's put back.
+    const mo = new MutationObserver(watch);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, []);
+  return height;
 }
