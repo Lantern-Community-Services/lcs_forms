@@ -360,7 +360,10 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   `dropped`. A monthly report is a link to the Reports page, where the reader exports it.
 - **Notifications:** `ctx.notify.send({ to?, roles?, sites?, title, body?, link? })` tells staff something
   under the bell, and emails it to whoever wants that kind by email (see Notifications). Prefer it to
-  `ctx.email` for anything meant for staff. In the draft only the person previewing gets it.
+  `ctx.email` for anything meant for staff. In the draft only the person previewing gets it. When
+  *who* is told is the organisation's choice, fire a routing event instead:
+  `ctx.notify.route("review.requested", { entry, title, link, data, people })`, and let Admin →
+  Notification routing decide (see Notification routing).
 - **Phones, iPads, desktops:** inside a page, Tailwind's `sm:` `md:` `lg:` `xl:` and `portrait:` /
   `landscape:` follow the device's window (not the frame), so markup from the app's own screens lays
   out the same; `phone:` `tablet:` `desktop:` variants and `useDevice()` are there for device-specific
@@ -551,6 +554,30 @@ leaves the app, so titles must not carry resident details or answers (a builder 
 answer tags). A worker in the API process sends them (`startNotificationMail`), claiming each row first
 so two servers never send the same one, retrying a failed send up to three times. Without `MAIL_FROM`,
 notifications still appear in the app.
+
+### Notification routing
+
+Who each form tells, and when, kept outside the form (`backend/src/services/routing.ts`), so changing a
+list never needs a new version of the form. Edit it in **Admin → Notification routing**
+(`/admin/routing`, Admins) or through the MCP: `get_routing`, `save_route`, `set_routing`,
+`remove_route`, `reset_routing`, `preview_routing`, `routing_log`, `reroute_entry`.
+
+- **Events.** Every form has *A new entry* (`entry.created`), routed when an entry is saved. A code form
+  declares its own in form.json `"routing": { "events": [...] }`, each with the values a route can test
+  and the people it names, and fires them from server code with `ctx.notify.route(event, { entry, title,
+  link, data, people })`. The code says what happened; the routes say who hears.
+- **Routes.** Each answers one event, optionally only at some sites and only when the event's values
+  match (the builder's condition rules), and tells: named people (anyone; per-person "only for these
+  sites"), everyone with a role (at the event's site or everywhere), a person the event names (e.g. the
+  supervisor chosen on the form), or whoever filed it. A form starts with form.json `routing.defaults`
+  until someone saves its routing; "Back to the form's defaults" forgets the saved copy.
+- **Delivery.** Account holders get a `forms.message` notification and, unless the route says to follow
+  their own settings, an email whatever they've chosen. Addresses without an account get a link-only
+  email, one each. Nobody is told twice about one event. In a code form's draft only the person
+  previewing is told ("Preview: …"). Every send goes to the routing log (the page's *Recently sent*,
+  the last 500), and a basic form's entry gets a note saying who was told.
+- **Storage.** FormRecord's private `__routing` (the routes) and `__routing_log` collections: no table,
+  no migration.
 
 ## Tutorials
 

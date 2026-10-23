@@ -39,6 +39,8 @@ export function registerNotificationTools(tool: ToolRegistrar, need: (scope: str
       ],
       basicForm:
         'A rule in settings.notifications: { id, name, enabled: true, kind: "notify", roles?: ["site_manager"], to?: "{user:email}, someone@lanterncommunity.org", siteOnly?: true, subject: "New request at {site:name}", body?: "Text with any merge tag, answers included ({field_id}, {all_fields})", link?: "/f/<slug>/entries/{entry:id}", conditional? }. subject takes form/entry/site/user/date tags only (it may be emailed). link defaults to the entry. Type is forms.entry.',
+      routing:
+        "When who's told is an organisational choice (Main Office, a site's leadership, the supervisor someone picked), use the form's notification routing instead of hard-coding people: get_routing / save_route / set_routing / preview_routing / routing_log (Admin → Notification routing in the app). Every form has the event entry.created; code forms declare more in form.json \"routing\" and fire them with ctx.notify.route(event, { entry, title, link, data, people }).",
       codeForm:
         'Server code: ctx.notify.send({ to?: ["person@lanterncommunity.org", entry.createdById], roles?: ["site_manager"], sites?: [entry.site], title, body?, link?: `${ctx.url}/request?id=${entry.id}`, type?: "forms.message" | "forms.entry" }) → { sent, recipients, emailed, muted, unknown?, preview? }. In the draft only the person previewing is notified (title starts "Preview:"). At most 200 people a call and 1,000 an hour per form.',
     }),

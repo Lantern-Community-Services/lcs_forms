@@ -45,6 +45,8 @@ const AdminSites = lazyScreen(() => import("./screens/admin/Sites"), "AdminSites
 const AdminImport = lazyScreen(() => import("./screens/admin/Import"), "AdminImport");
 const AdminPeople = lazyScreen(() => import("./screens/admin/People"), "AdminPeople");
 const AdminSettings = lazyScreen(() => import("./screens/admin/Settings"), "AdminSettings");
+const AdminRouting = lazyScreen(() => import("./screens/admin/Routing"), "AdminRouting");
+const AdminRoutingForm = lazyScreen(() => import("./screens/admin/Routing"), "AdminRoutingForm");
 const AdminSignInAccess = lazyScreen(() => import("./screens/admin/Settings"), "AdminSignInAccess");
 const AdminApiKeys = lazyScreen(() => import("./screens/admin/Integrations"), "AdminApiKeys");
 const AdminWebhooks = lazyScreen(() => import("./screens/admin/Integrations"), "AdminWebhooks");
@@ -245,6 +247,8 @@ export function App() {
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
               <Route path="/admin/builder" element={<AdminBuilderList />} />
               <Route path="/admin/ai" element={<AdminAiBuilder />} />
+              <Route path="/admin/routing" element={<AdminRouting />} />
+              <Route path="/admin/routing/:id" element={<AdminRoutingForm />} />
             </Route>
             <Route element={<RequirePermission anyOf={["apps.develop", "forms.manage"]} />}>
               <Route path="/admin/apps" element={<CodeFormsList />} />
