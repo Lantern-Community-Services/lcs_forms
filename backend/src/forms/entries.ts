@@ -9,6 +9,7 @@ import { appBaseUrl } from "../env.js";
 import { displayName, recordActivity } from "../services/roster.js";
 import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
 import { notify } from "../services/notifications.js";
+import { entryInput, outcomeNote, routeQuietly } from "../services/routing.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
@@ -346,6 +347,10 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
     }
     await prisma.formEntryNote.create({ data: { entryId: entry.id, kind: "system", authorName: "System", body: note.slice(0, 2000) } });
   }
+
+  // Then the form's notification routing (Admin → Notification routing), kept outside the form itself.
+  const routed = outcomeNote(await routeQuietly(form, await entryInput(form, entry), { id: user?.userId ?? null, name: entry.createdByName }));
+  if (routed) await prisma.formEntryNote.create({ data: { entryId: entry.id, kind: "system", authorName: "System", body: routed } });
 }
 
 // ── Files ────────────────────────────────────────────────────────────────
