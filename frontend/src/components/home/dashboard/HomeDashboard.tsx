@@ -122,13 +122,16 @@ export function HomeDashboard({ heading, ctx }: { heading: React.ReactNode; ctx:
         <div className="flex flex-wrap items-center gap-2">
           {editing ? (
             <>
+              {/* With the panel open these are in its footer instead (it covers this corner). */}
               {!paletteOpen && (
-                <Button variant="secondary" onClick={() => setPaletteOpen(true)}>
-                  <Plus className="h-4 w-4" /> Widgets
-                </Button>
+                <>
+                  <Button variant="secondary" onClick={() => setPaletteOpen(true)}>
+                    <Plus className="h-4 w-4" /> Widgets and layouts
+                  </Button>
+                  <Button variant="secondary" onClick={cancel}>Cancel</Button>
+                  <Button onClick={save} disabled={unchanged}>Save</Button>
+                </>
               )}
-              <Button variant="secondary" onClick={cancel}>Cancel</Button>
-              <Button onClick={save} disabled={unchanged}>Save dashboard</Button>
             </>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => start()} data-tour="home-edit" className="text-muted">
@@ -221,6 +224,7 @@ export function HomeDashboard({ heading, ctx }: { heading: React.ReactNode; ctx:
           onApply={(p) => animated(p.items)}
           onClear={() => animated([])}
           onSave={save}
+          onCancel={cancel}
           onClose={() => setPaletteOpen(false)}
         />
       )}
@@ -599,7 +603,7 @@ function EmptyDashboard({ editing, presetList, onPreset, onBuild }: { editing: b
  * you arrange is what you'll see after saving. On a phone or iPad it stops
  * at the top of the dock, so its Save button isn't hidden behind the bar.
  */
-function WidgetPalette({ available, placed, ctx, presetList, current, unchanged, onAdd, onApply, onClear, onSave, onClose }: {
+function WidgetPalette({ available, placed, ctx, presetList, current, unchanged, onAdd, onApply, onClear, onSave, onCancel, onClose }: {
   available: WidgetDef[];
   placed: Set<WidgetId>;
   ctx: WidgetCtx;
@@ -610,6 +614,9 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
   onApply: (p: Preset) => void;
   onClear: () => void;
   onSave: () => void;
+  /** Leaves the editor, throwing the changes away. */
+  onCancel: () => void;
+  /** Hides the panel only: the page stays in the editor, so the whole dashboard is in view. */
   onClose: () => void;
 }) {
   const toAdd = available.filter((w) => !placed.has(w.id));
@@ -624,8 +631,11 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
       )}
     >
       <div className="flex items-center gap-2 border-b border-hairline px-4 py-3 pt-safe-top">
-        <h2 className="flex-1 text-[17px] font-heading font-extrabold text-ink">Edit dashboard</h2>
-        <button type="button" onClick={onClose} aria-label="Close the widget panel" title="Close the panel (your changes stay)" className="flex h-9 w-9 items-center justify-center rounded-input text-muted hover:bg-subtle hover:text-ink">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[17px] font-heading font-extrabold text-ink">Customize Home</h2>
+          <p className="text-[12px] leading-snug text-muted">Drag widgets on the page to move them. Hide this panel to see the whole page.</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Hide the panel" title="Hide the panel (your changes stay)" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input text-muted hover:bg-subtle hover:text-ink">
           <X className="h-[18px] w-[18px]" />
         </button>
       </div>
@@ -669,9 +679,10 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
           Clear all
         </Button>
         <span className="flex-1" />
-        {/* Here too, since on an iPad the panel covers the page's own Save. */}
+        {/* Cancel and Save live here: the panel covers the page's own buttons. */}
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
         <Button onClick={onSave} disabled={unchanged} data-tour="home-save">
-          Save dashboard
+          Save
         </Button>
       </div>
     </aside>
