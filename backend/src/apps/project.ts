@@ -57,7 +57,8 @@ export const manifestSchema = z.object({
          * How wide the page gets on a desktop, centered: "narrow" (760px, a single column of fields),
          * "tablet" (1024px, default — an iPad's width, so iPad-designed pages look as they do there),
          * "wide" (1240px, like the app's own screens) or "full" (the whole window, for big dashboards).
-         * Phones and iPads always get their whole screen.
+         * Phones and iPads always get their whole screen. The form's title and tabs above don't follow
+         * this: they keep one width for the whole form (its widest page's), so they never move between tabs.
          */
         width: z.enum(["narrow", "tablet", "wide", "full"]).optional(),
       }).strict()
