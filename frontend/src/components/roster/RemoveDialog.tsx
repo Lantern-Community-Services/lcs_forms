@@ -12,7 +12,7 @@ import type { Tenant } from "@/lib/types";
  * downstream systems act on), a note is optional, and nothing is deleted:
  * removal archives, and Undo / Restore bring the person straight back.
  *
- * Bottom sheet on a phone so the Remove button sits under the thumb; a dialog
+ * A popup (ResponsiveDialog) on a phone and a dialog
  * on desktop.
  */
 export function RemoveDialog({

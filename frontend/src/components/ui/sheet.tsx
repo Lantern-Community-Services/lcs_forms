@@ -1,15 +1,18 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Bottom sheet — the phone form of a side rail or a wide dialog.
+ * A popup with a scrolling body and a footer that stays put: a list to pick
+ * from (sites, categories), a search to choose someone, a short form.
  *
- * Same Radix dialog underneath as `<Dialog>`, so focus trapping, Escape and the
- * scroll lock behave identically; only the geometry differs. It rises from the
- * bottom edge, caps at 88% of the viewport, and reserves the site-wide bottom
- * inset (`pb-safe-bottom`, the same strip the tab bar leaves) under whatever it
- * ends with — footer or body — so nothing is ever under the gesture bar.
+ * It used to be a bottom sheet rising from the screen's edge on every device,
+ * which read badly on a desktop (a strip pinned to the bottom of the page, or
+ * of a code form's frame). Now it's a centred popup everywhere, like
+ * `<Dialog>`, but it caps its height and scrolls its body, so a long list
+ * still fits on a phone. Same Radix dialog underneath, so focus trapping,
+ * Escape and the scroll lock behave identically.
  */
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -24,44 +27,43 @@ export const SheetContent = forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "sheet-panel fixed inset-x-0 bottom-0 z-50 flex max-h-[88vh] flex-col pb-safe-bottom",
-        "rounded-t-[16px] bg-surface shadow-modal focus:outline-none",
+        "sheet-panel fixed left-1/2 top-1/2 z-50 flex w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col",
+        "max-h-[min(88vh,calc(100dvh-2rem))] rounded-card bg-surface shadow-modal focus:outline-none",
         className
       )}
       {...props}
     >
-      {/* Grab handle. Presentational — the sheet is dismissed by the overlay,
-          Escape or its own Cancel button, not by dragging. */}
-      <div className="flex flex-none justify-center pt-[9px]" aria-hidden="true">
-        <span className="h-[5px] w-11 rounded-pill bg-strongline" />
-      </div>
       {children}
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>
 ));
 SheetContent.displayName = "SheetContent";
 
+/** The title, and a close button unless `action` brings its own controls. */
 export function SheetHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="flex flex-none items-center gap-2 border-b border-hairline px-4 pb-3 pt-2">
-      <DialogPrimitive.Title className="text-[19px] font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
-      <span className="flex-1" />
-      {action}
+    <div className="flex flex-none items-center gap-2 border-b border-hairline py-3 pl-5 pr-3">
+      <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-[19px] font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
+      {action ?? (
+        <DialogPrimitive.Close
+          aria-label="Close"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted hover:bg-rowhover focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      )}
     </div>
   );
 }
 
 export function SheetBody({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("min-h-0 flex-1 overflow-y-auto scroll-thin px-4 py-3.5", className)}>{children}</div>;
+  return <div className={cn("min-h-0 flex-1 overflow-y-auto scroll-thin px-5 py-4", className)}>{children}</div>;
 }
 
-/**
- * Sticky footer. No bottom padding of its own: the sheet already reserves the
- * site-wide bottom inset beneath it.
- */
+/** Footer, kept in view under the scrolling body. */
 export function SheetFooter({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex flex-none items-center gap-2.5 border-t border-hairline px-4 pt-3", className)}>
+    <div className={cn("flex flex-none items-center gap-2.5 border-t border-hairline px-5 py-3", className)}>
       {children}
     </div>
   );

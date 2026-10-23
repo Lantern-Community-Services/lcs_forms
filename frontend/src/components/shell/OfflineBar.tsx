@@ -230,7 +230,7 @@ export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVi
       )}
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent aria-describedby={undefined} className="md:mx-auto md:max-w-[560px]">
+        <SheetContent aria-describedby={undefined}>
           <SheetHeader
             title="Saved on this device"
             action={
