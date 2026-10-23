@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { lintTutorial } from "../forms/engine.js";
 import { tutorialSchema } from "../tutorials/schema.js";
+import { manifestRoutingSchema } from "../forms/routingSchema.js";
 
 /**
  * A code form's project: a map of file paths to source text, with form.json as
@@ -115,6 +116,13 @@ export const manifestSchema = z.object({
     .optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
   email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
+  /**
+   * Notification routing: the events server code routes with ctx.notify.route (each with the values a
+   * route can test and the people it names), and the routes the form starts with. Admins change who's
+   * told in Admin → Notification routing (or the MCP) without touching the code. Every form also has
+   * "entry.created".
+   */
+  routing: manifestRoutingSchema.optional(),
   /**
    * The form's own calendar events. ownEvents: server code may add, change and remove events it
    * owns (ctx.calendar.form) for any site, without the person's calendar rights, and mark them

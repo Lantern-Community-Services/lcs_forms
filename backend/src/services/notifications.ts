@@ -123,6 +123,12 @@ export interface NotifyInput {
   maxRecipients?: number;
   /** Only people at this site (or at every site): a site-pinned API key. */
   onlySiteId?: string | null;
+  /**
+   * Email everyone at once, whatever they chose for this kind (a notification
+   * routing list someone was deliberately put on). The app copy still follows
+   * their choice.
+   */
+  forceEmail?: boolean;
 }
 
 export interface NotifyResult {
@@ -244,12 +250,12 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
   for (const p of people) {
     const c = choose(input.type, prefsBy.get(p.id) ?? new Map(), input.formId);
     const mode = (EMAIL_MODES as readonly string[]).includes(p.notifyEmailMode) ? (p.notifyEmailMode as EmailMode) : "instant";
-    const wantsEmail = c.email && mode !== "off";
+    const wantsEmail = input.forceEmail || (c.email && mode !== "off");
     if (!c.inApp && !wantsEmail) {
       muted++;
       continue;
     }
-    const emailStatus = !wantsEmail ? "none" : !mail ? "skipped" : mode === "daily" ? "digest" : "pending";
+    const emailStatus = !wantsEmail ? "none" : !mail ? "skipped" : mode === "daily" && !input.forceEmail ? "digest" : "pending";
     if (emailStatus === "pending" || emailStatus === "digest") emailed++;
     rows.push({
       userId: p.id,

@@ -14,7 +14,8 @@ import * as time from "./time.js";
 import { appBaseUrl } from "../env.js";
 import { attachFiles, filesToAttach } from "./files.js";
 import { queueEmail } from "./email.js";
-import { sendNotification } from "./notify.js";
+import { routeFromApp, sendNotification } from "./notify.js";
+import { entryInput, routeQuietly } from "../services/routing.js";
 import type { Request } from "express";
 import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scopeSchema, setEventPending, updateEvent, type FormOwner } from "../services/calendar.js";
 import { noteCalendarChange } from "../services/outlookSync.js";
@@ -397,6 +398,8 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
       if (!r.ok) console.error(`[apps] ${app.form.slug} afterCreate failed:`, r.error);
     });
   }
+  // The form's "entry.created" routes (Admin → Notification routing). The draft routes nothing on its own.
+  if (!app.draft) void entryInput(app.form, entry).then((i) => routeQuietly(app.form, i, { id: user?.userId ?? null, name: entry.createdByName }, app.manifest));
   return { status: "saved", entry: out, logs };
 }
 
@@ -829,6 +832,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         return queueEmail(app, user, args ?? {});
       case "notify.send":
         return sendNotification(app, user, args ?? {});
+      case "notify.route":
+        return routeFromApp(app, user, String(args?.event ?? ""), args?.message ?? {});
       case "calendar.categories":
         return prisma.calendarCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, colorSlot: true } });
       case "calendar.create": {

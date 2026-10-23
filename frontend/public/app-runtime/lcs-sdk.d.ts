@@ -779,6 +779,46 @@ declare module "@lcs/server" {
         link?: string;
         type?: "forms.message" | "forms.entry";
       }): { sent: number; recipients: number; emailed: number; muted: number; unknown?: string[]; preview?: boolean; reason?: string };
+      /**
+       * Fire one of this form's routing events and let its routes decide who's told. Declare events in form.json
+       * "routing": { "events": [{ id, label, fields?, people? }], "defaults"?: [routes] }. Admins change the routes
+       * (who, at which sites, for which values) in Admin → Notification routing or through the MCP, with no change
+       * to the code. Prefer this to notify.send whenever who's told is an organisational choice.
+       *
+       * `entry` fills in the site, the person who filed it ({ kind: "submitter" }) and the entry id, and its data is
+       * what routes test unless you pass `data`. `people` names the event's people by field id (an address, a user
+       * id, or a list), for routes that tell { kind: "field", field }. `title` is the default subject (no resident
+       * details); a route may set its own. Account holders are told in the app and emailed (link-only); other
+       * addresses get a link-only email. Nobody is told twice for one call.
+       *
+       * Every form also has "entry.created", routed automatically when an entry is saved — don't route it yourself.
+       * In the draft only the person previewing is told ("Preview: …"); `reason` says whom the published form would tell.
+       *
+       * @example ctx.notify.route("review.requested", { entry, title: `Wellness assessment to sign at ${entry.site?.name}`,
+       *   link: `${ctx.url}/review?id=${entry.id}`, data: { status: entry.data.status }, people: { supervisor: entry.data.supervisorId } });
+       */
+      route(
+        event: string,
+        message: {
+          title: string;
+          body?: string;
+          link?: string;
+          /** Site code or id; default the entry's. */
+          site?: string;
+          entry?: ServerEntry<any>;
+          data?: Record<string, unknown>;
+          people?: Record<string, string | string[] | null | undefined>;
+          /** User id of whoever the route's "the person who filed it" means; default the entry's author. */
+          submitter?: string;
+        }
+      ): {
+        event: string;
+        routes: { routeId: string; routeName: string; people: { id: string; name: string; email: string }[]; emails: string[]; notes: string[] }[];
+        told: number;
+        emailed: number;
+        preview?: boolean;
+        reason?: string;
+      };
     };
     /** The site calendar, as the person using the form sees it. */
     calendar: {

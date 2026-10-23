@@ -23,6 +23,7 @@ import { backupStatus, runFormBackup } from "../services/formBackup.js";
 import { registerCodeTools } from "../apps/mcpTools.js";
 import { registerCatalogTools } from "./catalogTools.js";
 import { registerNotificationTools } from "./notifyTools.js";
+import { registerRoutingTools } from "./routingTools.js";
 import { registerTutorialTools } from "../tutorials/mcpTools.js";
 import { registerOps } from "../ops/index.js";
 import { summarize } from "../ops/forms.js";
@@ -295,7 +296,7 @@ function buildServer(key: ResolvedKey): McpServer {
   };
   const server = new McpServer(
     { name: "lantern-forms", version: "1.0.0" },
-    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Either kind of form can have a guided tutorial that runs the first time someone opens it (get_tutorial_reference, get_tutorial, set_tutorial, tutorial_progress); offer one when you build a form for site staff. Everything you make is a draft until published. With delegated scopes the key can also run the rest of the site — residents and attendance, sites, People & roles, the calendar, settings, the audit and dev logs, entry voiding — acting as the admin who made the key and never with more than they have; call whoami to see what this key can do. Tools marked destructive need confirm: true: check with the person first." }
+    { instructions: "Build and manage forms on the Lantern Forms site. Two kinds: basic forms (one JSON document — call get_reference) and code forms (a project of React pages + server code + form.json, for custom screens, rules, offline use and dashboards — call get_code_reference). The Forms catalog (the home screen and sidebar) is list_catalog / save_catalog_card: add_to_catalog for a form built here, save_catalog_card for a link to a form on another site. Either kind of form can have a guided tutorial that runs the first time someone opens it (get_tutorial_reference, get_tutorial, set_tutorial, tutorial_progress); offer one when you build a form for site staff. Who is told about a form's entries and events (emails and in-app notifications) is its notification routing: get_routing, save_route / set_routing, preview_routing, routing_log — change it there rather than in the form. Everything you make is a draft until published. With delegated scopes the key can also run the rest of the site — residents and attendance, sites, People & roles, the calendar, settings, the audit and dev logs, entry voiding — acting as the admin who made the key and never with more than they have; call whoami to see what this key can do. Tools marked destructive need confirm: true: check with the person first." }
   );
 
   const tool = registrarFor(server);
@@ -430,6 +431,7 @@ function buildServer(key: ResolvedKey): McpServer {
   registerCatalogTools(tool, need, actor);
   registerTutorialTools(tool, need, actor);
   registerNotificationTools(tool, need, key);
+  registerRoutingTools(tool, need, actor);
   registerOps(tool, key);
   return server;
 }

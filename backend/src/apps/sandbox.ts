@@ -150,6 +150,7 @@ globalThis.__makeCtx = (base) => ({
   },
   notify: {
     send: (n) => __h("notify.send", n || {}),
+    route: (event, m) => __h("notify.route", { event, message: m || {} }),
   },
   people: (ids) => __h("people", { ids: Array.isArray(ids) ? ids : [] }),
   calendar: {

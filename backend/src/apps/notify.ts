@@ -1,5 +1,7 @@
 import { audit } from "../services/audit.js";
 import { notify, sitePath, type NotificationTypeKey } from "../services/notifications.js";
+import { routeEvent } from "../services/routing.js";
+import { prisma } from "../prisma.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import type { LoadedApp } from "./runtime.js";
 
@@ -64,4 +66,44 @@ export async function sendNotification(
     void audit({ actor, action: "apps.notified", summary: `“${app.manifest.title}” notified ${out.sent} ${out.sent === 1 ? "person" : "people"}: ${title.slice(0, 120)}` }).catch(() => undefined);
   }
   return out;
+}
+
+/**
+ * ctx.notify.route for server code: fire one of the form's routing events
+ * (form.json "routing": { "events": [...] }) and let the form's routes — which
+ * admins edit in Admin → Notification routing — decide who's told. The code
+ * says what happened; it never names the people.
+ *
+ * message: { title, body?, link?, site?, entry?, data?, people? }. `entry` (an
+ * entry as hooks and actions see it) fills in site, submitter and entry id, and
+ * its data is what routes test unless `data` is given. `people` names the
+ * event's people by field, e.g. { supervisor: entry.data.supervisorEmail }.
+ *
+ * In the draft only the person previewing is told ("Preview: …"), and the
+ * result says whom the published form would tell.
+ */
+export async function routeFromApp(app: LoadedApp, user: CurrentUser | null, event: string, raw: unknown) {
+  const m = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const entry = (m.entry && typeof m.entry === "object" ? m.entry : null) as { id?: string; siteId?: string | null; createdById?: string | null; data?: Record<string, unknown> } | null;
+  const siteRef = typeof m.site === "string" && m.site.trim() ? m.site.trim() : entry?.siteId ?? null;
+  const site = siteRef ? await prisma.site.findFirst({ where: { OR: [{ id: siteRef }, { code: siteRef }] }, select: { id: true, code: true, name: true } }) : null;
+  if (siteRef && !site) throw new Error(`notify.route: no site "${siteRef}".`);
+  const data = (m.data && typeof m.data === "object" ? m.data : entry?.data ?? {}) as Record<string, unknown>;
+  const people = (m.people && typeof m.people === "object" ? m.people : {}) as Record<string, unknown>;
+  const actor = user ? { id: user.userId, name: user.name } : { id: null, name: `Code form “${app.manifest.title}”` };
+  return routeEvent(
+    app.form,
+    {
+      event,
+      title: typeof m.title === "string" ? m.title : "",
+      body: typeof m.body === "string" ? m.body : null,
+      link: typeof m.link === "string" ? m.link : null,
+      site,
+      data,
+      people,
+      submitterId: typeof m.submitter === "string" ? m.submitter : entry?.createdById ?? null,
+      entryId: entry?.id ?? null,
+    },
+    { actor, manifest: app.manifest, preview: app.draft, previewUserId: user?.userId ?? null }
+  );
 }
