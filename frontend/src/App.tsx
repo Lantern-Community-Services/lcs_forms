@@ -46,6 +46,7 @@ const ConfigLayout = lazyScreen(() => import("./components/shell/ConfigLayout"),
 const AdminSites = lazyScreen(() => import("./screens/admin/Sites"), "AdminSites");
 const AdminImport = lazyScreen(() => import("./screens/admin/Import"), "AdminImport");
 const AdminPeople = lazyScreen(() => import("./screens/admin/People"), "AdminPeople");
+const AdminGroups = lazyScreen(() => import("./screens/admin/Groups"), "AdminGroups");
 const AdminSettings = lazyScreen(() => import("./screens/admin/Settings"), "AdminSettings");
 const AdminRouting = lazyScreen(() => import("./screens/admin/Routing"), "AdminRouting");
 const AdminRoutingForm = lazyScreen(() => import("./screens/admin/Routing"), "AdminRoutingForm");
@@ -268,6 +269,9 @@ export function App() {
             </Route>
             <Route element={<RequirePermission anyOf={["settings.manage"]} />}>
               <Route path="/admin/sign-in" element={<AdminSignInAccess />} />
+            </Route>
+            <Route element={<RequirePermission anyOf={["users.manage"]} />}>
+              <Route path="/admin/groups" element={<AdminGroups />} />
             </Route>
             <Route element={<RequirePermission anyOf={["settings.manage", "sites.manageRules"]} />}>
               <Route path="/admin/settings" element={<AdminSettings />} />

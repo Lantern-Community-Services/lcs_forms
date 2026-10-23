@@ -1,22 +1,23 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ExternalLink, EyeOff, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, EyeOff, Lock, Pencil, Plus, Trash2, UsersRound, X } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input, SearchInput, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
+import { useStaffGroups } from "@/lib/groups";
 import { IconPicker } from "@/components/IconPicker";
 import { formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
-import { formsApi, useBuiltFormOptions, useForms, useRoles, type BuiltFormOption } from "@/lib/queries";
+import { formsApi, useBuiltFormOptions, useForms, useRoles, useUsers, type BuiltFormOption } from "@/lib/queries";
 import type { FormCategory, FormLink } from "@/lib/types";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -33,8 +34,11 @@ type FormDraft = {
   /** Null = the category's icon. */
   icon: FormIconKey | null;
   active: boolean;
-  /** Role keys that may see it; empty = everyone. */
+  /** Role keys that may see it; empty = every role. */
   roles: string[];
+  /** Who it's open to: staff groups and named people. Both empty = everyone. */
+  groupIds: string[];
+  userIds: string[];
 };
 type CategoryDraft = { id?: string; name: string; icon: FormIconKey; description: string };
 type Pending = { kind: "form"; form: FormLink } | { kind: "category"; category: FormCategory };
@@ -47,6 +51,13 @@ export function AdminFormsCatalog() {
   const { data, isLoading } = useForms(true);
   const { data: allRoles } = useRoles();
   const { data: built } = useBuiltFormOptions();
+  const { data: groups } = useStaffGroups();
+  const { data: people } = useUsers();
+  const groupName = (id: string) => groups?.find((g) => g.id === id)?.name ?? "A deleted group";
+  const audienceLabel = (a: FormLink["audience"]) =>
+    a && (a.groupIds.length || a.userIds.length)
+      ? [...a.groupIds.map(groupName), ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : [])].join(", ")
+      : null;
   const builtByUrl = new Map((built ?? []).map((b) => [b.url, b]));
   // Admins see every form regardless, so they aren't offered as a choice.
   const limitable = (allRoles ?? []).filter((r) => r.key !== "admin");
@@ -101,10 +112,11 @@ export function AdminFormsCatalog() {
       active: form.active,
       roles: form.roles,
     };
-    const ok = await run(
-      () => (form.id ? formsApi.update(form.id, body) : formsApi.create(body)),
-      form.id ? "Form saved." : "Form added."
-    );
+    const ok = await run(async () => {
+      const saved = (await (form.id ? formsApi.update(form.id, body) : formsApi.create(body))) as { id: string };
+      // Who it's open to is saved on its own (on the form it opens, when it's built here).
+      await api.put(`/forms/${form.id ?? saved.id}/audience`, { groupIds: form.groupIds, userIds: form.userIds });
+    }, form.id ? "Form saved." : "Form added.");
     if (ok) setForm(null);
   }
 
@@ -128,7 +140,7 @@ export function AdminFormsCatalog() {
   }
 
   const newForm = (categoryId: string) =>
-    setForm({ source: "link", categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [] });
+    setForm({ source: "link", categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [], groupIds: [], userIds: [] });
 
   /** Fill a card from a built form: its address, title, icon, blurb and who can open it. */
   function pickBuilt(f: FormDraft, b: BuiltFormOption): FormDraft {
@@ -214,6 +226,11 @@ export function AdminFormsCatalog() {
                           isInternalForm(f.url) && <Tag tone="accent">Built in</Tag>
                         )}
                         {builtByUrl.has(f.url) && !builtByUrl.get(f.url)!.live && <Tag tone="amber" title="Staff can't open it until it's published">Not published</Tag>}
+                        {audienceLabel(f.audience) && (
+                          <Tag tone="accent" title={`Only ${audienceLabel(f.audience)} (and Admins) can see this form`}>
+                            <UsersRound className="h-3 w-3" /> {audienceLabel(f.audience)}
+                          </Tag>
+                        )}
                         {f.roles.length > 0 && (
                           <Tag tone="neutral" title={`Only ${roleNames(f.roles)} (and Admins) can see this form`}>
                             <Lock className="h-3 w-3" /> {roleNames(f.roles)}
@@ -249,6 +266,8 @@ export function AdminFormsCatalog() {
                           icon: f.icon || null,
                           active: f.active,
                           roles: f.roles,
+                          groupIds: f.audience?.groupIds ?? [],
+                          userIds: f.audience?.userIds ?? [],
                         })
                       }
                     >
@@ -343,9 +362,27 @@ export function AdminFormsCatalog() {
                 </Field>
                 <Field
                   label="Who can see it"
+                  hint={form.groupIds.length || form.userIds.length
+                    ? "Only these groups and people see the form, open it or read its entries. Admins always see every form."
+                    : "Everyone. Pick groups (People & roles → Groups) or people to limit it to just them; Admins always see every form."}
+                >
+                  {groups?.length ? (
+                    <CheckboxList
+                      options={groups.map((g) => ({ value: g.id, label: g.name }))}
+                      value={form.groupIds}
+                      onChange={(groupIds) => setForm({ ...form, groupIds })}
+                      className="max-h-[200px] overflow-y-auto"
+                    />
+                  ) : (
+                    <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+                  )}
+                  <PeoplePicker people={people ?? []} value={form.userIds} onChange={(userIds) => setForm({ ...form, userIds })} />
+                </Field>
+                <Field
+                  label="Roles"
                   hint={form.roles.length
-                    ? "Only these roles see the form, in the sidebar, on the Forms screen and in search. Admins always see every form."
-                    : "Everyone. Tick roles to limit it to just those; Admins always see every form."}
+                    ? "And only these roles, on top of the groups and people above."
+                    : "Optional. Tick roles to narrow it further, for example to Site Managers."}
                 >
                   <CheckboxList
                     options={limitable.map((r) => ({ value: r.key, label: r.name }))}
@@ -444,3 +481,56 @@ function IconButton({ label, onClick, disabled, children }: { label: string; onC
   );
 }
 
+
+/** Named people a form is open to, on top of its groups: chips, and a search to add more. */
+function PeoplePicker({ people, value, onChange }: {
+  people: { id: string; name: string; email: string; title?: string | null; status: string }[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [q, setQ] = useState("");
+  const byId = new Map(people.map((p) => [p.id, p]));
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = words.length
+    ? people
+        .filter((p) => (p.status === "active" || p.status === "invited") && !value.includes(p.id))
+        .filter((p) => words.every((w) => `${p.name} ${p.email} ${p.title ?? ""}`.toLowerCase().includes(w)))
+        .slice(0, 5)
+    : [];
+  return (
+    <div className="mt-2 rounded-input border border-hairline p-2">
+      {value.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {value.map((id) => (
+            <span key={id} className="flex items-center gap-1 rounded-pill bg-navsel py-0.5 pl-2.5 pr-1 text-[12.5px] font-semibold text-ink">
+              {byId.get(id)?.name ?? "Someone who's gone"}
+              <button type="button" onClick={() => onChange(value.filter((v) => v !== id))} aria-label={`Remove ${byId.get(id)?.name ?? "them"}`} className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-surface">
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Add a person by name, email or title" aria-label="Add a person" />
+      {matches.length > 0 && (
+        <ul className="mt-1">
+          {matches.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange([...value, p.id]);
+                  setQ("");
+                }}
+                className="flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left hover:bg-rowhover"
+              >
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{p.name}</span>
+                <span className="truncate text-micro text-muted">{p.title || p.email}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

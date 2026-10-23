@@ -184,6 +184,10 @@ export interface ManagedUser extends Omit<User, "permissions" | "allSites" | "ro
   locationNames: string[];
   /** A pending account or request this viewer may delete outright. */
   canDelete: boolean;
+  /** Staff groups they're in (lib/groups): from the job title, plus an admin's changes. */
+  groupIds: string[];
+  /** The groups their job title alone puts them in. */
+  groupsByTitle: string[];
 }
 
 export interface ApiKeyRow {
@@ -228,6 +232,8 @@ export interface FormLink {
   url: string;
   /** Role keys that may see this form. Empty = every role. */
   roles: string[];
+  /** Admins' catalog editor only: who it's open to. Both empty = everyone. */
+  audience?: { groupIds: string[]; userIds: string[] };
   keywords: string | null;
   badge: string | null;
   /** Icon key (lib/formIcons.ts); null = the category's icon. */

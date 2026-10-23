@@ -28,6 +28,7 @@ import { requestMetrics } from "./services/devlog.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { routingRouter } from "./routes/routing.js";
+import { groupsRouter } from "./routes/groups.js";
 import { oauthDiscoveryRouter, oauthRouter } from "./oauth/router.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
@@ -144,6 +145,7 @@ export function createApp() {
   app.use("/api/sites", sitesRouter);
   app.use("/api/activity", activityRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/groups", groupsRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/tutorials", tutorialsRouter);
   app.use("/api/routing", routingRouter);

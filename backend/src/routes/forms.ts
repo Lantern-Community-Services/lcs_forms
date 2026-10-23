@@ -7,6 +7,7 @@ import { actorOf, audit } from "../services/audit.js";
 import { isRoleKey } from "../services/permissions.js";
 import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
 import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
+import { audienceOf, builtFormKey, cardKey, inAudience, keyForCard, moveAudience, setAudience } from "../services/staffGroups.js";
 
 export const formsRouter = Router();
 formsRouter.use(requireAuth);
@@ -15,21 +16,28 @@ formsRouter.use(requireAuth);
  * The Forms screen and its admin editor.
  *
  * Reading the catalog needs only a session. A form can be limited to some
- * roles (`roles`); everyone else never receives it, so a restricted form
- * doesn't exist for them at all. Editors (forms.manage) see every form.
+ * roles (`roles`), and to some staff groups or named people (its audience,
+ * services/staffGroups.ts); everyone else never receives it, so a restricted
+ * form doesn't exist for them at all. Editors (forms.manage) see every form.
  * Editing needs forms.manage. Favourites are per person and need nothing extra.
  */
 
-type FormRow = { roles: string | null };
+type FormRow = { id: string; roles: string | null };
 
 function rolesOf(form: FormRow): string[] {
   return form.roles ? form.roles.split(",").filter(Boolean) : [];
 }
 
-function canSeeForm(req: Request, form: FormRow): boolean {
+/** Built forms by the catalog card that opens them: a card's audience lives on its form when there is one. */
+async function builtByCard(): Promise<Map<string, string>> {
+  const rows = await prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } });
+  return new Map(rows.map((r) => [r.catalogLinkId!, r.id]));
+}
+
+function canSeeForm(req: Request, form: FormRow, built: Map<string, string>): boolean {
   if (req.user!.permissions.includes("forms.manage")) return true;
   const roles = rolesOf(form);
-  return roles.length === 0 || roles.includes(req.user!.roleKey);
+  return (roles.length === 0 || roles.includes(req.user!.roleKey)) && inAudience(req.user!, keyForCard(form.id, built.get(form.id)));
 }
 
 /** The API speaks role lists; the column stores them comma-separated. */
@@ -113,7 +121,7 @@ formsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const editing = req.query.all === "1" && req.user!.permissions.includes("forms.manage");
-    const [categories, favourites] = await Promise.all([
+    const [categories, favourites, built] = await Promise.all([
       prisma.formCategory.findMany({
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         include: {
@@ -124,8 +132,15 @@ formsRouter.get(
         },
       }),
       prisma.formFavorite.findMany({ where: { userId: req.user!.userId }, select: { formId: true }, orderBy: { createdAt: "asc" } }),
+      builtByCard(),
     ]);
-    const visible = categories.map((c) => ({ ...c, forms: c.forms.filter((f) => canSeeForm(req, f)).map(toClient) }));
+    const visible = categories.map((c) => ({
+      ...c,
+      forms: c.forms
+        .filter((f) => canSeeForm(req, f, built))
+        // The editor also gets who each form is open to.
+        .map((f) => ({ ...toClient(f), ...(editing ? { audience: audienceOf(keyForCard(f.id, built.get(f.id))) } : {}) })),
+    }));
     const visibleIds = new Set(visible.flatMap((c) => c.forms.map((f) => f.id)));
     res.json({
       categories: editing ? visible : visible.filter((c) => c.forms.length > 0),
@@ -149,7 +164,7 @@ formsRouter.put(
   "/:id/favorite",
   asyncHandler(async (req, res) => {
     const form = await prisma.formLink.findUnique({ where: { id: req.params.id } });
-    if (!form || !form.active || !canSeeForm(req, form)) throw notFound("That form isn't in the catalog any more.");
+    if (!form || !form.active || !canSeeForm(req, form, await builtByCard())) throw notFound("That form isn't in the catalog any more.");
     const key = { userId: req.user!.userId, formId: form.id };
     await prisma.formFavorite.upsert({ where: { userId_formId: key }, create: key, update: {} });
     res.json({ ok: true });
@@ -264,7 +279,12 @@ formsRouter.patch(
       sortOrder = (last._max.sortOrder ?? -1) + 1;
     }
     const row = await prisma.formLink.update({ where: { id: before.id }, data: { ...body, ...(sortOrder !== undefined ? { sortOrder } : {}) } });
-    if (body.url !== undefined) await linkCatalogCard(row.id, row.url);
+    if (body.url !== undefined) {
+      await linkCatalogCard(row.id, row.url);
+      // Now opening a form built here: the card's limit goes onto that form.
+      const nowBuilt = (await builtByCard()).get(row.id);
+      if (nowBuilt) await moveAudience(cardKey(row.id), builtFormKey(nowBuilt));
+    }
     const changed = (Object.keys(body) as (keyof typeof body)[]).filter((k) => body[k] !== undefined && body[k] !== before[k]);
     await audit({
       actor: actorOf(req),
@@ -273,6 +293,36 @@ formsRouter.patch(
       changes: Object.fromEntries(changed.map((k) => [k, [before[k], row[k]]])),
     });
     res.json(toClient(row));
+  })
+);
+
+/**
+ * Who can see and use a form: some staff groups and/or named people, or
+ * everyone (both lists empty). Stored on the built form a card opens, or on
+ * the card when it links somewhere else.
+ */
+formsRouter.put(
+  "/:id/audience",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => {
+    const body = z.object({ groupIds: z.array(z.string()).max(50), userIds: z.array(z.string()).max(500) }).parse(req.body);
+    const form = await prisma.formLink.findUnique({ where: { id: req.params.id } });
+    if (!form) throw notFound();
+    const [groups, users] = await Promise.all([
+      prisma.staffGroup.findMany({ where: { id: { in: body.groupIds } }, select: { id: true, name: true } }),
+      prisma.user.findMany({ where: { id: { in: body.userIds } }, select: { id: true, name: true } }),
+    ]);
+    if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
+    const key = keyForCard(form.id, (await builtByCard()).get(form.id));
+    await setAudience(key, body.groupIds, body.userIds);
+    const who = [...groups.map((g) => g.name), ...users.map((u) => u.name)];
+    await audit({
+      actor: actorOf(req),
+      action: "forms.audience_changed",
+      summary: who.length ? `Limited “${form.title}” to ${who.join(", ")}` : `Opened “${form.title}” to everyone`,
+      changes: { groups: groups.map((g) => g.name), people: users.map((u) => u.name) },
+    });
+    res.json(audienceOf(key));
   })
 );
 
@@ -285,6 +335,8 @@ formsRouter.delete(
     // Favourites go with it (cascade); a built form it opened just loses its card.
     await unlinkCatalogCard(form.id);
     await prisma.formLink.delete({ where: { id: form.id } });
+    // A link's own limit goes with it; a built form keeps its limit (it's on the form).
+    await setAudience(cardKey(form.id), [], []);
     await audit({ actor: actorOf(req), action: "forms.deleted", summary: `Deleted form “${form.title}”`, changes: { url: form.url } });
     res.json({ ok: true });
   })

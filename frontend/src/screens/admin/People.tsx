@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRoles, useSites, useUsers } from "@/lib/queries";
+import { GROUPS_KEY, groupsApi, useStaffGroups } from "@/lib/groups";
 import { errorMessage, relativeTime } from "@/lib/utils";
 import { useSearchParam } from "@/lib/useSearchParam";
 import type { ManagedUser, UserStatus } from "@/lib/types";
@@ -407,6 +408,7 @@ export function AdminPeople() {
                 </Field>
               )}
               {/* Super Admins are changed only on the server, tutorials included: theirs reset from their own Profile. */}
+              {draft.id && can("users.manage") && <PersonGroups person={users?.find((u) => u.id === draft.id)} />}
               {draft.id && !draft.superAdmin && <PersonTutorials userId={draft.id} name={draft.name} isSelf={draft.isSelf} />}
             </DialogBody>
           )}
@@ -554,6 +556,63 @@ interface PersonTutorial {
  * screen, a form's the next time they open the form. It happens straight away,
  * not with the dialog's Save.
  */
+/**
+ * Which staff groups someone is in (People & roles → Groups), changeable
+ * here: ticking adds them by hand, unticking takes them out even when their
+ * job title matches. Saves straight away. Admins only.
+ */
+function PersonGroups({ person }: { person: ManagedUser | undefined }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data: groups } = useStaffGroups();
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!person || !groups?.length) return null;
+  const first = person.name.split(" ")[0];
+
+  async function toggle(groupId: string, name: string, on: boolean) {
+    const byTitle = person!.groupsByTitle.includes(groupId);
+    // On: their title already puts them in → just clear a removal; else add by hand. Off: the reverse.
+    const include = on ? (byTitle ? null : true) : byTitle ? false : null;
+    setBusy(groupId);
+    try {
+      await groupsApi.setPerson(groupId, person!.id, include);
+      await Promise.all([qc.invalidateQueries({ queryKey: ["admin", "users"] }), qc.invalidateQueries({ queryKey: GROUPS_KEY })]);
+      toast(on ? `${first} is in ${name}.` : `${first} is out of ${name}.`);
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't change that."), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="rounded-input border border-hairline">
+      <div className="px-3 py-2.5">
+        <span className="block text-[13.5px] font-semibold text-ink">Groups</span>
+        <span className="block text-micro text-muted">
+          Decide which limited forms {first} sees.{person.title ? ` Their job title: ${person.title}.` : ""} Saves straight away.
+        </span>
+      </div>
+      <ul className="grid gap-px border-t border-hairline sm:grid-cols-2">
+        {groups.map((g) => {
+          const on = person.groupIds.includes(g.id);
+          const byTitle = person.groupsByTitle.includes(g.id);
+          const note = on ? (byTitle ? "from job title" : "added by hand") : byTitle ? "taken out" : null;
+          return (
+            <li key={g.id}>
+              <label className="flex min-h-[36px] cursor-pointer items-center gap-2 px-3 py-1 text-[13px] text-ink hover:bg-rowhover">
+                <input type="checkbox" checked={on} disabled={busy !== null} onChange={(e) => void toggle(g.id, g.name, e.target.checked)} />
+                <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                {note && <span className="text-micro text-muted">{note}</span>}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function PersonTutorials({ userId, name, isSelf }: { userId: string; name: string; isSelf: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
