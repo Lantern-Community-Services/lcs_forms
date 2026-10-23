@@ -3,9 +3,10 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from ".
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader } from "./sheet";
 
 /**
- * A popup that is a bottom sheet on a phone — its actions under the thumb —
- * and a centred dialog on desktop. `children` is the body and `footer` the
- * action row; both render unchanged in either form.
+ * A centred popup on every device: on a phone the Sheet form (its height
+ * capped, its body scrolling, its footer kept in view), elsewhere a dialog.
+ * `children` is the body and `footer` the action row; both render unchanged
+ * in either form.
  *
  * The class props reach the matching piece of each form, for a popup that
  * needs a different size or scrolling on one of them (Take attendance).

@@ -92,7 +92,7 @@ export function selectionLabel(codes: string[], sites: Site[]) {
 }
 
 /**
- * Pick All, one site, or any combination. A popover on desktop, a bottom sheet
+ * Pick All, one site, or any combination. A popover on desktop, a popup
  * on a phone. Tapping a row toggles it (from All, it selects just that site).
  * Hidden entirely for someone assigned to a single site — there's nothing to pick.
  */
