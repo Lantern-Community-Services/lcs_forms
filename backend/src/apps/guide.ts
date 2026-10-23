@@ -148,7 +148,8 @@ Admins and developers pass every role check.
 - How wide a page gets on a desktop: page option "width": "tablet" (1024px centered, the default, so a page
   designed on an iPad looks the same), "narrow" (760px, one column of fields), "wide" (1240px, like the app's
   own screens) or "full" (the whole window, for a big dashboard or table). Phones and iPads always get the
-  whole screen.
+  whole screen. The title and tabs stay one width for the whole form (its widest page's), so they don't move
+  when someone switches tabs; a narrower page sits centered under them.
 
 ## Patterns
 - Guided steps on an iPad: set "fullHeight": true on the page and lay out with h-screen flex columns.

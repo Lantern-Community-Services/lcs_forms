@@ -79,15 +79,17 @@ export function AppHostPage() {
     return s ? `?${s}` : "";
   };
   // Inside the editor's device preview: send the page's console to the editor.
-  // On a desktop the page sits in a centered column (form.json "width"), the tabs above lined up with it.
+  // On a desktop the page sits in a centered column (form.json "width"). The title and tabs keep one
+  // width for the whole form, its widest page's, so switching tabs never moves them.
   const width = desktop ? (current.width ?? "tablet") : "full";
+  const headerWidth = desktop ? widestHeader(runtime.pages.map((p) => p.width ?? "tablet")) : "full";
   const relay = draft && window.parent !== window
     ? (line: ConsoleLine) => window.parent.postMessage({ lcsConsole: line }, window.location.origin)
     : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-none border-b border-hairline bg-sidebar pt-safe-top md:bg-surface md:pt-5">
-        <div className={cn("mx-auto flex items-end gap-3 md:px-7", HEADER_WIDTH[width])}>
+        <div className={cn("mx-auto flex items-end gap-3 md:px-7", HEADER_WIDTH[headerWidth])}>
           <div className="min-w-0 flex-1">
             <h1 className="hidden font-heading text-[24px] font-extrabold text-ink md:block">{runtime.form.title}</h1>
             {visible.length > 1 ? (
@@ -149,6 +151,9 @@ export function AppHostPage() {
 // The tabs row keeps its side padding, so it's 56px (md:px-7) wider than the page below to line up with it.
 const FRAME_WIDTH: Record<PageWidth, string> = { narrow: "max-w-[760px]", tablet: "max-w-[1024px]", wide: "max-w-[1240px]", full: "" };
 const HEADER_WIDTH: Record<PageWidth, string> = { narrow: "max-w-[816px]", tablet: "max-w-[1080px]", wide: "max-w-[1296px]", full: "max-w-[1240px]" };
+/** Narrowest to widest header (a full page's header stops at 1240px, short of a wide page's). */
+const HEADER_ORDER: PageWidth[] = ["narrow", "tablet", "full", "wide"];
+const widestHeader = (widths: PageWidth[]) => widths.reduce((a, b) => (HEADER_ORDER.indexOf(b) > HEADER_ORDER.indexOf(a) ? b : a), "narrow" as PageWidth);
 
 /** Entries waiting on this device, or refused by the server. */
 export function QueueBadge({ slug }: { slug: string }) {
