@@ -466,9 +466,10 @@ function CategorySections({ c }: { c: CatalogBrowser }) {
           </div>
         </section>
       )}
-      <ul className="grid items-start gap-3.5 lg:grid-cols-2 xl:grid-cols-3 xl:gap-4">
+      {/* Cards in a row share a height (stretch), so the grid stays even however many forms each holds. */}
+      <ul className="grid gap-3.5 lg:grid-cols-2 xl:grid-cols-3 xl:gap-4">
         {shown.map((cat) => (
-          <li key={cat.id}>
+          <li key={cat.id} className="flex">
             <CategoryCard category={cat} favorites={favorites} onToggleFavorite={(f) => cardProps({ form: f, category: cat }).onToggleFavorite()} limit={searching ? null : CARD_ROWS} onOpen={() => setPick(cat.id)} />
           </li>
         ))}
@@ -482,12 +483,12 @@ function CategorySections({ c }: { c: CatalogBrowser }) {
   );
 }
 
-/** Forms listed in a category card before it says "Show all". */
+/** Forms listed in a category card; past this it offers "View more". */
 const CARD_ROWS = 5;
 
 /**
  * A category as a card: its icon, name and description, and its forms as
- * rows to open in one click (each with its pin). The name, and "Show all"
+ * rows to open in one click (each with its pin). The name, and "View more"
  * when there are more than fit, open the category's full page.
  */
 function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: {
@@ -503,7 +504,7 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
   const n = category.forms.length;
   const rows = limit === null ? category.forms : category.forms.slice(0, limit);
   return (
-    <section aria-labelledby={`${sectionId(category.id)}-title`} className="enter-up flex flex-col rounded-card border border-hairline bg-surface shadow-card">
+    <section aria-labelledby={`${sectionId(category.id)}-title`} className="enter-up flex w-full flex-col rounded-card border border-hairline bg-surface shadow-card">
       <button type="button" onClick={onOpen} className="group flex items-start gap-3 rounded-t-card border-b border-hairline px-4 pb-3 pt-4 text-left hover:bg-rowhover">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-navy text-white">
           <Icon className="h-5 w-5" />
@@ -513,11 +514,12 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
             <span id={`${sectionId(category.id)}-title`} className="text-[15px] font-bold leading-snug text-ink">{category.name}</span>
             <span className="text-[12px] text-muted">{n} {n === 1 ? "form" : "forms"}</span>
           </span>
-          {category.description && <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">{category.description}</span>}
+          {/* Always two lines' room, so the headers line up across a row. */}
+          <span className="mt-0.5 line-clamp-2 block min-h-[2.75em] text-[12.5px] leading-snug text-muted">{category.description}</span>
         </span>
         <ChevronRight className="mt-2.5 h-4 w-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" aria-hidden />
       </button>
-      <ul className="py-1">
+      <ul className="flex-1 py-1">
         {rows.map((form) => {
           const locked = !canOpenForm(form.url, can);
           const internal = isInternalForm(form.url);
@@ -553,8 +555,9 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
         })}
       </ul>
       {limit !== null && n > limit && (
-        <button type="button" onClick={onOpen} className="mx-4 mb-3 mt-0.5 self-start text-[12.5px] font-semibold text-accent hover:underline dark:text-white">
-          Show all {n}
+        <button type="button" onClick={onOpen} className="flex items-center justify-between gap-2 rounded-b-card border-t border-hairline px-4 py-2.5 text-left text-[13px] font-semibold text-accent hover:bg-rowhover dark:text-white">
+          View {n - limit} more <span className="text-muted">({n} in all)</span>
+          <ChevronRight className="ml-auto h-4 w-4" aria-hidden />
         </button>
       )}
     </section>
