@@ -1,21 +1,34 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { setNavMode } from "@/lib/shellNav";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CircleHelp, CloudOff, Code2, RefreshCw } from "lucide-react";
+import { Bell, CircleHelp, CloudOff, Code2, RefreshCw } from "lucide-react";
 import { codeFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { setFrameTutorialStarter } from "@/lib/tour/frameBridge";
 import { LoadingState, EmptyState } from "@/components/ui/misc";
 import { Card } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
 import { useDeviceKind } from "@/lib/device";
+import { useAuth } from "@/lib/auth";
+import { lazyScreen } from "@/lib/lazyScreen";
 import { cn, errorMessage } from "@/lib/utils";
 import { AppFrame, type ConsoleLine } from "./AppFrame";
 import { useAppRuntime, type PageWidth } from "./api";
 import { onQueueChange, queueStatus, type QueueStatus } from "./queue";
 
+/**
+ * The form's Notifications tab: its routing (who's told about what), for
+ * Admins. The editor is Admin's own, loaded only when the tab is opened, so
+ * staff never download it. Page ids in form.json can't start with "_", so
+ * this one never meets a form's own page.
+ */
+const ROUTING_PAGE = "_notifications";
+const RoutingEditor = lazyScreen(() => import("@/screens/admin/Routing"), "RoutingEditor");
+
 /** A code form: its tabs across the top, the current page in a sandboxed frame below. */
 export function AppHostPage() {
   const { slug = "", page } = useParams();
+  const { can } = useAuth();
+  const canRoute = can("forms.manage");
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
   // The code editor is desktop only, so no way into it elsewhere.
@@ -67,9 +80,10 @@ export function AppHostPage() {
     );
   }
   const visible = runtime.pages.filter((p) => !p.hidden);
+  const onRouting = canRoute && page === ROUTING_PAGE;
   const current = runtime.pages.find((p) => p.id === page) ?? visible[0] ?? runtime.pages[0];
   if (!current) return <div className="p-6"><Card><EmptyState title="There's nothing here you can open." /></Card></div>;
-  if (!page || page !== current.id) return <Navigate to={`/apps/${slug}/${current.id}${search.toString() ? `?${search}` : ""}`} replace />;
+  if (!onRouting && (!page || page !== current.id)) return <Navigate to={`/apps/${slug}/${current.id}${search.toString() ? `?${search}` : ""}`} replace />;
 
   const { draft: _draft, ...params } = Object.fromEntries(search.entries());
   const withDraft = (prm: Record<string, string>) => {
@@ -81,7 +95,7 @@ export function AppHostPage() {
   // Inside the editor's device preview: send the page's console to the editor.
   // On a desktop the page sits in a centered column (form.json "width"). The title and tabs keep one
   // width for the whole form, its widest page's, so switching tabs never moves them.
-  const width = desktop ? (current.width ?? "tablet") : "full";
+  const width = onRouting ? "wide" : desktop ? (current.width ?? "tablet") : "full";
   const headerWidth = desktop ? widestHeader(runtime.pages.map((p) => p.width ?? "tablet")) : "full";
   const relay = draft && window.parent !== window
     ? (line: ConsoleLine) => window.parent.postMessage({ lcsConsole: line }, window.location.origin)
@@ -92,7 +106,7 @@ export function AppHostPage() {
         <div className={cn("mx-auto flex items-end gap-3 md:px-7", HEADER_WIDTH[headerWidth])}>
           <div className="min-w-0 flex-1">
             <h1 className="hidden font-heading text-[24px] font-extrabold text-ink md:block">{runtime.form.title}</h1>
-            {visible.length > 1 ? (
+            {visible.length > 1 || canRoute ? (
               <nav aria-label={runtime.form.title} data-tour="app-tabs" className="chiprow flex px-1.5 md:mt-1 md:gap-1 md:px-0">
                 {visible.map((p) => (
                   <NavLink
@@ -109,6 +123,20 @@ export function AppHostPage() {
                     {p.label}
                   </NavLink>
                 ))}
+                {canRoute && (
+                  <NavLink
+                    to={`/apps/${slug}/${ROUTING_PAGE}${withDraft({})}`}
+                    title="Who this form tells, and when (Admins only)"
+                    className={({ isActive }) =>
+                      cn(
+                        "-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-[13px] font-semibold md:min-h-[42px] md:px-3 md:text-[13.5px]",
+                        isActive ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink"
+                      )
+                    }
+                  >
+                    <Bell className="h-3.5 w-3.5" /> Notifications
+                  </NavLink>
+                )}
               </nav>
             ) : (
               <p className="px-4 pb-2 font-heading text-[18px] font-extrabold text-ink md:hidden">{runtime.form.title}</p>
@@ -131,7 +159,14 @@ export function AppHostPage() {
           </div>
         </div>
       </div>
-      {/* Like the Roster: the page sits straight on the white main area, in a centered column — no sheet edges or shadow. */}
+      {onRouting ? (
+        <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
+          <Suspense fallback={<LoadingState />}>
+            <RoutingEditor formId={runtime.form.id} inForm />
+          </Suspense>
+        </div>
+      ) : (
+      /* Like the Roster: the page sits straight on the white main area, in a centered column — no sheet edges or shadow. */
       <div className={cn("mx-auto min-h-0 w-full flex-1", FRAME_WIDTH[width])}>
         <AppFrame
           runtime={runtime}
@@ -144,6 +179,7 @@ export function AppHostPage() {
           onConsole={relay}
         />
       </div>
+      )}
     </div>
   );
 }

@@ -27,6 +27,7 @@ import { MorePage } from "./screens/More";
 import { NotificationOpenPage, NotificationsPage } from "./screens/Notifications";
 import { FillPage } from "./screens/builtforms/FillPage";
 import { BuiltFormEntriesPage } from "./screens/builtforms/Entries";
+import { BuiltFormRoutingPage } from "./screens/builtforms/RoutingPage";
 import { BuiltFormEntryPage } from "./screens/builtforms/EntryDetail";
 import { BuiltFormPreviewPage } from "./screens/builtforms/PreviewPage";
 import { AppHostPage } from "./apps/AppHostPage";
@@ -199,6 +200,9 @@ export function App() {
         <Route path="/f/:slug" element={<FillPage />} />
         <Route path="/f/:slug/entries" element={<BuiltFormEntriesPage />} />
         <Route path="/f/:slug/entries/:id" element={<BuiltFormEntryPage />} />
+        <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
+          <Route path="/f/:slug/notifications" element={<BuiltFormRoutingPage />} />
+        </Route>
         <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
           <Route path="/f/:slug/preview" element={<BuiltFormPreviewPage />} />
         </Route>

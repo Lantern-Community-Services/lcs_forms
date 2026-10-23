@@ -19,7 +19,8 @@ export function lazyScreen<M extends Record<string, unknown>, K extends keyof M>
       } catch {
         /* storage blocked: nothing to clear */
       }
-      return { default: mod[name] as ComponentType };
+      // The screen keeps its own props (most have none).
+      return { default: mod[name] as M[K] extends ComponentType<infer P> ? ComponentType<P> : ComponentType };
     } catch (err) {
       let reloaded = true;
       try {

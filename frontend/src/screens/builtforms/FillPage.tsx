@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
-import { CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler } from "lucide-react";
+import { Bell, CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler } from "lucide-react";
 import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { useAuth } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
@@ -141,6 +141,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
           <ToneBadge tone={form.isDraft ? "amber" : form.status === "published" ? "green" : "neutral"}>{form.isDraft ? "Draft" : form.status === "published" ? `Live · v${form.version}` : form.status}</ToneBadge>
           <span className="text-muted">You're an admin.</span>
           <div className="flex-1" />
+          <Link to={`/f/${slug}/notifications`} className="inline-flex items-center gap-1 font-semibold text-accent"><Bell className="h-3.5 w-3.5" /> Notifications</Link>
           {canOpenBuilder && <Link to={`/admin/builder/${form.id}`} className="inline-flex items-center gap-1 font-semibold text-accent"><PencilRuler className="h-3.5 w-3.5" /> Edit form</Link>}
         </div>
       )}
