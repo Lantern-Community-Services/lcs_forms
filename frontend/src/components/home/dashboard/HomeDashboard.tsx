@@ -11,10 +11,10 @@ import {
   clean,
   loadLayout,
   moveTo,
+  defaultLayout,
   presets,
   sameLayout,
   saveLayout,
-  BLANK,
   type LayoutItem,
   type Preset,
   type WidgetId,
@@ -23,12 +23,12 @@ import {
 import { WIDGETS, WIDGET_BY_ID, type WidgetCtx, type WidgetDef } from "./widgets";
 
 /**
- * The Forms home's dashboard on tablet and desktop, which each person arranges
- * for themselves. All forms is one of its widgets, near the top of every
- * preset; someone who removes it still sees search matches, above the rest
- * (searchOnly). It starts blank — All forms alone —
- * offering four layouts to start from; Edit
- * dashboard opens the editor with the widget panel beside it, where widgets
+ * Home's dashboard on tablet and desktop, which each person can arrange for
+ * themselves. It starts on a simple, focused default (layout.ts
+ * defaultLayout: what needs them, what's coming up, recent activity,
+ * notifications), so nobody has to set it up before using it. The forms are
+ * on their own page (/forms). Customize opens the editor with the widget
+ * panel beside it, where layouts are picked and widgets
  * are added (or a layout picked), dragged to new places, resized (S / M / L /
  * Full) and removed. Nothing changes until Save; Cancel throws the draft away.
  *
@@ -39,10 +39,10 @@ import { WIDGETS, WIDGET_BY_ID, type WidgetCtx, type WidgetDef } from "./widgets
  * touchscreen a widget is picked up by pressing and holding (so a swipe still
  * scrolls the page), or straight away by its handle.
  *
- * The phone keeps its fixed home screen (screens/Forms): there's no room to
+ * The phone keeps its fixed home screen (screens/Home): there's no room to
  * arrange anything, and the forms have to be reachable without scrolling.
  */
-export function HomeDashboard({ heading, search, ctx }: { heading: React.ReactNode; search: React.ReactNode; ctx: WidgetCtx }) {
+export function HomeDashboard({ heading, ctx }: { heading: React.ReactNode; ctx: WidgetCtx }) {
   const { user, can } = useAuth();
   const toast = useToast();
   const desktop = useMediaQuery("(min-width: 1280px)");
@@ -59,9 +59,10 @@ export function HomeDashboard({ heading, search, ctx }: { heading: React.ReactNo
     [desktop, rosterAccess, allowedSizes]
   );
 
-  // Nothing saved on this device yet: a blank dashboard (All forms alone), with the layouts to start from.
-  const [saved, setSaved] = useState<LayoutItem[]>(() => loadLayout(userId, allowedSizes) ?? BLANK);
-  useEffect(() => setSaved(loadLayout(userId, allowedSizes) ?? BLANK), [userId, allowedSizes]);
+  // Nothing saved on this device yet: the focused default.
+  const fallback = useMemo(() => clean(defaultLayout(desktop, rosterAccess), allowedSizes), [desktop, rosterAccess, allowedSizes]);
+  const [saved, setSaved] = useState<LayoutItem[]>(() => loadLayout(userId, allowedSizes) ?? fallback);
+  useEffect(() => setSaved(loadLayout(userId, allowedSizes) ?? fallback), [userId, allowedSizes, fallback]);
 
   const [draft, setDraft] = useState<LayoutItem[] | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -111,10 +112,8 @@ export function HomeDashboard({ heading, search, ctx }: { heading: React.ReactNo
     return def && (editing || !def.isEmpty?.(ctx));
   });
   const unchanged = draft !== null && sameLayout(draft, saved);
-  // Nothing but the forms (or nothing at all): time to pick a layout.
-  const blank = visible.every((it) => it.id === "all_forms");
-  // Searching without All forms on the dashboard: the matches still need somewhere to show.
-  const searchOnly = ctx.searching && !editing && !placed.has("all_forms");
+  // Emptied in the editor: offer the layouts to start again from.
+  const blank = editing && visible.length === 0;
 
   return (
     <div>
@@ -132,12 +131,9 @@ export function HomeDashboard({ heading, search, ctx }: { heading: React.ReactNo
               <Button onClick={save} disabled={unchanged}>Save dashboard</Button>
             </>
           ) : (
-            <>
-              {search}
-              <Button variant="secondary" onClick={() => start()} data-tour="home-edit" className="h-10">
-                <PencilLine className="h-4 w-4" /> Edit dashboard
-              </Button>
-            </>
+            <Button variant="ghost" size="sm" onClick={() => start()} data-tour="home-edit" className="text-muted">
+              <PencilLine className="h-4 w-4" /> Customize
+            </Button>
           )}
         </div>
       </div>
@@ -148,7 +144,6 @@ export function HomeDashboard({ heading, search, ctx }: { heading: React.ReactNo
         </p>
       )}
 
-      {searchOnly && <div className="mb-7">{ctx.renderForms("full")}</div>}
       {blank && (
         <EmptyDashboard
           editing={editing}
@@ -549,7 +544,7 @@ function EditBar({ def, size, first, last, onResize, onNudge, onRemove }: {
 
 const ORDER: Record<WidgetSize, number> = { small: 0, medium: 1, large: 2, full: 3 };
 
-/** The four layouts as cards to pick from: on the blank dashboard (big) and in the widget panel. */
+/** The four layouts as cards to pick from: on an emptied dashboard (big) and in the widget panel. */
 function PresetCards({ presetList, current, onPick, big = false }: { presetList: Preset[]; current?: LayoutItem[]; onPick: (p: Preset) => void; big?: boolean }) {
   return (
     <div className={cn("grid gap-2", big ? "grid-cols-2 xl:grid-cols-4 xl:gap-3" : "grid-cols-2")}>
@@ -579,13 +574,13 @@ function PresetCards({ presetList, current, onPick, big = false }: { presetList:
 
 function EmptyDashboard({ editing, presetList, onPreset, onBuild }: { editing: boolean; presetList: Preset[]; onPreset: (p: Preset) => void; onBuild: () => void }) {
   return (
-    <section data-tour="home-dashboard" className="enter-up mb-7 rounded-card border border-dashed border-strongline bg-subtle/60 px-5 py-6 xl:px-7 xl:py-7">
+    <section className="enter-up mb-7 rounded-card border border-dashed border-strongline bg-subtle/60 px-5 py-6 xl:px-7 xl:py-7">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-navsel text-accent dark:text-white">
           <LayoutDashboard className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-[16px] font-heading font-extrabold text-ink">{editing ? "Your dashboard is empty" : "Make this page yours"}</h2>
+          <h2 className="text-[16px] font-heading font-extrabold text-ink">Your dashboard is empty</h2>
           <p className="text-[13px] text-muted">Start from a layout, or build your own from the widget list. You can change it any time.</p>
         </div>
         <Button variant="secondary" onClick={onBuild}>

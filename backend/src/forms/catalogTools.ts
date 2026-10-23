@@ -33,6 +33,7 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
           id: c.id,
           name: c.name,
           icon: c.icon,
+          description: c.description,
           cards: c.forms.map((f) => ({
             id: f.id, title: f.title, description: f.description, url: f.url, kind: kindOf(f.url), icon: f.icon, keywords: f.keywords, badge: f.badge,
             roles: f.roles ? f.roles.split(",") : [], active: f.active,
@@ -104,11 +105,11 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "save_catalog_category",
-    "Add a catalog category (a group on the Forms screen and in the sidebar), or rename one / change its icon (pass id).",
-    { id: z.string().optional(), name: z.string().optional(), icon: z.string().optional() },
-    async ({ id, name, icon }) => {
+    "Add a catalog category (a group on the Forms screen), or rename one / change its icon or description (pass id). The description is one short line shown on the Forms page saying what kind of forms are in it; \"\" clears it.",
+    { id: z.string().optional(), name: z.string().optional(), icon: z.string().optional(), description: z.string().optional() },
+    async ({ id, name, icon, description }) => {
       need("forms:build");
-      const given = Object.fromEntries(Object.entries({ name, icon }).filter(([, v]) => v !== undefined));
+      const given = Object.fromEntries(Object.entries({ name, icon, description }).filter(([, v]) => v !== undefined));
       if (!id) {
         const body = categoryBody.parse(given);
         const last = await prisma.formCategory.aggregate({ _max: { sortOrder: true } });

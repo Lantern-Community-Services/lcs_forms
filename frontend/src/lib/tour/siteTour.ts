@@ -29,7 +29,7 @@ const withArticle = (role: string) => (/staff$/i.test(role) ? role : `${/^[aeiou
 
 /** Whether the home's search box on screen (there's one per layout) holds `word`. */
 function searchTyped(word: string) {
-  const box = Array.from(document.querySelectorAll<HTMLInputElement>('[data-tour="home-search"] input')).find((i) => i.getClientRects().length > 0);
+  const box = Array.from(document.querySelectorAll<HTMLInputElement>('[data-tour="home-search"] input, [data-tour="forms-search"] input')).find((i) => i.getClientRects().length > 0);
   return Boolean(box?.value.toLowerCase().includes(word));
 }
 
@@ -64,7 +64,7 @@ export function buildSiteTour(
       target: at("nav"),
       placement: "right",
       title: "Everything is in the sidebar",
-      body: `Home, ${roster ? "the Roster, " : ""}the Calendar and every form you can use, in groups. Press **Ctrl K** to find a form by name.`,
+      body: `Home, Forms, ${roster ? "the Roster, " : ""}the Calendar and the forms you pin. Press **Ctrl K** to search for a screen, a form${roster ? " or a resident" : ""}.`,
     });
   } else {
     add({
@@ -76,73 +76,20 @@ export function buildSiteTour(
     });
   }
 
-  add({
-    id: "forms",
-    route: "/forms",
-    target: at("home-forms"),
-    title: "Your forms",
-    body:
-      (device === "phone"
-        ? "Every form you can fill in, in groups. Tap a group to see its forms, or search at the top."
-        : "Every form you can fill in. Pick a group, or type in the search box. A form that opens on another site is marked with an arrow.") +
-      "\n\nFor this tour these are **sample** forms. Try anything: nothing you do here is saved, and your real forms come back when the tour ends.",
-  });
-
-  add({
-    id: "search",
-    route: "/forms",
-    target: at("home-search"),
-    action: "fill",
-    filled: () => searchTyped(SAMPLE_SEARCH),
-    title: "Find a form",
-    body: `Type **${SAMPLE_SEARCH}** to find the ${SAMPLE_FORM_TITLE} form.`,
-  });
-
-  add({
-    id: "pin",
-    route: "/forms",
-    target: { in: "page", selector: `[data-tour="pin"][aria-label$="${SAMPLE_FORM_TITLE}"]` },
-    placement: "left",
-    action: "click",
-    // Phones show pins on a form's own list, not here: nothing to wait for.
-    waitMs: 2500,
-    title: "Pin the ones you use",
-    body: `${tap} the pin on **${SAMPLE_FORM_TITLE}**. A pinned form stays at the top of Home${touch ? " and in the dock" : " and the sidebar"}, on every device you sign in on.`,
-  });
-
-  // The home dashboard starts blank on a computer or an iPad: set it up together (HomeDashboard).
+  // Home first, on a computer or an iPad: the day's work, on a simple default (HomeDashboard).
   if (!touch || device === "tablet") {
     add({
-      id: "dashboard-edit",
-      route: "/forms",
+      id: "home",
+      route: "/home",
       target: at("home-edit"),
       placement: "bottom",
-      action: "click",
-      title: "Make Home yours",
-      body: `The top of Home is your own dashboard: counts, lists and shortcuts you choose. ${tap} **Edit dashboard** to set it up.`,
-    });
-    add({
-      id: "dashboard-layout",
-      route: "/forms",
-      target: at("home-presets"),
-      placement: "left",
-      action: "click",
-      title: "Pick a layout to start from",
-      body: "Choose one of these four. You can add, move and resize widgets afterwards, or change it any time.",
-    });
-    add({
-      id: "dashboard-save",
-      route: "/forms",
-      target: at("home-save"),
-      placement: "top",
-      action: "click",
-      title: "Save it",
-      body: `${tap} **Save dashboard** to keep this layout. Whenever you like, ${tap.toLowerCase()} **Edit dashboard** again to add widgets, drag them to new spots${touch ? " (press and hold one first)" : ""} or change their width.`,
+      title: "This is Home",
+      body: "What needs you, what's coming up on the calendar, what happened lately and your notifications. **Customize** changes what's here, any time you like.",
     });
     add({
       id: "attention",
-      route: "/forms",
-      // Only there when the chosen layout has it.
+      route: "/home",
+      // Only there when the layout has it.
       waitMs: 1500,
       target: at("home-attention"),
       title: "Needs your attention",
@@ -151,6 +98,52 @@ export function buildSiteTour(
         : "Anything a form flags for you shows up here. When it's empty, you're caught up.",
     });
   }
+
+  // The forms: their own page on a computer or an iPad; on a phone, below the attention banner on Home.
+  const phone = device === "phone";
+  const formsRoute = phone ? "/home" : "/forms";
+  if (!touch) {
+    add({
+      id: "open-forms",
+      target: at("nav-forms"),
+      action: "click",
+      title: "Open Forms",
+      body: "Every form lives on one page. Click **Forms**.",
+    });
+  }
+  add({
+    id: "forms",
+    route: formsRoute,
+    target: at(phone ? "home-forms" : "forms-browser"),
+    title: "Your forms",
+    body:
+      (phone
+        ? "Every form you can fill in, in groups. Tap a group to see its forms, or search at the top."
+        : "Every form you can fill in. Pick a group on the left, or type in the filter box. A form that opens on another site is marked with an arrow.") +
+      "\n\nFor this tour these are **sample** forms. Try anything: nothing you do here is saved, and your real forms come back when the tour ends.",
+  });
+
+  add({
+    id: "search",
+    route: formsRoute,
+    target: at(phone ? "home-search" : "forms-search"),
+    action: "fill",
+    filled: () => searchTyped(SAMPLE_SEARCH),
+    title: "Find a form",
+    body: `Type **${SAMPLE_SEARCH}** to find the ${SAMPLE_FORM_TITLE} form.`,
+  });
+
+  add({
+    id: "pin",
+    route: formsRoute,
+    target: { in: "page", selector: `[data-tour="pin"][aria-label$="${SAMPLE_FORM_TITLE}"]` },
+    placement: "left",
+    action: "click",
+    // Phones show pins on a form's own list, not here: nothing to wait for.
+    waitMs: 2500,
+    title: "Pin the ones you use",
+    body: `${tap} the pin on **${SAMPLE_FORM_TITLE}**. A pinned form stays ${touch ? "in the dock" : "in the sidebar"}, on every device you sign in on.`,
+  });
 
   add({
     id: "open-calendar",
@@ -277,9 +270,9 @@ export function buildSiteTour(
 
   add({
     id: "done",
-    route: "/forms",
+    route: "/home",
     title: "You're all set",
-    body: "Open a form from Home to get started. The first time you open a form that has a tutorial, it shows you how that form works.\n\nTake this tour again any time from your **Profile**.",
+    body: "Open a form from **Forms** to get started. The first time you open a form that has a tutorial, it shows you how that form works.\n\nTake this tour again any time from your **Profile**.",
   });
 
   return { key: siteTourKey(device), version: SITE_TOUR_VERSION, title: "Welcome tour", steps, record: opts.record, waitMs: 5000, sample: true };

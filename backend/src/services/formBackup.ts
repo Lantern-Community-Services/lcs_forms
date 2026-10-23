@@ -118,6 +118,7 @@ export async function backupSnapshot(): Promise<Snapshot> {
     categories.map((c) => ({
       name: c.name,
       icon: c.icon,
+      description: c.description,
       cards: cards
         .filter((k) => k.categoryId === c.id)
         .map((k) => ({ title: k.title, url: k.url, description: k.description, keywords: k.keywords, badge: k.badge, icon: k.icon, roles: k.roles ? k.roles.split(",") : [], active: k.active })),

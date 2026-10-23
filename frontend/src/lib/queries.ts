@@ -159,8 +159,8 @@ export const formsApi = {
   update: (id: string, body: Record<string, unknown>) => api.patch(`/forms/${id}`, body),
   remove: (id: string) => api.delete(`/forms/${id}`),
   reorder: (categoryId: string, ids: string[]) => api.post("/forms/reorder", { categoryId, ids }),
-  createCategory: (body: { name: string; icon: string }) => api.post("/forms/categories", body),
-  updateCategory: (id: string, body: { name?: string; icon?: string }) => api.patch(`/forms/categories/${id}`, body),
+  createCategory: (body: { name: string; icon: string; description?: string }) => api.post("/forms/categories", body),
+  updateCategory: (id: string, body: { name?: string; icon?: string; description?: string }) => api.patch(`/forms/categories/${id}`, body),
   removeCategory: (id: string) => api.delete(`/forms/categories/${id}`),
   reorderCategories: (ids: string[]) => api.post("/forms/categories/reorder", { ids }),
 };

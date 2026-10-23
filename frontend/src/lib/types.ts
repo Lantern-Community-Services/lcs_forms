@@ -22,7 +22,8 @@ export type PermissionKey =
   | "devlog.view";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
-export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";
+/** "/forms" is Home saved before Home moved to /home; it's read as Home. */
+export type LandingPage = "/home" | "/forms" | "/roster" | "/roster/review" | "/roster/overview";
 
 export interface SiteRef {
   id: string;
@@ -239,6 +240,8 @@ export interface FormCategory {
   id: string;
   name: string;
   icon: string;
+  /** One line on the Forms page saying what kind of forms are in it. */
+  description?: string | null;
   sortOrder: number;
   forms: FormLink[];
 }

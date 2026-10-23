@@ -399,6 +399,8 @@ model FormCategory {
   name      String     @db.NVarChar(255)
   /// Icon key from the frontend's fixed set (frontend/src/lib/formIcons.ts).
   icon      String     @default("folder") @db.NVarChar(255)
+  /// One line on the Forms page saying what kind of forms are in it. Optional.
+  description String?  @db.NVarChar(500)
   sortOrder Int        @default(0)
   forms     FormLink[]
   createdAt DateTime   @default(now())
