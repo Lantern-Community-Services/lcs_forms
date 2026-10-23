@@ -558,8 +558,10 @@ notifications still appear in the app.
 ### Notification routing
 
 Who each form tells, and when, kept outside the form (`backend/src/services/routing.ts`), so changing a
-list never needs a new version of the form. Edit it in **Admin → Notification routing**
-(`/admin/routing`, Admins) or through the MCP: `get_routing`, `save_route`, `set_routing`,
+list never needs a new version of the form. Every form has its own: Admins see a **Notifications** tab on
+each code form (`/apps/<slug>/_notifications`) and a **Notifications** link on each basic form
+(`/f/<slug>/notifications`), and **Admin → Notification routing** (`/admin/routing`) lists them all. The MCP has
+the same: `get_routing`, `save_route`, `set_routing`,
 `remove_route`, `reset_routing`, `preview_routing`, `routing_log`, `reroute_entry`.
 
 - **Events.** Every form has *A new entry* (`entry.created`), routed when an entry is saved. A code form

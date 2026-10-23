@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Download, ExternalLink, MessageSquare, Star } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, Download, ExternalLink, MessageSquare, Star } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Page, PageHeader, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
@@ -76,6 +76,7 @@ export function BuiltFormEntriesPage() {
         actions={
           <>
             <Link to={`/f/${slug}`}><Button variant="secondary"><ExternalLink className="h-4 w-4" /> Open form</Button></Link>
+            {data.isAdmin && <Link to={`/f/${slug}/notifications`}><Button variant="secondary"><Bell className="h-4 w-4" /> Notifications</Button></Link>}
             {data.isAdmin && canOpenBuilder && <Link to={`/admin/builder/${data.form.id}`}><Button variant="secondary">Edit form</Button></Link>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button><Download className="h-4 w-4" /> Export</Button></DropdownMenuTrigger>

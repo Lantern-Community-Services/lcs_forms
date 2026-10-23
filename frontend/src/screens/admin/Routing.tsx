@@ -133,6 +133,15 @@ export function AdminRouting() {
 
 export function AdminRoutingForm() {
   const { id = "" } = useParams();
+  return <RoutingEditor formId={id} />;
+}
+
+/**
+ * One form's routes. In Admin (`/admin/routing/:id`) with a way back to every
+ * form; `inForm` is the same editor as the form's own Notifications tab, where
+ * the form is already open around it.
+ */
+export function RoutingEditor({ formId: id, inForm = false }: { formId: string; inForm?: boolean }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -184,15 +193,17 @@ export function AdminRoutingForm() {
 
   return (
     <Page className="max-w-[920px] pb-24">
-      <button type="button" onClick={() => navigate("/admin/routing")} className="mb-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
-        <ArrowLeft className="h-3.5 w-3.5" /> All forms
-      </button>
+      {!inForm && (
+        <button type="button" onClick={() => navigate("/admin/routing")} className="mb-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+          <ArrowLeft className="h-3.5 w-3.5" /> All forms
+        </button>
+      )}
       <PageHeader
-        title={data.form.title}
-        subtitle="Who this form tells, and when."
+        title={inForm ? "Notifications" : data.form.title}
+        subtitle={inForm ? "Who this form tells, and when: by email and in the app. Only Admins can see or change this." : "Who this form tells, and when."}
         actions={
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => window.open(data.form.url, "_blank")}><ExternalLink className="h-4 w-4" /> Open form</Button>
+            {!inForm && <Button variant="secondary" onClick={() => window.open(data.form.url, "_blank")}><ExternalLink className="h-4 w-4" /> Open form</Button>}
             <Button onClick={save} disabled={!dirty || busy}>{busy ? "Saving…" : "Save"}</Button>
           </div>
         }
