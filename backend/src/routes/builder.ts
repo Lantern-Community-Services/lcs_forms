@@ -3,7 +3,9 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { asyncHandler, badRequest } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
-import { actorOf } from "../services/audit.js";
+import { actorOf, audit } from "../services/audit.js";
+import { audienceOf, builtFormKey, categoryKey, setAudience } from "../services/staffGroups.js";
+import { prisma } from "../prisma.js";
 import { CODE_BLOCK_API, EXPRESSION_FUNCTIONS, FIELD_TYPES, emptyForm } from "../forms/engine.js";
 import { formDocSchema, parseFormDoc } from "../forms/schema.js";
 import {
@@ -130,6 +132,52 @@ builderRouter.put(
     const { categoryId } = z.object({ categoryId: z.string().nullable() }).parse(req.body);
     await setCatalog(req.params.id, categoryId, actorOf(req));
     res.json(formDetail(await findForm(req.params.id)));
+  })
+);
+
+/**
+ * Who the form is open to (staff groups, positions, named people; all empty =
+ * everyone), and the limit of the catalog category its card is in, which
+ * applies on top. Saved straight away, not with the draft: it's who may open
+ * the live form now.
+ */
+builderRouter.get(
+  "/forms/:id/audience",
+  asyncHandler(async (req, res) => {
+    const form = await findForm(req.params.id);
+    const card = form.catalogLinkId ? await prisma.formLink.findUnique({ where: { id: form.catalogLinkId }, include: { category: { select: { id: true, name: true } } } }) : null;
+    res.json({
+      audience: audienceOf(builtFormKey(form.id)),
+      category: card ? { id: card.category.id, name: card.category.name, audience: audienceOf(categoryKey(card.category.id)) } : null,
+    });
+  })
+);
+
+builderRouter.put(
+  "/forms/:id/audience",
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        groupIds: z.array(z.string()).max(50),
+        titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
+        userIds: z.array(z.string()).max(500).default([]),
+      })
+      .parse(req.body);
+    const form = await findForm(req.params.id);
+    const [groups, users] = await Promise.all([
+      prisma.staffGroup.findMany({ where: { id: { in: body.groupIds } }, select: { id: true, name: true } }),
+      prisma.user.findMany({ where: { id: { in: body.userIds } }, select: { id: true, name: true } }),
+    ]);
+    if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
+    await setAudience(builtFormKey(form.id), body.groupIds, body.userIds, body.titles);
+    const who = [...groups.map((g) => g.name), ...body.titles, ...users.map((u) => u.name)];
+    await audit({
+      actor: actorOf(req),
+      action: "forms.audience_changed",
+      summary: who.length ? `Limited “${form.title}” to ${who.join(", ")}` : `Opened “${form.title}” to everyone`,
+      changes: { groups: groups.map((g) => g.name), positions: body.titles, people: users.map((u) => u.name) },
+    });
+    res.json({ audience: audienceOf(builtFormKey(form.id)) });
   })
 );
 

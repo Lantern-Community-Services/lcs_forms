@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,12 @@ import { CheckboxList } from "@/components/ui/checkbox";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { ConditionalEditor } from "./ConditionalEditor";
 import { IconPicker } from "@/components/IconPicker";
-import { useForms } from "@/lib/queries";
-import type { BuilderReference, BuiltFormDetail } from "@/lib/builder";
+import { useForms, useUsers } from "@/lib/queries";
+import { builderApi, type Audience, type BuilderReference, type BuiltFormDetail } from "@/lib/builder";
+import { useJobTitles, useStaffGroups, type StaffGroup } from "@/lib/groups";
+import { GroupChecklist, PeoplePicker, PositionsDropdown, Segmented } from "@/components/AccessPickers";
+import { useToast } from "@/components/ui/toast";
+import { errorMessage } from "@/lib/utils";
 import type { FormDoc, FormSettings, Notification } from "@/lib/formEngine";
 import { cn } from "@/lib/utils";
 
@@ -110,6 +115,8 @@ export function SettingsPanel({
         <Toggle label="Ask which site this is for" hint="Entries are then only visible to people assigned to that site." checked={Boolean(s.requireSite)} onChange={(v) => set({ requireSite: v || undefined })} />
       </Section>
 
+      <FormsScreenAccess form={form} currentCategory={currentCategory} categories={catalog?.categories ?? []} onCatalog={onCatalog} />
+
       <Section title="Who can read entries" hint="Admins always can.">
         <CheckboxList options={roles} value={s.entriesRoles ?? ["main_office", "site_manager", "site_staff"]} onChange={(v) => set({ entriesRoles: v })} />
       </Section>
@@ -149,11 +156,6 @@ export function SettingsPanel({
 
       <Notifications doc={doc} set={set} mailConfigured={reference?.mailConfigured ?? false} roles={(reference?.roles ?? []).map((r) => ({ value: r.key, label: r.name }))} />
 
-      <Section title="Forms screen" hint="List this form on the Forms screen and in the sidebar, under a category. Who sees the card follows “Who can fill it in”.">
-        <Select value={currentCategory} onChange={(e) => onCatalog(e.target.value || null)} options={[{ value: "", label: "Not listed" }, ...(catalog?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]} className="max-w-sm" />
-        {form.status === "draft" && currentCategory && <p className="text-micro text-muted">The card stays hidden until the form is published.</p>}
-      </Section>
-
       <Section title="Custom CSS" hint="Applies to this form only — write rules as if inside the form, e.g. .big { font-size: 20px } or label { color: navy }.">
         <CodeEditor language="css" value={s.customCss ?? ""} onChange={(v) => set({ customCss: v })} minHeight={120} />
       </Section>
@@ -162,6 +164,115 @@ export function SettingsPanel({
 }
 
 /** Drop empty settings so the JSON stays tidy (and the strict schema is happy). */
+const NOBODY: Audience = { groupIds: [], titles: [], userIds: [] };
+const isSet = (a: Audience | undefined) => Boolean(a && (a.groupIds.length || a.titles.length || a.userIds.length));
+
+/** "HR, Financial Analyst and 2 people", for a limit. */
+function audienceWords(a: Audience, groups: StaffGroup[]) {
+  const parts = [
+    ...a.groupIds.map((id) => groups.find((g) => g.id === id)?.name ?? "a deleted group"),
+    ...a.titles,
+    ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : []),
+  ];
+  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * The form's category on the Forms screen and who can see and open it. A
+ * limited category limits its forms too (backend canUseBuiltForm), so it's
+ * shown here as where the form starts from; the form's own groups, positions
+ * and people can only narrow it. Saved straight away, not with Publish.
+ */
+function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
+  form: BuiltFormDetail;
+  currentCategory: string;
+  categories: { id: string; name: string }[];
+  onCatalog: (categoryId: string | null) => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const key = ["builder", "audience", form.id];
+  const { data } = useQuery({ queryKey: [...key, form.catalogLinkId], queryFn: () => builderApi.audience(form.id) });
+  const { data: groups } = useStaffGroups();
+  const { data: titles } = useJobTitles();
+  const { data: people } = useUsers();
+  const [draft, setDraft] = useState<Audience | null>(null);
+  const [limited, setLimited] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!data) return;
+    setDraft(data.audience);
+    setLimited(isSet(data.audience));
+  }, [data]);
+
+  const category = data?.category && data.category.id === currentCategory ? data.category : null;
+  const categoryLimit = category && isSet(category.audience) ? audienceWords(category.audience, groups ?? []) : null;
+  const wanted = limited ? draft ?? NOBODY : NOBODY;
+  const changed = data ? JSON.stringify(wanted) !== JSON.stringify(data.audience) : false;
+
+  async function save() {
+    if (limited && !isSet(draft ?? undefined)) return toast("Pick at least one group, position or person, or choose Everyone.", "error");
+    setBusy(true);
+    try {
+      await builderApi.setAudience(form.id, wanted);
+      await Promise.all([qc.invalidateQueries({ queryKey: key }), qc.invalidateQueries({ queryKey: ["forms"] })]);
+      toast(isSet(wanted) ? "Saved: only those people can see and open it." : "Saved: open to everyone who can see its category.");
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't save who can see it."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section title="Forms screen and who can see it" hint="Saved straight away, not with Publish. Admins always see every form.">
+      <Row label="Category" hint="Lists the form on the Forms screen and in the sidebar.">
+        <Select
+          value={currentCategory}
+          onChange={(e) => onCatalog(e.target.value || null)}
+          options={[{ value: "", label: "Not listed" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+          className="max-w-sm"
+        />
+        {form.status === "draft" && currentCategory && <p className="mt-1 text-micro text-muted">The card stays hidden until the form is published.</p>}
+      </Row>
+      {categoryLimit && (
+        <p className="rounded-input bg-navsel px-3 py-2 text-[12.5px] leading-snug text-ink">
+          <span className="font-semibold">{category!.name}</span> is only for {categoryLimit}, so this form is too: nobody else sees it or can open it, even with a link.
+          Change that on the category (Forms catalog). Below, you can narrow it further.
+        </p>
+      )}
+      <Segmented
+        value={limited ? "limited" : "everyone"}
+        options={[["everyone", categoryLimit ? `Everyone who can see ${category!.name}` : "Everyone"], ["limited", "Only some groups, positions or people"]]}
+        onChange={(v) => setLimited(v === "limited")}
+      />
+      {limited && draft && (
+        <div className="space-y-4">
+          <Row label="Groups">
+            {groups?.length ? (
+              <GroupChecklist groups={groups} titles={titles ?? []} value={draft.groupIds} onChange={(groupIds) => setDraft({ ...draft, groupIds })} />
+            ) : (
+              <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+            )}
+          </Row>
+          <Row label="Positions">
+            <PositionsDropdown groups={groups ?? []} titles={titles ?? []} value={draft.titles} onChange={(t) => setDraft({ ...draft, titles: t })} />
+          </Row>
+          <Row label="People">
+            <PeoplePicker people={people ?? []} value={draft.userIds} onChange={(userIds) => setDraft({ ...draft, userIds })} />
+          </Row>
+          {categoryLimit && <p className="text-micro text-muted">They also need to be able to see {category!.name}.</p>}
+        </div>
+      )}
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => void save()} disabled={busy || !changed}>
+          Save who can see it
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
 function clean(s: FormSettings): FormSettings {
   const out = { ...s } as Record<string, unknown>;
   if (out.limits) {
@@ -173,6 +284,9 @@ function clean(s: FormSettings): FormSettings {
 }
 
 function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set: (p: Partial<FormSettings>) => void; mailConfigured: boolean; roles: { value: string; label: string }[] }) {
+  const { data: staffGroups } = useStaffGroups();
+  const { data: jobTitles } = useJobTitles();
+  const groupName = (id: string) => staffGroups?.find((g) => g.id === id)?.name ?? "a deleted group";
   const list = doc.settings.notifications ?? [];
   const [open, setOpen] = useState<string | null>(null);
   const update = (id: string, patch: Partial<Notification>) => set({ notifications: list.map((n) => (n.id === id ? cleanN({ ...n, ...patch }) : n)) });
@@ -188,7 +302,7 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
   };
   const summary = (n: Notification) =>
     n.kind === "notify"
-      ? `In the app to ${[...(n.roles ?? []).map((k) => roles.find((r) => r.value === k)?.label ?? k), ...(n.to?.trim() ? [n.to.trim()] : [])].join(", ") || "—"}${n.siteOnly && n.roles?.length ? " at the entry's site" : ""}${n.urgent ? " · urgent" : ""}`
+      ? `In the app to ${[...(n.roles ?? []).map((k) => roles.find((r) => r.value === k)?.label ?? k), ...(n.groups ?? []).map(groupName), ...(n.titles ?? []), ...(n.to?.trim() ? [n.to.trim()] : [])].join(", ") || "—"}${n.siteOnly && (n.roles?.length || n.groups?.length || n.titles?.length) ? " at the entry's site" : ""}${n.urgent ? " · urgent" : ""}`
       : n.kind === "email" ? `Email to ${n.to || "—"}` : `Webhook to ${n.url}`;
   return (
     <Section title="Notifications" hint="Sent after each entry, optionally only when rules match. The outcome is written on the entry's notes.">
@@ -211,11 +325,21 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
                   <Row label="People with these roles" hint="Everyone who has one of them.">
                     <CheckboxList options={roles} value={n.roles ?? []} onChange={(v) => update(n.id, { roles: v })} />
                   </Row>
+                  <Row label="Everyone in these groups" hint="Whoever is in the group when it's sent (People & roles → Groups).">
+                    {staffGroups?.length ? (
+                      <GroupChecklist groups={staffGroups} titles={jobTitles ?? []} value={n.groups ?? []} onChange={(v) => update(n.id, { groups: v.length ? v : undefined })} />
+                    ) : (
+                      <p className="text-micro text-muted">No groups yet.</p>
+                    )}
+                  </Row>
+                  <Row label="Everyone with these positions" hint="Exact job titles.">
+                    <PositionsDropdown groups={staffGroups ?? []} titles={jobTitles ?? []} value={n.titles ?? []} onChange={(v) => update(n.id, { titles: v.length ? v : undefined })} />
+                  </Row>
                   <label className="flex items-start gap-2 text-[13px] text-ink">
                     <Switch checked={n.siteOnly ?? false} onCheckedChange={(v) => update(n.id, { siteOnly: v })} className="mt-0.5" />
                     <span>
                       Only those at the entry's site
-                      <span className="block text-micro text-muted">People who work at every site (Admin, Main Office) always get it.</span>
+                      <span className="block text-micro text-muted">For roles, groups and positions. People who work at every site (Admin, Main Office) always get it.</span>
                     </span>
                   </label>
                   <label className="flex items-start gap-2 text-[13px] text-ink">

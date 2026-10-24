@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { allGroups } from "./staffGroups.js";
 import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
@@ -149,6 +150,9 @@ export async function checkRoutes(form: BuiltForm, input: unknown[]): Promise<Ro
     if (badSite) throw badRequest(`${where}: no site with the code "${badSite}".`);
     for (const t of r.to) {
       if (t.kind === "role" && !isRoleKey(t.role)) throw badRequest(`${where}: "${t.role}" isn't a role. Roles: ${ROLES.map((x) => x.key).join(", ")}.`);
+      if (t.kind === "group" && !allGroups().some((g) => g.id === t.group)) {
+        throw badRequest(`${where}: no staff group with the id "${t.group}". Groups: ${allGroups().map((g) => `${g.name} (${g.id})`).join(", ") || "none yet"}.`);
+      }
       // A code form's events are described by its author; an undeclared field may still be passed, so only basic forms are strict.
       if (t.kind === "field" && form.kind === "basic" && !(ev.people ?? []).some((p) => p.id === t.field)) {
         throw badRequest(`${where}: "${t.field}" isn't an email field on this form.${ev.people?.length ? ` Email fields: ${ev.people.map((p) => p.id).join(", ")}.` : ""}`);
@@ -258,7 +262,7 @@ export async function planRoutes(form: BuiltForm, routes: Route[], input: RouteI
 
     const plan: RoutePlan = { routeId: r.id, routeName: r.name, people: [], emails: [], notes: [] };
     const named: string[] = [];
-    const roleGroups: { roles: string[]; sites?: string[] }[] = [];
+    const roleGroups: { roles?: string[]; groups?: string[]; titles?: string[]; sites?: string[] }[] = [];
     for (const t of r.to as Recipient[]) {
       if (t.kind === "person") {
         if (t.sites?.length && !(input.site && t.sites.includes(input.site.code))) continue;
@@ -270,6 +274,13 @@ export async function planRoutes(form: BuiltForm, routes: Route[], input: RouteI
       } else if (t.kind === "submitter") {
         if (input.submitterId) named.push(input.submitterId);
         else plan.notes.push("Nobody filed it (no signed-in person).");
+      } else if (t.kind === "group" || t.kind === "title") {
+        // A team or a position: everyone in it by default; siteOnly keeps it to the event's site.
+        const who = t.kind === "group" ? { groups: [t.group] } : { titles: [t.title] };
+        const label = t.kind === "group" ? allGroups().find((g) => g.id === t.group)?.name ?? "A group" : t.title;
+        if (!t.siteOnly) roleGroups.push(who);
+        else if (input.site) roleGroups.push({ ...who, sites: [input.site.id] });
+        else plan.notes.push(`${label} at the site: this event has no site.`);
       } else if (t.siteOnly === false) {
         roleGroups.push({ roles: [t.role] });
       } else if (input.site) {

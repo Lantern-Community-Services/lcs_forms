@@ -96,9 +96,10 @@ export function access(app: LoadedApp, user: CurrentUser) {
   const dev = isDeveloper(user);
   const role = user.roleKey;
   const e = m.entries ?? {};
-  // Its roles (form.json), and, when an admin limited it to some groups or people, them too.
+  // Its roles (form.json), and, when an admin limited it (or its category) to some groups, positions or people,
+  // them too. Only Admins pass that limit, as everywhere else; a Developer outside it doesn't.
   const canOpen =
-    (app.form.status !== "archived" || dev) && roleAllowed(m.access?.roles, role, dev) && (dev || canUseBuiltForm(user, app.form.id));
+    (app.form.status !== "archived" || dev) && roleAllowed(m.access?.roles, role, dev) && canUseBuiltForm(user, app.form.id);
   return {
     canOpen,
     pages: m.pages.filter((p) => roleAllowed(p.roles, role, dev)),
@@ -744,8 +745,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     if (!user) throw new Error("Reading other forms needs a signed-in person.");
     let allowed = false;
     if (other.kind === "code") {
-      allowed = Boolean(loaded && access(loaded, user).readAll);
-    } else allowed = canReadBasicEntries(readDoc(other.liveSchema ?? other.draftSchema), user);
+      allowed = Boolean(loaded && access(loaded, user).canOpen && access(loaded, user).readAll);
+    } else allowed = canReadBasicEntries(readDoc(other.liveSchema ?? other.draftSchema), user) && canUseBuiltForm(user, other.id);
     if (!allowed) throw new Error(`${user.name} can't read the entries of "${slug}".`);
     return other.id;
   }

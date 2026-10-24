@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AtSign, Copy, ExternalLink, MoreHorizontal, Plus, RotateCcw, Search, Trash2, User, UserCheck, Users, X } from "lucide-react";
+import { ArrowLeft, AtSign, Briefcase, Copy, ExternalLink, MoreHorizontal, Plus, RotateCcw, Search, Trash2, User, UserCheck, Users, UsersRound, X } from "lucide-react";
+import { GroupChecklist, PositionsDropdown } from "@/components/AccessPickers";
+import { useJobTitles, useStaffGroups } from "@/lib/groups";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +36,11 @@ type Recipient =
   | { kind: "person"; email: string; name?: string; sites?: string[] }
   | { kind: "role"; role: string; siteOnly?: boolean }
   | { kind: "field"; field: string }
-  | { kind: "submitter" };
+  | { kind: "submitter" }
+  /** Everyone in a staff group (People & roles → Groups); siteOnly keeps it to the event's site. */
+  | { kind: "group"; group: string; siteOnly?: boolean }
+  /** Everyone with a position (an exact job title). */
+  | { kind: "title"; title: string; siteOnly?: boolean };
 
 interface Rule { field: string; op: string; value?: string | number | boolean }
 
@@ -289,7 +295,7 @@ function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }
   onChange: (r: Route | null) => void;
   onDuplicate: () => void;
 }) {
-  const [picking, setPicking] = useState<null | "sites" | "person" | "role">(null);
+  const [picking, setPicking] = useState<null | "sites" | "person" | "role" | "group" | "title">(null);
   const set = (patch: Partial<Route>) => onChange({ ...route, ...patch });
   const siteName = (code: string) => sites.find((s) => s.code === code)?.name ?? code;
   const rules = route.when?.rules ?? [];
@@ -384,6 +390,8 @@ function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onSelect={() => setPicking("person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setPicking("role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setPicking("group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setPicking("title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
                 {(event.people ?? []).map((p) => (
                   <DropdownMenuItem key={p.id} disabled={route.to.some((t) => t.kind === "field" && t.field === p.id)} onSelect={() => set({ to: [...route.to, { kind: "field", field: p.id }] })}>
                     <AtSign className="h-4 w-4" /> {p.label}
@@ -427,6 +435,8 @@ function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }
       <SitesDialog open={picking === "sites"} sites={sites} value={route.sites ?? []} onClose={() => setPicking(null)} onSave={(v) => set({ sites: v.length ? v : undefined })} title="Only events at these sites" hint="Leave all unticked for every site." />
       <PersonDialog open={picking === "person"} sites={sites} taken={route.to} onClose={() => setPicking(null)} onAdd={(r) => set({ to: [...route.to, r] })} />
       <RoleDialog open={picking === "role"} roles={roles} onClose={() => setPicking(null)} onAdd={(r) => set({ to: [...route.to, r] })} />
+      {picking === "group" && <TeamDialog taken={route.to} onClose={() => setPicking(null)} onAdd={(rs) => set({ to: [...route.to, ...rs] })} />}
+      {picking === "title" && <PositionDialog taken={route.to} onClose={() => setPicking(null)} onAdd={(rs) => set({ to: [...route.to, ...rs] })} />}
     </Card>
   );
 }
@@ -450,6 +460,8 @@ function Pill({ children, onRemove }: { children: React.ReactNode; onRemove?: ()
 }
 
 function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; event: RoutingEvent; roles: RoutingView["roles"]; siteName: (c: string) => string; onChange: (r: Recipient | null) => void }) {
+  const { data: groups } = useStaffGroups(r.kind === "group");
+  const { data: titles } = useJobTitles(r.kind === "group");
   let icon = <User className="h-4 w-4" />;
   let title = "";
   let sub = "";
@@ -461,6 +473,16 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
     const role = roles.find((x) => x.key === r.role);
     title = `Every ${role?.name ?? r.role}`;
     sub = role?.everySite ? "They work at every site" : r.siteOnly === false ? "At every site" : "At the event's site";
+  } else if (r.kind === "group") {
+    icon = <UsersRound className="h-4 w-4" />;
+    const g = groups?.find((x) => x.id === r.group);
+    const positions = (titles ?? []).filter((t) => t.groupIds.includes(r.group)).map((t) => t.title);
+    title = `Everyone in ${g?.name ?? "a deleted group"}`;
+    sub = [g ? `${g.members.length} ${g.members.length === 1 ? "person" : "people"}` : null, positions.slice(0, 3).join(", ") + (positions.length > 3 ? `, +${positions.length - 3}` : "")].filter(Boolean).join(" · ");
+  } else if (r.kind === "title") {
+    icon = <Briefcase className="h-4 w-4" />;
+    title = `Every ${r.title}`;
+    sub = "Everyone with this job title";
   } else if (r.kind === "field") {
     icon = <AtSign className="h-4 w-4" />;
     title = event.people?.find((p) => p.id === r.field)?.label ?? r.field;
@@ -480,6 +502,12 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
         <Select value={r.siteOnly === false ? "all" : "site"} onChange={(e) => onChange({ ...r, siteOnly: e.target.value === "site" ? undefined : false })} className="w-40" aria-label="Where">
           <option value="site">At the event's site</option>
           <option value="all">At every site</option>
+        </Select>
+      )}
+      {(r.kind === "group" || r.kind === "title") && (
+        <Select value={r.siteOnly ? "site" : "all"} onChange={(e) => onChange({ ...r, siteOnly: e.target.value === "site" || undefined })} className="w-44" aria-label="Where">
+          <option value="all">Wherever they work</option>
+          <option value="site">At the event's site</option>
         </Select>
       )}
       <Button variant="ghost" size="icon" aria-label={`Remove ${title}`} onClick={() => onChange(null)}><X className="h-4 w-4" /></Button>
@@ -639,6 +667,69 @@ function RoleDialog({ open, roles, onClose, onAdd }: { open: boolean; roles: Rou
         <DialogFooter>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={() => { onAdd({ kind: "role", role, ...(where === "all" && !def?.everySite ? { siteOnly: false } : {}) }); onClose(); }}>Add</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Everyone in some staff groups: each group is a recipient, kept up to date as people join or leave it. */
+function TeamDialog({ taken, onClose, onAdd }: { taken: Recipient[]; onClose: () => void; onAdd: (r: Recipient[]) => void }) {
+  const { data: groups } = useStaffGroups();
+  const { data: titles } = useJobTitles();
+  const have = new Set(taken.flatMap((t) => (t.kind === "group" ? [t.group] : [])));
+  const [picked, setPicked] = useState<string[]>([]);
+  const [where, setWhere] = useState<"all" | "site">("all");
+  const left = (groups ?? []).filter((g) => !have.has(g.id));
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent aria-describedby={undefined} className="w-[min(640px,calc(100vw-2rem))]">
+        <DialogHeader title="Everyone in a group" subtitle="Whoever is in the group when it's sent, from their job title or added by hand." />
+        <DialogBody className="max-h-[65vh] space-y-3 overflow-y-auto">
+          {left.length ? (
+            <GroupChecklist groups={left} titles={titles ?? []} value={picked} onChange={setPicked} />
+          ) : (
+            <p className="text-[13px] text-muted">{groups?.length ? "Every group is on this route already." : "No groups yet. Add them in People & roles → Groups."}</p>
+          )}
+          <Field label="Where">
+            <Select value={where} onChange={(e) => setWhere(e.target.value as "all" | "site")}>
+              <option value="all">Wherever they work</option>
+              <option value="site">Only those at the event's site</option>
+            </Select>
+          </Field>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button disabled={!picked.length} onClick={() => { onAdd(picked.map((group) => ({ kind: "group", group, ...(where === "site" ? { siteOnly: true } : {}) }))); onClose(); }}>Add</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Everyone with some positions (exact job titles), sorted under the groups they're in. */
+function PositionDialog({ taken, onClose, onAdd }: { taken: Recipient[]; onClose: () => void; onAdd: (r: Recipient[]) => void }) {
+  const { data: groups } = useStaffGroups();
+  const { data: titles } = useJobTitles();
+  const have = new Set(taken.flatMap((t) => (t.kind === "title" ? [t.title.toLowerCase()] : [])));
+  const [picked, setPicked] = useState<string[]>([]);
+  const [where, setWhere] = useState<"all" | "site">("all");
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent aria-describedby={undefined} className="w-[min(640px,calc(100vw-2rem))]">
+        <DialogHeader title="Everyone with a position" subtitle="Whoever has that exact job title when it's sent." />
+        <DialogBody className="max-h-[65vh] space-y-3 overflow-y-auto">
+          <PositionsDropdown groups={groups ?? []} titles={(titles ?? []).filter((t) => !have.has(t.title.toLowerCase()))} value={picked} onChange={setPicked} />
+          <Field label="Where">
+            <Select value={where} onChange={(e) => setWhere(e.target.value as "all" | "site")}>
+              <option value="all">Wherever they work</option>
+              <option value="site">Only those at the event's site</option>
+            </Select>
+          </Field>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button disabled={!picked.length} onClick={() => { onAdd(picked.map((title) => ({ kind: "title", title, ...(where === "site" ? { siteOnly: true } : {}) }))); onClose(); }}>Add</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

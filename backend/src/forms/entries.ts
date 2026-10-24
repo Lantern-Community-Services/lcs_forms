@@ -318,10 +318,13 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
         // may be emailed (each person's choice), so it gets the subject's rules.
         const users = renderTemplate(n.to, { ...ctx, html: false }).split(/[,;\s]+/).map((s) => s.trim()).filter((s) => s.includes("@"));
         const roles = n.roles ?? [];
-        if (!users.length && !roles.length) note = `Notification “${n.name}” not sent: nobody to send it to.`;
+        const groups = n.groups ?? [];
+        const titles = n.titles ?? [];
+        const anyByWho = roles.length + groups.length + titles.length > 0;
+        if (!users.length && !anyByWho) note = `Notification “${n.name}” not sent: nobody to send it to.`;
         else {
           const out = await notify({
-            to: { users, roles, sites: n.siteOnly && roles.length && entry.siteId ? [entry.siteId] : undefined },
+            to: { users, roles, groups, titles, sites: n.siteOnly && anyByWho && entry.siteId ? [entry.siteId] : undefined },
             type: "forms.entry",
             title: linkOnlySubject(n.subject, ctx),
             body: renderTemplate(n.body, { ...ctx, html: false }) || null,

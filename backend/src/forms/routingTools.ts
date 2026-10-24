@@ -20,7 +20,7 @@ const formRef = z.string().describe("The form's id or slug — either kind.");
 
 const recipient = z
   .record(z.unknown())
-  .describe('One of: { kind: "person", email, name?, sites?: [site codes] } (anyone: an account holder is told in the app and by email, anyone else gets a link-only email; sites = only for events at those sites) · { kind: "role", role, siteOnly?: true } (everyone with the role at the event\'s site; siteOnly false = everywhere) · { kind: "field", field } (a person the event names, e.g. "supervisor") · { kind: "submitter" } (whoever filed the entry)');
+  .describe('One of: { kind: "person", email, name?, sites?: [site codes] } (anyone: an account holder is told in the app and by email, anyone else gets a link-only email; sites = only for events at those sites) · { kind: "role", role, siteOnly?: true } (everyone with the role at the event\'s site; siteOnly false = everywhere) · { kind: "field", field } (a person the event names, e.g. "supervisor") · { kind: "submitter" } (whoever filed the entry) · { kind: "group", group: <staff group id from list_staff_groups>, siteOnly?: true } (everyone in that team; default wherever they work, siteOnly = only at the event\'s site) · { kind: "title", title, siteOnly?: true } (everyone with that exact job title, a position)');
 
 const routeShape = {
   id: z.string().optional().describe("Keep a route's id to change it; omit to add a new one (made from the name)."),
@@ -35,6 +35,10 @@ const routeShape = {
   to: z.array(recipient).describe("Who's told"),
   email: z.enum(["always", "prefs"]).optional().describe('"always" (default): everyone on it is emailed (link-only) whatever their settings. "prefs": account holders get it as they chose on their Profile.'),
   subject: z.string().optional().describe("Title and email subject; tags {form} {site} {event} {title} {date}. Default: the event's own title. Never resident details."),
+  urgent: z
+    .boolean()
+    .optional()
+    .describe("Needs attention now (an incident, a request that can't wait): red in the bell, pinned at the top of their notifications until read, and emailed at once even to people on a daily summary. Default false."),
 };
 
 export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor) {
