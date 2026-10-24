@@ -47,7 +47,7 @@ import { SIZES, type WidgetId, type WidgetSize } from "./layout";
 
 export type FormEntry = { form: FormLink; category: FormCategory };
 
-/** What the Forms home already has loaded, handed to every widget. */
+/** What Home already has loaded, handed to every widget. */
 export interface WidgetCtx {
   home?: HomeData;
   homeLoading: boolean;
@@ -57,10 +57,6 @@ export interface WidgetCtx {
   categories: FormCategory[];
   favoriteForms: FormEntry[];
   totalForms: number;
-  /** The forms browser, drawn by the Forms home (it owns the search and the chosen group). */
-  renderForms: (size: WidgetSize) => React.ReactNode;
-  /** Something is typed in the search box: its matches show in All forms, or above the dashboard without it. */
-  searching: boolean;
 }
 
 type Can = (p: PermissionKey) => boolean;
@@ -85,14 +81,6 @@ const STAT: WidgetSize[] = ["small", "medium"];
 const roster = (can: Can) => can("roster.view");
 
 export const WIDGETS: WidgetDef[] = [
-  {
-    id: "all_forms",
-    title: "All forms",
-    description: "Every form you can fill in, by group, with the search above.",
-    icon: LayoutGrid,
-    sizes: ["full", "large"],
-    render: (ctx, size) => ctx.renderForms(size),
-  },
   {
     id: "stat_attention",
     title: "Attention count",

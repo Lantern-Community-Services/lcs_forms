@@ -35,8 +35,8 @@ const DARK_THEME = { label: "Dark", color: "#8aa6e0", sidebar: "#121723" };
 
 /** A landing page saved before the roster screens became tabs, in today's terms. */
 function currentLanding(saved: string | undefined): LandingPage {
-  const legacy: Record<string, LandingPage> = { "/review": "/roster/review", "/dashboard": "/roster/overview" };
-  return legacy[saved ?? ""] ?? (saved as LandingPage | undefined) ?? "/forms";
+  const legacy: Record<string, LandingPage> = { "/review": "/roster/review", "/dashboard": "/roster/overview", "/forms": "/home" };
+  return legacy[saved ?? ""] ?? (saved as LandingPage | undefined) ?? "/home";
 }
 
 export function ProfilePage() {
@@ -109,7 +109,7 @@ export function ProfilePage() {
   );
 
   const landingOptions = [
-    { value: "/forms", label: "Forms" },
+    { value: "/home", label: "Home" },
     ...(can("roster.view")
       ? [
           { value: "/roster", label: "Roster · Residents" },
@@ -124,7 +124,7 @@ export function ProfilePage() {
       {/* Artboard 1i. Reached through More on a phone, so it carries the way
           back; the desktop sidebar is always on screen and needs none. */}
       <div className="page-list-item-enter">
-        <MobileBackLink to="/forms" label="Home" />
+        <MobileBackLink to="/home" label="Home" />
         <PageHeader title="Profile &amp; settings" />
       </div>
 
@@ -199,7 +199,7 @@ export function ProfilePage() {
           The welcome tour shows you around the site. Forms can have their own tutorial too, the first time you open them.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={() => navigate("/forms?tour=site")}>
+          <Button onClick={() => navigate("/home?tour=site")}>
             <Compass className="h-4 w-4" /> Take the tour
           </Button>
           <Button variant="secondary" onClick={() => void showFormTutorialsAgain()} disabled={resetting}>

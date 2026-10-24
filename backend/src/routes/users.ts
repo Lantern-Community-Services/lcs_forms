@@ -14,7 +14,8 @@ import { MAIN_OFFICE_LOCATION, parseLocations } from "./onboarding.js";
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
-const LANDING = ["/forms", "/roster", "/roster/review", "/roster/overview"] as const;
+// "/forms" was Home's address before /home; still accepted, and read as Home.
+const LANDING = ["/home", "/forms", "/roster", "/roster/review", "/roster/overview"] as const;
 
 /** The signed-in person's own preferences — the Profile screen. */
 usersRouter.patch(
@@ -280,7 +281,7 @@ usersRouter.patch(
           type: "account",
           title: letIn ? "You can now sign in to Lantern Forms" : "Your access in Lantern Forms changed",
           body: `${req.user!.name} ${letIn ? "let you in" : "changed your access"}. You're ${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}, at ${where}.`,
-          link: "/forms",
+          link: "/home",
           sourceLabel: "People & roles",
         });
       }
@@ -359,7 +360,7 @@ usersRouter.post(
       type: "account",
       title: letIn ? "You can now sign in to Lantern Forms" : "You've been given more sites in Lantern Forms",
       body: `${req.user!.name} approved ${names.join(", ")}. You're ${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}, at ${whereText(user)}.`,
-      link: "/forms",
+      link: "/home",
       sourceLabel: "People & roles",
     });
     await markUpcomingDirty();

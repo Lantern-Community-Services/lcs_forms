@@ -94,6 +94,14 @@ export const formBody = z.object({
 export const categoryBody = z.object({
   name: z.string().trim().min(1).max(80),
   icon: z.enum(FORM_ICONS).default("folder"),
+  /** One line on the Forms page; "" clears it. */
+  description: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    // Left out: unchanged (a rename keeps it). "": cleared.
+    .transform((v) => (v === undefined ? undefined : v || null)),
 });
 
 /**

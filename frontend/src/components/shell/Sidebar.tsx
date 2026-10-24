@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Settings, Home, Contact, CalendarDays, Bell, ChevronDown, ChevronRight, ExternalLink, LogOut, PanelLeftClose, PanelLeftOpen, Search,
+  Settings, Home, Contact, CalendarDays, Bell, ExternalLink, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, isSiteSettingsOnly, useAuth } from "@/lib/auth";
@@ -14,14 +14,12 @@ import type { FormLink } from "@/lib/types";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useNavMode } from "@/lib/shellNav";
-import { readStorage, writeStorage } from "@/lib/storage";
 import { useUnreadCount } from "@/lib/notifications";
-import { isFormPath, ROSTER_URL, searchForms, useIsLit, useNavCatalog, useReviewCount, type NavCategory } from "./navData";
+import { isFormPath, ROSTER_URL, useIsLit, useNavCatalog, useReviewCount } from "./navData";
+import { useGlobalSearch } from "./globalSearch";
 
 const EXPANDED_WIDTH = 240;
 const COLLAPSED_WIDTH = 64;
-/** Which categories are open in the accordion, remembered per device. */
-const OPEN_KEY = "ln.navOpen";
 const EASE = "ease-[cubic-bezier(.2,.8,.2,1)]";
 
 /*
@@ -158,59 +156,6 @@ function FormRow({ form, Icon, subtitle, collapsed, lit, count }: {
   );
 }
 
-/** A category in the accordion: opens in place, so its forms never slide out of view. */
-function CategoryRow({ type, open, here, collapsed, onToggle }: {
-  type: NavCategory;
-  open: boolean;
-  /** The form on screen is one of this category's. */
-  here: boolean;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  const { category, Icon } = type;
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={collapsed ? undefined : open}
-      title={collapsed ? category.name : undefined}
-      className={cn(itemClass(here && collapsed, collapsed), wrapRow(collapsed), here && "text-ink")}
-    >
-      <span className={iconBox(here && collapsed, collapsed)}><Icon className="h-[18px] w-[18px]" /></span>
-      <span className={cn("w-[149px] shrink-0 py-[11px] text-left leading-[18px]", fade(collapsed))}>
-        {category.name}
-        {/* Closed over the form you're in: a dot says it's in here. */}
-        {here && !open && <span className="mb-px ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle dark:bg-white" />}
-      </span>
-      <span className={cn("flex h-10 w-5 shrink-0 items-center justify-center", fade(collapsed))}>
-        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-      </span>
-    </button>
-  );
-}
-
-/** Open categories, remembered per device. */
-function useOpenCategories() {
-  const [open, setOpen] = useState<Set<string>>(() => {
-    try {
-      const saved = JSON.parse(readStorage(OPEN_KEY) ?? "[]");
-      return new Set(Array.isArray(saved) ? saved.filter((v): v is string => typeof v === "string") : []);
-    } catch {
-      return new Set();
-    }
-  });
-  useEffect(() => writeStorage(OPEN_KEY, JSON.stringify([...open])), [open]);
-  const set = (id: string, value: boolean) =>
-    setOpen((prev) => {
-      if (prev.has(id) === value) return prev;
-      const next = new Set(prev);
-      if (value) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  return [open, set] as const;
-}
-
 /**
  * The sidebar's collapsed state.
  *
@@ -277,7 +222,6 @@ export function Sidebar() {
   const lit = useIsLit();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const [open, setOpen] = useOpenCategories();
   const [q, setQ] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const focusSearch = useRef(false);
@@ -286,15 +230,10 @@ export function Sidebar() {
   const siteSettingsOnly = isSiteSettingsOnly(can);
 
   const countFor = (form: FormLink) => (form.url === ROSTER_URL ? reviewCount : 0);
-  const hereId = categories.find((c) => c.forms.some((f) => isInternalForm(f.url) && lit(f.url)))?.category.id;
+  // The Forms page stays lit inside any form it lists, so you can see where you came from.
+  const formsLit = pathname === "/forms" || (isFormPath(pathname) && !lit(ROSTER_URL) && !pinned.some((p) => lit(p.form.url)));
 
-  // Arriving at a form opens its category, so the forms beside it are in view.
-  // Only on arrival: closing it again while you stay is left alone.
-  useEffect(() => {
-    if (hereId) setOpen(hereId, true);
-  }, [pathname, hereId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Picking a form (or going anywhere) ends the search.
+  // Picking a result (or going anywhere) ends the search.
   useEffect(() => setQ(""), [pathname]);
 
   // Ctrl/⌘ K: straight to the search, unfolding the sidebar if it has to.
@@ -324,24 +263,15 @@ export function Sidebar() {
     }
   }, [collapsed]);
 
-  const results = searchForms(categories, q);
+  const hits = useGlobalSearch(q, categories);
   const searching = !collapsed && q.trim() !== "";
+  const nothing = !hits.pages.length && !hits.forms.length && !hits.residents.length;
   const openResult = () => {
-    const first = results[0]?.form;
+    const first = hits.first;
     if (!first) return;
-    if (isInternalForm(first.url)) navigate(first.url);
-    else window.open(first.url, "_blank", "noopener,noreferrer");
+    if (first.external) window.open(first.to, "_blank", "noopener,noreferrer");
+    else navigate(first.to);
     setQ("");
-  };
-
-  // Collapsed, a category is just an icon: tapping it unfolds the sidebar with that category open.
-  const toggleCategory = (id: string) => {
-    if (collapsed) {
-      setOpen(id, true);
-      expand();
-    } else {
-      setOpen(id, !open.has(id));
-    }
   };
 
   return (
@@ -376,8 +306,8 @@ export function Sidebar() {
         <button
           type="button"
           onClick={openSearch}
-          title="Find a form (Ctrl K)"
-          aria-label="Find a form"
+          title="Search (Ctrl K)"
+          aria-label="Search"
           tabIndex={collapsed ? undefined : -1}
           aria-hidden={collapsed ? undefined : true}
           className={cn(itemClass(false, true), "absolute inset-0 transition-opacity duration-200", collapsed ? "opacity-100" : "pointer-events-none opacity-0")}
@@ -397,8 +327,8 @@ export function Sidebar() {
               }
             }}
             tabIndex={collapsed ? -1 : undefined}
-            placeholder="Find a form"
-            aria-label="Find a form"
+            placeholder="Search"
+            aria-label="Search screens, forms and residents"
             className="h-10 min-h-10 bg-surface pr-14 text-[13.5px] md:min-h-10"
           />
           <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-hairline px-1.5 py-px font-body text-[10.5px] font-bold text-muted">Ctrl K</kbd>
@@ -409,15 +339,44 @@ export function Sidebar() {
       <nav aria-label="Main" className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-1 scroll-thin">
         {searching ? (
           <>
-            <SectionLabel label={results.length === 1 ? "1 form" : `${results.length} forms`} collapsed={false} />
-            {results.map((r) => (
-              <FormRow key={r.form.id} form={r.form} Icon={r.Icon} subtitle={r.category.name} collapsed={false} lit={lit(r.form.url)} count={countFor(r.form)} />
-            ))}
-            {results.length === 0 && <p className="px-2.5 py-2 text-[13px] text-muted">No forms match. Try a shorter word.</p>}
+            {hits.pages.length > 0 && (
+              <>
+                <SectionLabel label="Screens" collapsed={false} />
+                {hits.pages.map((p) => (
+                  <NavItem key={p.to} to={p.to} label={p.label} Icon={p.Icon} collapsed={false} />
+                ))}
+              </>
+            )}
+            {hits.forms.length > 0 && (
+              <>
+                <SectionLabel label={hits.forms.length === 1 ? "1 form" : `${hits.forms.length} forms`} collapsed={false} />
+                {hits.forms.map((r) => (
+                  <FormRow key={r.form.id} form={r.form} Icon={r.Icon} subtitle={r.category.name} collapsed={false} lit={lit(r.form.url)} count={countFor(r.form)} />
+                ))}
+              </>
+            )}
+            {hits.residents.length > 0 && (
+              <>
+                <SectionLabel label={hits.residentTotal === 1 ? "1 resident" : `${hits.residentTotal} residents`} collapsed={false} />
+                {hits.residents.map((t) => (
+                  <NavLink key={t.id} to={`/tenants/${t.id}`} className={({ isActive }) => cn(itemClass(isActive), wrapRow(false), "font-medium")}>
+                    <span className="min-w-0 flex-1 py-2 pl-2.5 pr-2 leading-[18px]">
+                      {t.displayName}
+                      <span className="mt-0.5 block text-micro font-medium text-muted">{[t.unit && `Unit ${t.unit}`, t.site?.name].filter(Boolean).join(" · ")}</span>
+                    </span>
+                  </NavLink>
+                ))}
+                {hits.residentTotal > hits.residents.length && (
+                  <p className="px-2.5 py-1.5 text-[12px] text-muted">Keep typing to narrow it down, or search the Roster.</p>
+                )}
+              </>
+            )}
+            {nothing && <p className="px-2.5 py-2 text-[13px] text-muted">Nothing matches. Try a shorter word.</p>}
           </>
         ) : (
           <>
-            <NavItem to="/forms" label="Home" Icon={Home} collapsed={collapsed} end tour="nav-home" />
+            <NavItem to="/home" label="Home" Icon={Home} collapsed={collapsed} end tour="nav-home" />
+            <NavItem to="/forms" label="Forms" Icon={LayoutGrid} collapsed={collapsed} lit={formsLit} tour="nav-forms" />
             {can("roster.view") && <NavItem to={ROSTER_URL} label="Roster" Icon={Contact} collapsed={collapsed} lit={lit(ROSTER_URL)} count={reviewCount} tour="nav-roster" />}
             <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} tour="nav-calendar" />
 
@@ -429,31 +388,6 @@ export function Sidebar() {
                 ))}
               </>
             )}
-
-            {categories.length > 0 && <SectionLabel label="All forms" collapsed={collapsed} />}
-            {categories.map((c) => {
-              const isOpen = open.has(c.category.id) && !collapsed;
-              return (
-                <div key={c.category.id} className="shrink-0">
-                  <CategoryRow
-                    type={c}
-                    open={open.has(c.category.id)}
-                    here={hereId === c.category.id}
-                    collapsed={collapsed}
-                    onToggle={() => toggleCategory(c.category.id)}
-                  />
-                  {isOpen && (
-                    <ul className="mb-1 ml-5 space-y-px border-l border-hairline pl-1.5">
-                      {c.forms.map((f) => (
-                        <li key={f.id}>
-                          <FormRow form={f} collapsed={false} lit={lit(f.url)} count={countFor(f)} />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
 
             {isAdmin && (
               <>

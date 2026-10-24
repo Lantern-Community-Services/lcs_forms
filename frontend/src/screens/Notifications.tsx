@@ -107,7 +107,7 @@ export function NotificationsPage() {
       <PhoneHeader
         title="Notifications"
         subtitle={subtitle}
-        back={{ to: "/forms", label: "Home" }}
+        back={{ to: "/home", label: "Home" }}
         actions={
           <Button variant="ghost" size="icon" onClick={markAll} disabled={!unread || readAll.isPending} aria-label="Mark all read">
             <CheckCheck className="h-[18px] w-[18px]" />

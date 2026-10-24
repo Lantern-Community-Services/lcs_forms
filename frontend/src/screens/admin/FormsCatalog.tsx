@@ -36,7 +36,7 @@ type FormDraft = {
   /** Role keys that may see it; empty = everyone. */
   roles: string[];
 };
-type CategoryDraft = { id?: string; name: string; icon: FormIconKey };
+type CategoryDraft = { id?: string; name: string; icon: FormIconKey; description: string };
 type Pending = { kind: "form"; form: FormLink } | { kind: "category"; category: FormCategory };
 
 /**
@@ -110,7 +110,7 @@ export function AdminFormsCatalog() {
 
   async function saveCategory() {
     if (!category) return;
-    const body = { name: category.name, icon: category.icon };
+    const body = { name: category.name, icon: category.icon, description: category.description.trim() };
     const ok = await run(
       () => (category.id ? formsApi.updateCategory(category.id, body) : formsApi.createCategory(body)),
       category.id ? "Category saved." : "Category added."
@@ -162,7 +162,7 @@ export function AdminFormsCatalog() {
         subtitle="What staff see on the Forms screen. Changes are live for everyone as soon as they save."
         actions={
           <>
-            <Button variant="secondary" onClick={() => setCategory({ name: "", icon: "folder" })}>
+            <Button variant="secondary" onClick={() => setCategory({ name: "", icon: "folder", description: "" })}>
               <Plus className="h-4 w-4" /> Category
             </Button>
             <Button onClick={() => newForm(categories[0]?.id ?? "")} disabled={categories.length === 0}>
@@ -186,7 +186,7 @@ export function AdminFormsCatalog() {
                 </p>
                 <IconButton label="Move category up" disabled={busy || ci === 0} onClick={() => moveCategory(ci, -1)}><ArrowUp className="h-4 w-4" /></IconButton>
                 <IconButton label="Move category down" disabled={busy || ci === categories.length - 1} onClick={() => moveCategory(ci, 1)}><ArrowDown className="h-4 w-4" /></IconButton>
-                <IconButton label="Rename category" onClick={() => setCategory({ id: cat.id, name: cat.name, icon: cat.icon || "folder" })}><Pencil className="h-4 w-4" /></IconButton>
+                <IconButton label="Rename category" onClick={() => setCategory({ id: cat.id, name: cat.name, icon: cat.icon || "folder", description: cat.description ?? "" })}><Pencil className="h-4 w-4" /></IconButton>
                 <IconButton
                   label={cat.forms.length ? "Move or delete its forms first" : "Delete category"}
                   disabled={cat.forms.length > 0}
@@ -378,6 +378,9 @@ export function AdminFormsCatalog() {
               <DialogBody className="space-y-4">
                 <Field label="Name">
                   <Input value={category.name} onChange={(e) => setCategory({ ...category, name: e.target.value })} maxLength={80} required autoFocus />
+                </Field>
+                <Field label="Description" hint="Optional. One line on the Forms page saying what kind of forms are in it.">
+                  <Input value={category.description} onChange={(e) => setCategory({ ...category, description: e.target.value })} maxLength={200} placeholder="e.g. Meals, pantry and food distribution" />
                 </Field>
                 <Field label="Icon">
                   <IconPicker value={category.icon} onChange={(icon) => icon && setCategory({ ...category, icon })} />

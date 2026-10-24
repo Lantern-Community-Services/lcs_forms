@@ -66,7 +66,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
-  const home = <DockLink key="home" tour="dock-home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} onClick={onCloseLauncher} />;
+  const home = <DockLink key="home" tour="dock-home" to="/home" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/home"} phone={phone} onClick={onCloseLauncher} />;
   const rosterItem = roster && (
     <DockLink key="roster" tour="dock-roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
   );

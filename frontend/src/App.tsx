@@ -15,6 +15,7 @@ import { TourProvider } from "./lib/tour/TourProvider";
 import { SignInPage } from "./screens/SignIn";
 import { WelcomePage } from "./screens/Welcome";
 import { FormsPage } from "./screens/Forms";
+import { HomePage } from "./screens/Home";
 import { DashboardPage } from "./screens/Dashboard";
 import { RosterPage } from "./screens/Roster";
 import { ReviewPage } from "./screens/Review";
@@ -106,7 +107,7 @@ function DesktopOnly() {
         title="Admin is desktop only"
         hint="Open the app on a computer to change settings, forms, people or sites."
       />
-      <Link to="/forms"><Button>Back to forms</Button></Link>
+      <Link to="/home"><Button>Back to Home</Button></Link>
     </div>
   );
 }
@@ -126,14 +127,17 @@ function PeopleFrame() {
 }
 
 /**
- * Where "/" goes: the person's chosen landing page, or Forms. A roster page is
+ * Where "/" goes: the person's chosen landing page, or Home. A roster page is
  * only honoured while they can still see the roster, otherwise a demoted
  * person would bounce between "/" and a screen that sends them back to "/".
+ * "/forms" was Home's address before the forms got a page of their own, so a
+ * landing page saved as "/forms" (everyone's default) still means Home.
  */
 function HomeRedirect() {
   const { user, can } = useAuth();
-  const chosen = user?.defaultLandingPage ?? "/forms";
-  return <Navigate to={chosen === "/forms" || can("roster.view") ? chosen : "/forms"} replace />;
+  const saved = user?.defaultLandingPage;
+  const chosen = !saved || saved === "/forms" ? "/home" : saved;
+  return <Navigate to={chosen === "/home" || can("roster.view") ? chosen : "/home"} replace />;
 }
 
 /** The Roster: one sidebar entry, its screens as tabs. */
@@ -193,6 +197,7 @@ export function App() {
 
       <Route element={<Protected><AppShell /></Protected>}>
         <Route index element={<HomeRedirect />} />
+        <Route path="/home" element={<HomePage />} />
         <Route path="/forms" element={<FormsPage />} />
         {/* Everyone reads the calendar; the screen offers changes to calendar.manage only. */}
         <Route path="/calendar" element={<CalendarPage />} />

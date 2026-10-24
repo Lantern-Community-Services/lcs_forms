@@ -7,8 +7,9 @@ import { readStoredJson, writeStorage } from "@/lib/storage";
  *
  * Kept per person and per device (localStorage), like the invoices site's: an
  * iPad and a desktop have different room, so each keeps its own arrangement.
- * Nothing saved yet means a blank dashboard — just All forms (BLANK) — that
- * offers the presets below (the welcome tour walks people through picking one).
+ * Nothing saved yet means the focused default (defaultLayout): what needs
+ * the person, what's coming up and what happened. The forms themselves live
+ * on their own page (/forms), not here.
  */
 
 /**
@@ -30,8 +31,7 @@ export type WidgetId =
   | "calendar"
   | "notifications"
   | "roster_sites"
-  | "quick_actions"
-  | "all_forms";
+  | "quick_actions";
 
 /**
  * Widths. The grid is 6 columns on a tablet and 12 on a desktop:
@@ -120,24 +120,20 @@ export interface Preset {
 
 const L = (id: WidgetId, size: WidgetSize): LayoutItem => ({ id, size });
 
-/** A blank dashboard: nothing chosen yet, so just the forms (the page offers the presets above them). */
-export const BLANK: LayoutItem[] = [{ id: "all_forms", size: "full" }];
-
 /**
- * The Standard layout: the page as it was before it could be customized —
- * counts, then the forms, then attention beside activity. A tablet leaves
- * the counts out so the forms are the first thing on screen.
- *
- * Every preset puts All forms near the top, just under its counts (code
- * forms' tiles count as counts).
+ * The default: a simple, focused page for someone's daily work, so a first-
+ * timer doesn't start by arranging widgets. On a desktop: three counts, then
+ * what needs them beside what's coming up, then recent activity beside their
+ * notifications. A tablet leaves the counts out.
  */
-export function defaultLayout(desktop: boolean, roster: boolean): LayoutItem[] {
+export function defaultLayout(desktop: boolean, _roster: boolean): LayoutItem[] {
   return [
-    ...(desktop ? [L("stat_attention", "small"), L("stat_submissions", "small"), L(roster ? "stat_residents" : "stat_forms", "small")] : []),
+    ...(desktop ? [L("stat_attention", "small"), L("stat_today", "small"), L("stat_unread", "small")] : []),
     L("form_stats", "full"),
-    L("all_forms", "full"),
     L("attention", "medium"),
+    L("calendar", "medium"),
     L("activity", "medium"),
+    L("notifications", "medium"),
   ];
 }
 
@@ -146,14 +142,14 @@ export function presets(desktop: boolean, roster: boolean): Preset[] {
     {
       id: "standard",
       title: "Standard",
-      description: "Counts, your forms, what needs you and recent activity.",
+      description: "What needs you, what's coming up, recent activity and notifications.",
       items: defaultLayout(desktop, roster),
     },
     {
       id: "quick",
       title: "Quick launch",
-      description: "Your forms up top, with pinned and recent ones beside.",
-      items: [L("all_forms", "large"), L("pinned", "small"), L("recent_forms", "medium"), L("quick_actions", "medium"), L("attention", "full")],
+      description: "Your pinned and recent forms up top, then what needs you.",
+      items: [L("pinned", "large"), L("quick_actions", "small"), L("recent_forms", "medium"), L("attention", "medium"), L("calendar", "full")],
     },
     {
       id: "site",
@@ -163,7 +159,6 @@ export function presets(desktop: boolean, roster: boolean): Preset[] {
         L("stat_residents", "small"),
         L("stat_attention", "small"),
         L("stat_today", "small"),
-        L("all_forms", "full"),
         L("roster_sites", "large"),
         L("attention", "small"),
         L("calendar", "medium"),
@@ -179,7 +174,6 @@ export function presets(desktop: boolean, roster: boolean): Preset[] {
         L("stat_unread", "small"),
         L("stat_submissions", "small"),
         L("form_stats", "full"),
-        L("all_forms", "full"),
         L("attention", "medium"),
         L("notifications", "medium"),
         L("pinned", "large"),
