@@ -181,9 +181,13 @@ export interface Notification {
   body?: string;
   /** notify: everyone with these roles… */
   roles?: string[];
+  /** notify: …everyone in these staff groups (ids)… */
+  groups?: string[];
+  /** notify: …everyone with these positions (exact job titles, any case)… */
+  titles?: string[];
   /** notify: needs attention now — always in the app, emailed at once, marked urgent. */
   urgent?: boolean;
-  /** notify: …only those at the entry's site (people at every site always count). */
+  /** notify: …only those (by role, group or position) at the entry's site (people at every site always count). */
   siteOnly?: boolean;
   /** notify: the page it opens; the entry by default. Merge tags work ({entry:id}). */
   link?: string;
@@ -1303,7 +1307,9 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
   (doc.settings.notifications ?? []).forEach((n, i) => {
     checkRules(n.conditional, `settings.notifications[${i}].conditional`);
     if (n.enabled && n.kind === "email" && !n.to) problems.push({ path: `settings.notifications[${i}].to`, message: "An email notification needs a To address." });
-    if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length) problems.push({ path: `settings.notifications[${i}].to`, message: "A notification needs people: roles, or addresses in To." });
+    if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length && !n.groups?.length && !n.titles?.length) {
+      problems.push({ path: `settings.notifications[${i}].to`, message: "A notification needs people: roles, groups, positions, or addresses in To." });
+    }
     if (n.enabled && n.kind === "webhook" && !/^https:\/\//.test(n.url ?? "")) problems.push({ path: `settings.notifications[${i}].url`, message: "A webhook needs an https:// URL." });
   });
   if (doc.settings.access?.mode === "public") {

@@ -45,6 +45,19 @@ export interface BuiltFormDetail {
   updatedAt: string;
 }
 
+/** Who a form or a category is open to. All empty = everyone. */
+export interface Audience {
+  groupIds: string[];
+  titles: string[];
+  userIds: string[];
+}
+
+/** A form's own limit, and the limit of the catalog category its card is in (which applies too). */
+export interface FormAccess {
+  audience: Audience;
+  category: { id: string; name: string; audience: Audience } | null;
+}
+
 export interface BuilderReference {
   fieldTypes: FieldTypeInfo[];
   expressionFunctions: string[];
@@ -182,6 +195,8 @@ export const builderApi = {
   duplicate: (id: string) => api.post<BuiltFormDetail>(`/builder/forms/${id}/duplicate`),
   remove: (id: string, withEntries = false) => api.delete(`/builder/forms/${id}`, { withEntries }),
   setCatalog: (id: string, categoryId: string | null) => api.put<BuiltFormDetail>(`/builder/forms/${id}/catalog`, { categoryId }),
+  audience: (id: string) => api.get<FormAccess>(`/builder/forms/${id}/audience`),
+  setAudience: (id: string, body: Audience) => api.put<{ audience: Audience }>(`/builder/forms/${id}/audience`, body),
   versionDoc: (id: string, v: number) => api.get<FormDoc>(`/builder/forms/${id}/versions/${v}`),
   restoreVersion: (id: string, v: number) => api.post<BuiltFormDetail>(`/builder/forms/${id}/versions/${v}/restore`),
   import: (payload: unknown, opts: { withEntries?: boolean; publish?: boolean } = {}) => api.post<ImportResult>("/builder/import", { payload, ...opts }),

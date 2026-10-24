@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { canUseBuiltForm } from "../services/staffGroups.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { asyncHandler } from "../http.js";
@@ -216,8 +217,8 @@ async function recentForms(req: Request): Promise<RecentForm[]> {
   });
   const byForm = new Map<string, RecentForm>();
   for (const e of entries) {
-    // A form since unpublished would only lead to an error page.
-    if (e.form.status !== "published") continue;
+    // A form since unpublished, or since limited to other people, would only lead to an error page.
+    if (e.form.status !== "published" || !canUseBuiltForm(req.user!, e.form.id)) continue;
     const seen = byForm.get(e.form.id);
     if (seen) seen.uses++;
     else byForm.set(e.form.id, { id: e.form.id, title: e.form.title, href: e.form.kind === "code" ? `/apps/${e.form.slug}` : `/f/${e.form.slug}`, lastAt: e.createdAt, uses: 1 });
