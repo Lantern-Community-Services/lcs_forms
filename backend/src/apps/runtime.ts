@@ -21,7 +21,7 @@ import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scop
 import { noteCalendarChange } from "../services/outlookSync.js";
 import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
-import { builtFormKey, inAudience } from "../services/staffGroups.js";
+import { canUseBuiltForm } from "../services/staffGroups.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -98,7 +98,7 @@ export function access(app: LoadedApp, user: CurrentUser) {
   const e = m.entries ?? {};
   // Its roles (form.json), and, when an admin limited it to some groups or people, them too.
   const canOpen =
-    (app.form.status !== "archived" || dev) && roleAllowed(m.access?.roles, role, dev) && (dev || inAudience(user, builtFormKey(app.form.id)));
+    (app.form.status !== "archived" || dev) && roleAllowed(m.access?.roles, role, dev) && (dev || canUseBuiltForm(user, app.form.id));
   return {
     canOpen,
     pages: m.pages.filter((p) => roleAllowed(p.roles, role, dev)),

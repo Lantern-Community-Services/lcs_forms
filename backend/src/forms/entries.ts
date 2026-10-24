@@ -11,7 +11,7 @@ import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
 import { notify } from "../services/notifications.js";
 import { entryInput, outcomeNote, routeQuietly } from "../services/routing.js";
 import { TZ, stamp } from "../services/exportCommon.js";
-import { builtFormKey, inAudience, isLimited } from "../services/staffGroups.js";
+import { canUseBuiltForm, isBuiltFormLimited } from "../services/staffGroups.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
   type Field, type FormDoc, type Values,
@@ -47,12 +47,12 @@ export function fillBlocker(form: BuiltForm, doc: FormDoc, user: Viewer): { stat
   if (form.status === "archived" || form.status === "draft" || !form.liveSchema) return { status: 404, message: "This form isn't available." };
   const mode = doc.settings.access?.mode ?? "signed_in";
   // Limited to some groups or people: never public, whatever its own setting says.
-  const limited = isLimited(builtFormKey(form.id));
+  const limited = isBuiltFormLimited(form.id);
   if ((mode !== "public" || limited) && !user) return { status: 401, message: "Sign in to fill in this form." };
   if (mode === "roles" && user && !isFormAdmin(user) && !(doc.settings.access?.roles ?? []).includes(user.roleKey)) {
     return { status: 403, message: "This form is limited to other roles. Ask an administrator if you need it." };
   }
-  if (user && !inAudience(user, builtFormKey(form.id))) {
+  if (user && !canUseBuiltForm(user, form.id)) {
     return { status: 403, message: "This form is only open to some people. Ask an administrator if you need it." };
   }
   return null;

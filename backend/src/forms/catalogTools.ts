@@ -6,7 +6,7 @@ import { categoryBody, formBody } from "../routes/forms.js";
 import { LEGACY_FORM_ICON_KEYS } from "./iconKeys.js";
 import { builtSlugOf, linkCatalogCard, unlinkCatalogCard } from "./service.js";
 import type { ToolRegistrar } from "./mcp.js";
-import { allGroups, audienceOf, keyForCard, knownTitles, setAudience } from "../services/staffGroups.js";
+import { allGroups, audienceOf, categoryKey, keyForCard, knownTitles, setAudience } from "../services/staffGroups.js";
 
 /**
  * MCP tools for the Forms catalog (the Forms screen and the sidebar): list it,
@@ -36,6 +36,8 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
           name: c.name,
           icon: c.icon,
           description: c.description,
+          // Who the category (and every card in it) is open to; all empty = everyone.
+          audience: audienceOf(categoryKey(c.id)),
           cards: c.forms.map((f) => ({
             id: f.id, title: f.title, description: f.description, url: f.url, kind: kindOf(f.url), icon: f.icon, keywords: f.keywords, badge: f.badge,
             roles: f.roles ? f.roles.split(",") : [], active: f.active,
@@ -199,6 +201,28 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       const { key } = await cardKeyOf(cardId);
       return audienceOf(key);
     }
+  );
+
+  tool(
+    "set_category_audience",
+    "Limit a catalog category, and every form on its cards, to some staff groups, positions (exact job titles, any case) and/or named people (user ids), or open it to everyone with every list empty. Each form's own audience still applies on top. Applies everywhere: the catalog and search, opening its forms, their entries.",
+    { categoryId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), userIds: z.array(z.string()).max(500).optional() },
+    async ({ categoryId, groupIds, titles = [], userIds = [] }) => {
+      need("forms:build");
+      const cat = await prisma.formCategory.findUnique({ where: { id: categoryId } });
+      if (!cat) throw new HttpError(404, "No such category. Use list_catalog.");
+      const [groups, users] = await Promise.all([
+        prisma.staffGroup.findMany({ where: { id: { in: groupIds } }, select: { id: true, name: true } }),
+        prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }),
+      ]);
+      if (groups.length !== new Set(groupIds).size) throw new HttpError(400, "Unknown group id. Use list_staff_groups.");
+      if (users.length !== new Set(userIds).size) throw new HttpError(400, "Unknown user id.");
+      await setAudience(categoryKey(cat.id), groupIds, userIds, titles);
+      const who = [...groups.map((g) => g.name), ...titles, ...users.map((u) => u.name)];
+      await audit({ actor, action: "forms.audience_changed", summary: who.length ? `Limited the “${cat.name}” category to ${who.join(", ")}` : `Opened the “${cat.name}” category to everyone` });
+      return audienceOf(categoryKey(cat.id));
+    },
+    { destructiveHint: true }
   );
 
   tool(

@@ -11,7 +11,9 @@ import type { CurrentUser } from "../auth/middleware.js";
  * them out (StaffGroupMember.include).
  *
  * A form can be limited to some groups, positions (exact job titles) and/or
- * named people (FormAudience). No rows = everyone. Admins (forms.manage) always see every form. The check is
+ * named people (FormAudience). No rows = everyone. A catalog category can be
+ * limited the same way (key category:<id>): then it, and every form on its
+ * cards, is only for those people, on top of each form's own limit. Admins (forms.manage) always see every form. The check is
  * the same everywhere a form shows up or is used: the catalog and search, a
  * builder form's page and its entries, a code form and its server actions.
  *
@@ -43,14 +45,20 @@ export const normTitle = (t: string | null | undefined) => (t ?? "").trim().toLo
 
 let groups: GroupInfo[] = [];
 let audiences = new Map<string, Audience>();
+/** Built form id → the category of the catalog card that opens it. */
+let formCategory = new Map<string, string>();
 let loading: Promise<void> | null = null;
 let loaded = false;
 
 async function load() {
-  const [rows, aud] = await Promise.all([
+  const [rows, aud, linked, cards] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
     prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
+    prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
+    prisma.formLink.findMany({ select: { id: true, categoryId: true } }),
   ]);
+  const cardCategory = new Map(cards.map((c) => [c.id, c.categoryId]));
+  formCategory = new Map(linked.flatMap((f) => (cardCategory.has(f.catalogLinkId!) ? [[f.id, cardCategory.get(f.catalogLinkId!)!] as [string, string]] : [])));
   groups = rows.map((g) => ({
     id: g.id,
     name: g.name,
@@ -115,6 +123,7 @@ export function effectiveGroups(title: string | null | undefined, overrides: { g
 
 export const builtFormKey = (formId: string) => `form:${formId}`;
 export const cardKey = (cardId: string) => `card:${cardId}`;
+export const categoryKey = (categoryId: string) => `category:${categoryId}`;
 
 /** A catalog card's audience lives on the form it opens when that's built here, else on the card. */
 export const keyForCard = (cardId: string, builtFormId: string | null | undefined) => (builtFormId ? builtFormKey(builtFormId) : cardKey(cardId));
@@ -139,6 +148,21 @@ export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "g
   if (a!.userIds.has(user.userId)) return true;
   if (user.title && a!.titles.has(normTitle(user.title))) return true;
   return (user.groupIds ?? []).some((g) => a!.groupIds.has(g));
+}
+
+/**
+ * Whether this person may open and use a form built here: its own limit, and
+ * the limit of the category its catalog card is in.
+ */
+export function canUseBuiltForm(user: Parameters<typeof inAudience>[0], formId: string): boolean {
+  const category = formCategory.get(formId);
+  return inAudience(user, builtFormKey(formId)) && (!category || inAudience(user, categoryKey(category)));
+}
+
+/** A built form limited by itself or by its category, so never public. */
+export function isBuiltFormLimited(formId: string): boolean {
+  const category = formCategory.get(formId);
+  return isLimited(builtFormKey(formId)) || (category ? isLimited(categoryKey(category)) : false);
 }
 
 /** Replaces a form's audience. Empty lists = everyone. */

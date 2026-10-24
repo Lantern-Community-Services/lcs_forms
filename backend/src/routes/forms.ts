@@ -7,7 +7,7 @@ import { actorOf, audit } from "../services/audit.js";
 import { isRoleKey } from "../services/permissions.js";
 import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
 import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
-import { audienceOf, builtFormKey, cardKey, inAudience, keyForCard, moveAudience, setAudience } from "../services/staffGroups.js";
+import { audienceOf, builtFormKey, cardKey, categoryKey, inAudience, keyForCard, moveAudience, reloadAccess, setAudience } from "../services/staffGroups.js";
 
 export const formsRouter = Router();
 formsRouter.use(requireAuth);
@@ -22,7 +22,7 @@ formsRouter.use(requireAuth);
  * Editing needs forms.manage. Favourites are per person and need nothing extra.
  */
 
-type FormRow = { id: string; roles: string | null };
+type FormRow = { id: string; roles: string | null; categoryId: string };
 
 function rolesOf(form: FormRow): string[] {
   return form.roles ? form.roles.split(",").filter(Boolean) : [];
@@ -37,7 +37,11 @@ async function builtByCard(): Promise<Map<string, string>> {
 function canSeeForm(req: Request, form: FormRow, built: Map<string, string>): boolean {
   if (req.user!.permissions.includes("forms.manage")) return true;
   const roles = rolesOf(form);
-  return (roles.length === 0 || roles.includes(req.user!.roleKey)) && inAudience(req.user!, keyForCard(form.id, built.get(form.id)));
+  return (
+    (roles.length === 0 || roles.includes(req.user!.roleKey)) &&
+    inAudience(req.user!, categoryKey(form.categoryId)) &&
+    inAudience(req.user!, keyForCard(form.id, built.get(form.id)))
+  );
 }
 
 /** The API speaks role lists; the column stores them comma-separated. */
@@ -136,6 +140,8 @@ formsRouter.get(
     ]);
     const visible = categories.map((c) => ({
       ...c,
+      // The editor also gets who each category is open to.
+      ...(editing ? { audience: audienceOf(categoryKey(c.id)) } : {}),
       forms: c.forms
         .filter((f) => canSeeForm(req, f, built))
         // The editor also gets who each form is open to.
@@ -222,6 +228,41 @@ formsRouter.patch(
   })
 );
 
+/**
+ * Who can see a category and every form in it: some staff groups, positions
+ * and/or named people, or everyone (all lists empty). Each form's own limit
+ * still applies on top.
+ */
+formsRouter.put(
+  "/categories/:id/audience",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        groupIds: z.array(z.string()).max(50),
+        titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
+        userIds: z.array(z.string()).max(500).default([]),
+      })
+      .parse(req.body);
+    const cat = await prisma.formCategory.findUnique({ where: { id: req.params.id } });
+    if (!cat) throw notFound();
+    const [groups, users] = await Promise.all([
+      prisma.staffGroup.findMany({ where: { id: { in: body.groupIds } }, select: { id: true, name: true } }),
+      prisma.user.findMany({ where: { id: { in: body.userIds } }, select: { id: true, name: true } }),
+    ]);
+    if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
+    await setAudience(categoryKey(cat.id), body.groupIds, body.userIds, body.titles);
+    const who = [...groups.map((g) => g.name), ...body.titles, ...users.map((u) => u.name)];
+    await audit({
+      actor: actorOf(req),
+      action: "forms.audience_changed",
+      summary: who.length ? `Limited the “${cat.name}” category to ${who.join(", ")}` : `Opened the “${cat.name}” category to everyone`,
+      changes: { groups: groups.map((g) => g.name), positions: body.titles, people: users.map((u) => u.name) },
+    });
+    res.json(audienceOf(categoryKey(cat.id)));
+  })
+);
+
 formsRouter.delete(
   "/categories/:id",
   requirePermission("forms.manage"),
@@ -230,6 +271,7 @@ formsRouter.delete(
     if (!cat) throw notFound();
     if (cat._count.forms > 0) throw badRequest("Move or delete the forms in this category first.");
     await prisma.formCategory.delete({ where: { id: cat.id } });
+    await setAudience(categoryKey(cat.id), [], []);
     await audit({ actor: actorOf(req), action: "forms.category_deleted", summary: `Deleted form category “${cat.name}”` });
     res.json({ ok: true });
   })
@@ -279,6 +321,8 @@ formsRouter.patch(
       sortOrder = (last._max.sortOrder ?? -1) + 1;
     }
     const row = await prisma.formLink.update({ where: { id: before.id }, data: { ...body, ...(sortOrder !== undefined ? { sortOrder } : {}) } });
+    // A built form moved to another category falls under that category's limit.
+    if (sortOrder !== undefined && body.url === undefined) await reloadAccess();
     if (body.url !== undefined) {
       await linkCatalogCard(row.id, row.url);
       // Now opening a form built here: the card's limit goes onto that form.

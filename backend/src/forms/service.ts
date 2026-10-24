@@ -1,4 +1,5 @@
 import type { BuiltForm, Prisma } from "@prisma/client";
+import { reloadAccess } from "../services/staffGroups.js";
 import { prisma } from "../prisma.js";
 import { deleteFiles } from "../services/fileStore.js";
 import { HttpError, badRequest, notFound } from "../http.js";
@@ -463,13 +464,16 @@ export async function builtFormsForCatalog() {
 export async function linkCatalogCard(linkId: string, url: string) {
   const slug = builtSlugOf(url);
   await prisma.builtForm.updateMany({ where: { catalogLinkId: linkId, ...(slug ? { slug: { not: slug } } : {}) }, data: { catalogLinkId: null } });
-  if (!slug) return;
-  const form = await prisma.builtForm.findUnique({ where: { slug } });
-  if (!form) return;
-  const current = form.catalogLinkId ? await prisma.formLink.findUnique({ where: { id: form.catalogLinkId }, select: { id: true } }) : null;
-  if (!current) await prisma.builtForm.update({ where: { id: form.id }, data: { catalogLinkId: linkId } });
+  const form = slug ? await prisma.builtForm.findUnique({ where: { slug } }) : null;
+  if (form) {
+    const current = form.catalogLinkId ? await prisma.formLink.findUnique({ where: { id: form.catalogLinkId }, select: { id: true } }) : null;
+    if (!current) await prisma.builtForm.update({ where: { id: form.id }, data: { catalogLinkId: linkId } });
+  }
+  // Which category's limit a built form falls under follows its card.
+  await reloadAccess();
 }
 
 export async function unlinkCatalogCard(linkId: string) {
   await prisma.builtForm.updateMany({ where: { catalogLinkId: linkId }, data: { catalogLinkId: null } });
+  await reloadAccess();
 }

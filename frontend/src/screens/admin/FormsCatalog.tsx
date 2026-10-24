@@ -48,7 +48,17 @@ type FormDraft = {
 /** Where a new link starts, and what an emptied one goes back to. */
 const LINK_DOMAIN = "https://forms.lanterncommunity.org/";
 
-type CategoryDraft = { id?: string; name: string; icon: FormIconKey; description: string };
+type CategoryDraft = {
+  id?: string;
+  name: string;
+  icon: FormIconKey;
+  description: string;
+  /** Everyone, or only these groups and positions (and anyone named before, kept as is). */
+  limited: boolean;
+  groupIds: string[];
+  titles: string[];
+  userIds: string[];
+};
 type Pending = { kind: "form"; form: FormLink } | { kind: "category"; category: FormCategory };
 
 /**
@@ -141,10 +151,13 @@ export function AdminFormsCatalog() {
   async function saveCategory() {
     if (!category) return;
     const body = { name: category.name, icon: category.icon, description: category.description.trim() };
-    const ok = await run(
-      () => (category.id ? formsApi.updateCategory(category.id, body) : formsApi.createCategory(body)),
-      category.id ? "Category saved." : "Category added."
-    );
+    const ok = await run(async () => {
+      const saved = (await (category.id ? formsApi.updateCategory(category.id, body) : formsApi.createCategory(body))) as { id: string };
+      await api.put(
+        `/forms/categories/${category.id ?? saved.id}/audience`,
+        category.limited ? { groupIds: category.groupIds, titles: category.titles, userIds: category.userIds } : { groupIds: [], titles: [], userIds: [] }
+      );
+    }, category.id ? "Category saved." : "Category added.");
     if (ok) setCategory(null);
   }
 
@@ -195,7 +208,7 @@ export function AdminFormsCatalog() {
         subtitle="What staff see on the Forms screen. Changes are live for everyone as soon as they save."
         actions={
           <>
-            <Button variant="secondary" onClick={() => setCategory({ name: "", icon: "folder", description: "" })}>
+            <Button variant="secondary" onClick={() => setCategory({ name: "", icon: "folder", description: "", limited: false, groupIds: [], titles: [], userIds: [] })}>
               <Plus className="h-4 w-4" /> Category
             </Button>
             <Button onClick={() => newForm(categories[0]?.id ?? "")} disabled={categories.length === 0}>
@@ -217,9 +230,30 @@ export function AdminFormsCatalog() {
                 <p className="min-w-0 flex-1 truncate text-[14.5px] font-heading font-extrabold text-ink">
                   {cat.name} <span className="ml-1 text-[12px] font-semibold text-muted tabular">{cat.forms.length}</span>
                 </p>
+                {audienceLabel(cat.audience) && (
+                  <Tag tone="accent" title={`Only ${audienceLabel(cat.audience)} (and Admins) see this category and its forms`} className="max-w-[45%] truncate">
+                    <UsersRound className="h-3 w-3 shrink-0" /> <span className="truncate">Only {audienceLabel(cat.audience)}</span>
+                  </Tag>
+                )}
                 <IconButton label="Move category up" disabled={busy || ci === 0} onClick={() => moveCategory(ci, -1)}><ArrowUp className="h-4 w-4" /></IconButton>
                 <IconButton label="Move category down" disabled={busy || ci === categories.length - 1} onClick={() => moveCategory(ci, 1)}><ArrowDown className="h-4 w-4" /></IconButton>
-                <IconButton label="Rename category" onClick={() => setCategory({ id: cat.id, name: cat.name, icon: cat.icon || "folder", description: cat.description ?? "" })}><Pencil className="h-4 w-4" /></IconButton>
+                <IconButton
+                  label="Edit category"
+                  onClick={() =>
+                    setCategory({
+                      id: cat.id,
+                      name: cat.name,
+                      icon: cat.icon || "folder",
+                      description: cat.description ?? "",
+                      limited: Boolean(audienceLabel(cat.audience)),
+                      groupIds: cat.audience?.groupIds ?? [],
+                      titles: cat.audience?.titles ?? [],
+                      userIds: cat.audience?.userIds ?? [],
+                    })
+                  }
+                >
+                  <Pencil className="h-4 w-4" />
+                </IconButton>
                 <IconButton
                   label={cat.forms.length ? "Move or delete its forms first" : "Delete category"}
                   disabled={cat.forms.length > 0}
@@ -451,24 +485,56 @@ export function AdminFormsCatalog() {
 
       {/* ── Category editor ─────────────────────────────────────── */}
       <Dialog open={category !== null} onOpenChange={(o) => !o && setCategory(null)}>
-        <DialogContent className="w-[min(460px,calc(100vw-2rem))]">
+        <DialogContent className="w-[min(640px,calc(100vw-2rem))]">
           <DialogHeader title={category?.id ? "Edit category" : "Add a category"} />
           {category && (
             <form onSubmit={(e) => { e.preventDefault(); void saveCategory(); }}>
-              <DialogBody className="space-y-4">
-                <Field label="Name">
-                  <Input value={category.name} onChange={(e) => setCategory({ ...category, name: e.target.value })} maxLength={80} required autoFocus />
-                </Field>
-                <Field label="Description" hint="Optional. One line on the Forms page saying what kind of forms are in it.">
-                  <Input value={category.description} onChange={(e) => setCategory({ ...category, description: e.target.value })} maxLength={200} placeholder="e.g. Meals, pantry and food distribution" />
-                </Field>
-                <Field label="Icon">
-                  <IconPicker value={category.icon} onChange={(icon) => icon && setCategory({ ...category, icon })} />
-                </Field>
+              <DialogBody className="max-h-[72vh] space-y-6 overflow-y-auto scroll-thin">
+                <FormSection title="The category">
+                  <Field label="Name">
+                    <Input value={category.name} onChange={(e) => setCategory({ ...category, name: e.target.value })} maxLength={80} required autoFocus />
+                  </Field>
+                  <Field label="Description" hint="Optional. One line on the Forms page saying what kind of forms are in it.">
+                    <Input value={category.description} onChange={(e) => setCategory({ ...category, description: e.target.value })} maxLength={200} placeholder="e.g. Meals, pantry and food distribution" />
+                  </Field>
+                  <IconField value={category.icon} onChange={(icon) => icon && setCategory({ ...category, icon })} inherit={formIcon(category.icon)} canInherit={false} />
+                </FormSection>
+                <FormSection title="Who can see it">
+                  <Segmented
+                    value={category.limited ? "limited" : "everyone"}
+                    options={[["everyone", "Everyone"], ["limited", "Only some groups and positions"]]}
+                    onChange={(v) => setCategory({ ...category, limited: v === "limited" })}
+                  />
+                  <p className="text-[12.5px] leading-snug text-muted">
+                    {category.limited
+                      ? "Only the groups and positions you pick see this category and open the forms in it. Each form's own limit still applies on top. Admins always see everything."
+                      : "Everyone sees this category. Each form can still be limited on its own."}
+                  </p>
+                  {category.limited && (
+                    <>
+                      <Field label="Groups">
+                        {groups?.length ? (
+                          <GroupChecklist groups={groups} titles={jobTitles ?? []} value={category.groupIds} onChange={(groupIds) => setCategory({ ...category, groupIds })} />
+                        ) : (
+                          <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+                        )}
+                      </Field>
+                      <Field label="Positions">
+                        <PositionsDropdown groups={groups ?? []} titles={jobTitles ?? []} value={category.titles} onChange={(titles) => setCategory({ ...category, titles })} />
+                      </Field>
+                    </>
+                  )}
+                </FormSection>
               </DialogBody>
               <DialogFooter>
                 <Button type="button" variant="secondary" onClick={() => setCategory(null)}>Cancel</Button>
-                <Button type="submit" disabled={busy || !category.name.trim()}>{category.id ? "Save" : "Add category"}</Button>
+                <Button
+                  type="submit"
+                  disabled={busy || !category.name.trim() || (category.limited && !category.groupIds.length && !category.titles.length && !category.userIds.length)}
+                  title={category.limited && !category.groupIds.length && !category.titles.length && !category.userIds.length ? "Pick at least one group or position" : undefined}
+                >
+                  {category.id ? "Save" : "Add category"}
+                </Button>
               </DialogFooter>
             </form>
           )}
@@ -540,7 +606,13 @@ function Segmented<T extends string>({ value, options, onChange }: { value: T; o
 }
 
 /** The card's icon, with the full picker tucked away until asked for. */
-function IconField({ value, onChange, inherit: Inherit }: { value: FormIconKey | null; onChange: (icon: FormIconKey | null) => void; inherit: React.ElementType }) {
+function IconField({ value, onChange, inherit: Inherit, canInherit = true }: {
+  value: FormIconKey | null;
+  onChange: (icon: FormIconKey | null) => void;
+  inherit: React.ElementType;
+  /** False for a category, which always has its own icon. */
+  canInherit?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const Current = value ? formIcon(value) : Inherit;
   return (
@@ -549,8 +621,8 @@ function IconField({ value, onChange, inherit: Inherit }: { value: FormIconKey |
         <span className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-navsel text-accent dark:text-white">
           <Current className="h-5 w-5" />
         </span>
-        <span className="min-w-0 flex-1 text-[13px] text-muted">{value ? "Its own icon" : "The category's icon"}</span>
-        {value && (
+        <span className="min-w-0 flex-1 text-[13px] text-muted">{!canInherit ? "Shown on the Forms page" : value ? "Its own icon" : "The category's icon"}</span>
+        {value && canInherit && (
           <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)}>
             Use the category's
           </Button>
@@ -561,7 +633,7 @@ function IconField({ value, onChange, inherit: Inherit }: { value: FormIconKey |
       </div>
       {open && (
         <div className="mt-3">
-          <IconPicker value={value} onChange={(icon) => onChange(icon as FormIconKey | null)} inherit={Inherit} />
+          <IconPicker value={value} onChange={(icon) => onChange(icon as FormIconKey | null)} inherit={canInherit ? Inherit : undefined} />
         </div>
       )}
     </Field>

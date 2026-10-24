@@ -250,6 +250,8 @@ export interface FormCategory {
   description?: string | null;
   sortOrder: number;
   forms: FormLink[];
+  /** Catalog editor only: who the category and its forms are open to. All empty = everyone. */
+  audience?: { groupIds: string[]; userIds: string[]; titles: string[] };
 }
 
 export interface FormCatalog {

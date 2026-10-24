@@ -4,7 +4,7 @@ import { prisma } from "../prisma.js";
 import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
 import { findForm, readDoc } from "../forms/service.js";
-import { builtFormKey, inAudience } from "../services/staffGroups.js";
+import { canUseBuiltForm } from "../services/staffGroups.js";
 import {
   canReadEntries, canVoidEntries, closedReason, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
   entryScope, liveDoc, saveUpload, submitEntry, updateEntry, type EntryFilter,
@@ -105,7 +105,7 @@ async function readable(req: Request) {
   if (!req.user) throw unauthorized();
   const form = await findForm(req.params.slug);
   const doc = liveDoc(form) ?? readDoc(form.draftSchema);
-  if (!canReadEntries(doc, req.user) || !inAudience(req.user, builtFormKey(form.id))) throw forbidden("You can't see this form's entries.");
+  if (!canReadEntries(doc, req.user) || !canUseBuiltForm(req.user, form.id)) throw forbidden("You can't see this form's entries.");
   return { form, doc };
 }
 
