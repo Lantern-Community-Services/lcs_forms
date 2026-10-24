@@ -31,7 +31,7 @@ const list = (v: unknown): string[] => (Array.isArray(v) ? v : v == null ? [] : 
 export async function sendNotification(
   app: LoadedApp,
   user: CurrentUser | null,
-  args: { to?: unknown; roles?: unknown; sites?: unknown; title?: unknown; body?: unknown; link?: unknown; type?: unknown }
+  args: { to?: unknown; roles?: unknown; sites?: unknown; title?: unknown; body?: unknown; link?: unknown; type?: unknown; urgent?: unknown }
 ) {
   const to = list(args.to);
   const roles = list(args.roles);
@@ -46,7 +46,7 @@ export async function sendNotification(
   // Checked here so a bad link is the author's error even in the draft.
   const link = sitePath(args.link) ?? `/apps/${app.form.slug}`;
 
-  const base = { type, body, link, source: `form:${app.form.slug}`, sourceLabel: app.manifest.title, formId: app.form.id };
+  const base = { type, body, link, source: `form:${app.form.slug}`, sourceLabel: app.manifest.title, formId: app.form.id, urgent: args.urgent === true };
 
   if (app.draft) {
     if (!user) return { sent: 0, recipients: 0, emailed: 0, muted: 0, preview: true, reason: "The draft (preview) notifies only the person previewing it, and nobody is." };

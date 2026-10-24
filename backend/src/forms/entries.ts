@@ -324,6 +324,7 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
             sourceLabel: form.title,
             formId: form.id,
             maxRecipients: 500,
+            urgent: n.urgent,
           });
           note = `Notification “${n.name}” sent to ${out.sent} ${out.sent === 1 ? "person" : "people"}${out.muted ? ` (${out.muted} had turned these off)` : ""}${out.unknown?.length ? `; no account for ${out.unknown.join(", ")}` : ""}.`;
         }

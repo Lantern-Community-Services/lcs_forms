@@ -14,7 +14,7 @@ import type { FormLink } from "@/lib/types";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useNavMode } from "@/lib/shellNav";
-import { useUnreadCount } from "@/lib/notifications";
+import { useUnreadCount, useUrgentCount } from "@/lib/notifications";
 import { isFormPath, ROSTER_URL, useIsLit, useNavCatalog, useReviewCount } from "./navData";
 import { useGlobalSearch } from "./globalSearch";
 
@@ -218,6 +218,7 @@ export function Sidebar() {
   const swipe = useSwipeToggle(collapsed, toggleCollapsed);
   const reviewCount = useReviewCount();
   const unread = useUnreadCount();
+  const urgent = useUrgentCount();
   const { categories, pinned } = useNavCatalog();
   const lit = useIsLit();
   const navigate = useNavigate();
@@ -407,15 +408,15 @@ export function Sidebar() {
       <NavLink
         to="/notifications"
         data-tour="nav-notifications"
-        title={collapsed ? (unread ? `Notifications (${unread} unread)` : "Notifications") : undefined}
-        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        title={collapsed ? (unread ? `Notifications (${unread} unread${urgent ? `, ${urgent} urgent` : ""})` : "Notifications") : undefined}
+        aria-label={unread ? `Notifications, ${unread} unread${urgent ? `, ${urgent} urgent` : ""}` : "Notifications"}
         className={({ isActive }) => cn(itemClass(isActive, collapsed), "mt-2")}
       >
         {({ isActive }) => (
           <>
             <span className={iconBox(isActive, collapsed)}>
               <Bell className="h-[18px] w-[18px]" />
-              <UnreadBubble count={unread} className="right-0.5 top-0.5 ring-sidebar" />
+              <UnreadBubble count={unread} urgent={urgent} className="right-0.5 top-0.5 ring-sidebar" />
             </span>
             <span className={cn("whitespace-nowrap", fade(collapsed))}>Notifications</span>
           </>

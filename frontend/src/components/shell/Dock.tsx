@@ -8,7 +8,7 @@ import { CountBadge, UnreadBubble } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
-import { useUnreadCount } from "@/lib/notifications";
+import { useUnreadCount, useUrgentCount } from "@/lib/notifications";
 import { ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
 
 /**
@@ -187,11 +187,12 @@ function DockButton({ label, Icon, active, onClick, phone, expanded, tour }: { l
 function DockAccount({ active, open, onClick, phone }: { active: boolean; open: boolean; onClick: () => void; phone: boolean }) {
   const { user } = useAuth();
   const unread = useUnreadCount();
+  const urgent = useUrgentCount();
   return (
     <button type="button" onClick={onClick} aria-expanded={open} aria-haspopup="dialog" data-tour="dock-account" className={itemClass(active, phone)}>
       <span className="relative">
         <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={26} />
-        <UnreadBubble count={unread} className="-right-2.5 -top-1.5" />
+        <UnreadBubble count={unread} urgent={urgent} className="-right-2.5 -top-1.5" />
       </span>
       <span className="max-w-full truncate">Profile</span>
     </button>

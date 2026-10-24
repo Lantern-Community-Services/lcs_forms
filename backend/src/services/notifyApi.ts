@@ -33,6 +33,7 @@ export const apiNotifyShape = {
   type: z.enum(API_NOTIFY_TYPES).optional().describe('"forms.message" (default) or "announcement". People choose per type whether they get it in the app and by email.'),
   form: z.string().max(255).optional().describe("Slug of the form it's about. Shown as the sender, and people can turn that form's notifications off."),
   from: z.string().max(120).optional().describe("Sender name shown to people, when it isn't about one form. Defaults to the API key's name."),
+  urgent: z.boolean().optional().describe("Needs attention now: always shown in the app, emailed at once (not in a daily summary), and marked urgent. Use sparingly."),
 };
 export const apiNotifyBody = z.object(apiNotifyShape).strict();
 export type ApiNotifyInput = z.infer<typeof apiNotifyBody>;
@@ -55,6 +56,7 @@ export async function sendFromKey(key: ResolvedKey, input: ApiNotifyInput, via: 
     formId: form?.id ?? null,
     maxRecipients: MAX_RECIPIENTS,
     onlySiteId: key.siteId,
+    urgent: input.urgent,
   });
   await audit({
     actor: { id: null, name: `API key: ${key.name}${via === "MCP" ? " (MCP)" : ""}` },

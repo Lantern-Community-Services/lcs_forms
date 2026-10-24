@@ -8,12 +8,13 @@ import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import { Tag } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState, LoadMore, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { useSearchParam } from "@/lib/useSearchParam";
 import {
-  useNotification, useNotificationActions, useNotificationList, useUnreadCount, type AppNotification,
+  useNotification, useNotificationActions, useNotificationList, useUnreadCount, useUrgentCount, type AppNotification, type NotificationFilter,
 } from "@/lib/notifications";
 import { cn, errorMessage, relativeTime } from "@/lib/utils";
 
@@ -41,18 +42,22 @@ function dayLabel(iso: string) {
 /**
  * Everything the site has told this person, newest first. Opening one marks it
  * read and goes to its page; each can be marked unread again or deleted.
+ * Unread urgent ones sit above the rest under "Needs attention now" until read.
  * What arrives, and whether it's emailed too, is set on Profile → Notifications.
  */
 export function NotificationsPage() {
   const [filterParam, setFilterParam] = useSearchParam("show");
-  const filter = filterParam === "unread" ? "unread" : "all";
+  const filter: NotificationFilter = filterParam === "unread" || filterParam === "urgent" ? filterParam : "all";
   const list = useNotificationList(filter);
   const unread = useUnreadCount();
+  const urgent = useUrgentCount();
   const { readAll, clearRead } = useNotificationActions();
   const toast = useToast();
 
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
-  const subtitle = unread ? `${unread} unread` : "You're all caught up";
+  const subtitle = unread ? [urgent && `${urgent} urgent`, `${unread} unread`].filter(Boolean).join(" · ") : "You're all caught up";
+  // Pinned above the days: urgent and not yet read (the Urgent filter lists them by day instead).
+  const pinned = filter === "urgent" ? [] : items.filter((n) => n.urgent && !n.read);
 
   const markAll = () =>
     readAll.mutate(undefined, { onError: (e) => toast(errorMessage(e, "Couldn't mark them read."), "error") });
@@ -66,11 +71,13 @@ export function NotificationsPage() {
     <div className="flex gap-1.5">
       <Chip active={filter === "all"} onClick={() => setFilterParam(null)}>All</Chip>
       <Chip active={filter === "unread"} onClick={() => setFilterParam("unread")}>Unread{unread ? ` · ${unread}` : ""}</Chip>
+      <Chip active={filter === "urgent"} onClick={() => setFilterParam("urgent")}>Urgent{urgent ? ` · ${urgent}` : ""}</Chip>
     </div>
   );
 
   const groups: { label: string; items: AppNotification[] }[] = [];
   for (const n of items) {
+    if (pinned.includes(n)) continue;
     const label = dayLabel(n.createdAt);
     if (groups[groups.length - 1]?.label !== label) groups.push({ label, items: [] });
     groups[groups.length - 1].items.push(n);
@@ -83,11 +90,29 @@ export function NotificationsPage() {
   ) : items.length === 0 ? (
     <EmptyState
       icon={<Bell className="h-8 w-8" />}
-      title={filter === "unread" ? "Nothing unread" : "No notifications"}
-      hint={filter === "unread" ? "You've read everything." : "When a form or an admin has something for you, it shows up here."}
+      title={filter === "unread" ? "Nothing unread" : filter === "urgent" ? "Nothing urgent" : "No notifications"}
+      hint={
+        filter === "unread"
+          ? "You've read everything."
+          : filter === "urgent"
+            ? "Urgent notifications are the ones that need attention now. They show up here and stay at the top until you read them."
+            : "When a form or an admin has something for you, it shows up here."
+      }
     />
   ) : (
     <>
+      {pinned.length > 0 && (
+        <section className="mb-4 md:mb-5" aria-label="Urgent, needs attention now">
+          <p className="kicker mb-1.5 flex items-center gap-1.5 px-4 text-status-redText md:px-0">
+            <AlertTriangle className="h-3.5 w-3.5" /> Needs attention now
+          </p>
+          <Card className="overflow-hidden rounded-none border-x-0 border-status-redDot/40 md:rounded-card md:border-x">
+            <ul>
+              {pinned.map((n) => <NotificationRow key={n.id} n={n} />)}
+            </ul>
+          </Card>
+        </section>
+      )}
       {groups.map((g) => (
         <section key={g.label} className="mb-4 md:mb-5">
           <p className="kicker mb-1.5 px-4 md:px-0">{g.label}</p>
@@ -155,7 +180,7 @@ function NotificationRow({ n }: { n: AppNotification }) {
   const navigate = useNavigate();
   const { setRead, remove } = useNotificationActions();
   const toast = useToast();
-  const Icon = TYPE_ICONS[n.type] ?? Bell;
+  const Icon = n.urgent ? AlertTriangle : TYPE_ICONS[n.type] ?? Bell;
 
   const open = () => {
     if (!n.read) setRead.mutate({ id: n.id, read: true });
@@ -168,19 +193,27 @@ function NotificationRow({ n }: { n: AppNotification }) {
         type="button"
         onClick={open}
         className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
-        aria-label={`${n.read ? "" : "Unread: "}${n.title}`}
+        aria-label={`${n.urgent ? "Urgent. " : ""}${n.read ? "" : "Unread: "}${n.title}`}
       >
-        <span className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full", n.type === "forms.problem" ? "bg-status-amberBg text-status-amberText" : "bg-subtle text-muted")}>
+        <span
+          className={cn(
+            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+            n.urgent ? "bg-status-redBg text-status-redText" : n.type === "forms.problem" ? "bg-status-amberBg text-status-amberText" : "bg-subtle text-muted"
+          )}
+        >
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn("block text-[14px] leading-snug text-ink", n.read ? "font-semibold" : "font-bold")}>{n.title}</span>
+          <span className={cn("block text-[14px] leading-snug text-ink", n.read ? "font-semibold" : "font-bold")}>
+            {n.urgent && <Tag tone="red" className="mr-1.5 align-[1px]">Urgent</Tag>}
+            {n.title}
+          </span>
           {n.body && <span className="mt-0.5 line-clamp-3 block whitespace-pre-line text-[13px] text-muted">{n.body}</span>}
           <span className="mt-1 block text-micro text-muted">
             {[n.sourceLabel, relativeTime(n.createdAt)].filter(Boolean).join(" · ")}
           </span>
         </span>
-        {!n.read && <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-navy dark:bg-white" aria-hidden />}
+        {!n.read && <span className={cn("mt-2 h-2 w-2 shrink-0 rounded-full", n.urgent ? "bg-status-redDot" : "bg-navy dark:bg-white")} aria-hidden />}
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, badRequest, notFound } from "../http.js";
 import { requireAuth } from "../auth/middleware.js";
-import { EMAIL_MODES, notify, prefsFor, savePrefs, shapeNotification, unreadCount } from "../services/notifications.js";
+import { EMAIL_MODES, notify, prefsFor, savePrefs, shapeNotification, unreadCount, urgentUnreadCount } from "../services/notifications.js";
 
 /**
  * The signed-in person's notifications (the bell, /notifications) and their
@@ -23,17 +23,19 @@ notificationsRouter.get(
       .object({
         before: z.string().datetime().optional(),
         unread: z.enum(["1", "true"]).optional(),
+        urgent: z.enum(["1", "true"]).optional(),
         limit: z.coerce.number().int().min(1).max(100).default(30),
       })
       .parse(req.query);
     const rows = await prisma.notification.findMany({
-      where: { ...mine(req), ...(q.unread ? { readAt: null } : {}), ...(q.before ? { createdAt: { lt: new Date(q.before) } } : {}) },
+      where: { ...mine(req), ...(q.unread ? { readAt: null } : {}), ...(q.urgent ? { urgent: true } : {}), ...(q.before ? { createdAt: { lt: new Date(q.before) } } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: q.limit + 1,
     });
     const more = rows.length > q.limit;
     const items = rows.slice(0, q.limit).map(shapeNotification);
-    res.json({ items, nextBefore: more ? items[items.length - 1].createdAt : null, unread: await unreadCount(req.user!.userId) });
+    const [unread, urgent] = await Promise.all([unreadCount(req.user!.userId), urgentUnreadCount(req.user!.userId)]);
+    res.json({ items, nextBefore: more ? items[items.length - 1].createdAt : null, unread, urgent });
   })
 );
 
@@ -41,11 +43,12 @@ notificationsRouter.get(
 notificationsRouter.get(
   "/unread",
   asyncHandler(async (req, res) => {
-    const [unread, latest] = await Promise.all([
+    const [unread, urgent, latest] = await Promise.all([
       unreadCount(req.user!.userId),
+      urgentUnreadCount(req.user!.userId),
       prisma.notification.findFirst({ where: { ...mine(req), readAt: null }, orderBy: { createdAt: "desc" } }),
     ]);
-    res.json({ unread, latest: latest ? shapeNotification(latest) : null });
+    res.json({ unread, urgent, latest: latest ? shapeNotification(latest) : null });
   })
 );
 

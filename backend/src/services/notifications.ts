@@ -129,6 +129,12 @@ export interface NotifyInput {
    * their choice.
    */
   forceEmail?: boolean;
+  /**
+   * Needs attention now: always shown in the app (whatever they chose for this
+   * kind), emailed at once even to people on a daily summary (unless they
+   * turned email off), and marked urgent in the bell, the list and the email.
+   */
+  urgent?: boolean;
 }
 
 export interface NotifyResult {
@@ -250,12 +256,14 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
   for (const p of people) {
     const c = choose(input.type, prefsBy.get(p.id) ?? new Map(), input.formId);
     const mode = (EMAIL_MODES as readonly string[]).includes(p.notifyEmailMode) ? (p.notifyEmailMode as EmailMode) : "instant";
-    const wantsEmail = input.forceEmail || (c.email && mode !== "off");
-    if (!c.inApp && !wantsEmail) {
+    const urgent = Boolean(input.urgent);
+    const inApp = c.inApp || urgent;
+    const wantsEmail = input.forceEmail || ((c.email || urgent) && mode !== "off");
+    if (!inApp && !wantsEmail) {
       muted++;
       continue;
     }
-    const emailStatus = !wantsEmail ? "none" : !mail ? "skipped" : mode === "daily" && !input.forceEmail ? "digest" : "pending";
+    const emailStatus = !wantsEmail ? "none" : !mail ? "skipped" : mode === "daily" && !input.forceEmail && !urgent ? "digest" : "pending";
     if (emailStatus === "pending" || emailStatus === "digest") emailed++;
     rows.push({
       userId: p.id,
@@ -266,7 +274,8 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
       source: clean(input.source ?? "system", 255) || "system",
       sourceLabel: input.sourceLabel ? clean(input.sourceLabel, 255) : null,
       formId: input.formId ?? null,
-      inApp: c.inApp,
+      inApp,
+      urgent,
       emailStatus,
       emailError: emailStatus === "skipped" ? "Email isn't set up on this server (MAIL_FROM)." : null,
     });
@@ -415,12 +424,14 @@ export function shapeNotification(n: Notification) {
     link: n.link,
     source: n.source,
     sourceLabel: n.sourceLabel,
+    urgent: n.urgent,
     read: Boolean(n.readAt),
     createdAt: n.createdAt.toISOString(),
   };
 }
 
 export const unreadCount = (userId: string) => prisma.notification.count({ where: { userId, inApp: true, readAt: null } });
+export const urgentUnreadCount = (userId: string) => prisma.notification.count({ where: { userId, inApp: true, readAt: null, urgent: true } });
 
 // ── Email ────────────────────────────────────────────────────────────────
 
@@ -444,7 +455,11 @@ async function sendOne(n: Notification & { user: { email: string; status: string
   try {
     if (!mailConfigured()) throw Object.assign(new Error("Email isn't set up on this server (MAIL_FROM)."), { final: true });
     const from = n.sourceLabel ? ` from “${n.sourceLabel}”` : "";
-    await sendMail({ to: [n.user.email], subject: n.title, html: linkOnlyHtml(`You have a new notification${from} in Lantern Forms.`, openUrl(n.id)) });
+    await sendMail({
+      to: [n.user.email],
+      subject: n.urgent ? `Urgent: ${n.title}` : n.title,
+      html: linkOnlyHtml(`You have ${n.urgent ? "an urgent" : "a new"} notification${from} in Lantern Forms.`, openUrl(n.id)),
+    });
     await prisma.notification.update({ where: { id: n.id }, data: { emailStatus: "sent", emailedAt: new Date(), emailError: null } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
