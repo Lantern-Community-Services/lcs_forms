@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, SearchInput, Textarea } from "@/components/ui/input";
+import { Input, SearchInput } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
@@ -25,6 +25,10 @@ type FormDraft = {
   id?: string;
   /** "built": opens a form made in Form builder / Code forms; "link": any URL or app path. */
   source: "built" | "link";
+  /** What's typed under "A link", kept while "A form built here" is picked so switching back doesn't lose it. */
+  link: string;
+  /** Everyone, or only the groups, positions, people and roles picked below. */
+  limited: boolean;
   categoryId: string;
   title: string;
   description: string;
@@ -41,6 +45,9 @@ type FormDraft = {
   titles: string[];
   userIds: string[];
 };
+/** Where a new link starts, and what an emptied one goes back to. */
+const LINK_DOMAIN = "https://forms.lanterncommunity.org/";
+
 type CategoryDraft = { id?: string; name: string; icon: FormIconKey; description: string };
 type Pending = { kind: "form"; form: FormLink } | { kind: "category"; category: FormCategory };
 
@@ -107,21 +114,26 @@ export function AdminFormsCatalog() {
 
   async function saveForm() {
     if (!form) return;
+    const url = form.source === "built" ? form.url : form.link.trim();
+    const limited = form.limited;
     const body = {
       categoryId: form.categoryId,
       title: form.title,
       description: form.description,
-      url: form.url,
+      url,
       keywords: form.keywords,
       badge: form.badge,
       icon: form.icon,
       active: form.active,
-      roles: form.roles,
+      roles: limited ? form.roles : [],
     };
     const ok = await run(async () => {
       const saved = (await (form.id ? formsApi.update(form.id, body) : formsApi.create(body))) as { id: string };
       // Who it's open to is saved on its own (on the form it opens, when it's built here).
-      await api.put(`/forms/${form.id ?? saved.id}/audience`, { groupIds: form.groupIds, titles: form.titles, userIds: form.userIds });
+      await api.put(
+        `/forms/${form.id ?? saved.id}/audience`,
+        limited ? { groupIds: form.groupIds, titles: form.titles, userIds: form.userIds } : { groupIds: [], titles: [], userIds: [] }
+      );
     }, form.id ? "Form saved." : "Form added.");
     if (ok) setForm(null);
   }
@@ -146,7 +158,10 @@ export function AdminFormsCatalog() {
   }
 
   const newForm = (categoryId: string) =>
-    setForm({ source: "link", categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [], groupIds: [], titles: [], userIds: [] });
+    setForm({
+      source: "link", link: LINK_DOMAIN, limited: false, categoryId, title: "", description: "", url: "", keywords: "", badge: "", icon: null, active: true,
+      roles: [], groupIds: [], titles: [], userIds: [],
+    });
 
   /** Fill a card from a built form: its address, title, icon, blurb and who can open it. */
   function pickBuilt(f: FormDraft, b: BuiltFormOption): FormDraft {
@@ -166,9 +181,9 @@ export function AdminFormsCatalog() {
   /** The hint under the built-form picker. */
   function builtHint(url: string) {
     const b = builtByUrl.get(url);
-    if (!b) return "Forms made in Admin → Form builder and Admin → Code forms. The card stays tied to the form, so a new URL name or an archive carries through.";
-    if (!b.live) return "This form hasn't been published yet. Staff who click the card are told it isn't available until it is.";
-    return `Opens ${b.url}. Who sees the card was filled in from the form's own access settings; change it below if you like.`;
+    if (!b) return "Made in Form builder or Code forms. The card stays tied to it.";
+    if (!b.live) return "Not published yet: staff who click it are told it isn't available.";
+    return `Opens ${b.url}.`;
   }
 
   if (isLoading) return <LoadingState />;
@@ -263,6 +278,8 @@ export function AdminFormsCatalog() {
                         setForm({
                           id: f.id,
                           source: builtByUrl.has(f.url) ? "built" : "link",
+                          link: builtByUrl.has(f.url) ? LINK_DOMAIN : f.url,
+                          limited: Boolean(f.roles.length || f.audience?.groupIds.length || f.audience?.titles?.length || f.audience?.userIds.length),
                           categoryId: f.categoryId,
                           title: f.title,
                           description: f.description ?? "",
@@ -296,111 +313,134 @@ export function AdminFormsCatalog() {
 
       {/* ── Form editor ─────────────────────────────────────────── */}
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent>
+        <DialogContent className="w-[min(940px,calc(100vw-2rem))]">
           <DialogHeader title={form?.id ? "Edit form" : "Add a form"} subtitle="A form built here, a form on WordPress, or any screen in this app." />
           {form && (
             <form onSubmit={(e) => { e.preventDefault(); void saveForm(); }}>
-              <DialogBody className="max-h-[65vh] space-y-3.5 overflow-y-auto scroll-thin">
-                <Field label="Title">
-                  <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={120} required autoFocus />
-                </Field>
-                <div className="inline-flex rounded-input border border-hairline p-0.5">
-                  {([["built", "A form built here"], ["link", "A link"]] as const).map(([k, label]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setForm(k === "link" ? { ...form, source: k } : { ...form, source: k, url: builtByUrl.has(form.url) ? form.url : "" })}
-                      className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", form.source === k ? "bg-navy text-white" : "text-muted hover:text-ink")}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              <DialogBody className="grid max-h-[72vh] gap-x-8 gap-y-6 overflow-y-auto scroll-thin lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                {/* Left: what it is and how its card looks */}
+                <div className="space-y-6">
+                  <FormSection title="The form">
+                    <Field label="Title">
+                      <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={120} required autoFocus />
+                    </Field>
+                    <Field label="Opens">
+                      <Segmented
+                        value={form.source}
+                        options={[["built", "A form built here"], ["link", "A link"]]}
+                        onChange={(source) => setForm(source === "link" ? { ...form, source } : { ...form, source, url: builtByUrl.has(form.url) ? form.url : "" })}
+                      />
+                    </Field>
+                    {form.source === "built" ? (
+                      <Field label="Form" hint={builtHint(form.url)}>
+                        <Select
+                          value={builtByUrl.has(form.url) ? form.url : ""}
+                          onChange={(e) => {
+                            const b = built?.find((x) => x.url === e.target.value);
+                            if (b) setForm(pickBuilt(form, b));
+                          }}
+                          placeholder={built?.length ? "Pick a form…" : "No forms built yet"}
+                        >
+                          {(["basic", "code"] as const).map((kind) => {
+                            const list = (built ?? []).filter((b) => b.kind === kind);
+                            if (!list.length) return null;
+                            return (
+                              <optgroup key={kind} label={kind === "code" ? "Code forms" : "Form builder"}>
+                                {list.map((b) => (
+                                  <option key={b.id} value={b.url}>
+                                    {b.title}
+                                    {b.live ? "" : " (draft)"}
+                                    {b.catalogLinkId && b.url !== form.url ? " · already on the catalog" : ""}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            );
+                          })}
+                        </Select>
+                      </Field>
+                    ) : (
+                      <Field label="Link" hint="Add the page after the domain, or paste any address. An app path such as /roster works too.">
+                        <Input
+                          value={form.link}
+                          onChange={(e) => setForm({ ...form, link: e.target.value })}
+                          onBlur={() => !form.link.trim() && setForm({ ...form, link: LINK_DOMAIN })}
+                          maxLength={2000}
+                          required
+                          inputMode="url"
+                        />
+                      </Field>
+                    )}
+                    <Field label="Category">
+                      <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
+                    </Field>
+                  </FormSection>
+
+                  <FormSection title="On the card">
+                    <Field label="Description" hint="One short line under the title.">
+                      <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} maxLength={300} />
+                    </Field>
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_170px]">
+                      <Field label="Search words" hint="Comma-separated, e.g. an old name.">
+                        <Input value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} maxLength={255} />
+                      </Field>
+                      <Field label="Tag" hint="e.g. “New”.">
+                        <Input value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} maxLength={30} />
+                      </Field>
+                    </div>
+                    <IconField
+                      value={form.icon}
+                      onChange={(icon) => setForm({ ...form, icon })}
+                      inherit={formIcon(categories.find((c) => c.id === form.categoryId)?.icon ?? "folder")}
+                    />
+                  </FormSection>
                 </div>
-                {form.source === "built" ? (
-                  <Field label="Form" hint={builtHint(form.url)}>
-                    <Select
-                      value={builtByUrl.has(form.url) ? form.url : ""}
-                      onChange={(e) => {
-                        const b = built?.find((x) => x.url === e.target.value);
-                        if (b) setForm(pickBuilt(form, b));
-                      }}
-                      placeholder={built?.length ? "Pick a form…" : "No forms built yet"}
-                    >
-                      {(["basic", "code"] as const).map((kind) => {
-                        const list = (built ?? []).filter((b) => b.kind === kind);
-                        if (!list.length) return null;
-                        return (
-                          <optgroup key={kind} label={kind === "code" ? "Code forms" : "Form builder"}>
-                            {list.map((b) => (
-                              <option key={b.id} value={b.url}>
-                                {b.title}
-                                {b.live ? "" : " (draft)"}
-                                {b.catalogLinkId && b.url !== form.url ? " · already on the catalog" : ""}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </Select>
-                  </Field>
-                ) : (
-                  <Field label="Link" hint="A full address such as https://forms.lanterncommunity.org/incident-reports/, or an app path such as /roster.">
-                    <Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} maxLength={2000} required inputMode="url" />
-                  </Field>
-                )}
-                <Field label="Category">
-                  <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
-                </Field>
-                <Field label="Description" hint="One short line under the title.">
-                  <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} maxLength={300} className="min-h-[64px]" />
-                </Field>
-                <Field label="Search words" hint="Other words people might search for, separated by commas (e.g. an old form name).">
-                  <Input value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} maxLength={255} />
-                </Field>
-                <Field label="Icon" hint="Shown on the card and in the collapsed sidebar. The dashed first choice uses the category's icon.">
-                  <IconPicker
-                    value={form.icon}
-                    onChange={(icon) => setForm({ ...form, icon })}
-                    inherit={formIcon(categories.find((c) => c.id === form.categoryId)?.icon ?? "folder")}
-                  />
-                </Field>
-                <Field label="Tag" hint="Optional. Shown on the card, e.g. “New” or “Password required”.">
-                  <Input value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} maxLength={30} className="max-w-[220px]" />
-                </Field>
-                <Field
-                  label="Who can see it"
-                  hint={form.groupIds.length || form.titles.length || form.userIds.length
-                    ? "Only these groups, positions and people see the form, open it or read its entries. Admins always see every form."
-                    : "Everyone. Pick groups (People & roles → Groups), positions or people to limit it to just them; Admins always see every form."}
-                >
-                  {groups?.length ? (
-                    <GroupChecklist groups={groups} titles={jobTitles ?? []} value={form.groupIds} onChange={(groupIds) => setForm({ ...form, groupIds })} />
-                  ) : (
-                    <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
-                  )}
-                  <PositionsDropdown groups={groups ?? []} titles={jobTitles ?? []} value={form.titles} onChange={(titles) => setForm({ ...form, titles })} />
-                  <PeoplePicker people={people ?? []} value={form.userIds} onChange={(userIds) => setForm({ ...form, userIds })} />
-                </Field>
-                <Field
-                  label="Roles"
-                  hint={form.roles.length
-                    ? "And only these roles, on top of the groups and people above."
-                    : "Optional. Tick roles to narrow it further, for example to Site Managers."}
-                >
-                  <CheckboxList
-                    options={limitable.map((r) => ({ value: r.key, label: r.name }))}
-                    value={form.roles}
-                    onChange={(roles) => setForm({ ...form, roles })}
-                  />
-                </Field>
-                <label className="flex items-center gap-3 pt-1 text-[13.5px] text-ink">
+
+                {/* Right: who sees it */}
+                <div className="space-y-6 lg:border-l lg:border-hairline lg:pl-8">
+                  <FormSection title="Who can see it">
+                    <Segmented
+                      value={form.limited ? "limited" : "everyone"}
+                      options={[["everyone", "Everyone"], ["limited", "Only some people"]]}
+                      onChange={(v) => setForm({ ...form, limited: v === "limited" })}
+                    />
+                    <p className="text-[12.5px] leading-snug text-muted">
+                      {form.limited
+                        ? "Only the groups, positions and people you pick see it, open it or read its entries. Roles narrow it further. Admins always see every form."
+                        : "Every staff member can see and open it. Admins always see every form."}
+                    </p>
+                    {form.limited && (
+                      <>
+                        <Field label="Groups">
+                          {groups?.length ? (
+                            <GroupChecklist groups={groups} titles={jobTitles ?? []} value={form.groupIds} onChange={(groupIds) => setForm({ ...form, groupIds })} />
+                          ) : (
+                            <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+                          )}
+                        </Field>
+                        <Field label="Positions">
+                          <PositionsDropdown groups={groups ?? []} titles={jobTitles ?? []} value={form.titles} onChange={(titles) => setForm({ ...form, titles })} />
+                        </Field>
+                        <Field label="People">
+                          <PeoplePicker people={people ?? []} value={form.userIds} onChange={(userIds) => setForm({ ...form, userIds })} />
+                        </Field>
+                        <Field label="Roles" hint={form.roles.length ? "And only these roles." : "Optional, e.g. only Site Managers."}>
+                          <CheckboxList options={limitable.map((r) => ({ value: r.key, label: r.name }))} value={form.roles} onChange={(roles) => setForm({ ...form, roles })} />
+                        </Field>
+                      </>
+                    )}
+                  </FormSection>
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <label className="mr-auto flex items-center gap-2.5 text-[13.5px] text-ink">
                   <Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active })} />
                   Visible to staff
                 </label>
-              </DialogBody>
-              <DialogFooter>
                 <Button type="button" variant="secondary" onClick={() => setForm(null)}>Cancel</Button>
-                <Button type="submit" disabled={busy || !form.title.trim() || !form.url.trim() || !form.categoryId}>
+                <Button
+                  type="submit"
+                  disabled={busy || !form.title.trim() || !(form.source === "built" ? form.url : form.link.trim()) || !form.categoryId}
+                >
                   {form.id ? "Save" : "Add form"}
                 </Button>
               </DialogFooter>
@@ -467,6 +507,65 @@ function messageOf(e: unknown): string {
     if (first) return first;
   }
   return errorMessage(e, "Could not save.");
+}
+
+/** A titled block of the form editor. */
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <h3 className="kicker">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** Two or three choices as one row of buttons. */
+function Segmented<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <div className="inline-flex rounded-input border border-hairline p-0.5" role="radiogroup">
+      {options.map(([k, label]) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={value === k}
+          onClick={() => onChange(k)}
+          className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", value === k ? "bg-navy text-white" : "text-muted hover:text-ink")}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The card's icon, with the full picker tucked away until asked for. */
+function IconField({ value, onChange, inherit: Inherit }: { value: FormIconKey | null; onChange: (icon: FormIconKey | null) => void; inherit: React.ElementType }) {
+  const [open, setOpen] = useState(false);
+  const Current = value ? formIcon(value) : Inherit;
+  return (
+    <Field label="Icon">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-navsel text-accent dark:text-white">
+          <Current className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1 text-[13px] text-muted">{value ? "Its own icon" : "The category's icon"}</span>
+        {value && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)}>
+            Use the category's
+          </Button>
+        )}
+        <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Done" : "Change"}
+        </Button>
+      </div>
+      {open && (
+        <div className="mt-3">
+          <IconPicker value={value} onChange={(icon) => onChange(icon as FormIconKey | null)} inherit={Inherit} />
+        </div>
+      )}
+    </Field>
+  );
 }
 
 function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
