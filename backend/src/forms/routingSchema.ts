@@ -40,6 +40,20 @@ export const recipientSchema = z.discriminatedUnion("kind", [
     field: z.string().trim().min(1).max(64),
   }).strict(),
   z.object({ kind: z.literal("submitter") }).strict(),
+  z.object({
+    kind: z.literal("group"),
+    /** A staff group's id: everyone in it, from their job title or added by an admin. */
+    group: z.string().trim().min(1).max(64),
+    /** True: only those at the event's site. Default: the whole group, wherever they work. */
+    siteOnly: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal("title"),
+    /** A position: everyone with this exact job title, any case. */
+    title: z.string().trim().min(1).max(255),
+    /** True: only those at the event's site. Default: everyone with it, wherever they work. */
+    siteOnly: z.boolean().optional(),
+  }).strict(),
 ]);
 
 const ruleSchema = z.object({

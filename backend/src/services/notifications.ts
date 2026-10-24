@@ -1,4 +1,5 @@
 import type { Notification } from "@prisma/client";
+import { canUseBuiltForm, peopleInGroupsOrPositions } from "./staffGroups.js";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { linkOnlyHtml, mailConfigured, sendMail } from "./mailer.js";
@@ -103,6 +104,11 @@ export interface Audience {
   users?: string[];
   roles?: string[];
   permissions?: string[];
+  /** Staff groups (ids): everyone in them (services/staffGroups.ts). */
+  groups?: string[];
+  /** Positions: everyone with one of these exact job titles, any case. */
+  titles?: string[];
+  /** Keeps roles, groups and positions to people at these sites (everyone-site roles always count). */
   sites?: string[];
   everyone?: boolean;
 }
@@ -186,7 +192,9 @@ export async function resolveAudience(to: Audience) {
   const badPerm = perms.find((p) => !(PERMISSIONS as readonly string[]).includes(p));
   if (badPerm) throw new Error(`"${badPerm}" isn't a permission.`);
 
-  if (to.everyone || roles.length || perms.length) {
+  const members = await peopleInGroupsOrPositions((to.groups ?? []).filter(Boolean), (to.titles ?? []).filter(Boolean));
+
+  if (to.everyone || roles.length || perms.length || members.size) {
     let siteIds: string[] | null = null;
     if (to.sites?.length) {
       const want = to.sites.map((s) => String(s).trim()).filter(Boolean);
@@ -199,7 +207,7 @@ export async function resolveAudience(to: Audience) {
     for (const p of people) {
       const role = roleFor(p.roleKey);
       const granted = permissionsFor(role, p);
-      const fits = to.everyone || roles.includes(role.key) || perms.some((x) => granted.includes(x as PermissionKey));
+      const fits = to.everyone || roles.includes(role.key) || perms.some((x) => granted.includes(x as PermissionKey)) || members.has(p.id);
       if (!fits) continue;
       // Everyone-site roles count at every site; others need one of the sites (none assigned = none).
       if (siteIds && !role.allSites && !p.sites.some((s) => siteIds!.includes(s.siteId))) continue;
@@ -319,7 +327,9 @@ export interface PrefsView {
   }[];
 }
 
-export async function prefsFor(person: { userId: string; roleKey: string; permissions: PermissionKey[] }): Promise<PrefsView> {
+export async function prefsFor(
+  person: { userId: string; roleKey: string; permissions: PermissionKey[]; groupIds: string[]; title?: string | null }
+): Promise<PrefsView> {
   const { userId, permissions } = person;
   const [user, rows, sentBy, forms] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { notifyEmailMode: true } }),
@@ -348,7 +358,7 @@ export async function prefsFor(person: { userId: string; roleKey: string; permis
     const sent = sentKinds.reduce((n, x) => n + x._count._all, 0);
     const customised = rows.some((r) => r.key.startsWith(`form:${f.id}:`));
     // The forms on their own Forms screen, plus any that have reached them or that they've set.
-    const onTheirScreen = Boolean(card?.active && (!card.roles || card.roles.split(",").includes(person.roleKey)));
+    const onTheirScreen = Boolean(card?.active && (!card.roles || card.roles.split(",").includes(person.roleKey)) && canUseBuiltForm(person, f.id));
     if (!seesEverything && !onTheirScreen && !sent && !customised) continue;
     // A basic form sends new entries; a code form, messages and new entries.
     // Anything else it has actually sent them, or they've set, is listed too.

@@ -108,6 +108,26 @@ export function groupsForTitle(title: string | null | undefined): string[] {
   return groups.filter((g) => g.rules.some((r) => (r.startsWith("^") ? t.startsWith(r.slice(1)) : t.includes(r)))).map((g) => g.id);
 }
 
+/**
+ * Active people in any of these groups or holding any of these positions
+ * (exact job titles, any case): their user ids. Membership is worked out the
+ * same way as for form access, overrides included.
+ */
+export async function peopleInGroupsOrPositions(groupIds: string[], titles: string[]): Promise<Set<string>> {
+  const wantGroups = new Set(groupIds);
+  const wantTitles = new Set(titles.map(normTitle).filter(Boolean));
+  if (!wantGroups.size && !wantTitles.size) return new Set();
+  const rows = await prisma.user.findMany({
+    where: { status: "active", OR: [{ title: { not: null } }, { groupOverrides: { some: {} } }] },
+    select: { id: true, title: true, groupOverrides: { select: { groupId: true, include: true } } },
+  });
+  const ids = new Set<string>();
+  for (const u of rows) {
+    if (wantTitles.has(normTitle(u.title)) || effectiveGroups(u.title, u.groupOverrides).some((g) => wantGroups.has(g))) ids.add(u.id);
+  }
+  return ids;
+}
+
 /** Title rules, then an admin's additions and removals. */
 export function effectiveGroups(title: string | null | undefined, overrides: { groupId: string; include: boolean }[]): string[] {
   const set = new Set(groupsForTitle(title));

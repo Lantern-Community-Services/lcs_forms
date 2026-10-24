@@ -101,6 +101,8 @@ const notification = z.object({
   url: z.string().max(2000).optional(),
   secret: z.string().max(200).optional(),
   roles: z.array(z.string().max(64)).max(10).optional(),
+  groups: z.array(z.string().max(64)).max(50).optional(),
+  titles: z.array(z.string().trim().min(1).max(255)).max(100).optional(),
   siteOnly: z.boolean().optional(),
   urgent: z.boolean().optional(),
   link: z.string().max(2000).optional(),
