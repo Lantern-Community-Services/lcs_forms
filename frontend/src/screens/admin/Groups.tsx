@@ -11,9 +11,9 @@ import { Avatar } from "@/components/ui/avatar";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
-import { GROUPS_KEY, groupsApi, parseRules, rulesPhrase, useStaffGroups, type StaffGroup } from "@/lib/groups";
+import { GROUPS_KEY, groupsApi, parseRules, rulesPhrase, titleMatches, useJobTitles, useStaffGroups, type JobTitle, type StaffGroup } from "@/lib/groups";
 import { useUsers } from "@/lib/queries";
-import { errorMessage } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 /**
  * People & roles → Groups: the teams forms can be limited to (Forms catalog →
@@ -23,6 +23,7 @@ import { errorMessage } from "@/lib/utils";
  */
 export function AdminGroups() {
   const { data: groups, isLoading } = useStaffGroups();
+  const { data: titles } = useJobTitles();
   const [editing, setEditing] = useState<StaffGroup | "new" | null>(null);
   const open = editing === "new" ? null : groups?.find((g) => g.id === editing?.id) ?? null;
 
@@ -60,21 +61,37 @@ export function AdminGroups() {
                     </span>
                   </div>
                   {g.description && <p className="text-[13px] leading-snug text-muted">{g.description}</p>}
-                  <p className="mt-auto text-[12px] leading-snug text-muted">
-                    {g.rules.length ? `Job titles with ${rulesPhrase(g.rules.slice(0, 3))}${g.rules.length > 3 ? `, and ${g.rules.length - 3} more` : ""}` : "Nobody joins from their job title: people are added by hand."}
-                  </p>
+                  <PositionList titles={(titles ?? []).filter((t) => t.groupIds.includes(g.id))} className="mt-auto" />
                 </Card>
               </button>
             </li>
           ))}
         </ul>
       )}
-      {editing && <GroupDialog group={editing === "new" ? null : open} onClose={() => setEditing(null)} />}
+      {editing && <GroupDialog group={editing === "new" ? null : open} titles={titles ?? []} onClose={() => setEditing(null)} />}
     </Page>
   );
 }
 
-function GroupDialog({ group, onClose }: { group: StaffGroup | null; onClose: () => void }) {
+/** The positions in a group, as small pills; or a note that nobody joins from their title. */
+function PositionList({ titles, className }: { titles: JobTitle[]; className?: string }) {
+  if (!titles.length) return <p className={cn("text-[12px] leading-snug text-muted", className)}>No positions join it: people are added by hand.</p>;
+  return (
+    <div className={className}>
+      <p className="mb-1 text-micro font-bold uppercase tracking-wide text-muted">Positions · {titles.length}</p>
+      <ul className="flex flex-wrap gap-1">
+        {titles.map((t) => (
+          <li key={t.title} className="rounded-pill bg-subtle px-2 py-0.5 text-[12px] text-ink">
+            {t.title}
+            {t.people > 0 && <span className="ml-1 text-muted">· {t.people}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; titles: JobTitle[]; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const { data: users } = useUsers();
@@ -165,7 +182,10 @@ function GroupDialog({ group, onClose }: { group: StaffGroup | null; onClose: ()
               <Textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={4} placeholder={"human resources\nemployee relations\nonboarding"} />
             </Field>
             {preview.length > 0 && (
-              <p className="-mt-2 text-[12px] text-muted">Matches job titles with {rulesPhrase(preview)}.</p>
+              <div className="-mt-2 grid gap-2">
+                <p className="text-[12px] text-muted">Matches job titles with {rulesPhrase(preview)}.</p>
+                <PositionList titles={titles.filter((t) => titleMatches(t.title, preview))} />
+              </div>
             )}
 
             {group && (

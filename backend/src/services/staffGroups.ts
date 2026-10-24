@@ -154,12 +154,29 @@ export async function setAudience(formKey: string, groupIds: string[], userIds: 
 }
 
 /** Every job title in use, with how many people have it: the positions a form can be limited to. */
-export async function knownTitles(): Promise<{ title: string; people: number }[]> {
+export interface KnownTitle {
+  title: string;
+  /** Active or invited people with this exact title (any case). */
+  people: number;
+  /** The groups its title rules put it in. */
+  groupIds: string[];
+  /** One of LANTERN_POSITIONS, so it can be picked before anyone holds it. */
+  listed: boolean;
+}
+
+/** Every position a form can be limited to: Lantern's list, plus any other title someone has. */
+export async function knownTitles(): Promise<KnownTitle[]> {
   const rows = await prisma.user.groupBy({ by: ["title"], where: { status: { in: ["active", "invited"] }, title: { not: null } }, _count: { _all: true } });
-  return rows
-    .filter((r) => r.title && r.title.trim())
-    .map((r) => ({ title: r.title!.trim(), people: r._count._all }))
-    .sort((x, y) => x.title.localeCompare(y.title));
+  const byKey = new Map<string, KnownTitle>();
+  for (const title of LANTERN_POSITIONS) byKey.set(title.toLowerCase(), { title, people: 0, groupIds: groupsForTitle(title), listed: true });
+  for (const r of rows) {
+    const title = r.title?.trim();
+    if (!title) continue;
+    const had = byKey.get(title.toLowerCase());
+    if (had) had.people += r._count._all;
+    else byKey.set(title.toLowerCase(), { title, people: r._count._all, groupIds: groupsForTitle(title), listed: false });
+  }
+  return [...byKey.values()].sort((x, y) => x.title.localeCompare(y.title));
 }
 
 /** Moves a card's audience onto the built form it now opens (or back), so a relink keeps the limit. */
@@ -168,6 +185,94 @@ export async function moveAudience(from: string, to: string) {
   const n = await prisma.formAudience.updateMany({ where: { formKey: from }, data: { formKey: to } });
   if (n.count) await reloadAccess();
 }
+
+// ── Lantern's positions ──────────────────────────────────────────────────
+
+/**
+ * The job titles at Lantern, as HR lists them (some are cut short the same
+ * way). Offered when limiting a form to positions even before anyone signs in
+ * with one; a position matches a person's title exactly, in any case.
+ */
+export const LANTERN_POSITIONS: string[] = [
+  "Accounts Payable Specialist",
+  "Administrative Assistant",
+  "Adult Development Specialist",
+  "Assistant Director of Community Health",
+  "Assistant Director of Housing Stability",
+  "Assistant Director of Resident Learning & Res",
+  "Assistant Program Director",
+  "Assistant Vice President of Quality Improveme",
+  "Benefits Specialist",
+  "Bilingual Case Manager",
+  "Case Manager",
+  "Case Manager (CSAC) - Prospero Hall",
+  "Chief Financial & Administrative Officer",
+  "Contract Supervisor",
+  "Contracts and Budget Specialist",
+  "Controller - Main Office",
+  "Deputy Chief Program Officer",
+  "Director of Information Technology",
+  "Director of Nutrition and Food Programs",
+  "Director of Peer Programming",
+  "Director of Program O",
+  "Director of Social Se",
+  "Director of Special Projects",
+  "Director of Training & Learning",
+  "Employee Relations Manager",
+  "Employment and Entitl",
+  "Executive Assistant",
+  "Executive Director",
+  "Family Specialist",
+  "Financial Analyst",
+  "Grant Analyst",
+  "Harm Reduction Specialist",
+  "Housing Specialist",
+  "Housing Stability Manager",
+  "Housing Stability Specialist",
+  "Housing Transition Manager",
+  "Human Resources Assistant",
+  "IT Support Analyst",
+  "Nutritionist",
+  "Onboarding Specialist",
+  "Operations & Logistics Coordinator",
+  "Operations and Procur",
+  "Operations Manager",
+  "Procurement Analyst",
+  "Procurement Data Analyst",
+  "Procurement Manager",
+  "Program Associate",
+  "Program Director",
+  "Program Manager",
+  "Program Manager - Harm Reduction",
+  "Program Manager of Community Initiatives",
+  "Quality Improvement & Data Systems Manager",
+  "Recreation Specialist",
+  "Residential Aide",
+  "Residential Aide Cleaner and Maintenance",
+  "Security Operations Manager",
+  "Security Operations S",
+  "Senior Case Manager",
+  "Senior Program Director",
+  "Senior Vice President of Operations",
+  "Senior Vice President of Procurement",
+  "Senior Vice President of Shelter Operations",
+  "Senior Vice President of Shelter Services",
+  "Shelter Compliance Manager",
+  "Shift Supervisor",
+  "Social Worker",
+  "Staff Accountant Exempt",
+  "Supportive Housing Co",
+  "Team Leader",
+  "Training & Learning Coordinator",
+  "Transportation & Logi",
+  "Van Driver",
+  "Vice President of Behavioral Health",
+  "Vice President of Compliance & Data Strategy",
+  "Vice President of Housing Stability",
+  "Vice President of Human Resources",
+  "Vice President of Supportive Housing",
+  "VP of Communications & Fundraising",
+];
 
 // ── The starting groups ──────────────────────────────────────────────────
 

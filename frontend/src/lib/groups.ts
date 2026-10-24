@@ -31,9 +31,26 @@ export function useStaffGroups(enabled = true) {
   return useQuery({ queryKey: GROUPS_KEY, queryFn: () => api.get<StaffGroup[]>("/groups"), enabled });
 }
 
-/** Every job title in use, with how many people hold it: the positions a form can be limited to. */
+/** A position a form can be limited to (backend knownTitles). */
+export interface JobTitle {
+  title: string;
+  /** People who hold it now. */
+  people: number;
+  /** The groups its title rules put it in. */
+  groupIds: string[];
+  /** On Lantern's list of positions, rather than only someone's title. */
+  listed: boolean;
+}
+
+/** Lantern's positions plus any other title someone has, with how many hold each and their groups. */
 export function useJobTitles(enabled = true) {
-  return useQuery({ queryKey: ["admin", "job-titles"], queryFn: () => api.get<{ title: string; people: number }[]>("/groups/titles"), enabled });
+  return useQuery({ queryKey: ["admin", "job-titles"], queryFn: () => api.get<JobTitle[]>("/groups/titles"), enabled });
+}
+
+/** Whether a title joins a group with these rules (the same test as the backend's groupsForTitle). */
+export function titleMatches(title: string, rules: string[]) {
+  const t = title.toLowerCase();
+  return rules.some((r) => (r.startsWith("^") ? t.startsWith(r.slice(1)) : t.includes(r)));
 }
 
 export const groupsApi = {

@@ -6,7 +6,7 @@ import { categoryBody, formBody } from "../routes/forms.js";
 import { LEGACY_FORM_ICON_KEYS } from "./iconKeys.js";
 import { builtSlugOf, linkCatalogCard, unlinkCatalogCard } from "./service.js";
 import type { ToolRegistrar } from "./mcp.js";
-import { allGroups, audienceOf, keyForCard, setAudience } from "../services/staffGroups.js";
+import { allGroups, audienceOf, keyForCard, knownTitles, setAudience } from "../services/staffGroups.js";
 
 /**
  * MCP tools for the Forms catalog (the Forms screen and the sidebar): list it,
@@ -175,11 +175,18 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "list_staff_groups",
-    "The staff groups forms can be limited to (HR, Finance, Case management…): id, name, description and the job-title rules that put people in them. People are in a group when their job title contains one of its rules (a leading ^ means starts with), or an admin added them in People & roles.",
+    "The staff groups forms can be limited to (HR, Finance, Case management…): id, name, description, the job-title rules that put people in them, and the positions (Lantern's job titles) those rules take in. People are in a group when their job title contains one of its rules (a leading ^ means starts with), or an admin added them in People & roles.",
     {},
     async () => {
       need("forms:build");
-      return allGroups().map((g) => ({ id: g.id, name: g.name, description: g.description, titleRules: g.rules }));
+      const titles = await knownTitles();
+      return allGroups().map((g) => ({
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        titleRules: g.rules,
+        positions: titles.filter((t) => t.groupIds.includes(g.id)).map((t) => t.title),
+      }));
     }
   );
 
