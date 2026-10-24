@@ -4,7 +4,7 @@ import { prisma } from "../prisma.js";
 import { asyncHandler, notFound } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
-import { allGroups, effectiveGroups, groupsForTitle, reloadAccess } from "../services/staffGroups.js";
+import { allGroups, effectiveGroups, groupsForTitle, knownTitles, reloadAccess } from "../services/staffGroups.js";
 
 /**
  * Staff groups (People & roles → Groups): the teams forms can be limited to.
@@ -54,6 +54,13 @@ groupsRouter.get(
       })
     );
   })
+);
+
+/** Every job title in use (the positions a form can be limited to), with how many people hold it. */
+groupsRouter.get(
+  "/titles",
+  requirePermission("users.manage", "forms.manage"),
+  asyncHandler(async (_req, res) => res.json(await knownTitles()))
 );
 
 groupsRouter.post(

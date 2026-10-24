@@ -790,8 +790,8 @@ model StaffGroupMember {
   @@id([userId, groupId])
 }
 
-/// Who can see and use a form, when it's not everyone. One row per group or
-/// person; a form with no rows is open to everyone (its roles still apply).
+/// Who can see and use a form, when it's not everyone. One row per group,
+/// person or position (job title); a form with no rows is open to everyone (its roles still apply).
 /// formKey is "form:<BuiltForm id>" for forms built here (so the limit stays
 /// with the form if its catalog card moves), or "card:<FormLink id>" for a
 /// card that links somewhere else. Admins always see every form.
@@ -802,6 +802,8 @@ model FormAudience {
   groupId String?     @db.NVarChar(64)
   user    User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId  String?     @db.NVarChar(64)
+  /// A position: everyone whose job title is exactly this (any case).
+  title   String?     @db.NVarChar(255)
 
   @@index([formKey])
 }

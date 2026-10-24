@@ -31,6 +31,11 @@ export function useStaffGroups(enabled = true) {
   return useQuery({ queryKey: GROUPS_KEY, queryFn: () => api.get<StaffGroup[]>("/groups"), enabled });
 }
 
+/** Every job title in use, with how many people hold it: the positions a form can be limited to. */
+export function useJobTitles(enabled = true) {
+  return useQuery({ queryKey: ["admin", "job-titles"], queryFn: () => api.get<{ title: string; people: number }[]>("/groups/titles"), enabled });
+}
+
 export const groupsApi = {
   create: (body: { name: string; description?: string; rules: string[] }) => api.post<StaffGroup>("/groups", body),
   update: (id: string, body: { name?: string; description?: string; rules?: string[] }) => api.patch(`/groups/${id}`, body),

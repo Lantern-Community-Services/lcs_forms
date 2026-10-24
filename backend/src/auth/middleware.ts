@@ -22,6 +22,8 @@ export interface CurrentUser extends SessionPayload {
    * admin's changes. Decide which limited forms this person sees.
    */
   groupIds: string[];
+  /** Job title, from Microsoft at sign-in: a form can be limited to positions. */
+  title: string | null;
 }
 
 declare global {
@@ -70,6 +72,7 @@ export async function currentUserById(id: string): Promise<CurrentUser | null> {
     permissions: permissionsFor(role, user),
     siteIds: role.allSites ? null : user.sites.map((s) => s.siteId),
     groupIds: effectiveGroups(user.title, user.groupOverrides),
+    title: user.title,
   } as CurrentUser;
 }
 

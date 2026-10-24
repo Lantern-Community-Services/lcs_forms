@@ -14,7 +14,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api";
-import { useStaffGroups } from "@/lib/groups";
+import { useJobTitles, useStaffGroups } from "@/lib/groups";
 import { IconPicker } from "@/components/IconPicker";
 import { formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
 import { formsApi, useBuiltFormOptions, useForms, useRoles, useUsers, type BuiltFormOption } from "@/lib/queries";
@@ -36,8 +36,9 @@ type FormDraft = {
   active: boolean;
   /** Role keys that may see it; empty = every role. */
   roles: string[];
-  /** Who it's open to: staff groups and named people. Both empty = everyone. */
+  /** Who it's open to: staff groups, positions (job titles) and named people. All empty = everyone. */
   groupIds: string[];
+  titles: string[];
   userIds: string[];
 };
 type CategoryDraft = { id?: string; name: string; icon: FormIconKey; description: string };
@@ -53,10 +54,15 @@ export function AdminFormsCatalog() {
   const { data: built } = useBuiltFormOptions();
   const { data: groups } = useStaffGroups();
   const { data: people } = useUsers();
+  const { data: jobTitles } = useJobTitles();
   const groupName = (id: string) => groups?.find((g) => g.id === id)?.name ?? "A deleted group";
   const audienceLabel = (a: FormLink["audience"]) =>
-    a && (a.groupIds.length || a.userIds.length)
-      ? [...a.groupIds.map(groupName), ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : [])].join(", ")
+    a && (a.groupIds.length || a.userIds.length || a.titles?.length)
+      ? [
+          ...a.groupIds.map(groupName),
+          ...(a.titles ?? []),
+          ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : []),
+        ].join(", ")
       : null;
   const builtByUrl = new Map((built ?? []).map((b) => [b.url, b]));
   // Admins see every form regardless, so they aren't offered as a choice.
@@ -115,7 +121,7 @@ export function AdminFormsCatalog() {
     const ok = await run(async () => {
       const saved = (await (form.id ? formsApi.update(form.id, body) : formsApi.create(body))) as { id: string };
       // Who it's open to is saved on its own (on the form it opens, when it's built here).
-      await api.put(`/forms/${form.id ?? saved.id}/audience`, { groupIds: form.groupIds, userIds: form.userIds });
+      await api.put(`/forms/${form.id ?? saved.id}/audience`, { groupIds: form.groupIds, titles: form.titles, userIds: form.userIds });
     }, form.id ? "Form saved." : "Form added.");
     if (ok) setForm(null);
   }
@@ -140,7 +146,7 @@ export function AdminFormsCatalog() {
   }
 
   const newForm = (categoryId: string) =>
-    setForm({ source: "link", categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [], groupIds: [], userIds: [] });
+    setForm({ source: "link", categoryId, title: "", description: "", url: "https://forms.lanterncommunity.org/", keywords: "", badge: "", icon: null, active: true, roles: [], groupIds: [], titles: [], userIds: [] });
 
   /** Fill a card from a built form: its address, title, icon, blurb and who can open it. */
   function pickBuilt(f: FormDraft, b: BuiltFormOption): FormDraft {
@@ -267,6 +273,7 @@ export function AdminFormsCatalog() {
                           active: f.active,
                           roles: f.roles,
                           groupIds: f.audience?.groupIds ?? [],
+                          titles: f.audience?.titles ?? [],
                           userIds: f.audience?.userIds ?? [],
                         })
                       }
@@ -362,9 +369,9 @@ export function AdminFormsCatalog() {
                 </Field>
                 <Field
                   label="Who can see it"
-                  hint={form.groupIds.length || form.userIds.length
-                    ? "Only these groups and people see the form, open it or read its entries. Admins always see every form."
-                    : "Everyone. Pick groups (People & roles → Groups) or people to limit it to just them; Admins always see every form."}
+                  hint={form.groupIds.length || form.titles.length || form.userIds.length
+                    ? "Only these groups, positions and people see the form, open it or read its entries. Admins always see every form."
+                    : "Everyone. Pick groups (People & roles → Groups), positions or people to limit it to just them; Admins always see every form."}
                 >
                   {groups?.length ? (
                     <CheckboxList
@@ -376,6 +383,7 @@ export function AdminFormsCatalog() {
                   ) : (
                     <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
                   )}
+                  <PositionPicker titles={jobTitles ?? []} value={form.titles} onChange={(titles) => setForm({ ...form, titles })} />
                   <PeoplePicker people={people ?? []} value={form.userIds} onChange={(userIds) => setForm({ ...form, userIds })} />
                 </Field>
                 <Field
@@ -529,6 +537,74 @@ function PeoplePicker({ people, value, onChange }: {
               </button>
             </li>
           ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Positions a form is open to: exact job titles (any case), on top of its
+ * groups. Picked from the titles people have, or typed for one nobody holds yet.
+ */
+function PositionPicker({ titles, value, onChange }: { titles: { title: string; people: number }[]; value: string[]; onChange: (titles: string[]) => void }) {
+  const [q, setQ] = useState("");
+  const taken = new Set(value.map((v) => v.toLowerCase()));
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = words.length ? titles.filter((t) => !taken.has(t.title.toLowerCase()) && words.every((w) => t.title.toLowerCase().includes(w))).slice(0, 6) : [];
+  const typed = q.trim();
+  const canAddTyped = typed.length >= 2 && !taken.has(typed.toLowerCase()) && !titles.some((t) => t.title.toLowerCase() === typed.toLowerCase());
+  const add = (t: string) => {
+    onChange([...value, t]);
+    setQ("");
+  };
+  const count = new Map(titles.map((t) => [t.title.toLowerCase(), t.people]));
+  return (
+    <div className="mt-2 rounded-input border border-hairline p-2">
+      {value.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {value.map((t) => (
+            <span key={t} className="flex items-center gap-1 rounded-pill bg-subtle py-0.5 pl-2.5 pr-1 text-[12.5px] font-semibold text-ink">
+              {t}
+              <span className="font-normal text-muted">· {count.get(t.toLowerCase()) ?? 0}</span>
+              <button type="button" onClick={() => onChange(value.filter((v) => v !== t))} aria-label={`Remove ${t}`} className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-surface">
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <SearchInput
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (matches[0]) add(matches[0].title);
+            else if (canAddTyped) add(typed);
+          }
+        }}
+        placeholder="Add a position (job title)"
+        aria-label="Add a position"
+      />
+      {(matches.length > 0 || canAddTyped) && (
+        <ul className="mt-1">
+          {matches.map((t) => (
+            <li key={t.title}>
+              <button type="button" onClick={() => add(t.title)} className="flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left hover:bg-rowhover">
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{t.title}</span>
+                <span className="text-micro text-muted">{t.people} {t.people === 1 ? "person" : "people"}</span>
+              </button>
+            </li>
+          ))}
+          {canAddTyped && (
+            <li>
+              <button type="button" onClick={() => add(typed)} className="flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left hover:bg-rowhover">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">Add “{typed}”</span>
+                <span className="text-micro text-muted">nobody has it yet</span>
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>

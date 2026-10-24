@@ -233,7 +233,7 @@ export interface FormLink {
   /** Role keys that may see this form. Empty = every role. */
   roles: string[];
   /** Admins' catalog editor only: who it's open to. Both empty = everyone. */
-  audience?: { groupIds: string[]; userIds: string[] };
+  audience?: { groupIds: string[]; userIds: string[]; titles: string[] };
   keywords: string | null;
   badge: string | null;
   /** Icon key (lib/formIcons.ts); null = the category's icon. */

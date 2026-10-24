@@ -297,15 +297,21 @@ formsRouter.patch(
 );
 
 /**
- * Who can see and use a form: some staff groups and/or named people, or
- * everyone (both lists empty). Stored on the built form a card opens, or on
+ * Who can see and use a form: some staff groups, positions (job titles)
+ * and/or named people, or everyone (all lists empty). Stored on the built form a card opens, or on
  * the card when it links somewhere else.
  */
 formsRouter.put(
   "/:id/audience",
   requirePermission("forms.manage"),
   asyncHandler(async (req, res) => {
-    const body = z.object({ groupIds: z.array(z.string()).max(50), userIds: z.array(z.string()).max(500) }).parse(req.body);
+    const body = z
+      .object({
+        groupIds: z.array(z.string()).max(50),
+        userIds: z.array(z.string()).max(500),
+        titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
+      })
+      .parse(req.body);
     const form = await prisma.formLink.findUnique({ where: { id: req.params.id } });
     if (!form) throw notFound();
     const [groups, users] = await Promise.all([
@@ -314,13 +320,13 @@ formsRouter.put(
     ]);
     if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
     const key = keyForCard(form.id, (await builtByCard()).get(form.id));
-    await setAudience(key, body.groupIds, body.userIds);
-    const who = [...groups.map((g) => g.name), ...users.map((u) => u.name)];
+    await setAudience(key, body.groupIds, body.userIds, body.titles);
+    const who = [...groups.map((g) => g.name), ...body.titles, ...users.map((u) => u.name)];
     await audit({
       actor: actorOf(req),
       action: "forms.audience_changed",
       summary: who.length ? `Limited “${form.title}” to ${who.join(", ")}` : `Opened “${form.title}” to everyone`,
-      changes: { groups: groups.map((g) => g.name), people: users.map((u) => u.name) },
+      changes: { groups: groups.map((g) => g.name), positions: body.titles, people: users.map((u) => u.name) },
     });
     res.json(audienceOf(key));
   })

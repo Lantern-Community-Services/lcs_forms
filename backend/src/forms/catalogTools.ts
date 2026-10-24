@@ -185,7 +185,7 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "get_form_audience",
-    "Who a catalog card's form is open to: group ids and person ids. Both empty = everyone (its roles still apply). Admins always see every form.",
+    "Who a catalog card's form is open to: group ids, positions (job titles) and person ids. All empty = everyone (its roles still apply). Admins always see every form.",
     { cardId: z.string().describe("The catalog card's id (list_catalog)") },
     async ({ cardId }) => {
       need("forms:build");
@@ -196,9 +196,9 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "set_form_audience",
-    "Limit a form to some staff groups and/or named people (user ids), or open it to everyone with both lists empty. Applies everywhere: the catalog and search, opening the form, its entries. Stored on the form itself when the card opens a form built here.",
-    { cardId: z.string(), groupIds: z.array(z.string()).max(50), userIds: z.array(z.string()).max(500).optional() },
-    async ({ cardId, groupIds, userIds = [] }) => {
+    "Limit a form to some staff groups, positions (exact job titles, any case) and/or named people (user ids), or open it to everyone with every list empty. Applies everywhere: the catalog and search, opening the form, its entries. Stored on the form itself when the card opens a form built here.",
+    { cardId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), userIds: z.array(z.string()).max(500).optional() },
+    async ({ cardId, groupIds, titles = [], userIds = [] }) => {
       need("forms:build");
       const { card, key } = await cardKeyOf(cardId);
       const [groups, users] = await Promise.all([
@@ -207,8 +207,8 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       ]);
       if (groups.length !== new Set(groupIds).size) throw new HttpError(400, "Unknown group id. Use list_staff_groups.");
       if (users.length !== new Set(userIds).size) throw new HttpError(400, "Unknown user id.");
-      await setAudience(key, groupIds, userIds);
-      const who = [...groups.map((g) => g.name), ...users.map((u) => u.name)];
+      await setAudience(key, groupIds, userIds, titles);
+      const who = [...groups.map((g) => g.name), ...titles, ...users.map((u) => u.name)];
       await audit({ actor, action: "forms.audience_changed", summary: who.length ? `Limited “${card.title}” to ${who.join(", ")}` : `Opened “${card.title}” to everyone` });
       return audienceOf(key);
     },

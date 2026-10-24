@@ -10,8 +10,8 @@ import type { CurrentUser } from "../auth/middleware.js";
  * one of its rules, or an admin added them by hand; an admin can also take
  * them out (StaffGroupMember.include).
  *
- * A form can be limited to some groups and/or named people (FormAudience). No
- * rows = everyone. Admins (forms.manage) always see every form. The check is
+ * A form can be limited to some groups, positions (exact job titles) and/or
+ * named people (FormAudience). No rows = everyone. Admins (forms.manage) always see every form. The check is
  * the same everywhere a form shows up or is used: the catalog and search, a
  * builder form's page and its entries, a code form and its server actions.
  *
@@ -34,7 +34,12 @@ export interface GroupInfo {
 interface Audience {
   groupIds: Set<string>;
   userIds: Set<string>;
+  /** Positions: job titles, trimmed and lower-cased. */
+  titles: Set<string>;
 }
+
+/** A job title as it's compared: trimmed, any case. */
+export const normTitle = (t: string | null | undefined) => (t ?? "").trim().toLowerCase();
 
 let groups: GroupInfo[] = [];
 let audiences = new Map<string, Audience>();
@@ -44,7 +49,7 @@ let loaded = false;
 async function load() {
   const [rows, aud] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
-    prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true } }),
+    prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
   ]);
   groups = rows.map((g) => ({
     id: g.id,
@@ -55,12 +60,14 @@ async function load() {
   }));
   const next = new Map<string, Audience>();
   for (const a of aud) {
-    const entry = next.get(a.formKey) ?? { groupIds: new Set<string>(), userIds: new Set<string>() };
+    const entry = next.get(a.formKey) ?? { groupIds: new Set<string>(), userIds: new Set<string>(), titles: new Set<string>() };
     if (a.groupId) entry.groupIds.add(a.groupId);
     if (a.userId) entry.userIds.add(a.userId);
+    if (a.title) entry.titles.add(normTitle(a.title));
     next.set(a.formKey, entry);
   }
   audiences = next;
+  for (const a of aud) if (a.title) titleCase.set(normTitle(a.title), a.title);
   loaded = true;
 }
 
@@ -112,33 +119,47 @@ export const cardKey = (cardId: string) => `card:${cardId}`;
 /** A catalog card's audience lives on the form it opens when that's built here, else on the card. */
 export const keyForCard = (cardId: string, builtFormId: string | null | undefined) => (builtFormId ? builtFormKey(builtFormId) : cardKey(cardId));
 
-export function audienceOf(formKey: string): { groupIds: string[]; userIds: string[] } {
+/** Positions are given back as stored (their case), for the editor. */
+const titleCase = new Map<string, string>();
+
+export function audienceOf(formKey: string): { groupIds: string[]; userIds: string[]; titles: string[] } {
   const a = audiences.get(formKey);
-  return { groupIds: a ? [...a.groupIds] : [], userIds: a ? [...a.userIds] : [] };
+  return { groupIds: a ? [...a.groupIds] : [], userIds: a ? [...a.userIds] : [], titles: a ? [...a.titles].map((t) => titleCase.get(t) ?? t) : [] };
 }
 
-export const isLimited = (formKey: string) => {
-  const a = audiences.get(formKey);
-  return Boolean(a && (a.groupIds.size || a.userIds.size));
-};
+const isEmpty = (a: Audience | undefined) => !a || (!a.groupIds.size && !a.userIds.size && !a.titles.size);
+
+export const isLimited = (formKey: string) => !isEmpty(audiences.get(formKey));
 
 /** Whether this person may see and use the form. Admins always may. */
-export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds">, formKey: string): boolean {
+export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null }, formKey: string): boolean {
   if (user.permissions.includes("forms.manage")) return true;
   const a = audiences.get(formKey);
-  if (!a || (!a.groupIds.size && !a.userIds.size)) return true;
-  if (a.userIds.has(user.userId)) return true;
-  return (user.groupIds ?? []).some((g) => a.groupIds.has(g));
+  if (isEmpty(a)) return true;
+  if (a!.userIds.has(user.userId)) return true;
+  if (user.title && a!.titles.has(normTitle(user.title))) return true;
+  return (user.groupIds ?? []).some((g) => a!.groupIds.has(g));
 }
 
 /** Replaces a form's audience. Empty lists = everyone. */
-export async function setAudience(formKey: string, groupIds: string[], userIds: string[]) {
+export async function setAudience(formKey: string, groupIds: string[], userIds: string[], titles: string[] = []) {
+  const uniqueTitles = [...new Map(titles.map((t) => t.trim()).filter(Boolean).map((t) => [normTitle(t), t])).values()];
   await prisma.$transaction([
     prisma.formAudience.deleteMany({ where: { formKey } }),
     ...[...new Set(groupIds)].map((groupId) => prisma.formAudience.create({ data: { formKey, groupId } })),
     ...[...new Set(userIds)].map((userId) => prisma.formAudience.create({ data: { formKey, userId } })),
+    ...uniqueTitles.map((title) => prisma.formAudience.create({ data: { formKey, title } })),
   ]);
   await reloadAccess();
+}
+
+/** Every job title in use, with how many people have it: the positions a form can be limited to. */
+export async function knownTitles(): Promise<{ title: string; people: number }[]> {
+  const rows = await prisma.user.groupBy({ by: ["title"], where: { status: { in: ["active", "invited"] }, title: { not: null } }, _count: { _all: true } });
+  return rows
+    .filter((r) => r.title && r.title.trim())
+    .map((r) => ({ title: r.title!.trim(), people: r._count._all }))
+    .sort((x, y) => x.title.localeCompare(y.title));
 }
 
 /** Moves a card's audience onto the built form it now opens (or back), so a relink keeps the limit. */
