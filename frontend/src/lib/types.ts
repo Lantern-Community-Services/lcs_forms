@@ -22,7 +22,8 @@ export type PermissionKey =
   | "devlog.view";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
-export type LandingPage = "/forms" | "/roster" | "/roster/review" | "/roster/overview";
+/** "/forms" is Home saved before Home moved to /home; it's read as Home. */
+export type LandingPage = "/home" | "/forms" | "/roster" | "/roster/review" | "/roster/overview";
 
 export interface SiteRef {
   id: string;
@@ -183,6 +184,10 @@ export interface ManagedUser extends Omit<User, "permissions" | "allSites" | "ro
   locationNames: string[];
   /** A pending account or request this viewer may delete outright. */
   canDelete: boolean;
+  /** Staff groups they're in (lib/groups): from the job title, plus an admin's changes. */
+  groupIds: string[];
+  /** The groups their job title alone puts them in. */
+  groupsByTitle: string[];
 }
 
 export interface ApiKeyRow {
@@ -227,6 +232,8 @@ export interface FormLink {
   url: string;
   /** Role keys that may see this form. Empty = every role. */
   roles: string[];
+  /** Admins' catalog editor only: who it's open to. Both empty = everyone. */
+  audience?: { groupIds: string[]; userIds: string[]; titles: string[] };
   keywords: string | null;
   badge: string | null;
   /** Icon key (lib/formIcons.ts); null = the category's icon. */
@@ -239,8 +246,12 @@ export interface FormCategory {
   id: string;
   name: string;
   icon: string;
+  /** One line on the Forms page saying what kind of forms are in it. */
+  description?: string | null;
   sortOrder: number;
   forms: FormLink[];
+  /** Catalog editor only: who the category and its forms are open to. All empty = everyone. */
+  audience?: { groupIds: string[]; userIds: string[]; titles: string[] };
 }
 
 export interface FormCatalog {

@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
 import { clientIp, compressJson, errorHandler, requestId } from "./http.js";
@@ -28,6 +28,7 @@ import { requestMetrics } from "./services/devlog.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { routingRouter } from "./routes/routing.js";
+import { groupsRouter } from "./routes/groups.js";
 import { oauthDiscoveryRouter, oauthRouter } from "./oauth/router.js";
 
 /** Runaway-loop backstop for the sign-in round trip — generous on purpose. */
@@ -38,6 +39,19 @@ const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 600, standardHeaders:
 
 /** Built-form submissions and uploads: generous for a busy site, a wall for a script hammering a public form. */
 const submitLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
+
+/**
+ * The Forms page and sidebar (the catalog, pins): per person, not per IP, so
+ * a whole site behind one office connection doesn't share a budget. Generous
+ * for clicking around; a wall for a stuck loop or a script.
+ */
+const formsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 240,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.user ? `user:${req.user.userId}` : ipKeyGenerator(req.ip ?? "")),
+});
 
 /** File uploads carry their own raw body (routes/fill.ts); the JSON parser must leave them alone. */
 const isUpload = (path: string) => /^\/api\/f\/[^/]+\/files$/.test(path);
@@ -123,7 +137,7 @@ export function createApp() {
   app.use("/api/auth/microsoft", authLimiter);
   app.use("/api/auth", authRouter);
   app.use("/api/onboarding", onboardingRouter);
-  app.use("/api/forms", formsRouter);
+  app.use("/api/forms", formsLimiter, formsRouter);
   app.use("/api/home", homeRouter);
   app.use("/api/calendar", calendarRouter);
   app.use("/api/tenants", tenantsRouter);
@@ -131,6 +145,7 @@ export function createApp() {
   app.use("/api/sites", sitesRouter);
   app.use("/api/activity", activityRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/groups", groupsRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/tutorials", tutorialsRouter);
   app.use("/api/routing", routingRouter);

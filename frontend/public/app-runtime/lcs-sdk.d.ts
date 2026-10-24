@@ -761,6 +761,7 @@ declare module "@lcs/server" {
      * (this form's first page by default).
      *
      * type: "forms.message" (default) or "forms.entry" (a new entry for someone to look at).
+     * urgent: true for something that needs attention now (shown apart, emailed at once).
      * In the draft only the person previewing gets it (titled "Preview: …", and `preview: true`).
      * At most 200 people a call and 1,000 notifications an hour per form.
      *
@@ -778,6 +779,8 @@ declare module "@lcs/server" {
         body?: string;
         link?: string;
         type?: "forms.message" | "forms.entry";
+        /** Needs attention now (a P1 incident, an approval that can't wait): always in the app, emailed at once, marked urgent. Use sparingly. */
+        urgent?: boolean;
       }): { sent: number; recipients: number; emailed: number; muted: number; unknown?: string[]; preview?: boolean; reason?: string };
       /**
        * Fire one of this form's routing events and let its routes decide who's told. Declare events in form.json

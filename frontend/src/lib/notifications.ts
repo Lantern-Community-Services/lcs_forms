@@ -21,6 +21,8 @@ export interface AppNotification {
   link: string | null;
   source: string;
   sourceLabel: string | null;
+  /** Needs attention now: red in the bell, pinned at the top of the list, and its toast stays up. */
+  urgent: boolean;
   read: boolean;
   createdAt: string;
 }
@@ -46,10 +48,12 @@ export interface NotificationPrefs {
 export const notificationKeys = {
   all: ["notifications"] as const,
   unread: ["notifications", "unread"] as const,
-  list: (filter: "all" | "unread") => ["notifications", "list", filter] as const,
+  list: (filter: NotificationFilter) => ["notifications", "list", filter] as const,
   one: (id: string) => ["notifications", "one", id] as const,
   prefs: ["notifications", "prefs"] as const,
 };
+
+export type NotificationFilter = "all" | "unread" | "urgent";
 
 const POLL_MS = 60_000;
 
@@ -57,7 +61,7 @@ export function useUnreadNotifications() {
   const { user } = useAuth();
   return useQuery({
     queryKey: notificationKeys.unread,
-    queryFn: () => api.get<{ unread: number; latest: AppNotification | null }>("/notifications/unread"),
+    queryFn: () => api.get<{ unread: number; urgent: number; latest: AppNotification | null }>("/notifications/unread"),
     enabled: Boolean(user),
     refetchInterval: POLL_MS,
     staleTime: 20_000,
@@ -69,13 +73,18 @@ export function useUnreadCount(): number {
   return useUnreadNotifications().data?.unread ?? 0;
 }
 
-export function useNotificationList(filter: "all" | "unread") {
+/** How many of the unread are urgent: the bell turns red while any are. */
+export function useUrgentCount(): number {
+  return useUnreadNotifications().data?.urgent ?? 0;
+}
+
+export function useNotificationList(filter: NotificationFilter) {
   return useInfiniteQuery({
     queryKey: notificationKeys.list(filter),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      api.get<{ items: AppNotification[]; nextBefore: string | null; unread: number }>(
-        `/notifications?${new URLSearchParams({ limit: "30", ...(filter === "unread" ? { unread: "1" } : {}), ...(pageParam ? { before: pageParam } : {}) })}`
+      api.get<{ items: AppNotification[]; nextBefore: string | null; unread: number; urgent: number }>(
+        `/notifications?${new URLSearchParams({ limit: "30", ...(filter === "unread" ? { unread: "1" } : {}), ...(filter === "urgent" ? { urgent: "1" } : {}), ...(pageParam ? { before: pageParam } : {}) })}`
       ),
     getNextPageParam: (last) => last.nextBefore,
   });
@@ -105,7 +114,8 @@ export function useNotificationPrefs() {
 /**
  * A toast when a new notification arrives while the app is open, with Open to
  * go to it. Not for what was already waiting when the app opened, and not on
- * /notifications, where it shows up in the list anyway.
+ * /notifications, where it shows up in the list anyway. An urgent one is red
+ * and stays up for half a minute rather than ten seconds.
  */
 export function useNewNotificationToast() {
   const { data } = useUnreadNotifications();
@@ -122,6 +132,8 @@ export function useNewNotificationToast() {
     if (first || !fresh || pathname.startsWith("/notifications")) return;
     // Only one that arrived since the last look, not an older one surfacing after the newest was read.
     if (Date.now() - new Date(latest.createdAt).getTime() > POLL_MS * 3) return;
-    toast(latest.title, "info", { action: { label: "Open", onClick: () => navigate(`/notifications/${latest.id}`) } });
+    const action = { label: "Open", onClick: () => navigate(`/notifications/${latest.id}`) };
+    if (latest.urgent) toast(`Urgent: ${latest.title}`, "error", { action, duration: 30_000 });
+    else toast(latest.title, "info", { action });
   }, [data, latest, pathname, toast, navigate]);
 }

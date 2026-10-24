@@ -47,6 +47,8 @@ interface Route {
   sites?: string[];
   to: Recipient[];
   email: "always" | "prefs";
+  /** Needs attention now: red in the bell, pinned on their list, emailed at once. */
+  urgent?: boolean;
   subject?: string;
 }
 
@@ -299,6 +301,7 @@ function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }
       <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
         <Switch checked={route.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label={route.enabled ? "Turn this route off" : "Turn this route on"} />
         <input value={route.name} onChange={(e) => set({ name: e.target.value })} aria-label="Route name" className="min-w-0 flex-1 bg-transparent font-heading text-[15px] font-extrabold text-ink outline-none focus:underline" />
+        {route.urgent && <Tag tone="red">Urgent</Tag>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="More"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -399,6 +402,18 @@ function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }
             <option value="always">Email everyone on this route</option>
             <option value="prefs">Follow each person's own notification settings</option>
           </Select>
+        </Row>
+
+        <Row label="Priority">
+          <label className="flex items-start gap-2 pt-1 text-[13px] text-ink">
+            <Switch checked={route.urgent ?? false} onCheckedChange={(v) => set({ urgent: v || undefined })} className="mt-0.5" aria-label="Urgent" />
+            <span>
+              Urgent
+              <span className="block text-[12px] text-muted">
+                For what can't wait, like an incident. It's red in their bell and stays at the top of their notifications until read, and it's emailed straight away even to people who get a daily summary. Keep it for the few that need it, or people stop noticing.
+              </span>
+            </span>
+          </label>
         </Row>
 
         <Row label="Subject">

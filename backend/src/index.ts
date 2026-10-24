@@ -12,6 +12,7 @@ import { startScheduler } from "./apps/schedule.js";
 import { startJobs } from "./apps/jobs.js";
 import { startNotificationMail } from "./services/notifications.js";
 import { fileStorageLabel } from "./services/fileStore.js";
+import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
 
 // First, so what the startup work below logs is in the dev log too.
 startDevlog();
@@ -45,6 +46,14 @@ ensureSiteLocations()
 migrateLegacyRoles()
   .then((n) => n && console.log(`  Roles: moved ${n} people off retired roles.`))
   .catch((err) => console.error("[roles] could not migrate retired roles:", err));
+
+// Staff groups (which limited forms each person sees): the starting set on an
+// empty table, then the in-memory copy, kept fresh once a minute.
+ensureStartingGroups()
+  .then((n) => n && console.log(`  Staff groups: wrote the ${n} starting groups.`))
+  .then(() => accessReady())
+  .catch((err) => console.error("[groups] could not load staff groups:", err));
+startAccessRefresh();
 
 syncSuperAdmins()
   .then((r) => r && (r.promoted || r.demoted) && console.log(`  Super Admins: ${r.promoted} made, ${r.demoted} removed (SUPER_ADMINS).`))

@@ -8,7 +8,7 @@ import { CountBadge, UnreadBubble } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
-import { useUnreadCount } from "@/lib/notifications";
+import { useUnreadCount, useUrgentCount } from "@/lib/notifications";
 import { ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
 
 /**
@@ -66,7 +66,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
-  const home = <DockLink key="home" tour="dock-home" to="/forms" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/forms"} phone={phone} onClick={onCloseLauncher} />;
+  const home = <DockLink key="home" tour="dock-home" to="/home" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/home"} phone={phone} onClick={onCloseLauncher} />;
   const rosterItem = roster && (
     <DockLink key="roster" tour="dock-roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
   );
@@ -187,11 +187,12 @@ function DockButton({ label, Icon, active, onClick, phone, expanded, tour }: { l
 function DockAccount({ active, open, onClick, phone }: { active: boolean; open: boolean; onClick: () => void; phone: boolean }) {
   const { user } = useAuth();
   const unread = useUnreadCount();
+  const urgent = useUrgentCount();
   return (
     <button type="button" onClick={onClick} aria-expanded={open} aria-haspopup="dialog" data-tour="dock-account" className={itemClass(active, phone)}>
       <span className="relative">
         <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={26} />
-        <UnreadBubble count={unread} className="-right-2.5 -top-1.5" />
+        <UnreadBubble count={unread} urgent={urgent} className="-right-2.5 -top-1.5" />
       </span>
       <span className="max-w-full truncate">Profile</span>
     </button>

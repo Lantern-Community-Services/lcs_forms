@@ -181,6 +181,8 @@ export interface Notification {
   body?: string;
   /** notify: everyone with these roles… */
   roles?: string[];
+  /** notify: needs attention now — always in the app, emailed at once, marked urgent. */
+  urgent?: boolean;
   /** notify: …only those at the entry's site (people at every site always count). */
   siteOnly?: boolean;
   /** notify: the page it opens; the entry by default. Merge tags work ({entry:id}). */

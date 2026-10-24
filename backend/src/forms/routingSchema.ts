@@ -65,6 +65,8 @@ export const routeSchema = z.object({
    * holders get it as each has chosen on their Profile.
    */
   email: z.enum(["always", "prefs"]).default("always"),
+  /** Needs attention now: marked urgent in the app and emailed at once (services/notifications.ts). */
+  urgent: z.boolean().default(false),
   /** The notification's title and email subject. {form} {site} {event} {title} {date}. Default: the event's own title. */
   subject: z.string().trim().max(200).optional(),
 }).strict();

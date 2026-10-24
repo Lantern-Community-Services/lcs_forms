@@ -33,6 +33,7 @@ const GROUPS: { group: string; items: { to: string; label: string; key: string; 
     group: "People",
     items: [
       { to: "/admin/people", label: "People & roles", key: "people", needs: ["users.manage", "users.manageSite"] },
+      { to: "/admin/groups", label: "Groups", key: "groups", needs: ["users.manage"] },
       { to: "/admin/sign-in", label: "Sign-in access", key: "signIn", needs: ["settings.manage"] },
     ],
   },
