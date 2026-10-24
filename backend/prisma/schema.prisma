@@ -707,6 +707,10 @@ model User {
   notifications     Notification[]
   notificationPrefs NotificationPref[]
   tutorials         TutorialProgress[]
+  /// Manual group changes (added to, or taken out of, a staff group). The
+  /// groups themselves mostly come from the job title (StaffGroupRule).
+  groupOverrides    StaffGroupMember[]
+  formAudiences     FormAudience[]
   oauthGrants       OAuthGrant[]
   oauthCodes        OAuthCode[]
 
@@ -742,6 +746,66 @@ model UserSite {
   approved Boolean @default(true)
 
   @@id([userId, siteId])
+}
+
+// ───────────────────────── Staff groups and form access ─────────────────────────
+
+/// A team people belong to (HR, Finance, Case management…), separate from
+/// their role: the role says what they can do, the group which team they're
+/// on. Forms can be limited to groups (FormAudience). Someone is in a group
+/// when their job title matches one of its rules, or an admin added them by
+/// hand; an admin can also take them out. See services/staffGroups.ts.
+model StaffGroup {
+  id          String             @id @default(cuid()) @db.NVarChar(64)
+  name        String             @db.NVarChar(80)
+  description String?            @db.NVarChar(255)
+  sortOrder   Int                @default(0)
+  rules       StaffGroupRule[]
+  members     StaffGroupMember[]
+  audiences   FormAudience[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+/// "Job title contains <text>" (any case) puts a person in the group; a
+/// leading ^ means "starts with" instead.
+model StaffGroupRule {
+  id       String     @id @default(cuid()) @db.NVarChar(64)
+  group    StaffGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId  String     @db.NVarChar(64)
+  contains String     @db.NVarChar(120)
+
+  @@index([groupId])
+}
+
+/// An admin's change to one person's groups: include = true adds them even
+/// though their title doesn't match, false takes them out even though it does.
+model StaffGroupMember {
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String     @db.NVarChar(64)
+  group   StaffGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId String     @db.NVarChar(64)
+  include Boolean
+
+  @@id([userId, groupId])
+}
+
+/// Who can see and use a form, when it's not everyone. One row per group,
+/// person or position (job title); a form with no rows is open to everyone (its roles still apply).
+/// formKey is "form:<BuiltForm id>" for forms built here (so the limit stays
+/// with the form if its catalog card moves), or "card:<FormLink id>" for a
+/// card that links somewhere else. Admins always see every form.
+model FormAudience {
+  id      String      @id @default(cuid()) @db.NVarChar(64)
+  formKey String      @db.NVarChar(100)
+  group   StaffGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId String?     @db.NVarChar(64)
+  user    User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String?     @db.NVarChar(64)
+  /// A position: everyone whose job title is exactly this (any case).
+  title   String?     @db.NVarChar(255)
+
+  @@index([formKey])
 }
 
 // ───────────────────────── Integrations ─────────────────────────

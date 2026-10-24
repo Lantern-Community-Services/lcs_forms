@@ -10,6 +10,7 @@ import { dropGraphToken } from "../services/graphTokens.js";
 import { notifyQuietly } from "../services/notifications.js";
 import { randomAvatarColor } from "../services/avatars.js";
 import { MAIN_OFFICE_LOCATION, parseLocations } from "./onboarding.js";
+import { effectiveGroups, groupsForTitle } from "../services/staffGroups.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -105,7 +106,7 @@ usersRouter.get(
     const mine = managedSiteIds(req);
     const users = await prisma.user.findMany({
       where: mine ? siteScopedWhere(mine) : {},
-      include: SITES_INCLUDE,
+      include: { ...SITES_INCLUDE, groupOverrides: { select: { groupId: true, include: true } } },
       orderBy: [{ status: "asc" }, { name: "asc" }],
     });
     // "Where do you work?" answers, as names (any site, not only the caller's).
@@ -115,6 +116,10 @@ usersRouter.get(
       users.map((u) => ({
         ...shape(u),
         locationNames: parseLocations(u.locations).map(locationName),
+        // Staff groups: from the job title, plus an admin's changes (groupOverrides).
+        groupIds: effectiveGroups(u.title, u.groupOverrides),
+        groupsByTitle: groupsForTitle(u.title),
+        groupOverrides: u.groupOverrides,
         // What this caller may do to the row, so the editor can say so up front.
         canEditRole: !u.globalAdmin && (!mine || u.sites.filter((s) => s.approved).every((s) => mine.includes(s.siteId))),
         canApproveSiteIds: u.sites.filter((s) => !s.approved && (!mine || mine.includes(s.siteId))).map((s) => s.siteId),

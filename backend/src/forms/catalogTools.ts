@@ -6,12 +6,14 @@ import { categoryBody, formBody } from "../routes/forms.js";
 import { LEGACY_FORM_ICON_KEYS } from "./iconKeys.js";
 import { builtSlugOf, linkCatalogCard, unlinkCatalogCard } from "./service.js";
 import type { ToolRegistrar } from "./mcp.js";
+import { allGroups, audienceOf, categoryKey, keyForCard, knownTitles, setAudience } from "../services/staffGroups.js";
 
 /**
  * MCP tools for the Forms catalog (the Forms screen and the sidebar): list it,
  * add or change a card — a link to a form on another site, an app path, or a
  * form built here — and manage categories. The same rules as Admin → Forms
  * catalog: https or app-path links only, known icons and roles. Needs forms:build.
+ * Also who a form is open to (its audience: staff groups and named people).
  */
 export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor) {
   const kindOf = (url: string) => (url.startsWith("/") ? (builtSlugOf(url) ? "built" : "app") : "external");
@@ -34,6 +36,8 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
           name: c.name,
           icon: c.icon,
           description: c.description,
+          // Who the category (and every card in it) is open to; all empty = everyone.
+          audience: audienceOf(categoryKey(c.id)),
           cards: c.forms.map((f) => ({
             id: f.id, title: f.title, description: f.description, url: f.url, kind: kindOf(f.url), icon: f.icon, keywords: f.keywords, badge: f.badge,
             roles: f.roles ? f.roles.split(",") : [], active: f.active,
@@ -160,6 +164,84 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       await prisma.formCategory.delete({ where: { id: cat.id } });
       await audit({ actor, action: "forms.category_deleted", summary: `Deleted form category “${cat.name}”` });
       return { deleted: true };
+    },
+    { destructiveHint: true }
+  );
+
+  const cardKeyOf = async (cardId: string) => {
+    const card = await prisma.formLink.findUnique({ where: { id: cardId }, select: { id: true, title: true } });
+    if (!card) throw new HttpError(404, "No such catalog card.");
+    const built = await prisma.builtForm.findFirst({ where: { catalogLinkId: card.id }, select: { id: true } });
+    return { card, key: keyForCard(card.id, built?.id) };
+  };
+
+  tool(
+    "list_staff_groups",
+    "The staff groups forms can be limited to (HR, Finance, Case management…): id, name, description, the job-title rules that put people in them, and the positions (Lantern's job titles) those rules take in. People are in a group when their job title contains one of its rules (a leading ^ means starts with), or an admin added them in People & roles.",
+    {},
+    async () => {
+      need("forms:build");
+      const titles = await knownTitles();
+      return allGroups().map((g) => ({
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        titleRules: g.rules,
+        positions: titles.filter((t) => t.groupIds.includes(g.id)).map((t) => t.title),
+      }));
+    }
+  );
+
+  tool(
+    "get_form_audience",
+    "Who a catalog card's form is open to: group ids, positions (job titles) and person ids. All empty = everyone (its roles still apply). Admins always see every form.",
+    { cardId: z.string().describe("The catalog card's id (list_catalog)") },
+    async ({ cardId }) => {
+      need("forms:build");
+      const { key } = await cardKeyOf(cardId);
+      return audienceOf(key);
+    }
+  );
+
+  tool(
+    "set_category_audience",
+    "Limit a catalog category, and every form on its cards, to some staff groups, positions (exact job titles, any case) and/or named people (user ids), or open it to everyone with every list empty. Each form's own audience still applies on top. Applies everywhere: the catalog and search, opening its forms, their entries.",
+    { categoryId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), userIds: z.array(z.string()).max(500).optional() },
+    async ({ categoryId, groupIds, titles = [], userIds = [] }) => {
+      need("forms:build");
+      const cat = await prisma.formCategory.findUnique({ where: { id: categoryId } });
+      if (!cat) throw new HttpError(404, "No such category. Use list_catalog.");
+      const [groups, users] = await Promise.all([
+        prisma.staffGroup.findMany({ where: { id: { in: groupIds } }, select: { id: true, name: true } }),
+        prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }),
+      ]);
+      if (groups.length !== new Set(groupIds).size) throw new HttpError(400, "Unknown group id. Use list_staff_groups.");
+      if (users.length !== new Set(userIds).size) throw new HttpError(400, "Unknown user id.");
+      await setAudience(categoryKey(cat.id), groupIds, userIds, titles);
+      const who = [...groups.map((g) => g.name), ...titles, ...users.map((u) => u.name)];
+      await audit({ actor, action: "forms.audience_changed", summary: who.length ? `Limited the “${cat.name}” category to ${who.join(", ")}` : `Opened the “${cat.name}” category to everyone` });
+      return audienceOf(categoryKey(cat.id));
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
+    "set_form_audience",
+    "Limit a form to some staff groups, positions (exact job titles, any case) and/or named people (user ids), or open it to everyone with every list empty. Applies everywhere: the catalog and search, opening the form, its entries. Stored on the form itself when the card opens a form built here.",
+    { cardId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), userIds: z.array(z.string()).max(500).optional() },
+    async ({ cardId, groupIds, titles = [], userIds = [] }) => {
+      need("forms:build");
+      const { card, key } = await cardKeyOf(cardId);
+      const [groups, users] = await Promise.all([
+        prisma.staffGroup.findMany({ where: { id: { in: groupIds } }, select: { id: true, name: true } }),
+        prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }),
+      ]);
+      if (groups.length !== new Set(groupIds).size) throw new HttpError(400, "Unknown group id. Use list_staff_groups.");
+      if (users.length !== new Set(userIds).size) throw new HttpError(400, "Unknown user id.");
+      await setAudience(key, groupIds, userIds, titles);
+      const who = [...groups.map((g) => g.name), ...titles, ...users.map((u) => u.name)];
+      await audit({ actor, action: "forms.audience_changed", summary: who.length ? `Limited “${card.title}” to ${who.join(", ")}` : `Opened “${card.title}” to everyone` });
+      return audienceOf(key);
     },
     { destructiveHint: true }
   );
