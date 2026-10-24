@@ -386,6 +386,7 @@ export async function routeEvent(
           sourceLabel: form.title,
           formId: form.id,
           forceEmail: route.email !== "prefs",
+          urgent: route.urgent,
         });
         told += out.sent;
         emailed += out.emailed;

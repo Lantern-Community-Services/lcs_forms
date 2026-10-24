@@ -62,15 +62,18 @@ export function CountBadge({ count, max, className, label }: { count: number; ma
 
 /**
  * The unread-notifications bubble on the corner of an icon or avatar. Position
- * it with className (it's absolute); its parent must be `relative`.
+ * it with className (it's absolute); its parent must be `relative`. Red while
+ * any of them is urgent, navy otherwise.
  */
-export function UnreadBubble({ count, className }: { count: number; className?: string }) {
+export function UnreadBubble({ count, urgent = 0, className }: { count: number; urgent?: number; className?: string }) {
   if (count <= 0) return null;
   return (
     <span
-      aria-label={`${count} unread notification${count === 1 ? "" : "s"}`}
+      aria-label={`${count} unread notification${count === 1 ? "" : "s"}${urgent ? `, ${urgent} urgent` : ""}`}
       className={cn(
-        "absolute flex h-[17px] min-w-[17px] items-center justify-center rounded-pill bg-status-redDot px-1 text-[10px] font-extrabold leading-none text-white ring-2 ring-surface tabular",
+        "absolute flex h-[17px] min-w-[17px] items-center justify-center rounded-pill px-1 text-[10px] font-extrabold leading-none ring-2 ring-surface tabular",
+        // Red only while something urgent is waiting; the everyday count is navy.
+        urgent > 0 ? "bg-status-redDot text-white" : "bg-navy text-white dark:bg-white dark:text-navy",
         className
       )}
     >

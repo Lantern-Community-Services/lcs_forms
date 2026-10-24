@@ -1074,6 +1074,10 @@ model Notification {
   formId      String?   @db.NVarChar(64)
   /// In the bell and the list. False when they only wanted it by email.
   inApp       Boolean   @default(true)
+  /// Needs attention now (an incident, an approval that can't wait): always
+  /// in the app, emailed at once rather than in a daily summary, and shown
+  /// apart from the rest. Set by whoever sends it.
+  urgent      Boolean   @default(false)
   readAt      DateTime?
   /// none | pending | sending | digest | sent | failed | skipped
   emailStatus String    @default("none") @db.NVarChar(255)

@@ -188,7 +188,7 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
   };
   const summary = (n: Notification) =>
     n.kind === "notify"
-      ? `In the app to ${[...(n.roles ?? []).map((k) => roles.find((r) => r.value === k)?.label ?? k), ...(n.to?.trim() ? [n.to.trim()] : [])].join(", ") || "—"}${n.siteOnly && n.roles?.length ? " at the entry's site" : ""}`
+      ? `In the app to ${[...(n.roles ?? []).map((k) => roles.find((r) => r.value === k)?.label ?? k), ...(n.to?.trim() ? [n.to.trim()] : [])].join(", ") || "—"}${n.siteOnly && n.roles?.length ? " at the entry's site" : ""}${n.urgent ? " · urgent" : ""}`
       : n.kind === "email" ? `Email to ${n.to || "—"}` : `Webhook to ${n.url}`;
   return (
     <Section title="Notifications" hint="Sent after each entry, optionally only when rules match. The outcome is written on the entry's notes.">
@@ -216,6 +216,13 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
                     <span>
                       Only those at the entry's site
                       <span className="block text-micro text-muted">People who work at every site (Admin, Main Office) always get it.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-[13px] text-ink">
+                    <Switch checked={n.urgent ?? false} onCheckedChange={(v) => update(n.id, { urgent: v || undefined })} className="mt-0.5" />
+                    <span>
+                      Urgent
+                      <span className="block text-micro text-muted">Red in their bell, kept at the top of their notifications until read, and emailed straight away. For what can't wait.</span>
                     </span>
                   </label>
                   <Row label="And these people" hint="Comma-separated addresses of people with an account. {user:email} is whoever filled it in.">

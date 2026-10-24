@@ -312,7 +312,8 @@ function when(iso: string) {
 
 function UnreadStat() {
   const { data } = useUnreadNotifications();
-  return <StatTile label="Unread notifications" value={data ? String(data.unread) : "–"} note={data?.unread ? "to read" : "all read"} href="/notifications" />;
+  const note = !data?.unread ? "all read" : data.urgent ? `${data.urgent} urgent` : "to read";
+  return <StatTile label="Unread notifications" value={data ? String(data.unread) : "–"} note={note} href={data?.urgent ? "/notifications?show=urgent" : "/notifications"} />;
 }
 
 function useUpcoming(days: number) {
@@ -469,7 +470,9 @@ function EventRow({ o, today, color }: { o: CalendarOccurrence; today: string; c
 
 function NotificationsWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading, isError } = useNotificationList("unread");
-  const items = (data?.pages[0]?.items ?? []).slice(0, ROWS[size]);
+  // Urgent first, then newest.
+  const all = data?.pages[0]?.items ?? [];
+  const items = [...all.filter((n) => n.urgent), ...all.filter((n) => !n.urgent)].slice(0, ROWS[size]);
   const unread = data?.pages[0]?.unread ?? 0;
   return (
     <WidgetCard title="Notifications" count={unread} link={{ to: "/notifications", label: "See all" }}>
@@ -484,9 +487,12 @@ function NotificationsWidget({ size }: { size: WidgetSize }) {
           {items.map((n) => (
             <li key={n.id}>
               <Link to={`/notifications/${n.id}`} className="flex items-start gap-3 px-4 py-2 hover:bg-rowhover xl:px-5">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden />
+                <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.urgent ? "bg-status-redDot" : "bg-accent")} aria-hidden />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold text-ink">{n.title}</span>
+                  <span className="block truncate text-[13.5px] font-bold text-ink">
+                    {n.urgent && <span className="mr-1 text-status-redText">Urgent:</span>}
+                    {n.title}
+                  </span>
                   <span className="block truncate text-[12px] text-muted">{[n.sourceLabel, when(n.createdAt)].filter(Boolean).join(" · ")}</span>
                 </span>
               </Link>
