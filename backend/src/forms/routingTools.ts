@@ -35,6 +35,10 @@ const routeShape = {
   to: z.array(recipient).describe("Who's told"),
   email: z.enum(["always", "prefs"]).optional().describe('"always" (default): everyone on it is emailed (link-only) whatever their settings. "prefs": account holders get it as they chose on their Profile.'),
   subject: z.string().optional().describe("Title and email subject; tags {form} {site} {event} {title} {date}. Default: the event's own title. Never resident details."),
+  urgent: z
+    .boolean()
+    .optional()
+    .describe("Needs attention now (an incident, a request that can't wait): red in the bell, pinned at the top of their notifications until read, and emailed at once even to people on a daily summary. Default false."),
 };
 
 export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor) {
