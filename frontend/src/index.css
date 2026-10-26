@@ -348,6 +348,12 @@ h6 {
   .tour-card, .tour-card-nudge, .tour-spot-live::after { animation: none; }
 }
 
+/* A pin that was refused (already at the limit) shakes its head, like the tour card's nudge. */
+.pin-refused { animation: tour-card-nudge 400ms ease-in-out; }
+@media (prefers-reduced-motion: reduce) {
+  .pin-refused { animation: none; }
+}
+
 /* A batch of bills just loaded into a ledger group.
 
    These rows arrive already tinted, hold for a beat, then settle back to the
