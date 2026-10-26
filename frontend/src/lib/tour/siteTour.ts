@@ -108,7 +108,7 @@ export function buildSiteTour(
       target: at("nav-forms"),
       action: "click",
       title: "Open Forms",
-      body: "Every form lives on one page. Click **Forms**.",
+      body: "Every form lives on one page. Click **All forms**.",
     });
   }
   add({

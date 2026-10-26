@@ -91,6 +91,7 @@ export interface Tenant {
   moveOutDate: string | null;
   notes: string | null;
   externalId: string | null;
+  highAcuity: boolean;
   lastActivityAt: string | null;
   lastActivitySource: string | null;
   lastKeptAt: string | null;

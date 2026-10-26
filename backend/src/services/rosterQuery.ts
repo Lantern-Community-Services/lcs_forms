@@ -22,7 +22,7 @@ export const ROSTER_CAP = 5000;
 const LIST_COLUMNS = Prisma.raw(
   [
     "id", "siteId", "unit", "firstName", "lastName", "preferredName", "status",
-    "moveInDate", "moveOutDate", "externalId", "lastActivityAt", "lastActivitySource",
+    "moveInDate", "moveOutDate", "externalId", "highAcuity", "lastActivityAt", "lastActivitySource",
     "lastKeptAt", "attentionClockAt", "archivedAt", "archiveReason", "version",
     "createdAt", "updatedAt",
   ].join(", ")

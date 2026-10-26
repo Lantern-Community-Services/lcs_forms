@@ -256,18 +256,19 @@ function filterCatalog(categories: FormCategory[], q: string, pick: Selection, f
 
 /**
  * Pin / unpin, optimistically: the pin fills the instant it's tapped and
- * springs back, with a toast, only if the server refuses.
+ * springs back, with a toast, only if the server refuses. Resolves false when
+ * the pin wasn't taken (so the button can shake), true otherwise.
  */
 function useFavoriteToggle() {
   const qc = useQueryClient();
   const toast = useToast();
-  return async (form: FormLink, isFavorite: boolean) => {
+  return async (form: FormLink, isFavorite: boolean): Promise<boolean> => {
     // The welcome tour's sample forms keep their pins in their own cache (formsApi doesn't send them).
     const key = isSample(form.id) ? sampleKey("forms") : ["forms", "visible"];
     const before = qc.getQueryData<FormCatalog>(key);
     if (!isFavorite && before && before.favorites.length >= MAX_NAV_PINS) {
       toast(`You can pin up to ${MAX_NAV_PINS} forms. Unpin one to make room.`, "error");
-      return;
+      return false;
     }
     if (before) {
       qc.setQueryData<FormCatalog>(key, {
@@ -277,9 +278,11 @@ function useFavoriteToggle() {
     }
     try {
       await (isFavorite ? formsApi.unfavorite(form.id) : formsApi.favorite(form.id));
+      return true;
     } catch (e) {
       if (before) qc.setQueryData(key, before);
       toast(errorMessage(e, "Couldn't save that pin."), "error");
+      return false;
     }
   };
 }
@@ -306,18 +309,25 @@ function FormLinkWrap({ form, className, children }: { form: FormLink; className
   );
 }
 
-function StarButton({ form, favorite, onToggle, className }: { form: FormLink; favorite: boolean; onToggle: () => void; className?: string }) {
+function StarButton({ form, favorite, onToggle, className }: { form: FormLink; favorite: boolean; onToggle: () => Promise<boolean>; className?: string }) {
+  // A refused pin shakes, red, once (see .pin-refused).
+  const [refused, setRefused] = useState(false);
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={async () => {
+        if (!(await onToggle())) setRefused(true);
+      }}
       aria-pressed={favorite}
       data-tour="pin"
       aria-label={favorite ? `Unpin ${form.title}` : `Pin ${form.title}`}
       title={favorite ? "Unpin" : "Pin"}
       className={cn("relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-input text-muted hover:bg-subtle hover:text-ink", className)}
     >
-      <Pin className={cn("h-[18px] w-[18px]", favorite && "fill-status-amberDot text-status-amberDot")} />
+      <Pin
+        onAnimationEnd={() => setRefused(false)}
+        className={cn("h-[18px] w-[18px]", favorite && "fill-status-amberDot text-status-amberDot", refused && "pin-refused text-status-redText")}
+      />
     </button>
   );
 }
@@ -326,7 +336,7 @@ function StarButton({ form, favorite, onToggle, className }: { form: FormLink; f
  * A form as a card: icon, star, title, description, and where it opens. The
  * title is the link and stretches over the whole card; the star sits above it.
  */
-function FormCard({ form, category, favorite, onToggleFavorite, showCategory = false }: Entry & { favorite: boolean; onToggleFavorite: () => void; showCategory?: boolean }) {
+function FormCard({ form, category, favorite, onToggleFavorite, showCategory = false }: Entry & { favorite: boolean; onToggleFavorite: () => Promise<boolean>; showCategory?: boolean }) {
   const { can } = useAuth();
   const internal = isInternalForm(form.url);
   const locked = !canOpenForm(form.url, can);
@@ -499,7 +509,7 @@ const CARD_ROWS = 5;
 function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: {
   category: FormCategory;
   favorites: Set<string>;
-  onToggleFavorite: (form: FormLink) => void;
+  onToggleFavorite: (form: FormLink) => Promise<boolean>;
   /** Rows to show; null = every one (while filtering). */
   limit: number | null;
   onOpen: () => void;

@@ -383,7 +383,7 @@ export function Sidebar() {
 
             {/* The forms: the whole catalog, then your pins under it. */}
             <div className="mx-2 my-2.5 h-px shrink-0 bg-hairline" />
-            <NavItem to="/forms" label="Forms" Icon={LayoutGrid} collapsed={collapsed} lit={formsLit} tour="nav-forms" />
+            <NavItem to="/forms" label="All forms" Icon={LayoutGrid} collapsed={collapsed} lit={formsLit} tour="nav-forms" />
             {pinned.map((p) => (
               <FormRow key={p.form.id} form={p.form} Icon={p.Icon} collapsed={collapsed} lit={lit(p.form.url)} count={countFor(p.form)} />
             ))}
