@@ -166,12 +166,20 @@ formsRouter.get(
 
 // ── Favourites ───────────────────────────────────────────────────────────
 
+/** The most forms one person may pin; the sidebar and tablet dock have room for this many. */
+const MAX_FAVORITES = 5;
+
 formsRouter.put(
   "/:id/favorite",
   asyncHandler(async (req, res) => {
     const form = await prisma.formLink.findUnique({ where: { id: req.params.id } });
-    if (!form || !form.active || !canSeeForm(req, form, await builtByCard())) throw notFound("That form isn't in the catalog any more.");
+    const built = await builtByCard();
+    if (!form || !form.active || !canSeeForm(req, form, built)) throw notFound("That form isn't in the catalog any more.");
     const key = { userId: req.user!.userId, formId: form.id };
+    // Only pins they can still see count: one restricted away isn't shown, so it shouldn't use up a place.
+    const pins = await prisma.formFavorite.findMany({ where: { userId: key.userId }, include: { form: true } });
+    const counted = pins.filter((p) => p.formId !== form.id && p.form.active && canSeeForm(req, p.form, built));
+    if (counted.length >= MAX_FAVORITES) throw badRequest(`You can pin up to ${MAX_FAVORITES} forms. Unpin one to make room.`);
     await prisma.formFavorite.upsert({ where: { userId_formId: key }, create: key, update: {} });
     res.json({ ok: true });
   })
