@@ -20,6 +20,9 @@ export function useReviewCount(): number {
 /** The Roster's catalog URL. It sits in the top group of the nav (Home, Roster, Calendar), not among the forms. */
 export const ROSTER_URL = "/roster";
 
+/** The most pinned forms the sidebar and the tablet dock show; the rest stay on the Forms page's Pinned row. */
+export const MAX_NAV_PINS = 5;
+
 export interface NavCategory {
   category: FormCategory;
   Icon: React.ElementType;

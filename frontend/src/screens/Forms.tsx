@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, Lock, Pin } from "lucide-react";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
+import { MAX_NAV_PINS } from "@/components/shell/navData";
 import { Tag } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
@@ -264,6 +265,10 @@ function useFavoriteToggle() {
     // The welcome tour's sample forms keep their pins in their own cache (formsApi doesn't send them).
     const key = isSample(form.id) ? sampleKey("forms") : ["forms", "visible"];
     const before = qc.getQueryData<FormCatalog>(key);
+    if (!isFavorite && before && before.favorites.length >= MAX_NAV_PINS) {
+      toast(`You can pin up to ${MAX_NAV_PINS} forms. Unpin one to make room.`, "error");
+      return;
+    }
     if (before) {
       qc.setQueryData<FormCatalog>(key, {
         ...before,
