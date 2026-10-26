@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/utils";
 import { EMAIL_FIELD_TYPES, type FormDoc, type FormSettings, type Notification } from "@/lib/formEngine";
 import { cn } from "@/lib/utils";
+import { WhoSeesEntries } from "@/components/WhoSeesEntries";
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -117,8 +118,8 @@ export function SettingsPanel({
 
       <FormsScreenAccess form={form} currentCategory={currentCategory} categories={catalog?.categories ?? []} onCatalog={onCatalog} />
 
-      <Section title="Who can read entries" hint="Admins always can.">
-        <CheckboxList options={roles} value={s.entriesRoles ?? ["main_office", "site_manager", "site_staff"]} onChange={(v) => set({ entriesRoles: v })} />
+      <Section title="Who sees entries" hint="Saved straight away, not with Publish. Admins always see every entry.">
+        <WhoSeesEntries formId={form.id} />
       </Section>
 
       <Section title="Limits & schedule">

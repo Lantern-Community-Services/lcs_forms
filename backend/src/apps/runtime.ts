@@ -21,7 +21,7 @@ import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scop
 import { noteCalendarChange } from "../services/outlookSync.js";
 import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
-import { canUseBuiltForm } from "../services/staffGroups.js";
+import { canUseBuiltForm, entryReach } from "../services/staffGroups.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -103,7 +103,9 @@ export function access(app: LoadedApp, user: CurrentUser) {
   return {
     canOpen,
     pages: m.pages.filter((p) => roleAllowed(p.roles, role, dev)),
-    readAll: roleAllowed(e.read ?? DEFAULT_ENTRY_READERS, role, dev),
+    // Everyone's entries (still only their own sites'), by the form's "Who sees entries" (staffGroups.ts),
+    // or its form.json entries.read until that's set. Developers building it always can.
+    readAll: dev || entryReach(app.form.id, e.read ?? DEFAULT_ENTRY_READERS, user) !== "own",
     create: app.form.status !== "closed" && roleAllowed(e.create, role, dev),
     voidAny: e.void ? roleAllowed(e.void, role, dev) : dev || user.permissions.includes("entries.void"),
     undoMinutes: e.undoMinutes ?? 10,
@@ -413,7 +415,7 @@ export async function voidEntry(app: LoadedApp, user: CurrentUser, id: string, r
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
   if (!e) throw notFound("No such entry.");
   const ownUndo = e.createdById === user.userId && Date.now() - e.createdAt.getTime() < a.undoMinutes * 60_000;
-  if (!a.voidAny && !ownUndo) throw forbidden("You can't void this entry.");
+  if (!(a.voidAny && a.readAll) && !ownUndo) throw forbidden("You can't void this entry.");
   if (user.siteIds && e.siteId && !user.siteIds.includes(e.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
   if (!reason.trim()) throw badRequest("Say why.");
   await prisma.formEntry.update({ where: { id: e.id }, data: { status: "voided", voidedAt: new Date(), voidedByName: user.name, voidReason: reason.trim().slice(0, 500) } });
@@ -422,7 +424,7 @@ export async function voidEntry(app: LoadedApp, user: CurrentUser, id: string, r
 
 export async function restoreEntry(app: LoadedApp, user: CurrentUser, id: string) {
   const a = requireOpen(app, user);
-  if (!a.voidAny) throw forbidden("You can't restore entries.");
+  if (!a.voidAny || !a.readAll) throw forbidden("You can't restore entries.");
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
   if (!e) throw notFound("No such entry.");
   await prisma.formEntry.update({ where: { id: e.id }, data: { status: "active", voidedAt: null, voidedByName: null, voidReason: null } });
@@ -466,6 +468,7 @@ export async function updateEntry(app: LoadedApp, user: CurrentUser, id: string,
   if (!e) throw notFound("No such entry.");
   const own = e.createdById === user.userId && a.editOwnMinutes > 0 && Date.now() - e.createdAt.getTime() < a.editOwnMinutes * 60_000;
   if (!a.editAny && !own) throw forbidden("You can't edit this entry.");
+  if (!a.readAll && e.createdById !== user.userId) throw forbidden("You can only change your own entries on this form.");
   if (user.siteIds && e.siteId && !user.siteIds.includes(e.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
   if (e.status !== "active") throw badRequest("Restore the entry before editing it.");
   if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) throw badRequest("data must be an object.");
@@ -747,7 +750,7 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     let allowed = false;
     if (other.kind === "code") {
       allowed = Boolean(loaded && access(loaded, user).canOpen && access(loaded, user).readAll);
-    } else allowed = canReadBasicEntries(readDoc(other.liveSchema ?? other.draftSchema), user) && canUseBuiltForm(user, other.id);
+    } else allowed = canReadBasicEntries(other, readDoc(other.liveSchema ?? other.draftSchema), user) && canUseBuiltForm(user, other.id);
     if (!allowed) throw new Error(`${user.name} can't read the entries of "${slug}".`);
     return other.id;
   }

@@ -11,9 +11,9 @@ import { mailConfigured, sendLogged } from "../services/mailer.js";
 import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
-import { openFollowUp } from "../services/followUp.js";
+import { canFollowUp, openFollowUp } from "../services/followUp.js";
 import { TZ, stamp } from "../services/exportCommon.js";
-import { canUseBuiltForm, isBuiltFormLimited } from "../services/staffGroups.js";
+import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
   type Field, type FormDoc, type Values,
@@ -98,14 +98,54 @@ function periodStart(period: "day" | "week" | "month" | "ever"): Date | null {
   return new Date(start.getTime() + offset);
 }
 
-export function canReadEntries(doc: FormDoc, user: Viewer): boolean {
-  if (!user) return false;
-  if (isFormAdmin(user)) return true;
-  return (doc.settings.entriesRoles ?? DEFAULT_ENTRIES_ROLES).includes(user.roleKey);
+/** A basic form's old reader roles: they see every entry until the form's "Who sees entries" is set. */
+export const legacyReadersOf = (doc: FormDoc) => doc.settings.entriesRoles ?? DEFAULT_ENTRIES_ROLES;
+
+/**
+ * How much of a basic form's entries this person sees (services/staffGroups.ts
+ * entryReach): "all", "site" (their sites' and their own) or "own" (their own
+ * and the ones they were told about). Nobody signed out sees any.
+ */
+export function entryReachOf(form: BuiltForm, doc: FormDoc, user: Viewer): "all" | "site" | "own" | null {
+  if (!user) return null;
+  return entryReach(form.id, legacyReadersOf(doc), user);
 }
 
-export function canVoidEntries(doc: FormDoc, user: Viewer) {
-  return canReadEntries(doc, user) && Boolean(user && (user.permissions.includes("entries.void") || isFormAdmin(user)));
+/** Sees every entry (exports, voiding, reading it from another form). */
+export function canReadEntries(form: BuiltForm, doc: FormDoc, user: Viewer): boolean {
+  return entryReachOf(form, doc, user) === "all";
+}
+
+export function canVoidEntries(form: BuiltForm, doc: FormDoc, user: Viewer) {
+  return canReadEntries(form, doc, user) && Boolean(user && (user.permissions.includes("entries.void") || isFormAdmin(user)));
+}
+
+/** Entries of this form a notification, reminder or "done" message pointed this person at. */
+async function notifiedEntryIds(form: BuiltForm, userId: string): Promise<string[]> {
+  if (!notifiedCanOpen(form.id)) return [];
+  const prefix = `/f/${form.slug}/entries/`;
+  const rows = await prisma.notification.findMany({ where: { userId, formId: form.id, link: { startsWith: prefix } }, select: { link: true }, take: 500, orderBy: { createdAt: "desc" } });
+  return [...new Set(rows.map((r) => (r.link ?? "").slice(prefix.length).split(/[/?#]/)[0]).filter(Boolean))];
+}
+
+/** The entries of a form this person may see, as a where (on top of their sites, entryScope). */
+export async function visibleWhere(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own"): Promise<Prisma.FormEntryWhereInput> {
+  if (!user || reach === "all") return {};
+  const mine: Prisma.FormEntryWhereInput[] = [{ createdById: user.userId }];
+  const told = await notifiedEntryIds(form, user.userId);
+  if (told.length) mine.push({ id: { in: told } });
+  if (reach === "site" && user.siteIds) mine.push({ siteId: { in: user.siteIds } });
+  if (reach === "site" && !user.siteIds) return {};
+  return { OR: mine };
+}
+
+/** Whether this person may open this one entry: theirs, their site's (by the form's setting), told about it, or theirs to follow up. */
+export async function canSeeEntry(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own", entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp">): Promise<boolean> {
+  if (!user) return false;
+  if (reach === "all" || entry.createdById === user.userId) return true;
+  if (reach === "site" && (!user.siteIds || (entry.siteId && user.siteIds.includes(entry.siteId)))) return true;
+  if ((await notifiedEntryIds(form, user.userId)).includes(entry.id)) return true;
+  return entry.followUp ? canFollowUp(form, user as CurrentUser, entry) : false;
 }
 
 /** Entries limited to the person's sites; entries not made for a site stay visible to readers. */

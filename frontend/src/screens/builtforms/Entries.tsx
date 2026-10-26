@@ -74,7 +74,7 @@ export function BuiltFormEntriesPage() {
       <DesktopBackLink to={`/f/${slug}`}>{data.form.title}</DesktopBackLink>
       <PageHeader
         title={`${data.form.title}: entries`}
-        subtitle={`${data.total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${data.total === 1 ? "y" : "ies"}${q || from || to || starred ? " match" : ""}`}
+        subtitle={`${data.total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${data.total === 1 ? "y" : "ies"}${q || from || to || starred ? " match" : ""}${data.reach === "own" ? " · yours, and any you were told about" : data.reach === "site" ? " · your sites' and your own" : ""}`}
         actions={
           <>
             <Link to={`/f/${slug}`}><Button variant="secondary"><ExternalLink className="h-4 w-4" /> Open form</Button></Link>

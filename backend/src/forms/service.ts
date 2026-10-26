@@ -1,6 +1,7 @@
 import type { BuiltForm, Prisma } from "@prisma/client";
 import { reloadAccess } from "../services/staffGroups.js";
 import { prisma } from "../prisma.js";
+import { NEW_FORM_ENTRY_ACCESS, entryAccessOf, setEntryAccess } from "../services/staffGroups.js";
 import { deleteFiles } from "../services/fileStore.js";
 import { HttpError, badRequest, notFound } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
@@ -126,7 +127,12 @@ export function formDetail(r: BuiltForm) {
   };
 }
 
-export async function createForm(input: { doc?: unknown; title?: string; slug?: string }, actor: Actor): Promise<BuiltForm> {
+/**
+ * A new form. It starts with "Who sees entries" at only their own (and the
+ * people it notifies); an import or a copy keeps the readers it came with
+ * (`keepOldReaders`) until someone reviews it.
+ */
+export async function createForm(input: { doc?: unknown; title?: string; slug?: string }, actor: Actor, opts: { keepOldReaders?: boolean } = {}): Promise<BuiltForm> {
   const doc = input.doc === undefined ? emptyForm(input.title?.trim() || "Untitled form") : validDoc(input.doc);
   if (input.slug) await checkSlug(input.slug);
   const slug = input.slug ?? (await uniqueSlug(doc.title));
@@ -140,6 +146,7 @@ export async function createForm(input: { doc?: unknown; title?: string; slug?: 
       updatedByName: actor.name,
     },
   });
+  if (!opts.keepOldReaders) await setEntryAccess(row.id, NEW_FORM_ENTRY_ACCESS, actor.name);
   await audit({ actor, action: "builder.created", summary: `Created form “${row.title}” (/f/${row.slug})` });
   return row;
 }
@@ -206,7 +213,11 @@ export async function duplicateForm(id: string, actor: Actor): Promise<BuiltForm
   const src = await findForm(id);
   const doc = readDoc(src.draftSchema);
   doc.title = `${doc.title} (copy)`;
-  return createForm({ doc }, actor);
+  const row = await createForm({ doc }, actor, { keepOldReaders: true });
+  // A copy sees entries the way the original does.
+  const access = entryAccessOf(src.id);
+  if (access) await setEntryAccess(row.id, access, actor.name);
+  return row;
 }
 
 /**
@@ -407,7 +418,7 @@ export async function importPayload(payload: unknown, actor: Actor, opts: { with
     }
     const wanted = item.slug && SLUG_RE.test(item.slug) ? item.slug : parsed.doc.title;
     const slug = await uniqueSlug(wanted);
-    let row = await createForm({ doc: parsed.doc, slug }, actor);
+    let row = await createForm({ doc: parsed.doc, slug }, actor, { keepOldReaders: true });
     if (opts.publish) row = await publishForm(row.id, actor, "Imported");
     let entryCount = 0;
     if (opts.withEntries && item.entries?.length) {

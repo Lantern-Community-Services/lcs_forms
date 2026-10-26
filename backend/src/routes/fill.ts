@@ -1,5 +1,6 @@
 import express, { Router, type Request } from "express";
 import { z } from "zod";
+import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
@@ -7,7 +8,7 @@ import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
 import { canFollowUp, loadFollowUp, requireFollowUp, setFollowUp } from "../services/followUp.js";
 import {
-  canReadEntries, canVoidEntries, closedReason, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
+  canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
   entryScope, liveDoc, saveUpload, submitEntry, updateEntry, type EntryFilter,
 } from "../forms/entries.js";
 
@@ -40,7 +41,9 @@ fillRouter.get(
       doc,
       closed: form.liveSchema ? await closedReason(form, doc, req.user) : "This form hasn't been published yet — you're seeing the draft because you're an admin. Submitting is off.",
       user: req.user ? { name: req.user.name, email: req.user.email } : null,
-      canReadEntries: canReadEntries(doc, req.user),
+      // Everyone signed in sees at least their own entries; entriesReach says how many more.
+      canReadEntries: Boolean(req.user),
+      entriesReach: entryReachOf(form, doc, req.user),
       isAdmin: isFormAdmin(req.user),
     });
   })
@@ -102,12 +105,13 @@ fillRouter.post(
 
 // ── Entries ──────────────────────────────────────────────────────────────
 
+/** The form's entries as this person may see them: whom it's open to, then its "Who sees entries". */
 async function readable(req: Request) {
   if (!req.user) throw unauthorized();
   const form = await findForm(req.params.slug);
   const doc = liveDoc(form) ?? readDoc(form.draftSchema);
-  if (!canReadEntries(doc, req.user) || !canUseBuiltForm(req.user, form.id)) throw forbidden("You can't see this form's entries.");
-  return { form, doc };
+  if (!canUseBuiltForm(req.user, form.id)) throw forbidden("You can't see this form's entries.");
+  return { form, doc, reach: entryReachOf(form, doc, req.user)! };
 }
 
 function filterOf(req: Request): EntryFilter {
@@ -131,8 +135,8 @@ async function siteNames() {
 fillRouter.get(
   "/:slug/entries",
   asyncHandler(async (req, res) => {
-    const { form, doc } = await readable(req);
-    const where = entryWhere(form, req.user, filterOf(req));
+    const { form, doc, reach } = await readable(req);
+    const where = { AND: [entryWhere(form, req.user, filterOf(req)), await visibleWhere(form, req.user, reach)] };
     const take = Math.min(200, Math.max(1, Number(req.query.take) || 50));
     const skip = Math.max(0, Number(req.query.skip) || 0);
     const [rows, total, sites] = await Promise.all([
@@ -145,9 +149,11 @@ fillRouter.get(
       doc,
       total,
       items: rows.map((e) => entryRow({ ...e, site: e.siteId ? sites.get(e.siteId) ?? null : null })),
-      canVoid: canVoidEntries(doc, req.user),
+      canVoid: canVoidEntries(form, doc, req.user),
       isAdmin: isFormAdmin(req.user),
       followUp: (await loadFollowUp(form)).enabled,
+      // all: every entry; site: their sites' and their own; own: their own and the ones they were told about.
+      reach,
     });
   })
 );
@@ -155,27 +161,29 @@ fillRouter.get(
 fillRouter.get(
   "/:slug/entries-export",
   asyncHandler(async (req, res) => {
-    const { form, doc } = await readable(req);
+    const { form, doc, reach } = await readable(req);
     const format = req.query.format === "xlsx" ? "xlsx" : "csv";
-    const file = await exportEntries(form, doc, entryWhere(form, req.user, filterOf(req)), format);
+    const file = await exportEntries(form, doc, { AND: [entryWhere(form, req.user, filterOf(req)), await visibleWhere(form, req.user, reach)] }, format);
     res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
     res.type(file.mime).send(file.body);
   })
 );
 
-async function entryIn(req: Request, formId: string) {
-  const entry = await prisma.formEntry.findFirst({ where: { id: req.params.id, formId } });
+/** One entry, if this person may see it: their sites, then the form's "Who sees entries". */
+async function entryIn(req: Request, form: BuiltForm, reach: "all" | "site" | "own") {
+  const entry = await prisma.formEntry.findFirst({ where: { id: req.params.id, formId: form.id } });
   if (!entry) throw notFound("No such entry.");
   const ids = req.user?.siteIds;
-  if (ids && entry.siteId && !ids.includes(entry.siteId)) throw forbidden("This entry is for a site you aren't assigned to.");
+  if (ids && entry.siteId && !ids.includes(entry.siteId) && entry.createdById !== req.user?.userId) throw forbidden("This entry is for a site you aren't assigned to.");
+  if (!(await canSeeEntry(form, req.user, reach, entry))) throw forbidden("You can only see your own entries on this form.");
   return entry;
 }
 
 fillRouter.get(
   "/:slug/entries/:id",
   asyncHandler(async (req, res) => {
-    const { form, doc: liveOrDraft } = await readable(req);
-    const entry = await entryIn(req, form.id);
+    const { form, doc: liveOrDraft, reach } = await readable(req);
+    const entry = await entryIn(req, form, reach);
     const [doc, notes, sites, neighbours] = await Promise.all([
       docForEntry(form, entry.formVersion),
       prisma.formEntryNote.findMany({ where: { entryId: entry.id }, orderBy: { createdAt: "asc" } }),
@@ -194,7 +202,7 @@ fillRouter.get(
       olderId: neighbours[1]?.id ?? null,
       // Whether this person can mark the entry's follow-up done (or reopen it).
       canFollowUp: await canFollowUp(form, req.user, entry),
-      canVoid: canVoidEntries(liveOrDraft, req.user),
+      canVoid: canVoidEntries(form, liveOrDraft, req.user),
       isAdmin: isFormAdmin(req.user),
     });
   })
@@ -203,9 +211,9 @@ fillRouter.get(
 fillRouter.patch(
   "/:slug/entries/:id",
   asyncHandler(async (req, res) => {
-    const { form } = await readable(req);
+    const { form, reach } = await readable(req);
     if (!isFormAdmin(req.user)) throw forbidden("Only admins can edit entries.");
-    const entry = await entryIn(req, form.id);
+    const entry = await entryIn(req, form, reach);
     const { values } = z.object({ values: z.record(z.unknown()) }).parse(req.body);
     const updated = await updateEntry(form, entry, values, req.user!.name);
     res.json(entryRow(updated));
@@ -215,9 +223,9 @@ fillRouter.patch(
 fillRouter.post(
   "/:slug/entries/:id/void",
   asyncHandler(async (req, res) => {
-    const { form, doc } = await readable(req);
-    if (!canVoidEntries(doc, req.user)) throw forbidden("You can't void entries.");
-    const entry = await entryIn(req, form.id);
+    const { form, doc, reach } = await readable(req);
+    if (!canVoidEntries(form, doc, req.user)) throw forbidden("You can't void entries.");
+    const entry = await entryIn(req, form, reach);
     const { reason, restore } = z.object({ reason: z.string().trim().max(500).optional(), restore: z.boolean().optional() }).parse(req.body);
     if (restore) {
       if (!isFormAdmin(req.user)) throw forbidden("Only admins can restore a voided entry.");
@@ -237,8 +245,8 @@ fillRouter.post(
   "/:slug/entries/:id/follow-up",
   asyncHandler(async (req, res) => {
     const body = z.object({ done: z.boolean(), note: z.string().max(2000).optional() }).parse(req.body);
-    const { form } = await readable(req);
-    const entry = await entryIn(req, form.id);
+    const { form, reach } = await readable(req);
+    const entry = await entryIn(req, form, reach);
     await requireFollowUp(form, req.user, entry);
     const updated = await setFollowUp(form, entry, { userId: req.user!.userId, name: req.user!.name }, body);
     const sites = await siteNames();
@@ -249,8 +257,8 @@ fillRouter.post(
 fillRouter.post(
   "/:slug/entries/:id/star",
   asyncHandler(async (req, res) => {
-    const { form } = await readable(req);
-    const entry = await entryIn(req, form.id);
+    const { form, reach } = await readable(req);
+    const entry = await entryIn(req, form, reach);
     const { starred } = z.object({ starred: z.boolean() }).parse(req.body);
     await prisma.formEntry.update({ where: { id: entry.id }, data: { starred } });
     res.json({ ok: true });
@@ -260,8 +268,8 @@ fillRouter.post(
 fillRouter.post(
   "/:slug/entries/:id/notes",
   asyncHandler(async (req, res) => {
-    const { form } = await readable(req);
-    const entry = await entryIn(req, form.id);
+    const { form, reach } = await readable(req);
+    const entry = await entryIn(req, form, reach);
     const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(req.body);
     const note = await prisma.formEntryNote.create({ data: { entryId: entry.id, kind: "note", authorName: req.user!.name, body } });
     res.status(201).json(note);
@@ -271,9 +279,9 @@ fillRouter.post(
 fillRouter.delete(
   "/:slug/entries/:id",
   asyncHandler(async (req, res) => {
-    const { form } = await readable(req);
+    const { form, reach } = await readable(req);
     if (!isFormAdmin(req.user)) throw forbidden("Only admins can delete entries.");
-    const entry = await entryIn(req, form.id);
+    const entry = await entryIn(req, form, reach);
     await deleteFiles({ entryId: entry.id });
     await prisma.formEntry.delete({ where: { id: entry.id } });
     res.json({ ok: true });
@@ -283,13 +291,13 @@ fillRouter.delete(
 fillRouter.get(
   "/:slug/files/:fileId",
   asyncHandler(async (req, res) => {
-    const { form } = await readable(req);
+    const { form, reach } = await readable(req);
     const file = await prisma.formFile.findFirst({ where: { id: req.params.fileId, formId: form.id } });
     if (!file) throw notFound("No such file.");
     if (file.entryId) {
       req.params.id = file.entryId;
-      await entryIn(req, form.id);
-    }
+      await entryIn(req, form, reach);
+    } else if (reach !== "all") throw forbidden("You can't see this file.");
     const inline = /^(image\/|application\/pdf$)/.test(file.mime) && req.query.download !== "1";
     res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(file.name)}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");

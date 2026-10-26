@@ -284,6 +284,23 @@ the chosen answers, and a button into the site. Nothing is ever attached.
 
 Code forms' `ctx.email.send` uses the same layout with a link only (below).
 
+### Who sees entries
+
+Each form (both kinds) sets who sees its entries, in its editor under Settings → **Who sees entries**
+(`entryReach` in `services/staffGroups.ts`, saved straight away):
+
+- **Everyone who can open the form sees** only their own entries (the default for new forms), their
+  sites' entries (and their own), or every entry. People at some sites only ever see those sites'.
+- **These people see every entry:** groups, positions, named people and roles. Admins always do.
+- **People the form notifies** (a route, a rule, a follow-up) can open the entries they're told about,
+  so the links in its emails work; it can be turned off.
+- Only people who see every entry can export or void entries; on code forms, editing or voiding
+  someone else's entry needs it too.
+- A form saved before this setting keeps its old readers (`entriesRoles`, or form.json `entries.read`)
+  until it's reviewed: the Forms catalog lists those forms with a **Review** link. Imports and copies
+  keep the readers they came with.
+- **MCP:** `get_entry_access`, `set_entry_access`, `list_entry_access`.
+
 ### Follow-ups
 
 A builder form can keep each new entry **open** until the people it's for mark it **done**

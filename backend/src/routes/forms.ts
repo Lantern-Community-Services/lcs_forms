@@ -7,6 +7,7 @@ import { actorOf, audit } from "../services/audit.js";
 import { isRoleKey } from "../services/permissions.js";
 import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
 import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
+import { builtFormRef, entryAccessReview, entryAccessView, saveEntryAccess } from "../services/entryAccess.js";
 import { audienceOf, builtFormKey, cardKey, categoryKey, inAudience, keyForCard, moveAudience, reloadAccess, setAudience } from "../services/staffGroups.js";
 
 export const formsRouter = Router();
@@ -155,6 +156,27 @@ formsRouter.get(
       favorites: favourites.map((f) => f.formId).filter((id) => visibleIds.has(id)),
     });
   })
+);
+
+// ── Who sees entries (both kinds of form; Admins) ─────────────────────────
+
+/** Every form and who sees its entries, to flag the ones still on their old readers. */
+formsRouter.get(
+  "/entry-access",
+  requirePermission("forms.manage"),
+  asyncHandler(async (_req, res) => res.json({ forms: await entryAccessReview() }))
+);
+
+formsRouter.get(
+  "/built/:id/entry-access",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => res.json(await entryAccessView(await builtFormRef(req.params.id))))
+);
+
+formsRouter.put(
+  "/built/:id/entry-access",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => res.json(await saveEntryAccess(await builtFormRef(req.params.id), req.body, actorOf(req))))
 );
 
 /** Forms built in this app (Form builder and Code forms) that a catalog card can open. */

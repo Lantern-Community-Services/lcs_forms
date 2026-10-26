@@ -84,6 +84,8 @@ export interface FillData {
   closed: string | null;
   user: { name: string; email: string } | null;
   canReadEntries: boolean;
+  /** How many entries this person sees: all, their sites' (and their own), or only their own. */
+  entriesReach?: "all" | "site" | "own" | null;
   isAdmin: boolean;
 }
 
@@ -116,6 +118,8 @@ export interface EntryList {
   isAdmin: boolean;
   /** The form tracks follow-ups. */
   followUp: boolean;
+  /** all: every entry; site: their sites' and their own; own: their own and the ones they were told about. */
+  reach: "all" | "site" | "own";
 }
 
 export interface EntryNote {

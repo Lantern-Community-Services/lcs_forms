@@ -17,6 +17,7 @@ import { TutorialEditor, type TutorialTargets } from "@/screens/builder/Tutorial
 import type { FormTutorial } from "@/lib/formEngine";
 import { ApiError } from "@/lib/api";
 import { useForms } from "@/lib/queries";
+import { WhoSeesEntries } from "@/components/WhoSeesEntries";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import type { ConsoleLine } from "./AppFrame";
 import { DevicePreview } from "@/components/preview/DevicePreview";
@@ -544,7 +545,11 @@ function SettingsPanel({ project, onChange }: { project: Project; onChange: (p: 
           }
         }} options={[{ value: "", label: "Not listed" }, ...(catalog?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
       </label>
-      <p className="text-muted">Title, icon, tabs and who can see what are in <code>form.json</code>. The URL is <code>/apps/{project.slug}</code>.</p>
+      <div className="rounded-input border border-hairline p-3">
+        <p className="mb-2 text-[13px] font-semibold text-ink">Who sees entries</p>
+        <WhoSeesEntries formId={project.id} />
+      </div>
+      <p className="text-muted">Title, icon and tabs are in <code>form.json</code>. Who sees entries is set here, and replaces form.json's <code>entries.read</code> once saved. The URL is <code>/apps/{project.slug}</code>.</p>
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => projectsApi.exportFile(project.id, false)}>Export code</Button>
         <Button size="sm" variant="secondary" onClick={() => projectsApi.exportFile(project.id, true)}>Export with data</Button>
