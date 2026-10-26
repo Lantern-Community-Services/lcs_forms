@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { CountBadge, TenantStatusBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/misc";
 import { AddResident } from "@/components/roster/AddResident";
+import { HighAcuityFlag } from "@/components/roster/HighAcuity";
 import { RosterExportButtons, RosterExportMenu } from "@/components/roster/RosterExport";
 import { RemoveDialog } from "@/components/roster/RemoveDialog";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
@@ -567,6 +568,7 @@ const RosterRow = memo(function RosterRow({
           <span className="min-w-0">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[14.5px] font-semibold text-ink lg:text-[13.5px]">{t.displayName}</span>
+              {t.highAcuity && <HighAcuityFlag className="lg:hidden" />}
               {t.needsAttention && <span className="h-2 w-2 shrink-0 rounded-full bg-status-amberDot lg:hidden" aria-label="Needs review" />}
             </span>
             <span className="block truncate text-micro text-muted lg:hidden">
@@ -587,8 +589,9 @@ const RosterRow = memo(function RosterRow({
         <span className="hidden truncate text-[13px] text-muted lg:block">
           {tab === "archived" ? t.archiveReason : formatDate(t.moveInDate)}
         </span>
-        <span className="hidden lg:block">
+        <span className="hidden lg:flex lg:flex-col lg:items-start lg:gap-1">
           <TenantStatusBadge status={t.status} needsAttention={t.needsAttention} />
+          {t.highAcuity && <HighAcuityFlag />}
         </span>
         <span className="flex shrink-0 items-center">
           {tab === "archived" ? (

@@ -52,6 +52,7 @@ export function serializeTenant(
     moveOutDate: t.moveOutDate,
     notes: t.notes,
     externalId: t.externalId,
+    highAcuity: Boolean(t.highAcuity),
     lastActivityAt: t.lastActivityAt,
     lastActivitySource: t.lastActivitySource,
     lastKeptAt: t.lastKeptAt,

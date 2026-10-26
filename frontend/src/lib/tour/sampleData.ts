@@ -99,6 +99,7 @@ function resident(n: number, first: string, last: string, unit: string, hoursQui
     moveOutDate: null,
     notes: null,
     externalId: null,
+    highAcuity: false,
     lastActivityAt: at(hoursQuiet),
     lastActivitySource: "Meal count",
     lastKeptAt: null,
