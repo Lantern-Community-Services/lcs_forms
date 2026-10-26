@@ -13,6 +13,7 @@ import { LoadingState, EmptyState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { RemoveDialog } from "@/components/roster/RemoveDialog";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
+import { HighAcuityFlag, HighAcuityToggle } from "@/components/roster/HighAcuity";
 import { useRosterActions } from "@/components/roster/useRosterActions";
 import { rosterApi, useRosterMutation, useTenant } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
@@ -20,7 +21,7 @@ import { ApiError } from "@/lib/api";
 import { errorMessage, formatDate, formatDateInput, formatDateTime, quietFor, relativeTime, tintFor } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
-type FormState = { unit: string; firstName: string; lastName: string; preferredName: string; moveInDate: string; notes: string; externalId: string };
+type FormState = { unit: string; firstName: string; lastName: string; preferredName: string; moveInDate: string; notes: string; externalId: string; highAcuity: boolean };
 const toForm = (t: Tenant): FormState => ({
   unit: t.unit ?? "",
   firstName: t.firstName,
@@ -29,6 +30,7 @@ const toForm = (t: Tenant): FormState => ({
   moveInDate: formatDateInput(t.moveInDate),
   notes: t.notes ?? "",
   externalId: t.externalId ?? "",
+  highAcuity: t.highAcuity,
 });
 
 export function TenantDetailPage() {
@@ -61,7 +63,7 @@ export function TenantDetailPage() {
   const baseVersion = loaded.version;
 
   const editable = can("roster.edit") && t.status === "active";
-  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (k: Exclude<keyof FormState, "highAcuity">) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f!, [k]: e.target.value }));
 
   async function onSave() {
@@ -76,6 +78,7 @@ export function TenantDetailPage() {
         moveInDate: form!.moveInDate || null,
         notes: form!.notes || null,
         externalId: form!.externalId.trim() || null,
+        highAcuity: form!.highAcuity,
       });
       setLoaded(updated);
       setForm(toForm(updated));
@@ -105,8 +108,9 @@ export function TenantDetailPage() {
                 {where}
                 {t.preferredName && ` · legal name ${t.firstName} ${t.lastName}`}
               </p>
-              <div className="mt-1.5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 <TenantStatusBadge status={t.status} needsAttention={t.needsAttention} />
+                {t.highAcuity && <HighAcuityFlag />}
               </div>
             </div>
             <div className="flex w-full gap-2 md:w-auto">
@@ -181,6 +185,7 @@ export function TenantDetailPage() {
             <Field label="External ID" className="col-span-2 sm:col-span-1" hint="Yardi / property-management id, if any.">
               <Input value={form.externalId} onChange={set("externalId")} className="min-h-[44px] md:min-h-9" />
             </Field>
+            <HighAcuityToggle className="col-span-2" checked={form.highAcuity} onChange={(v) => setForm((f) => ({ ...f!, highAcuity: v }))} disabled={!editable} />
             <Field label="Staff notes" className="col-span-2" hint="Internal — never sent to WordPress or other integrations.">
               <Textarea value={form.notes} onChange={set("notes")} />
             </Field>

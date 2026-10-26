@@ -24,6 +24,7 @@ const residentFields = {
   moveInDate: z.string().nullable().optional().describe("YYYY-MM-DD"),
   notes: z.string().max(2000).nullable().optional(),
   externalId: z.string().max(80).nullable().optional().describe("The resident's id in the property-management system"),
+  highAcuity: z.boolean().optional().describe("Elevated needs: more frequent check-ins, closer case management"),
 };
 
 /** Attendance signatures are PNG data URLs: report whether one is there, not the image. */

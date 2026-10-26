@@ -216,6 +216,7 @@ const tenantFields = {
   moveInDate: dateish,
   notes: z.string().max(2000).nullable().optional(),
   externalId: z.string().trim().max(80).nullable().optional(),
+  highAcuity: z.boolean().optional(),
 };
 
 tenantsRouter.post(
@@ -244,7 +245,7 @@ tenantsRouter.post(
       action: "tenant.created",
       tenantId: t.id,
       siteId: site.id,
-      summary: `Added ${displayName(t)}${t.unit ? ` to unit ${t.unit}` : ""} at ${site.name}`,
+      summary: `Added ${displayName(t)}${t.unit ? ` to unit ${t.unit}` : ""} at ${site.name}${t.highAcuity ? " (High Acuity)" : ""}`,
       webhook: { event: "tenant.created", data: publicTenant(t) },
     });
     res.status(201).json(serializeTenant(t, await attentionHours()));
@@ -253,7 +254,7 @@ tenantsRouter.post(
 
 // ── Update (optimistic concurrency) ──────────────────────────────────────
 
-const EDITABLE = ["unit", "firstName", "lastName", "preferredName", "moveInDate", "notes", "externalId", "siteId"] as const;
+const EDITABLE = ["unit", "firstName", "lastName", "preferredName", "moveInDate", "notes", "externalId", "highAcuity", "siteId"] as const;
 
 tenantsRouter.patch(
   "/:id",
@@ -310,7 +311,9 @@ tenantsRouter.patch(
       siteId: after.siteId,
       summary: transferTo
         ? `Moved ${displayName(after)} from ${before.site.name} to ${transferTo.name}`
-        : `Updated ${displayName(after)} (${Object.keys(changes).join(", ")})`,
+        : Object.keys(changes).join() === "highAcuity"
+          ? `${after.highAcuity ? "Flagged" : "Cleared High Acuity flag on"} ${displayName(after)}${after.highAcuity ? " as High Acuity" : ""}`
+          : `Updated ${displayName(after)} (${Object.keys(changes).join(", ")})`,
       changes,
       webhook: { event: "tenant.updated", data: { ...publicTenant(after), changed: Object.keys(changes) } },
     });

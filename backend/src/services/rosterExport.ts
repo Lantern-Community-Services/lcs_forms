@@ -67,6 +67,7 @@ function columns(ctx: ExportContext): Column[] {
     { header: "First name", value: (t) => t.firstName, width: 16 },
     { header: "Goes by", value: (t) => t.preferredName ?? "", width: 14 },
     { header: "Status", value: statusOf, width: 14 },
+    { header: "High Acuity", value: (t) => (t.highAcuity ? "Yes" : ""), width: 12 },
     { header: "Moved in", value: (t) => day(t.moveInDate), width: 12, date: true },
     { header: "Last on a form", value: (t) => day(t.lastActivityAt), width: 15, date: true },
     { header: "Last form", value: (t) => t.lastActivitySource ?? "", width: 26 },

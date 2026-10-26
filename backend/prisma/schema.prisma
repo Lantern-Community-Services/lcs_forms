@@ -87,6 +87,9 @@ model Tenant {
   notes         String?   @db.NVarChar(Max)
   /// Identifier in an upstream system (Yardi, property-management export…).
   externalId    String?   @db.NVarChar(255)
+  /// Elevated needs: more frequent check-ins, closer case management. Shown
+  /// as a flag on the roster.
+  highAcuity    Boolean   @default(false)
 
   // ── Activity / attention ────────────────────────────────
   /// Last time any designated form or integration referenced this person.

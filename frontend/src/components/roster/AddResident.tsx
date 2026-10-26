@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { HighAcuityToggle } from "@/components/roster/HighAcuity";
 import { useToast } from "@/components/ui/toast";
 import { useIsPhone } from "@/lib/useMediaQuery";
 import { rosterApi, useRosterMutation } from "@/lib/queries";
 import { errorMessage, formatDateInput } from "@/lib/utils";
 import type { SiteRef } from "@/lib/types";
 
-const blank = () => ({ unit: "", firstName: "", lastName: "", preferredName: "", moveInDate: formatDateInput(new Date()) });
+const blank = () => ({ unit: "", firstName: "", lastName: "", preferredName: "", moveInDate: formatDateInput(new Date()), highAcuity: false });
 
 /**
  * Quick add. Four fields, one of them required, and "Save & add another" keeps
@@ -44,7 +45,7 @@ export function AddResident({ open, onOpenChange, sites }: {
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set = (k: keyof ReturnType<typeof blank>) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (k: Exclude<keyof ReturnType<typeof blank>, "highAcuity">) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function save(another: boolean) {
@@ -65,6 +66,7 @@ export function AddResident({ open, onOpenChange, sites }: {
         lastName: form.lastName.trim(),
         preferredName: form.preferredName.trim() || null,
         moveInDate: form.moveInDate || null,
+        highAcuity: form.highAcuity,
       });
       toast(`Added ${t.displayName}${t.unit ? ` to ${t.unit}` : ""}.`);
       if (another) {
@@ -111,6 +113,7 @@ export function AddResident({ open, onOpenChange, sites }: {
       <Field label="Goes by (optional)" className="col-span-2" hint="Shown first everywhere, including form dropdowns.">
         <Input value={form.preferredName} onChange={set("preferredName")} autoComplete="off" className="min-h-[44px]" />
       </Field>
+      <HighAcuityToggle className="col-span-2" checked={form.highAcuity} onChange={(v) => setForm((f) => ({ ...f, highAcuity: v }))} />
       {error && <p className="col-span-2 rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">{error}</p>}
       {added > 0 && <p className="col-span-2 text-micro text-muted">{added} added this session.</p>}
       {/* Enter = save & add another */}
