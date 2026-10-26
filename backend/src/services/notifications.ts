@@ -2,7 +2,8 @@ import type { Notification } from "@prisma/client";
 import { canUseBuiltForm, peopleInGroupsOrPositions } from "./staffGroups.js";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
-import { linkOnlyHtml, mailConfigured, sendMail } from "./mailer.js";
+import { linkOnlyHtml, mailConfigured, sendLogged } from "./mailer.js";
+import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { PERMISSIONS, isRoleKey, permissionsFor, roleFor, type PermissionKey } from "./permissions.js";
 import { partsOf, startOfDay, today } from "../apps/time.js";
 
@@ -141,6 +142,12 @@ export interface NotifyInput {
    * turned email off), and marked urgent in the bell, the list and the email.
    */
   urgent?: boolean;
+  /**
+   * What goes in the email besides the title and the button: what to do, and
+   * chosen answers (services/routing.ts emailValues). The answers are kept only
+   * for people with a Lantern address; never shown in the app.
+   */
+  email?: { whatToDo?: string | null; fields?: { label: string; value: string }[] };
 }
 
 export interface NotifyResult {
@@ -286,12 +293,52 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
       urgent,
       emailStatus,
       emailError: emailStatus === "skipped" ? "Email isn't set up on this server (MAIL_FROM)." : null,
+      emailDetail: emailDetailFor(input.email, p.email),
     });
   }
-  // SQL Server takes at most 2,100 parameters a statement: ~13 columns, so 150 rows a go.
-  for (let i = 0; i < rows.length; i += 150) await prisma.notification.createMany({ data: rows.slice(i, i + 150) });
+  // SQL Server takes at most 2,100 parameters a statement: ~14 columns, so 140 rows a go.
+  for (let i = 0; i < rows.length; i += 140) await prisma.notification.createMany({ data: rows.slice(i, i + 140) });
   if (emailed) kick();
   return { sent: rows.length, recipients: people.length, emailed, muted, ...(unknown.length ? { unknown } : {}) };
+}
+
+/** The email parts kept on one person's notification: answers only for a Lantern address. */
+function emailDetailFor(email: NotifyInput["email"], address: string): string | null {
+  if (!email) return null;
+  const fields = isInternalAddress(address) ? (email.fields ?? []).slice(0, 20) : [];
+  const whatToDo = email.whatToDo?.trim() || null;
+  if (!whatToDo && !fields.length) return null;
+  return JSON.stringify({ whatToDo, fields });
+}
+
+/** The parts saved by emailDetailFor, or none. */
+function readEmailDetail(raw: string | null): { whatToDo: string | null; fields: { label: string; value: string }[] } {
+  if (!raw) return { whatToDo: null, fields: [] };
+  try {
+    const d = JSON.parse(raw) as { whatToDo?: string | null; fields?: { label: string; value: string }[] };
+    return { whatToDo: d.whatToDo ?? null, fields: Array.isArray(d.fields) ? d.fields : [] };
+  } catch {
+    return { whatToDo: null, fields: [] };
+  }
+}
+
+/** One notification's email, in the branded layout. Also used for previews. */
+export function notificationEmail(n: { title: string; sourceLabel: string | null; urgent: boolean; emailDetail: string | null }, url: string) {
+  const d = readEmailDetail(n.emailDetail);
+  return {
+    subject: n.urgent ? `Urgent: ${n.title}` : n.title,
+    withAnswers: d.fields.length > 0,
+    html: brandedEmail({
+      kicker: n.sourceLabel ?? "Lantern Forms",
+      heading: n.title,
+      intro: `You have ${n.urgent ? "an urgent" : "a new"} notification${n.sourceLabel ? ` from “${n.sourceLabel}”` : ""}.`,
+      whatToDo: d.whatToDo,
+      fields: d.fields,
+      button: { label: "Open it in Lantern Forms", url },
+      note: d.fields.length ? "The rest is in Lantern Forms." : "The details aren't in this email. Sign in to see them.",
+      urgent: n.urgent,
+    }),
+  };
 }
 
 /** notify(), but never throws: for the site's own events, where a failed notification mustn't fail the request. */
@@ -464,12 +511,8 @@ async function sendOne(n: Notification & { user: { email: string; status: string
   }
   try {
     if (!mailConfigured()) throw Object.assign(new Error("Email isn't set up on this server (MAIL_FROM)."), { final: true });
-    const from = n.sourceLabel ? ` from “${n.sourceLabel}”` : "";
-    await sendMail({
-      to: [n.user.email],
-      subject: n.urgent ? `Urgent: ${n.title}` : n.title,
-      html: linkOnlyHtml(`You have ${n.urgent ? "an urgent" : "a new"} notification${from} in Lantern Forms.`, openUrl(n.id)),
-    });
+    const mail = notificationEmail(n, openUrl(n.id));
+    await sendLogged({ to: [n.user.email], subject: mail.subject, html: mail.html, kind: "notification", formId: n.formId, withAnswers: mail.withAnswers });
     await prisma.notification.update({ where: { id: n.id }, data: { emailStatus: "sent", emailedAt: new Date(), emailError: null } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -507,10 +550,11 @@ async function sendDigests() {
       if (user.status !== "active") throw new Error("They no longer have access.");
       if (!mailConfigured()) throw new Error("Email isn't set up on this server (MAIL_FROM).");
       const n = unread.length;
-      await sendMail({
+      await sendLogged({
         to: [user.email],
         subject: `${n} new notification${n === 1 ? "" : "s"} in Lantern Forms`,
-        html: linkOnlyHtml(`You have ${n} notification${n === 1 ? "" : "s"} you haven't read yet in Lantern Forms.`, `${appBaseUrl}/notifications`),
+        html: linkOnlyHtml(`You have ${n} notification${n === 1 ? "" : "s"} you haven't read yet.`, `${appBaseUrl}/notifications`, { kicker: "Your daily summary" }),
+        kind: "digest",
       });
       await prisma.notification.updateMany({ where: { id: { in: ids(unread) } }, data: { emailStatus: "sent", emailedAt: now } });
     } catch (err) {

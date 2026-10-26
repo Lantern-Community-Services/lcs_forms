@@ -790,8 +790,9 @@ declare module "@lcs/server" {
        * `entry` fills in the site, the person who filed it ({ kind: "submitter" }) and the entry id, and its data is
        * what routes test unless you pass `data`. `people` names the event's people by field id (an address, a user
        * id, or a list), for routes that tell { kind: "field", field }. `title` is the default subject (no resident
-       * details); a route may set its own. Account holders are told in the app and emailed (link-only); other
-       * addresses get a link-only email. Nobody is told twice for one call.
+       * details); a route may set its own. Account holders are told in the app and emailed; other addresses get
+       * the email. The email shows the route's "what to do" and, for Lantern addresses only, the values it chose
+       * (only ones your event declares with `choices`). Nobody is told twice for one call.
        *
        * Every form also has "entry.created", routed automatically when an entry is saved — don't route it yourself.
        * In the draft only the person previewing is told ("Preview: …"); `reason` says whom the published form would tell.

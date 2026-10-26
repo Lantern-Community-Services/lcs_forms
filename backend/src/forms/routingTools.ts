@@ -4,8 +4,10 @@ import { HttpError } from "../http.js";
 import type { Actor } from "../services/audit.js";
 import { ROLES } from "../services/permissions.js";
 import {
-  eventsOf, loadRouting, newRouteId, planRoutes, rerouteEntry, resetRouting, routingForm, routingLog, saveRouting,
+  eventsOf, loadRouting, newRouteId, planRoutes, rerouteEntry, resetRouting, routingForm, routingLog, saveRouting, emailableFields, routeEmailPreview,
 } from "../services/routing.js";
+import { loadReports, saveReports, sendReport } from "../services/emailReports.js";
+import { sentEmails } from "../services/mailer.js";
 import { ENTRY_CREATED } from "./routingSchema.js";
 import type { ToolRegistrar } from "./mcp.js";
 
@@ -35,6 +37,11 @@ const routeShape = {
   to: z.array(recipient).describe("Who's told"),
   email: z.enum(["always", "prefs"]).optional().describe('"always" (default): everyone on it is emailed (link-only) whatever their settings. "prefs": account holders get it as they chose on their Profile.'),
   subject: z.string().optional().describe("Title and email subject; tags {form} {site} {event} {title} {date}. Default: the event's own title. Never resident details."),
+  whatToDo: z.string().optional().describe("What the people on this route have to do, shown in the email, e.g. \"Review and sign within 24 hours.\" Plain text; no resident details."),
+  fields: z
+    .array(z.string())
+    .optional()
+    .describe("Answers shown in the email, to Lantern addresses only: ids from get_email_settings' emailFields (never residents, names, contact details, signatures, files or paragraphs). Anyone else gets the link-only email."),
   urgent: z
     .boolean()
     .optional()
@@ -58,7 +65,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
         howItWorks: [
           `Every form has "${ENTRY_CREATED}" (routed when an entry is saved). Code forms add their own events in form.json "routing" and fire them with ctx.notify.route.`,
           "A route matches its event, then its sites (if any), then its `when` rules. Every matching route is sent; nobody is told twice for one event.",
-          "Account holders get a notification in the app plus a link-only email; addresses without an account get the link-only email. Emails never carry answers or resident details.",
+          "Account holders get a notification in the app plus an email; addresses without an account get the email only. The email is the branded layout with the route's whatToDo and, for Lantern addresses only, the answers chosen in `fields` (get_email_settings lists which may be chosen). Resident details never go in an email.",
           "Until routing is saved the form's defaults (form.json routing.defaults) apply; reset_routing returns to them.",
         ],
       };
@@ -179,4 +186,120 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       return rerouteEntry(await routingForm(form), entry, actor, { route, dryRun });
     }
   );
+
+  // ── Emails: what they say, weekly summary reports, what was sent ──
+
+  tool(
+    "get_email_settings",
+    "A form's emails: the answers that may be put in an email (emailFields; never residents, names, contact details, signatures, files or paragraphs), each route's whatToDo and chosen fields, and its weekly summary reports. Change a route's email with save_route (whatToDo, fields); reports with save_email_report.",
+    { form: formRef },
+    async ({ form }) => {
+      need("forms:build");
+      const f = await routingForm(form);
+      const routing = await loadRouting(f);
+      return {
+        form: { id: f.id, slug: f.slug, title: f.title, kind: f.kind },
+        emailFields: emailableFields(f),
+        routes: routing.routes.map((r) => ({ id: r.id, name: r.name, event: r.event, subject: r.subject ?? null, whatToDo: r.whatToDo ?? null, fields: r.fields ?? [], urgent: Boolean(r.urgent) })),
+        reports: (await loadReports(f)).reports,
+        rules: [
+          "Every email uses the Lantern layout: band, heading, What to do, the chosen answers, a button into the site.",
+          "Chosen answers go to Lantern addresses only. Anyone else gets the same email without them.",
+          "Subjects never carry answers: use {form} {site} {title} {date}.",
+        ],
+      };
+    }
+  );
+
+  tool(
+    "preview_email",
+    "The email a route sends, rendered (HTML), for the form's latest entry or a given one: as a Lantern address gets it (inside) and as anyone else does (outside). Pass a saved route's id, or a whole route to try before saving. Nothing is sent.",
+    {
+      form: formRef,
+      routeId: z.string().optional().describe("A saved route's id (get_routing)"),
+      route: z.object(routeShape).optional().describe("A route to try instead of a saved one"),
+      entryId: z.string().optional().describe("Default: the latest entry"),
+    },
+    async ({ form, routeId, route, entryId }) => {
+      need("forms:build");
+      const f = await routingForm(form);
+      const saved = routeId ? (await loadRouting(f)).routes.find((r) => r.id === routeId) : undefined;
+      if (routeId && !saved) throw new HttpError(404, `No route "${routeId}". Use get_routing.`);
+      const r = saved ?? (route ? { enabled: true, email: "always" as const, urgent: false, ...route, id: route.id ?? "preview", to: route.to as never } : null);
+      if (!r) throw new HttpError(400, "Pass routeId or route.");
+      return routeEmailPreview(f, r as never, entryId);
+    }
+  );
+
+  tool(
+    "save_email_report",
+    "Add a weekly summary report to a form, or change one (pass its id): the past 7 days' entries, emailed on a day (0 Sunday … 6 Saturday) and hour (0-23, New York time) to the same kinds of recipients as a route. split \"all\" sends one report for every site; \"site\" one per site, each to that site's people. fields are the table's columns (get_email_settings emailFields), shown to Lantern addresses only; anyone else gets the count and a button. includeEmpty sends a \"nothing this week\" email too.",
+    {
+      form: formRef,
+      id: z.string().optional().describe("Keep a report's id to change it; omit to add one"),
+      name: z.string().describe('e.g. "Unit Inspection Weekly Report"'),
+      enabled: z.boolean().optional(),
+      day: z.number().int().min(0).max(6),
+      hour: z.number().int().min(0).max(23),
+      split: z.enum(["all", "site"]).optional(),
+      includeEmpty: z.boolean().optional(),
+      fields: z.array(z.string()).optional(),
+      to: z.array(recipient).describe("Who gets it: the same recipient kinds as a route"),
+      whatToDo: z.string().optional(),
+    },
+    async ({ form, ...report }) => {
+      need("forms:build");
+      const f = await routingForm(form);
+      const now = await loadReports(f);
+      const id = report.id ?? (report.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "report");
+      const list = now.reports.map(({ nextRun: _n, ...r }) => r);
+      const next = list.some((r) => r.id === id) ? list.map((r) => (r.id === id ? { ...r, ...report, id } : r)) : [...list, { ...report, id }];
+      const saved = await saveReports(f, next, actor, now.revision);
+      return { saved: saved.reports.find((r) => r.id === id), reports: saved.reports.length };
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
+    "remove_email_report",
+    "Remove a weekly summary report from a form. Destructive: pass confirm: true after checking with the person.",
+    { form: formRef, id: z.string(), confirm: z.boolean().optional() },
+    async ({ form, id, confirm }) => {
+      need("forms:build");
+      if (!confirm) throw new HttpError(400, "Removing a report stops it being sent. Pass confirm: true once the person has agreed.");
+      const f = await routingForm(form);
+      const now = await loadReports(f);
+      if (!now.reports.some((r) => r.id === id)) throw new HttpError(404, `No report "${id}".`);
+      const saved = await saveReports(f, now.reports.filter((r) => r.id !== id).map(({ nextRun: _n, ...r }) => r), actor, now.revision);
+      return { removed: id, reports: saved.reports.length };
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
+    "send_email_report",
+    "Send a saved weekly summary report now, on top of its weekly run, or with dryRun: true see who it would go to per site and the rendered email without sending anything.",
+    { form: formRef, id: z.string(), dryRun: z.boolean().optional() },
+    async ({ form, id, dryRun }) => {
+      need("forms:build");
+      const f = await routingForm(form);
+      const r = (await loadReports(f)).reports.find((x) => x.id === id);
+      if (!r) throw new HttpError(404, `No report "${id}". Use get_email_settings.`);
+      const { nextRun: _n, ...report } = r;
+      return sendReport(f, report, { actor, dryRun });
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
+    "list_sent_emails",
+    "Emails the site has sent, newest first: to whom, the subject, the kind (notification, digest, route, rule, report, code), whether it went (sent, failed, skipped, with the error) and whether it carried answers. For one form, or every form. Never the email's body.",
+    { form: formRef.optional(), limit: z.number().int().min(1).max(200).optional(), before: z.string().optional().describe("An ISO time: page back past the last one seen") },
+    async ({ form, limit, before }) => {
+      need("forms:build");
+      const f = form ? await routingForm(form) : null;
+      return { items: await sentEmails({ formId: f?.id, limit, before }) };
+    }
+  );
+
 }

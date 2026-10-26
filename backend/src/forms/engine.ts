@@ -180,6 +180,10 @@ export interface Notification {
   body?: string;
   /** notify: everyone with these roles… */
   roles?: string[];
+  /** email and notify: what the reader has to do, shown in the email (plain text, no answer tags). */
+  whatToDo?: string;
+  /** email and notify: field ids whose answers go in the email, to Lantern addresses only (EMAIL_FIELD_TYPES). */
+  fields?: string[];
   /** notify: …everyone in these staff groups (ids)… */
   groups?: string[];
   /** notify: …everyone with these positions (exact job titles, any case)… */
@@ -391,6 +395,13 @@ export interface FieldTypeInfo {
   /** Shape of the stored value, for docs and exports. */
   value: string;
 }
+
+/**
+ * The answers that may be chosen to appear in an email (a route's, a rule's or
+ * a summary report's "Answers in the email"). Never a resident, a name, contact
+ * details, a signature, a file or free paragraphs: those stay behind sign-in.
+ */
+export const EMAIL_FIELD_TYPES: FieldType[] = ["text", "number", "date", "time", "select", "radio", "checkbox", "multiselect", "consent", "rating", "slider", "calculation", "site"];
 
 export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "text", label: "Single line", group: "Standard", input: true, value: "string", description: "One line of text. minLength, maxLength, pattern." },
@@ -1305,6 +1316,11 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
   });
   (doc.settings.notifications ?? []).forEach((n, i) => {
     checkRules(n.conditional, `settings.notifications[${i}].conditional`);
+    (n.fields ?? []).forEach((id, j) => {
+      const f = doc.fields.find((x) => x.id === id);
+      if (!f) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `There's no field "${id}" on this form.` });
+      else if (!EMAIL_FIELD_TYPES.includes(f.type)) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `“${f.label || id}” can't go in an email: ${f.type} answers stay behind sign-in.` });
+    });
     if (n.enabled && n.kind === "email" && !n.to) problems.push({ path: `settings.notifications[${i}].to`, message: "An email notification needs a To address." });
     if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length && !n.groups?.length && !n.titles?.length) {
       problems.push({ path: `settings.notifications[${i}].to`, message: "A notification needs people: roles, groups, positions, or addresses in To." });

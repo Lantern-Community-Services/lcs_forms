@@ -16,7 +16,7 @@ import { useJobTitles, useStaffGroups, type StaffGroup } from "@/lib/groups";
 import { GroupChecklist, PeoplePicker, PositionsDropdown, Segmented } from "@/components/AccessPickers";
 import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/utils";
-import type { FormDoc, FormSettings, Notification } from "@/lib/formEngine";
+import { EMAIL_FIELD_TYPES, type FormDoc, type FormSettings, type Notification } from "@/lib/formEngine";
 import { cn } from "@/lib/utils";
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -355,6 +355,7 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
                   <Row label="Title" hint="One line. {form:title}, {site:name}, {user:name} and {date:today} work; answers are left out, because it may be emailed.">
                     <Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} />
                   </Row>
+                  <RuleEmailParts doc={doc} n={n} update={update} />
                   <Row label="Message (optional)" hint="Shown in the app only, so answers can go in: {field_id}, or {all_fields} for everything.">
                     <Textarea value={n.body ?? ""} onChange={(e) => update(n.id, { body: e.target.value || undefined })} rows={3} />
                   </Row>
@@ -371,9 +372,7 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
                   <Row label="Subject" hint="{form:title}, {site:name}, {user:name} and {date:today} work here. Answers don't: they're left out.">
                     <Input value={n.subject ?? ""} onChange={(e) => update(n.id, { subject: e.target.value })} />
                   </Row>
-                  <p className="text-[12px] text-muted">
-                    The email is a link to the entry, nothing more: the answers stay in Lantern Forms, behind sign-in.
-                  </p>
+                  <RuleEmailParts doc={doc} n={n} update={update} />
                 </>
               ) : (
                 <>
@@ -395,6 +394,30 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
         <Button variant="secondary" size="sm" onClick={() => add("webhook")}><Plus className="h-3.5 w-3.5" /> Webhook</Button>
       </div>
     </Section>
+  );
+}
+
+/** The answers a rule's email may show: where, when, by whom, and this form's fields of the email-safe types. */
+function ruleEmailFields(doc: FormDoc) {
+  return [
+    { value: "_site", label: "Site" },
+    { value: "_date", label: "Submitted" },
+    { value: "_by", label: "Submitted by" },
+    ...doc.fields.filter((f) => EMAIL_FIELD_TYPES.includes(f.type)).map((f) => ({ value: f.id, label: f.label || f.id })),
+  ];
+}
+
+/** A rule's "What to do" and "Answers in the email" (Lantern addresses only). */
+function RuleEmailParts({ doc, n, update }: { doc: FormDoc; n: Notification; update: (id: string, patch: Partial<Notification>) => void }) {
+  return (
+    <>
+      <Row label="What to do (optional)" hint="Shown at the top of the email, e.g. “Review and sign within 24 hours.” No answers or resident details.">
+        <Textarea value={n.whatToDo ?? ""} onChange={(e) => update(n.id, { whatToDo: e.target.value || undefined })} rows={2} maxLength={500} />
+      </Row>
+      <Row label="Answers in the email" hint="Shown to Lantern addresses only; anyone else gets the email without them. Residents, names, contact details, signatures, files and paragraphs can't be chosen.">
+        <CheckboxList options={ruleEmailFields(doc)} value={n.fields ?? []} onChange={(v) => update(n.id, { fields: v.length ? v : undefined })} />
+      </Row>
+    </>
   );
 }
 

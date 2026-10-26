@@ -7,9 +7,10 @@ import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { appBaseUrl } from "../env.js";
 import { displayName, recordActivity } from "../services/roster.js";
-import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
+import { mailConfigured, sendLogged } from "../services/mailer.js";
+import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
-import { entryInput, outcomeNote, routeQuietly } from "../services/routing.js";
+import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, isBuiltFormLimited } from "../services/staffGroups.js";
 import {
@@ -293,6 +294,8 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
   for (const n of doc.settings.notifications ?? []) {
     if (!n.enabled || !conditionPasses(n.conditional, values)) continue;
     const ctx = { values, doc, user: user ? { name: user.name, email: user.email } : null, entry: { id: entry.id, createdAt: entry.createdAt }, site, entryUrl: entryUrl(form.slug, entry.id) };
+    // The rule's chosen answers, for Lantern addresses only (checked again per address).
+    const fields = emailValues(form, n.fields, { data: values, site, createdAt: entry.createdAt, byName: entry.createdByName });
     let note: string;
     try {
       if (n.kind === "webhook") {
@@ -334,6 +337,7 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
             formId: form.id,
             maxRecipients: 500,
             urgent: n.urgent,
+            email: { whatToDo: n.whatToDo ?? null, fields },
           });
           note = `Notification “${n.name}” sent to ${out.sent} ${out.sent === 1 ? "person" : "people"}${out.muted ? ` (${out.muted} had turned these off)` : ""}${out.unknown?.length ? `; no account for ${out.unknown.join(", ")}` : ""}.`;
         }
@@ -342,14 +346,17 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
         if (!to.length) note = `Email “${n.name}” not sent: no valid address in “${n.to}”.`;
         else if (!mailConfigured()) note = `Email “${n.name}” to ${to.join(", ")} not sent: email isn't set up on this server (MAIL_FROM).`;
         else {
-          // Link-only: the entry's answers never go in an email (a saved body is ignored).
-          await sendMail({
-            to,
-            subject: linkOnlySubject(n.subject, ctx),
-            html: linkOnlyHtml(`There's a new entry in “${form.title}”${site ? ` for ${site.name}` : ""}.`, ctx.entryUrl),
-            replyTo: user?.email,
-          });
-          note = `Email “${n.name}” sent to ${to.join(", ")}.`;
+          // The rule's chosen answers go to Lantern addresses only; anyone else gets the link (a saved body is ignored).
+          const subject = linkOnlySubject(n.subject, ctx);
+          const intro = `There's a new entry in “${form.title}”${site ? ` for ${site.name}` : ""}.`;
+          const inside = to.filter(isInternalAddress);
+          const outside = to.filter((a) => !isInternalAddress(a));
+          for (const group of [inside, outside]) {
+            if (!group.length) continue;
+            const mail = routeEmail(form, { whatToDo: n.whatToDo, urgent: Boolean(n.urgent) }, { subject, to: group[0], intro, url: ctx.entryUrl, fields });
+            await sendLogged({ to: group, subject, html: mail.html, replyTo: user?.email, kind: "rule", formId: form.id, withAnswers: mail.withAnswers });
+          }
+          note = `Email “${n.name}” sent to ${to.join(", ")}${fields.length && outside.length ? ` (without answers to ${outside.join(", ")})` : ""}.`;
         }
       }
     } catch (err) {

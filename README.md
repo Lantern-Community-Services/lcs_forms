@@ -258,11 +258,31 @@ Notifications send through Microsoft Graph as the mailbox in `MAIL_FROM`, which 
 Exchange application access policy). Until it's set, each email is noted on the entry as "not
 sent"; webhooks work regardless.
 
-**Every email is link-only** (`linkOnlyHtml` in `services/mailer.ts`): one line naming the form
-and a link to the entry. Answers, form contents and resident details never go in an email, and
-nothing is attached. A notification's subject keeps the form, site, person and date merge tags
-(`{form:title}`, `{site:name}`…) and drops any answer tags; a body saved on an older form is
-ignored. Code forms' `ctx.email.send` works the same way (below).
+**Every email uses one Lantern layout** (`services/emailTemplate.ts`), modelled on the Power
+Automate emails: a navy band ("Lantern Community Services" and the form), a heading, **What to do**,
+the chosen answers, and a button into the site. Nothing is ever attached.
+
+- **What to do:** a line on each route, builder rule or summary report saying what's expected
+  ("Review and sign within 24 hours").
+- **Chosen answers, Lantern addresses only.** A route, rule or report can tick which answers go in
+  its email (`emailableFields` in `services/routing.ts`): where, when and by whom, and a basic form's
+  fields of the types in `EMAIL_FIELD_TYPES`. Residents, names, phone, email and address fields,
+  signatures, files and paragraphs can't be ticked; on a code form only values with a fixed list of
+  choices can. The answers go only to addresses at `SSO_ALLOWED_DOMAINS` (`isInternalAddress`);
+  anyone else gets the same email without them.
+- **Subjects** keep the form, site, person and date merge tags (`{form:title}`, `{site:name}`…) and
+  drop any answer tags; a body saved on an older form is ignored.
+- **Weekly summary reports** (`services/emailReports.ts`): per form, a day and hour (New York), the
+  same recipients a route can have, one report for every site or one per site, a count and a table of
+  the chosen answers (Lantern addresses only), like the weekly Unit Inspection report. Set them under
+  a form's Notifications; `startEmailReports` sends each once a week.
+- **Every send is logged** (`EmailLog`: who, subject, kind, sent/failed/skipped, whether it carried
+  answers; never the body), shown under a form's Notifications as "Emails sent".
+- **MCP** (`forms:build`): `get_email_settings`, `preview_email`, `save_email_report`,
+  `remove_email_report`, `send_email_report` (with `dryRun`), `list_sent_emails`; a route's
+  `whatToDo` and `fields` go through `save_route`.
+
+Code forms' `ctx.email.send` uses the same layout with a link only (below).
 
 ## Code forms
 

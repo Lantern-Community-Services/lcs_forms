@@ -4,11 +4,12 @@ import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { badRequest, notFound } from "../http.js";
-import { conditionPasses, isInputField, type FormDoc, type Values } from "../forms/engine.js";
+import { EMAIL_FIELD_TYPES, conditionPasses, formatValue, isInputField, type FormDoc, type Values } from "../forms/engine.js";
+import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { ENTRY_CREATED, routeSchema, type Recipient, type Route, type RoutingEvent } from "../forms/routingSchema.js";
 import { readManifest, type Files, type Manifest } from "../apps/project.js";
 import { audit, type Actor } from "./audit.js";
-import { linkOnlyHtml, mailConfigured, sendMail } from "./mailer.js";
+import { mailConfigured, sendLogged } from "./mailer.js";
 import { notify, resolveAudience, sitePath } from "./notifications.js";
 import { isRoleKey, ROLES } from "./permissions.js";
 
@@ -128,6 +129,134 @@ export async function routingForm(idOrSlug: string): Promise<BuiltForm> {
   return form;
 }
 
+// ── What can go in an email ──────────────────────────────────────────────
+
+export interface EmailField {
+  id: string;
+  label: string;
+}
+
+/** Always offered: where, when and by whom. */
+const BUILT_IN_EMAIL_FIELDS: EmailField[] = [
+  { id: "_site", label: "Site" },
+  { id: "_date", label: "Submitted" },
+  { id: "_by", label: "Submitted by" },
+];
+
+/**
+ * The answers a route, rule or report may put in an email. A basic form
+ * offers its fields of the types in EMAIL_FIELD_TYPES (never a resident, a
+ * name, contact details, a signature, a file or a paragraph); a code form
+ * offers the values its entry.created event declares with a fixed list of
+ * choices, since free values there could hold anything.
+ */
+export function emailableFields(form: BuiltForm, manifest?: Known): EmailField[] {
+  if (form.kind === "code") {
+    const ev = eventsOf(form, manifest).find((e) => e.id === ENTRY_CREATED);
+    return [...BUILT_IN_EMAIL_FIELDS, ...(ev?.fields ?? []).filter((f) => f.choices?.length).map((f) => ({ id: f.id, label: f.label }))];
+  }
+  return [
+    ...BUILT_IN_EMAIL_FIELDS,
+    ...basicDoc(form)
+      .fields.filter((f) => EMAIL_FIELD_TYPES.includes(f.type))
+      .map((f) => ({ id: f.id, label: (f.label || f.id).slice(0, 80) })),
+  ];
+}
+
+/** Refuses field ids that can't go in an email, naming the ones that can. */
+export function checkEmailFields(form: BuiltForm, ids: string[] | undefined, where: string, manifest?: Known) {
+  if (!ids?.length) return;
+  const ok = emailableFields(form, manifest);
+  const bad = ids.filter((id) => !ok.some((f) => f.id === id));
+  if (bad.length) {
+    throw badRequest(`${where}: ${bad.map((b) => `"${b}"`).join(", ")} can't go in an email. These can: ${ok.map((f) => `${f.label} (${f.id})`).join(", ")}.`);
+  }
+}
+
+const nyWhen = (d: Date) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" }).format(d);
+
+/** The chosen answers as people read them, skipping empty ones. */
+export function emailValues(
+  form: BuiltForm,
+  ids: string[] | undefined,
+  ctx: { data: Values; site?: { name: string } | null; createdAt?: Date; byName?: string | null },
+  manifest?: Known
+): { label: string; value: string }[] {
+  if (!ids?.length) return [];
+  const ok = emailableFields(form, manifest);
+  const doc = form.kind === "code" ? null : basicDoc(form);
+  const out: { label: string; value: string }[] = [];
+  for (const id of ids) {
+    const meta = ok.find((f) => f.id === id);
+    if (!meta) continue;
+    let value = "";
+    if (id === "_site") value = ctx.site?.name ?? "";
+    else if (id === "_date") value = nyWhen(ctx.createdAt ?? new Date());
+    else if (id === "_by") value = ctx.byName ?? "";
+    else if (doc) {
+      const f = doc.fields.find((x) => x.id === id);
+      value = f ? formatValue(f, ctx.data[id]) : "";
+    } else {
+      const v = ctx.data[id];
+      value = Array.isArray(v) ? v.map(String).join(", ") : v == null ? "" : String(v);
+    }
+    value = value.trim().slice(0, 300);
+    if (value) out.push({ label: meta.label, value });
+  }
+  return out;
+}
+
+/** The name of whoever filed it, for "Submitted by". */
+async function nameOf(userId: string | null | undefined) {
+  if (!userId) return null;
+  return (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ?? null;
+}
+
+/**
+ * The email one route sends for one event, for one address: the answers only
+ * for a Lantern address. Also the editor's and the MCP's preview.
+ */
+export function routeEmail(
+  form: BuiltForm,
+  route: Pick<Route, "urgent" | "whatToDo">,
+  p: { subject: string; to: string; intro: string; url: string; fields: { label: string; value: string }[] }
+) {
+  const withAnswers = isInternalAddress(p.to) && p.fields.length > 0;
+  return {
+    withAnswers,
+    html: brandedEmail({
+      kicker: form.title,
+      heading: p.subject,
+      intro: p.intro,
+      whatToDo: route.whatToDo,
+      fields: withAnswers ? p.fields : undefined,
+      button: { label: "Open it in Lantern Forms", url: p.url },
+      note: withAnswers ? "The rest is in Lantern Forms." : "The details aren't in this email. Sign in to see them.",
+      urgent: route.urgent,
+    }),
+  };
+}
+
+/** A route's email for a real (or, with no entries yet, an empty) entry, both ways. */
+export async function routeEmailPreview(form: BuiltForm, route: Route, entryId?: string) {
+  const entry = await prisma.formEntry.findFirst({
+    where: { formId: form.id, status: "active", ...(entryId ? { id: entryId } : { source: { not: "preview" } }) },
+    orderBy: { createdAt: "desc" },
+  });
+  const input = entry ? await entryInput(form, entry) : { event: route.event, title: `New entry: ${form.title}`, site: null, data: {} };
+  const fields = emailValues(form, route.fields, { data: input.data ?? {}, site: input.site, createdAt: entry?.createdAt, byName: entry?.createdByName });
+  const subject = route.subject?.trim() || input.title;
+  const intro = `There's something for you in “${form.title}”${input.site ? ` for ${input.site.name}` : ""}.`;
+  const url = `${appBaseUrl}${input.link ?? `/f/${form.slug}`}`;
+  return {
+    subject: route.urgent ? `Urgent: ${subject}` : subject,
+    from: entry ? `The latest entry (${entry.createdAt.toISOString().slice(0, 10)})` : "No entries yet: answers are left blank",
+    inside: routeEmail(form, route, { subject, to: "someone@lanterncommunity.org", intro, url, fields }).html,
+    outside: routeEmail(form, route, { subject, to: "someone@example.org", intro, url, fields }).html,
+  };
+}
+
 // ── Saving ───────────────────────────────────────────────────────────────
 
 /** Check routes against the form and the site: known events, roles, sites and people fields. */
@@ -158,6 +287,7 @@ export async function checkRoutes(form: BuiltForm, input: unknown[]): Promise<Ro
         throw badRequest(`${where}: "${t.field}" isn't an email field on this form.${ev.people?.length ? ` Email fields: ${ev.people.map((p) => p.id).join(", ")}.` : ""}`);
       }
     }
+    checkEmailFields(form, r.fields, where);
     return r;
   });
 }
@@ -382,9 +512,11 @@ export async function routeEvent(
   let told = 0;
   let emailed = 0;
   const failures: string[] = [];
+  const byName = routes.some((r) => r.fields?.includes("_by")) ? await nameOf(input.submitterId) : null;
   for (const plan of plans) {
     const route = routes.find((r) => r.id === plan.routeId)!;
     const subject = subjectOf(route);
+    const fields = emailValues(form, route.fields, { data: input.data ?? {}, site: input.site, byName }, opts.manifest);
     if (plan.people.length) {
       try {
         const out = await notify({
@@ -398,6 +530,7 @@ export async function routeEvent(
           formId: form.id,
           forceEmail: route.email !== "prefs",
           urgent: route.urgent,
+          email: { whatToDo: route.whatToDo ?? null, fields },
         });
         told += out.sent;
         emailed += out.emailed;
@@ -410,8 +543,9 @@ export async function routeEvent(
       else {
         const lead = `There's something for you in “${form.title}”${input.site ? ` for ${input.site.name}` : ""}.`;
         for (const to of plan.emails) {
-          // One email each, so nobody sees who else is on the list.
-          void sendMail({ to: [to], subject, html: linkOnlyHtml(lead, `${appBaseUrl}${link}`) }).catch((err) =>
+          // One email each, so nobody sees who else is on the list; answers only for a Lantern address.
+          const mail = routeEmail(form, route, { subject, to, intro: lead, url: `${appBaseUrl}${link}`, fields });
+          void sendLogged({ to: [to], subject: route.urgent ? `Urgent: ${subject}` : subject, html: mail.html, kind: "route", formId: form.id, withAnswers: mail.withAnswers }).catch((err) =>
             audit({ actor: opts.actor, action: "forms.routing_email_failed", summary: `“${form.title}” couldn't email ${to}: ${subject} (${err instanceof Error ? err.message : err})` }).catch(() => undefined)
           );
           emailed++;

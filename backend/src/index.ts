@@ -11,6 +11,7 @@ import { startFormBackup } from "./services/formBackup.js";
 import { startScheduler } from "./apps/schedule.js";
 import { startJobs } from "./apps/jobs.js";
 import { startNotificationMail } from "./services/notifications.js";
+import { startEmailReports } from "./services/emailReports.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
 
@@ -38,6 +39,7 @@ if (startFormBackup()) console.log(`  Forms: backing up built forms to ${env.for
 if (startScheduler()) console.log("  Code forms: running scheduled actions.");
 startJobs();
 startNotificationMail();
+startEmailReports();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))
