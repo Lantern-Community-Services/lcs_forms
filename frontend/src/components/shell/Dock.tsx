@@ -9,7 +9,7 @@ import { SearchInput } from "@/components/ui/input";
 import { formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
 import { useUnreadCount, useUrgentCount } from "@/lib/notifications";
-import { ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
+import { MAX_NAV_PINS, ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
 
 /**
  * Phone and tablet navigation: a floating dock at the bottom, within thumb
@@ -61,9 +61,9 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   // The account slot is always last: your avatar, opening the account menu.
   // A phone has five slots: Home, Roster, Calendar, All forms and the account
   // slot leave room for a pin only when there's no Roster. A tablet fits as
-  // many pins as its width allows: ~6 on a portrait iPad, ~10 in landscape.
+  // many pins as its width allows, up to MAX_NAV_PINS.
   const fixed = (roster ? 5 : 4); // Home, Roster, Calendar, All forms, the account slot
-  const tabletPins = Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed);
+  const tabletPins = Math.min(MAX_NAV_PINS, Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed));
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
   const home = <DockLink key="home" tour="dock-home" to="/home" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/home"} phone={phone} onClick={onCloseLauncher} />;

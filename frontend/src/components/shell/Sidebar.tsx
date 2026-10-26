@@ -15,7 +15,7 @@ import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useNavMode } from "@/lib/shellNav";
 import { useUnreadCount, useUrgentCount } from "@/lib/notifications";
-import { isFormPath, ROSTER_URL, useIsLit, useNavCatalog, useReviewCount } from "./navData";
+import { isFormPath, MAX_NAV_PINS, ROSTER_URL, useIsLit, useNavCatalog, useReviewCount } from "./navData";
 import { useGlobalSearch } from "./globalSearch";
 
 const EXPANDED_WIDTH = 240;
@@ -219,7 +219,8 @@ export function Sidebar() {
   const reviewCount = useReviewCount();
   const unread = useUnreadCount();
   const urgent = useUrgentCount();
-  const { categories, pinned } = useNavCatalog();
+  const { categories, pinned: allPinned } = useNavCatalog();
+  const pinned = allPinned.slice(0, MAX_NAV_PINS);
   const lit = useIsLit();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -377,29 +378,15 @@ export function Sidebar() {
         ) : (
           <>
             <NavItem to="/home" label="Home" Icon={Home} collapsed={collapsed} end tour="nav-home" />
-            <NavItem to="/forms" label="Forms" Icon={LayoutGrid} collapsed={collapsed} lit={formsLit} tour="nav-forms" />
             {can("roster.view") && <NavItem to={ROSTER_URL} label="Roster" Icon={Contact} collapsed={collapsed} lit={lit(ROSTER_URL)} count={reviewCount} tour="nav-roster" />}
             <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} tour="nav-calendar" />
 
-            {pinned.length > 0 && (
-              <>
-                <SectionLabel label="Pinned" collapsed={collapsed} />
-                {pinned.map((p) => (
-                  <FormRow key={p.form.id} form={p.form} Icon={p.Icon} collapsed={collapsed} lit={lit(p.form.url)} count={countFor(p.form)} />
-                ))}
-              </>
-            )}
-
-            {isAdmin && (
-              <>
-                <div className="mx-2 my-2.5 h-px shrink-0 bg-hairline" />
-                {siteSettingsOnly ? (
-                  <NavItem to="/admin/people" label="Site settings" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
-                ) : (
-                  <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
-                )}
-              </>
-            )}
+            {/* The forms: the whole catalog, then your pins under it. */}
+            <div className="mx-2 my-2.5 h-px shrink-0 bg-hairline" />
+            <NavItem to="/forms" label="Forms" Icon={LayoutGrid} collapsed={collapsed} lit={formsLit} tour="nav-forms" />
+            {pinned.map((p) => (
+              <FormRow key={p.form.id} form={p.form} Icon={p.Icon} collapsed={collapsed} lit={lit(p.form.url)} count={countFor(p.form)} />
+            ))}
           </>
         )}
       </nav>
@@ -422,6 +409,16 @@ export function Sidebar() {
           </>
         )}
       </NavLink>
+
+      {isAdmin && (
+        <div className="shrink-0">
+          {siteSettingsOnly ? (
+            <NavItem to="/admin/people" label="Site settings" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
+          ) : (
+            <NavItem to="/admin" label="Admin" Icon={Settings} collapsed={collapsed} tour="nav-admin" />
+          )}
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <button
