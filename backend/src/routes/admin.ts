@@ -1,7 +1,8 @@
 import express, { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { asyncHandler, badRequest, notFound } from "../http.js";
+import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
+import { allGroups, everythingGroupIds, reloadAccess } from "../services/staffGroups.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { getAllSettings, setSetting } from "../services/settings.js";
@@ -18,7 +19,7 @@ adminRouter.use(requireAuth);
 adminRouter.get(
   "/settings",
   requirePermission("settings.manage", "users.manage", "sites.manageRules"),
-  asyncHandler(async (_req, res) => res.json(await getAllSettings()))
+  asyncHandler(async (_req, res) => res.json({ ...(await getAllSettings()), seeEverythingGroupIds: everythingGroupIds() }))
 );
 
 adminRouter.patch(
@@ -31,14 +32,26 @@ adminRouter.patch(
         guestDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "Not a domain")).optional(),
         undoSeconds: z.number().int().min(3).max(60).optional(),
         welcomeTour: z.boolean().optional(),
+        /** Groups whose members see every form and every entry. Super Admins only. */
+        seeEverythingGroups: z.array(z.string().max(64)).max(20).optional(),
       })
       .parse(req.body);
+    if (body.seeEverythingGroups !== undefined) {
+      if (!req.user!.permissions.includes("admins.manage")) throw forbidden("Only Super Admins choose which groups see every form and every entry.");
+      const known = new Set(allGroups().map((g) => g.id));
+      const bad = body.seeEverythingGroups.filter((g) => !known.has(g));
+      if (bad.length) throw badRequest(`No staff group ${bad.map((b) => `"${b}"`).join(", ")}.`);
+    }
     if (body.attentionHours !== undefined) await setSetting("attentionHours", String(body.attentionHours));
     if (body.guestDomains !== undefined) await setSetting("guestDomains", [...new Set(body.guestDomains)].join(","));
     if (body.undoSeconds !== undefined) await setSetting("undoSeconds", String(body.undoSeconds));
     if (body.welcomeTour !== undefined) await setSetting("welcomeTour", String(body.welcomeTour));
+    if (body.seeEverythingGroups !== undefined) {
+      await setSetting("seeEverythingGroups", [...new Set(body.seeEverythingGroups)].join(","));
+      await reloadAccess();
+    }
     await audit({ actor: actorOf(req), action: "settings.updated", summary: `Updated settings: ${Object.keys(body).join(", ")}`, changes: body });
-    res.json(await getAllSettings());
+    res.json({ ...(await getAllSettings()), seeEverythingGroupIds: everythingGroupIds() });
   })
 );
 

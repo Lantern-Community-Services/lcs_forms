@@ -40,7 +40,7 @@ export const SCOPE_GRANTS: Partial<Record<ApiScope, Grant>> = {
   "roster:import": { all: ["sites.manage"], pinned: [] },
   "audit:read": { all: ["roster.view", "audit.view"], pinned: ["roster.view", "audit.view"] },
   "sites:manage": { all: ["sites.manage", "sites.manageRules"], pinned: ["sites.manageRules"] },
-  "people:manage": { all: ["users.manage", "users.manageSite"], pinned: ["users.manageSite"] },
+  "people:manage": { all: ["users.manage", "users.manageSite", "people.records"], pinned: ["users.manageSite"] },
   // Everyone signed in reads the calendar: the scope needs only an active creator.
   "calendar:read": { all: [], pinned: [] },
   "calendar:write": { all: ["calendar.manage", "calendar.edit"], pinned: ["calendar.edit"] },

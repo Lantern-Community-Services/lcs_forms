@@ -301,6 +301,18 @@ Each form (both kinds) sets who sees its entries, in its editor under Settings �
   keep the readers they came with.
 - **MCP:** `get_entry_access`, `set_entry_access`, `list_entry_access`.
 
+**IT sees everything.** Members of the groups in the `seeEverythingGroups` setting (the **IT** group by
+default) see every form and every entry, like Admins, whatever each form says (`seesEverything` in
+`services/staffGroups.ts`). It's shown at the top of Admin → Groups; only Super Admins change it.
+
+### A person's records (Super Admins)
+
+People & roles → a person → **Records** (`/admin/people/:id/records`, `services/personRecords.ts`,
+permission `people.records`, which only Super Admins hold): every entry they filed (by form, with
+links), follow-ups they did and the ones waiting on them, their notifications, the emails sent to
+them, their audit-log activity, and each form they can open with how much of its entries they see.
+Read only. A Super Admin's API key with `people:manage` can read it too (MCP `get_person_records`).
+
 ### Follow-ups
 
 A builder form can keep each new entry **open** until the people it's for mark it **done**

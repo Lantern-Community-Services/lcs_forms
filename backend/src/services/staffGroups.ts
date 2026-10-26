@@ -56,16 +56,19 @@ let audiences = new Map<string, Audience>();
 let formCategory = new Map<string, string>();
 /** Built form id → its "Who sees entries"; none = the form's old reader roles still apply. */
 let entryAccess = new Map<string, EntryAccess>();
+/** Groups whose members see every form and every entry (the seeEverythingGroups setting; IT by default). */
+let everythingGroups = new Set<string>();
 let loading: Promise<void> | null = null;
 let loaded = false;
 
 async function load() {
-  const [rows, aud, linked, cards, access] = await Promise.all([
+  const [rows, aud, linked, cards, access, everything] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
     prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
     prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
     prisma.formLink.findMany({ select: { id: true, categoryId: true } }),
     prisma.formRecord.findMany({ where: { collection: ACCESS_COLLECTION, docId: ACCESS_DOC }, select: { formId: true, data: true } }),
+    prisma.setting.findUnique({ where: { key: "seeEverythingGroups" } }),
   ]);
   entryAccess = new Map(
     access.flatMap((a) => {
@@ -91,6 +94,10 @@ async function load() {
     next.set(a.formKey, entry);
   }
   audiences = next;
+  const wanted = (everything?.value ?? "@IT").split(",").map((x) => x.trim()).filter(Boolean);
+  everythingGroups = new Set(
+    groups.filter((g) => wanted.includes(g.id) || (wanted.includes("@IT") && g.name.trim().toLowerCase() === "it")).map((g) => g.id)
+  );
   for (const a of aud) if (a.title) titleCase.set(normTitle(a.title), a.title);
   loaded = true;
 }
@@ -176,9 +183,17 @@ const isEmpty = (a: Audience | undefined) => !a || (!a.groupIds.size && !a.userI
 
 export const isLimited = (formKey: string) => !isEmpty(audiences.get(formKey));
 
-/** Whether this person may see and use the form. Admins always may. */
+/** In a group that sees every form and every entry (IT by default): treated like an Admin for seeing them. */
+export function seesEverything(user: Pick<CurrentUser, "groupIds">): boolean {
+  return (user.groupIds ?? []).some((g) => everythingGroups.has(g));
+}
+
+/** The groups that see every form and every entry, for Admin → Settings. */
+export const everythingGroupIds = () => [...everythingGroups];
+
+/** Whether this person may see and use the form. Admins, and the groups that see everything, always may. */
 export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null }, formKey: string): boolean {
-  if (user.permissions.includes("forms.manage")) return true;
+  if (user.permissions.includes("forms.manage") || seesEverything(user)) return true;
   const a = audiences.get(formKey);
   if (isEmpty(a)) return true;
   if (a!.userIds.has(user.userId)) return true;
@@ -241,7 +256,7 @@ type Viewer = Pick<CurrentUser, "userId" | "permissions" | "groupIds" | "roleKey
  * `legacyReaders` are the form's old reader roles, used until it's reviewed.
  */
 export function entryReach(formId: string, legacyReaders: string[], user: Viewer): "all" | "site" | "own" {
-  if (user.permissions.includes("forms.manage")) return "all";
+  if (user.permissions.includes("forms.manage") || seesEverything(user)) return "all";
   const s = entryAccess.get(formId);
   if (!s) return legacyReaders.includes(user.roleKey) ? "all" : "own";
   const a = s.seeAll;

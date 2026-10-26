@@ -104,6 +104,12 @@ async function doersOf(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEnt
   return plan?.people ?? [];
 }
 
+/** Whether the entry's follow-up is this person's to do (Admins' override left out): for their Records. */
+export async function isFollowUpDoer(form: BuiltForm, userId: string, entry: Pick<FormEntry, "siteId">, settings?: FollowUpSettings): Promise<boolean> {
+  const s = settings ?? (await loadFollowUp(form));
+  return (await doersOf(form, s, entry)).some((p) => p.id === userId);
+}
+
 /** Whether this person may mark the entry done (or reopen it): Admins, and the people it's for. */
 export async function canFollowUp(form: BuiltForm, user: CurrentUser | null | undefined, entry: Pick<FormEntry, "siteId" | "followUp">): Promise<boolean> {
   if (!user || !entry.followUp) return false;

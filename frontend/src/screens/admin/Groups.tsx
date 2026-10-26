@@ -12,7 +12,10 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { GROUPS_KEY, groupsApi, parseRules, rulesPhrase, titleMatches, useJobTitles, useStaffGroups, type JobTitle, type StaffGroup } from "@/lib/groups";
-import { useUsers } from "@/lib/queries";
+import { useSettings, useUsers } from "@/lib/queries";
+import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { CheckboxList } from "@/components/ui/checkbox";
 import { cn, errorMessage } from "@/lib/utils";
 
 /**
@@ -38,6 +41,7 @@ export function AdminGroups() {
           </Button>
         }
       />
+      {groups?.length ? <SeeEverything groups={groups} /> : null}
       {isLoading ? (
         <LoadingState />
       ) : !groups?.length ? (
@@ -88,6 +92,49 @@ function PositionList({ titles, className }: { titles: JobTitle[]; className?: s
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * The groups whose members see every form and every entry, like Admins: IT by
+ * default. Only Super Admins change it (backend routes/admin.ts).
+ */
+function SeeEverything({ groups }: { groups: StaffGroup[] }) {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data } = useSettings();
+  const [editing, setEditing] = useState<string[] | null>(null);
+  const current = data?.seeEverythingGroupIds ?? [];
+  const names = current.map((id) => groups.find((g) => g.id === id)?.name).filter(Boolean);
+  async function save() {
+    try {
+      await api.patch("/admin/settings", { seeEverythingGroups: editing });
+      await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
+      setEditing(null);
+      toast("Saved.");
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't save it."), "error");
+    }
+  }
+  return (
+    <Card className="mb-4 p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="min-w-0 flex-1 text-[13.5px] text-ink">
+          <span className="font-semibold">{names.length ? names.join(", ") : "No group"}</span> see{names.length === 1 ? "s" : ""} every form and every entry, like Admins, whatever each form's own settings say.
+        </p>
+        {can("admins.manage") && !editing && <Button size="sm" variant="secondary" onClick={() => setEditing(current)}>Change</Button>}
+      </div>
+      {editing && (
+        <div className="mt-3 space-y-2">
+          <CheckboxList options={groups.map((g) => ({ value: g.id, label: g.name }))} value={editing} onChange={setEditing} />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button size="sm" onClick={() => void save()}>Save</Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

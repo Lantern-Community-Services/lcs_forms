@@ -17,6 +17,12 @@ export const SETTING_DEFAULTS = {
    * stops it starting; Profile → Take the tour still runs it.
    */
   welcomeTour: "true",
+  /**
+   * Staff groups whose members see every form and every entry, like Admins
+   * (services/staffGroups.ts seesEverything): comma-separated group ids. "@IT",
+   * the default, is the group called IT. Only Super Admins change it.
+   */
+  seeEverythingGroups: "@IT",
   /** Set when a build that wrote a default forms catalog had written it; see formCatalog.ts. */
   formCatalogSeeded: "",
   /** Set once the old default catalog has been taken out; see formCatalog.ts retireLegacyCatalog. */
