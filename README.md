@@ -284,6 +284,21 @@ the chosen answers, and a button into the site. Nothing is ever attached.
 
 Code forms' `ctx.email.send` uses the same layout with a link only (below).
 
+### Follow-ups
+
+A builder form can keep each new entry **open** until the people it's for mark it **done**
+(`services/followUp.ts`, set under the form's Notifications → Follow-up):
+
+- **Who does it:** the same recipient kinds as a route (people, roles, groups, positions). They and
+  Admins see **Mark as done** on the entry, with a note of what they did; done ones can be opened again.
+- **When it's done** whoever filed it is told (in the app and by email, the note only to a Lantern
+  address), and the entry's notes record it.
+- **Reminders:** after a set number of days, then every as many, up to a limit, to the people it's
+  for, until it's done (`startFollowUpReminders`, every 15 minutes).
+- Entries can be filtered by follow-up (open or done); summary reports can show it as a column and
+  count the open ones. Applies to entries saved after it's turned on; code forms run their own steps.
+- **MCP:** `get_follow_up`, `set_follow_up`, `list_follow_ups`, `mark_follow_up`.
+
 ## Code forms
 
 When a form needs more than fields and rules (custom screens, server-side logic, offline recording,

@@ -567,6 +567,15 @@ model FormEntry {
   notes FormEntryNote[]
   files FormFile[]
 
+  /// Follow-up (services/followUp.ts): "open" until someone it's for marks it done; null when the form doesn't track it.
+  followUp           String?   @db.NVarChar(16)
+  followUpDoneAt     DateTime?
+  followUpDoneByName String?   @db.NVarChar(255)
+  /// What they did, written when marking it done.
+  followUpNote       String?   @db.NVarChar(2000)
+  followUpRemindedAt DateTime?
+  followUpReminders  Int       @default(0)
+
   @@unique([formId, clientId])
   @@index([formId, createdAt])
   @@index([formId, status])
@@ -577,6 +586,7 @@ model FormEntry {
   @@index([siteId])
   /// Someone's own entries, newest first (the Forms home, "mine" lists, undo).
   @@index([createdById, createdAt])
+  @@index([formId, followUp])
 }
 
 /// A note on an entry — typed by a person, or written by the system

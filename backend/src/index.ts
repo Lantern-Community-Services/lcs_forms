@@ -12,6 +12,7 @@ import { startScheduler } from "./apps/schedule.js";
 import { startJobs } from "./apps/jobs.js";
 import { startNotificationMail } from "./services/notifications.js";
 import { startEmailReports } from "./services/emailReports.js";
+import { startFollowUpReminders } from "./services/followUp.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
 
@@ -40,6 +41,7 @@ if (startScheduler()) console.log("  Code forms: running scheduled actions.");
 startJobs();
 startNotificationMail();
 startEmailReports();
+startFollowUpReminders();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

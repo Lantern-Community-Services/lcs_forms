@@ -11,6 +11,7 @@ import { mailConfigured, sendLogged } from "../services/mailer.js";
 import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
+import { openFollowUp } from "../services/followUp.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, isBuiltFormLimited } from "../services/staffGroups.js";
 import {
@@ -258,6 +259,8 @@ export async function submitEntry(input: SubmitInput) {
   }
   const fileIds = filled.doc.fields.filter((f) => f.type === "file").flatMap((f) => ((values[f.id] as { id: string }[] | undefined) ?? []).map((x) => x.id));
   if (fileIds.length) await prisma.formFile.updateMany({ where: { id: { in: fileIds } }, data: { entryId: entry.id } });
+  // Tracked for follow-up when the form asks for it: open until someone it's for marks it done.
+  await openFollowUp(form, entry.id);
 
   // The roster hears that these residents were seen.
   for (const f of filled.doc.fields) {
@@ -402,6 +405,8 @@ export interface EntryFilter {
   status?: "active" | "voided" | "all";
   starred?: boolean;
   site?: string;
+  /** Follow-up: still open, or done. */
+  followUp?: "open" | "done";
 }
 
 export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): Prisma.FormEntryWhereInput {
@@ -411,6 +416,7 @@ export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): 
   if (filter.from) and.push({ createdAt: { gte: nyDayStart(filter.from) } });
   if (filter.to) and.push({ createdAt: { lt: new Date(nyDayStart(filter.to).getTime() + 86_400_000) } });
   if (filter.site) and.push({ siteId: filter.site });
+  if (filter.followUp) and.push({ followUp: filter.followUp });
   if (filter.q?.trim()) {
     const q = filter.q.trim();
     and.push({ OR: [{ data: { contains: q } }, { createdByName: { contains: q } }, { id: q }] });
@@ -442,6 +448,7 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     voidedAt: e.voidedAt,
     voidedByName: e.voidedByName,
     voidReason: e.voidReason,
+    followUp: e.followUp ? { status: e.followUp, doneAt: e.followUpDoneAt, doneByName: e.followUpDoneByName, note: e.followUpNote, reminders: e.followUpReminders } : null,
     noteCount: e._count?.notes,
   };
 }

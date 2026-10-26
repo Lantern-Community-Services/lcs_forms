@@ -141,6 +141,7 @@ const BUILT_IN_EMAIL_FIELDS: EmailField[] = [
   { id: "_site", label: "Site" },
   { id: "_date", label: "Submitted" },
   { id: "_by", label: "Submitted by" },
+  { id: "_followup", label: "Follow-up" },
 ];
 
 /**
@@ -180,7 +181,7 @@ const nyWhen = (d: Date) =>
 export function emailValues(
   form: BuiltForm,
   ids: string[] | undefined,
-  ctx: { data: Values; site?: { name: string } | null; createdAt?: Date; byName?: string | null },
+  ctx: { data: Values; site?: { name: string } | null; createdAt?: Date; byName?: string | null; followUp?: string | null },
   manifest?: Known
 ): { label: string; value: string }[] {
   if (!ids?.length) return [];
@@ -194,6 +195,7 @@ export function emailValues(
     if (id === "_site") value = ctx.site?.name ?? "";
     else if (id === "_date") value = nyWhen(ctx.createdAt ?? new Date());
     else if (id === "_by") value = ctx.byName ?? "";
+    else if (id === "_followup") value = ctx.followUp === "done" ? "Done" : ctx.followUp === "open" ? "Open" : "";
     else if (doc) {
       const f = doc.fields.find((x) => x.id === id);
       value = f ? formatValue(f, ctx.data[id]) : "";

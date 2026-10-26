@@ -174,7 +174,7 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
   const entries = await prisma.formEntry.findMany({
     where: { formId: form.id, status: "active", source: { not: "preview" }, createdAt: { gte: since, lt: now } },
     orderBy: { createdAt: "asc" },
-    select: { data: true, siteId: true, createdAt: true, createdByName: true },
+    select: { data: true, siteId: true, createdAt: true, createdByName: true, followUp: true },
   });
   const sites = await prisma.site.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } });
   const siteBy = new Map(sites.map((s) => [s.id, s]));
@@ -209,11 +209,12 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
     const shown = g.rows.slice(-MAX_ROWS).reverse();
     const rows = shown.map((e) => {
       const site = e.siteId ? siteBy.get(e.siteId) ?? null : null;
-      const values = emailValues(form, report.fields, { data: JSON.parse(e.data) as Values, site, createdAt: e.createdAt, byName: e.createdByName });
+      const values = emailValues(form, report.fields, { data: JSON.parse(e.data) as Values, site, createdAt: e.createdAt, byName: e.createdByName, followUp: e.followUp });
       return columns.map((c) => values.find((v) => v.label === c.label)?.value ?? "");
     });
     const subject = `${report.name} - ${g.label} - ${nyDate(now)}`.slice(0, 200);
     const count = g.rows.length;
+    const open = g.rows.filter((e) => e.followUp === "open").length;
     for (const to of [...new Set(addresses.map((a) => a.toLowerCase()))]) {
       const withAnswers = isInternalAddress(to) && columns.length > 0 && rows.length > 0;
       emails.push({
@@ -225,7 +226,9 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
         html: brandedEmail({
           kicker: form.title,
           heading: `${report.name}: ${g.label}`,
-          intro: count ? `Entries submitted in the past 7 days: ${count}` : `No entries were submitted for ${g.label} in the past 7 days.`,
+          intro: count
+            ? `Entries submitted in the past 7 days: ${count}${g.rows.some((e) => e.followUp) ? ` (${open} still open)` : ""}`
+            : `No entries were submitted for ${g.label} in the past 7 days.`,
           whatToDo: report.whatToDo,
           table: withAnswers ? { columns: columns.map((c) => c.label), rows, more: Math.max(0, count - shown.length) } : null,
           button: { label: "Open the entries", url },

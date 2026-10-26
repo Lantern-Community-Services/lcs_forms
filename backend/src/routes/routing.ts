@@ -12,6 +12,7 @@ import {
 import { routeSchema } from "../forms/routingSchema.js";
 import { loadReports, reportSchema, saveReports, sendReport } from "../services/emailReports.js";
 import { sentEmails } from "../services/mailer.js";
+import { followUpView, saveFollowUp } from "../services/followUp.js";
 
 /**
  * Admin → Notification routing: each form's routes (who's told about what),
@@ -176,6 +177,18 @@ routingRouter.get(
     const form = await routingForm(req.params.form);
     res.json({ items: await sentEmails({ formId: form.id, limit: Number(req.query.limit) || 50, before: typeof req.query.before === "string" ? req.query.before : undefined }) });
   })
+);
+
+// ── Follow-up ────────────────────────────────────────────────────────────
+
+routingRouter.get(
+  "/:form/follow-up",
+  asyncHandler(async (req, res) => res.json(await followUpView(await routingForm(req.params.form))))
+);
+
+routingRouter.put(
+  "/:form/follow-up",
+  asyncHandler(async (req, res) => res.json(await saveFollowUp(await routingForm(req.params.form), req.body, actorOf(req))))
 );
 
 routingRouter.get(

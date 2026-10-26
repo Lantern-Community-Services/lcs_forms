@@ -5,6 +5,7 @@ import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
 import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
+import { canFollowUp, loadFollowUp, requireFollowUp, setFollowUp } from "../services/followUp.js";
 import {
   canReadEntries, canVoidEntries, closedReason, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
   entryScope, liveDoc, saveUpload, submitEntry, updateEntry, type EntryFilter,
@@ -118,6 +119,7 @@ function filterOf(req: Request): EntryFilter {
     status: q.status === "voided" || q.status === "all" ? q.status : "active",
     starred: q.starred === "1",
     site: typeof q.site === "string" && q.site ? q.site : undefined,
+    followUp: q.followUp === "open" || q.followUp === "done" ? q.followUp : undefined,
   };
 }
 
@@ -145,6 +147,7 @@ fillRouter.get(
       items: rows.map((e) => entryRow({ ...e, site: e.siteId ? sites.get(e.siteId) ?? null : null })),
       canVoid: canVoidEntries(doc, req.user),
       isAdmin: isFormAdmin(req.user),
+      followUp: (await loadFollowUp(form)).enabled,
     });
   })
 );
@@ -189,6 +192,8 @@ fillRouter.get(
       notes,
       newerId: neighbours[0]?.id ?? null,
       olderId: neighbours[1]?.id ?? null,
+      // Whether this person can mark the entry's follow-up done (or reopen it).
+      canFollowUp: await canFollowUp(form, req.user, entry),
       canVoid: canVoidEntries(liveOrDraft, req.user),
       isAdmin: isFormAdmin(req.user),
     });
@@ -224,6 +229,20 @@ fillRouter.post(
       await prisma.formEntryNote.create({ data: { entryId: entry.id, kind: "system", authorName: req.user!.name, body: `Voided: ${reason}` } });
     }
     res.json({ ok: true });
+  })
+);
+
+/** Mark an entry's follow-up done, with what was done, or open it again. Its people and Admins only. */
+fillRouter.post(
+  "/:slug/entries/:id/follow-up",
+  asyncHandler(async (req, res) => {
+    const body = z.object({ done: z.boolean(), note: z.string().max(2000).optional() }).parse(req.body);
+    const { form } = await readable(req);
+    const entry = await entryIn(req, form.id);
+    await requireFollowUp(form, req.user, entry);
+    const updated = await setFollowUp(form, entry, { userId: req.user!.userId, name: req.user!.name }, body);
+    const sites = await siteNames();
+    res.json(entryRow({ ...updated, site: updated.siteId ? sites.get(updated.siteId) ?? null : null }));
   })
 );
 

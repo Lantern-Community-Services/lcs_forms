@@ -274,6 +274,8 @@ export function RoutingEditor({ formId: id, inForm = false }: { formId: string; 
         );
       })}
 
+      {data.form.kind === "basic" && <FollowUpSection formId={id} roles={data.roles} sites={siteList} />}
+
       <ReportsSection formId={id} emailFields={data.emailFields} roles={data.roles} sites={siteList} />
 
       <RecentSends items={data.log} />
@@ -847,6 +849,134 @@ function EmailPreviewDialog({ preview, onClose }: { preview: EmailPreview; onClo
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Follow-up ────────────────────────────────────────────────────────────
+
+interface FollowUp {
+  enabled: boolean;
+  doers: Recipient[];
+  remindAfterDays: number | null;
+  maxReminders: number;
+  tellSubmitter: boolean;
+  whatToDo?: string;
+  open?: number;
+}
+
+/**
+ * Follow-up: each new entry stays open until someone it's for marks it done
+ * (with what they did), whoever filed it is told, and the people it's for are
+ * reminded until then. Saved on its own.
+ */
+function FollowUpSection({ formId, roles, sites }: { formId: string; roles: RoutingView["roles"]; sites: Site[] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const key = ["routing", formId, "follow-up"];
+  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<FollowUp>(`/routing/${formId}/follow-up`) });
+  const [f, setF] = useState<FollowUp | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState<null | "person" | "role" | "group" | "title">(null);
+  useEffect(() => {
+    if (data) setF(data);
+  }, [data]);
+  if (!data || !f) return null;
+  const strip = ({ open: _o, ...x }: FollowUp & { updatedAt?: unknown; updatedByName?: unknown }) => {
+    const { updatedAt: _a, updatedByName: _b, ...rest } = x;
+    return rest;
+  };
+  const dirty = JSON.stringify(strip(f)) !== JSON.stringify(strip(data));
+  const set = (patch: Partial<FollowUp>) => setF({ ...f, ...patch });
+  const siteName = (code: string) => sites.find((s) => s.code === code)?.name ?? code;
+
+  async function save() {
+    if (f!.enabled && !f!.doers.length) return toast("Say who it's for: they mark entries done and get the reminders.", "error");
+    setBusy(true);
+    try {
+      await api.put(`/routing/${formId}/follow-up`, strip(f!));
+      toast(f!.enabled ? "Follow-up saved. New entries start open." : "Follow-up saved.");
+      await qc.invalidateQueries({ queryKey: key });
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't save the follow-up."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mb-6 mt-8">
+      <div className="mb-2 px-1">
+        <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up</p>
+        <p className="text-[12.5px] text-muted">Keep each new entry open until the people it's for mark it done, with what they did. Whoever filed it is told, and they're reminded until it's done.</p>
+      </div>
+      <Card className={cn("p-0", !f.enabled && "opacity-80")}>
+        <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
+          <Switch checked={f.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label="Track follow-ups" />
+          <p className="min-w-0 flex-1 text-[14px] font-semibold text-ink">{f.enabled ? "Entries are followed up" : "Not followed up"}</p>
+          {f.enabled && typeof data.open === "number" && <Tag tone={data.open ? "amber" : "neutral"}>{data.open} open</Tag>}
+        </div>
+        {f.enabled && (
+          <div className="grid gap-4 px-4 py-4 md:px-5">
+            <Row label="Who does it">
+              <ul className="divide-y divide-hairline rounded-input border border-hairline">
+                {f.doers.map((t, i) => (
+                  <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ doers: next ? f.doers.map((x, j) => (j === i ? next : x)) : f.doers.filter((_, j) => j !== i) })} />
+                ))}
+                {!f.doers.length && <li className="px-3 py-2 text-[13px] text-muted">Nobody yet.</li>}
+              </ul>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="mt-1"><Plus className="h-4 w-4" /> Add people</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onSelect={() => setPicking("person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPicking("role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPicking("group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPicking("title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <p className="mt-1 text-[12px] text-muted">They can mark entries done and get the reminders. Admins always can.</p>
+            </Row>
+            <Row label="Reminders">
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={f.remindAfterDays === null ? "never" : String(f.remindAfterDays)}
+                  onChange={(e) => set({ remindAfterDays: e.target.value === "never" ? null : Number(e.target.value) })}
+                  className="w-56"
+                  aria-label="Remind after"
+                  options={[{ value: "never", label: "Never remind" }, ...[1, 2, 3, 5, 7, 14].map((d) => ({ value: String(d), label: `After ${d} day${d === 1 ? "" : "s"}, then every ${d}` }))]}
+                />
+                {f.remindAfterDays !== null && (
+                  <Select value={String(f.maxReminders)} onChange={(e) => set({ maxReminders: Number(e.target.value) })} className="w-40" aria-label="At most" options={[1, 2, 3, 5, 10].map((n) => ({ value: String(n), label: `At most ${n}` }))} />
+                )}
+              </div>
+            </Row>
+            <Row label="When it's done">
+              <label className="flex items-center gap-2 pt-1 text-[13px] text-ink">
+                <Switch checked={f.tellSubmitter} onCheckedChange={(v) => set({ tellSubmitter: v })} />
+                Tell whoever filed it, with the note of what was done
+              </label>
+            </Row>
+            <Row label="What to do">
+              <Textarea value={f.whatToDo ?? ""} onChange={(e) => set({ whatToDo: e.target.value || undefined })} rows={2} maxLength={500} placeholder="e.g. Set up their accounts, then mark it done." className="max-w-[560px]" />
+              <p className="mt-1 text-[12px] text-muted">Shown in the reminder emails.</p>
+            </Row>
+            <p className="text-[12px] text-muted">Applies to entries saved after it's turned on.</p>
+          </div>
+        )}
+      </Card>
+      {dirty && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <span className="mr-auto text-[13px] font-semibold text-ink">Unsaved follow-up changes</span>
+          <Button variant="secondary" onClick={() => setF(data)} disabled={busy}>Undo</Button>
+          <Button onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save follow-up"}</Button>
+        </div>
+      )}
+      <PersonDialog open={picking === "person"} sites={sites} taken={f.doers} onClose={() => setPicking(null)} onAdd={(r) => set({ doers: [...f.doers, r] })} />
+      <RoleDialog open={picking === "role"} roles={roles} onClose={() => setPicking(null)} onAdd={(r) => set({ doers: [...f.doers, r] })} />
+      {picking === "group" && <TeamDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
+      {picking === "title" && <PositionDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
+    </section>
   );
 }
 

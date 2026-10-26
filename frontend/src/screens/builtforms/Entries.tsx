@@ -31,6 +31,7 @@ export function BuiltFormEntriesPage() {
   const [to, setTo] = useState("");
   const [status, setStatus] = useState("active");
   const [starred, setStarred] = useState(false);
+  const [followUp, setFollowUp] = useState<"" | "open" | "done">("");
   const [page, setPage] = useState(0);
 
   const filterQs = useMemo(() => {
@@ -39,8 +40,9 @@ export function BuiltFormEntriesPage() {
     if (from) p.set("from", from);
     if (to) p.set("to", to);
     if (starred) p.set("starred", "1");
+    if (followUp) p.set("followUp", followUp);
     return p.toString();
-  }, [q, from, to, status, starred]);
+  }, [q, from, to, status, starred, followUp]);
   const qs = `${filterQs}&take=${PAGE}&skip=${page * PAGE}`;
   const { data, isLoading, error } = useEntries(slug, qs);
 
@@ -99,10 +101,20 @@ export function BuiltFormEntriesPage() {
         <Button variant={starred ? "primary" : "secondary"} onClick={() => { setStarred(!starred); setPage(0); }} aria-pressed={starred}>
           <Star className={cn("h-4 w-4", starred && "fill-current")} /> Starred
         </Button>
+        {data.followUp && (
+          <div className="w-[170px]">
+            <Select
+              value={followUp}
+              onChange={(e) => { setFollowUp(e.target.value as "" | "open" | "done"); setPage(0); }}
+              aria-label="Follow-up"
+              options={[{ value: "", label: "Any follow-up" }, { value: "open", label: "Follow-up open" }, { value: "done", label: "Follow-up done" }]}
+            />
+          </div>
+        )}
       </div>
 
       {!data.items.length ? (
-        <Card><EmptyState title="No entries" hint={q || from || to || starred || status !== "active" ? "Nothing matches these filters." : "When people fill in the form, their answers show up here."} /></Card>
+        <Card><EmptyState title="No entries" hint={q || from || to || starred || followUp || status !== "active" ? "Nothing matches these filters." : "When people fill in the form, their answers show up here."} /></Card>
       ) : (
         <Card className="overflow-hidden">
           <div className="hidden overflow-x-auto md:block">
@@ -131,6 +143,7 @@ export function BuiltFormEntriesPage() {
                     {columns.map((c) => <td key={c.id} className="max-w-[240px] truncate px-3 py-2.5 text-ink">{formatValue(c, e.values[c.id]) || <span className="text-muted">—</span>}</td>)}
                     <td className="whitespace-nowrap px-3 py-2.5 text-right text-muted">
                       {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
+                      {e.followUp && <span className="ml-2"><ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{e.followUp.status === "open" ? "Open" : "Done"}</ToneBadge></span>}
                       {(e.noteCount ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 text-micro"><MessageSquare className="h-3.5 w-3.5" />{e.noteCount}</span>}
                     </td>
                   </tr>
@@ -146,6 +159,7 @@ export function BuiltFormEntriesPage() {
                     {e.starred && <Star className="h-3.5 w-3.5 fill-[#f5a524] text-[#f5a524]" />}
                     <span className="flex-1 text-[14px] font-semibold text-ink">{columns[0] ? formatValue(columns[0], e.values[columns[0].id]) || "—" : e.createdByName}</span>
                     {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
+                    {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{e.followUp.status === "open" ? "Open" : "Done"}</ToneBadge>}
                   </div>
                   <p className="mt-0.5 text-micro text-muted">{formatDateTime(e.createdAt)} · {e.createdByName}{e.site ? ` · ${e.site.name}` : ""}</p>
                 </Link>

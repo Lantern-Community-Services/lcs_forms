@@ -160,6 +160,7 @@ const ENTRY_META = {
   id: true, formId: true, formVersion: true, siteId: true, source: true, status: true, occurredAt: true, tenantId: true, overrideReason: true,
   clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, voidedAt: true, voidedByName: true, voidReason: true,
   starred: true, updatedByName: true, createdAt: true, updatedAt: true,
+  followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpRemindedAt: true, followUpReminders: true,
 } satisfies Prisma.FormEntrySelect;
 
 /** An entry's data up to this size (bytes, as stored: 2 a character) is sent whole and trimmed here. */

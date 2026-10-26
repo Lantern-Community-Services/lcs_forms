@@ -8,6 +8,7 @@ import {
 } from "../services/routing.js";
 import { loadReports, saveReports, sendReport } from "../services/emailReports.js";
 import { sentEmails } from "../services/mailer.js";
+import { followUpView, saveFollowUp, setFollowUp } from "../services/followUp.js";
 import { ENTRY_CREATED } from "./routingSchema.js";
 import type { ToolRegistrar } from "./mcp.js";
 
@@ -300,6 +301,70 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       const f = form ? await routingForm(form) : null;
       return { items: await sentEmails({ formId: f?.id, limit, before }) };
     }
+  );
+
+
+  // ── Follow-ups ──
+
+  tool(
+    "get_follow_up",
+    "A basic form's follow-up: whether its entries are tracked (open until someone it's for marks them done), who they're for (doers, the same recipient kinds as a route), the reminders (remindAfterDays, maxReminders), whether whoever filed it is told when it's done, and how many are open now.",
+    { form: formRef },
+    async ({ form }) => {
+      need("forms:build");
+      return followUpView(await routingForm(form));
+    }
+  );
+
+  tool(
+    "set_follow_up",
+    "Turn a basic form's follow-up on or off and set it: doers (who marks entries done and is reminded; route recipient kinds), remindAfterDays (remind them this many days after it was filed and again every as many days; null for never), maxReminders, tellSubmitter (tell whoever filed it when it's done), whatToDo (shown in reminders). Applies to entries saved after it's turned on.",
+    {
+      form: formRef,
+      enabled: z.boolean(),
+      doers: z.array(recipient),
+      remindAfterDays: z.number().int().min(1).max(60).nullable().optional(),
+      maxReminders: z.number().int().min(1).max(10).optional(),
+      tellSubmitter: z.boolean().optional(),
+      whatToDo: z.string().optional(),
+    },
+    async ({ form, ...settings }) => {
+      need("forms:build");
+      return saveFollowUp(await routingForm(form), settings, actor);
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
+    "list_follow_ups",
+    "A form's entries by follow-up: still open (default) or done, oldest first, with who filed them, when, and (when done) who did it and their note. Entry answers aren't included: use get_entry.",
+    { form: formRef, status: z.enum(["open", "done"]).optional(), limit: z.number().int().min(1).max(200).optional() },
+    async ({ form, status = "open", limit = 50 }) => {
+      need("entries:read");
+      const f = await routingForm(form);
+      const rows = await prisma.formEntry.findMany({
+        where: { formId: f.id, status: "active", followUp: status },
+        orderBy: { createdAt: status === "open" ? "asc" : "desc" },
+        take: limit,
+        select: { id: true, createdAt: true, createdByName: true, siteId: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpReminders: true },
+      });
+      return { status, count: rows.length, items: rows };
+    }
+  );
+
+  tool(
+    "mark_follow_up",
+    "Mark an entry's follow-up done, with a note of what was done (whoever filed it is told), or open it again with done: false. Acts as this key (the admin who made it).",
+    { form: formRef, entryId: z.string(), done: z.boolean(), note: z.string().max(2000).optional() },
+    async ({ form, entryId, done, note }) => {
+      need("entries:manage");
+      const f = await routingForm(form);
+      const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id } });
+      if (!entry) throw new HttpError(404, "That form has no such entry.");
+      const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note });
+      return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, note: out.followUpNote };
+    },
+    { destructiveHint: true }
   );
 
 }
