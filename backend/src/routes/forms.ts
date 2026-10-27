@@ -8,7 +8,7 @@ import { isRoleKey } from "../services/permissions.js";
 import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
 import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
 import { builtFormRef, entryAccessReview, entryAccessView, saveEntryAccess } from "../services/entryAccess.js";
-import { audienceOf, builtFormKey, cardKey, categoryKey, inAudience, keyForCard, moveAudience, reloadAccess, setAudience } from "../services/staffGroups.js";
+import { audienceOf, builtFormKey, canSeeFormKey, cardKey, categoryKey, forgetGivenForm, keyForCard, moveAudience, reloadAccess, setAudience } from "../services/staffGroups.js";
 
 export const formsRouter = Router();
 formsRouter.use(requireAuth);
@@ -18,7 +18,8 @@ formsRouter.use(requireAuth);
  *
  * Reading the catalog needs only a session. A form can be limited to some
  * roles (`roles`), and to some staff groups or named people (its audience,
- * services/staffGroups.ts); everyone else never receives it, so a restricted
+ * services/staffGroups.ts), or given to groups and people so they see only
+ * theirs (same file); everyone else never receives it, so a restricted
  * form doesn't exist for them at all. Editors (forms.manage) see every form.
  * Editing needs forms.manage. Favourites are per person and need nothing extra.
  */
@@ -39,9 +40,7 @@ function canSeeForm(req: Request, form: FormRow, built: Map<string, string>): bo
   if (req.user!.permissions.includes("forms.manage")) return true;
   const roles = rolesOf(form);
   return (
-    (roles.length === 0 || roles.includes(req.user!.roleKey)) &&
-    inAudience(req.user!, categoryKey(form.categoryId)) &&
-    inAudience(req.user!, keyForCard(form.id, built.get(form.id)))
+    (roles.length === 0 || roles.includes(req.user!.roleKey)) && canSeeFormKey(req.user!, keyForCard(form.id, built.get(form.id)), form.categoryId)
   );
 }
 
@@ -417,6 +416,7 @@ formsRouter.delete(
     await prisma.formLink.delete({ where: { id: form.id } });
     // A link's own limit goes with it; a built form keeps its limit (it's on the form).
     await setAudience(cardKey(form.id), [], []);
+    await forgetGivenForm(cardKey(form.id));
     await audit({ actor: actorOf(req), action: "forms.deleted", summary: `Deleted form “${form.title}”`, changes: { url: form.url } });
     res.json({ ok: true });
   })

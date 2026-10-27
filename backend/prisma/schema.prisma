@@ -724,6 +724,8 @@ model User {
   /// groups themselves mostly come from the job title (StaffGroupRule).
   groupOverrides    StaffGroupMember[]
   formAudiences     FormAudience[]
+  /// Forms given to, or hidden from, this one person, over their groups' forms.
+  formOverrides     PersonForm[]
   oauthGrants       OAuthGrant[]
   oauthCodes        OAuthCode[]
 
@@ -776,6 +778,7 @@ model StaffGroup {
   rules       StaffGroupRule[]
   members     StaffGroupMember[]
   audiences   FormAudience[]
+  forms       GroupForm[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 }
@@ -818,6 +821,31 @@ model FormAudience {
   /// A position: everyone whose job title is exactly this (any case).
   title   String?     @db.NVarChar(255)
 
+  @@index([formKey])
+}
+
+/// A form given to a group (People & roles → Groups → a group → Forms). Once
+/// any of someone's groups has forms, those are the only forms they see (plus
+/// their own PersonForm changes); someone whose groups have none sees every
+/// form open to them, as before. formKey is the same key as FormAudience's.
+model GroupForm {
+  group   StaffGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId String     @db.NVarChar(64)
+  formKey String     @db.NVarChar(100)
+
+  @@id([groupId, formKey])
+  @@index([formKey])
+}
+
+/// One person's own change to the forms they see, over their groups:
+/// include = true gives them the form, false hides it from them.
+model PersonForm {
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String  @db.NVarChar(64)
+  formKey String  @db.NVarChar(100)
+  include Boolean
+
+  @@id([userId, formKey])
   @@index([formKey])
 }
 
