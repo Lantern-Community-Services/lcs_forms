@@ -18,6 +18,8 @@ export type PermissionKey =
   | "calendar.edit"
   /** Make, change and remove Admins: Super Admins only. */
   | "admins.manage"
+  /** A person's Records (entries, notifications, emails, activity): Super Admins only. */
+  | "people.records"
   /** Admin → Dev log. Admin only. */
   | "devlog.view";
 
@@ -222,6 +224,8 @@ export interface Settings {
   undoSeconds: string;
   /** "false" stops the welcome tour starting by itself (lib/tour/SiteTourStarter.tsx). */
   welcomeTour: string;
+  /** The groups whose members see every form and every entry (IT by default). */
+  seeEverythingGroupIds?: string[];
 }
 
 export interface FormLink {

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ExternalLink, EyeOff, Lock, Pencil, Plus, Trash2, UsersRound } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Tag } from "@/components/ui/badge";
@@ -218,6 +219,8 @@ export function AdminFormsCatalog() {
           </>
         }
       />
+
+      <EntryAccessNotice />
 
       {categories.length === 0 && <EmptyState title="No categories yet" hint="Add a category first, then put forms in it." />}
 
@@ -634,6 +637,37 @@ function IconField({ value, onChange, inherit: Inherit, canInherit = true }: {
         </div>
       )}
     </Field>
+  );
+}
+
+/** Forms still on their old entry readers (before "Who sees entries"), each with a link to review it in its editor. */
+function EntryAccessNotice() {
+  const { data } = useQuery({
+    queryKey: ["forms", "entry-access-review"],
+    queryFn: () => api.get<{ forms: { id: string; title: string; kind: string; reviewed: boolean; legacyReaders: string[] }[] }>("/forms/entry-access"),
+  });
+  const { data: allRoles } = useRoles();
+  const old = (data?.forms ?? []).filter((f) => !f.reviewed);
+  if (!old.length) return null;
+  const roleName = (k: string) => allRoles?.find((r) => r.key === k)?.name ?? k;
+  // A form may name a role the site doesn't have (an old "site_admin"): it reaches nobody, so it isn't shown.
+  const known = (keys: string[]) => keys.filter((k) => allRoles?.some((r) => r.key === k));
+  return (
+    <Card className="mb-4 border-status-amberText/40 p-4">
+      <p className="text-[14px] font-semibold text-ink">
+        {old.length} form{old.length === 1 ? " still uses its" : "s still use their"} old rule for who sees entries
+      </p>
+      <p className="mt-0.5 text-[12.5px] text-muted">The roles listed see every entry; everyone else sees only their own. Review each in its editor, under Who sees entries.</p>
+      <ul className="mt-2 divide-y divide-hairline">
+        {old.map((f) => (
+          <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{f.title}</span>
+            <span className="text-[12px] text-muted">{known(f.legacyReaders).map(roleName).join(", ") || "Only Admins"} see every entry</span>
+            <Link to={f.kind === "code" ? `/admin/apps/${f.id}` : `/admin/builder/${f.id}`} className="text-[12.5px] font-semibold text-accent dark:text-white">Review</Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

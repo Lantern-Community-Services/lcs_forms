@@ -1,5 +1,7 @@
 import { ConfidentialClientApplication } from "@azure/msal-node";
 import { env } from "../env.js";
+import { prisma } from "../prisma.js";
+import { brandedEmail } from "./emailTemplate.js";
 
 /**
  * Outbound email for form notifications, through Microsoft Graph sendMail with
@@ -10,7 +12,9 @@ import { env } from "../env.js";
  * ideally fenced to that one mailbox with an Exchange application access
  * policy. Until then notifications are recorded on the entry as "not sent".
  *
- * What's sent is always linkOnlyHtml: a line and a link, no attachments.
+ * Every email uses the branded layout (services/emailTemplate.ts). Answers
+ * only appear where a route, rule or report chose them, and only for a
+ * Lantern address; nothing is ever attached. Each send is logged (EmailLog).
  */
 export const mailConfigured = () =>
   Boolean(env.mailFrom && env.microsoft.tenantId && env.microsoft.clientId && env.microsoft.clientSecret);
@@ -30,21 +34,60 @@ export async function graphToken(): Promise<string> {
   return res.accessToken;
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
 /**
- * Every email the app sends is this: one line saying where to look, and a link
- * to it in Lantern Forms. Never form contents, answers or resident details:
- * those stay in the app, behind sign-in, whoever the email reaches.
+ * The email with no answers: one line saying where to look, and a button into
+ * Lantern Forms, in the branded layout. For anyone outside Lantern, and
+ * wherever nothing was chosen to show.
  */
-export function linkOnlyHtml(lead: string, url: string) {
-  return [
-    `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1f2937">`,
-    `<p>${esc(lead)}</p>`,
-    `<p><a href="${esc(url)}" style="font-weight:600">Open it in Lantern Forms</a></p>`,
-    `<p style="color:#6b7280;font-size:12px">The details aren't in this email. Sign in to see them.</p>`,
-    `</div>`,
-  ].join("");
+export function linkOnlyHtml(lead: string, url: string, opts: { kicker?: string | null; whatToDo?: string | null; urgent?: boolean } = {}) {
+  return brandedEmail({
+    kicker: opts.kicker,
+    heading: lead,
+    whatToDo: opts.whatToDo,
+    urgent: opts.urgent,
+    button: { label: "Open it in Lantern Forms", url },
+    note: "The details aren't in this email. Sign in to see them.",
+  });
+}
+
+export type EmailKind = "notification" | "digest" | "route" | "rule" | "report" | "code";
+
+/** A line in EmailLog: what went (or didn't), never the body. */
+export async function logEmail(e: { to: string; subject: string; kind: EmailKind; status: "sent" | "failed" | "skipped"; formId?: string | null; error?: string | null; withAnswers?: boolean }) {
+  await prisma.emailLog
+    .create({
+      data: {
+        to: e.to.slice(0, 320),
+        subject: e.subject.slice(0, 255),
+        kind: e.kind,
+        status: e.status,
+        formId: e.formId ?? null,
+        error: e.error ? e.error.slice(0, 2000) : null,
+        withAnswers: Boolean(e.withAnswers),
+      },
+    })
+    .catch((err) => console.error("[mail] couldn't log an email:", err));
+}
+
+/** sendMail, logged once per address (sent or failed). Throws like sendMail. */
+export async function sendLogged(opts: { to: string[]; subject: string; html: string; replyTo?: string; kind: EmailKind; formId?: string | null; withAnswers?: boolean }) {
+  try {
+    await sendMail(opts);
+    for (const to of opts.to) await logEmail({ to, subject: opts.subject, kind: opts.kind, status: "sent", formId: opts.formId, withAnswers: opts.withAnswers });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    for (const to of opts.to) await logEmail({ to, subject: opts.subject, kind: opts.kind, status: mailConfigured() ? "failed" : "skipped", formId: opts.formId, error, withAnswers: opts.withAnswers });
+    throw err;
+  }
+}
+
+/** Sent emails, newest first: for one form, or all of them. */
+export async function sentEmails(opts: { formId?: string; limit?: number; before?: string } = {}) {
+  return prisma.emailLog.findMany({
+    where: { ...(opts.formId ? { formId: opts.formId } : {}), ...(opts.before ? { createdAt: { lt: new Date(opts.before) } } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
+  });
 }
 
 export async function sendMail(opts: { to: string[]; subject: string; html: string; replyTo?: string }): Promise<void> {

@@ -1,5 +1,5 @@
 import { audit } from "../services/audit.js";
-import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
+import { linkOnlyHtml, mailConfigured, sendLogged } from "../services/mailer.js";
 import { appBaseUrl } from "../env.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import type { LoadedApp } from "./runtime.js";
@@ -79,7 +79,7 @@ export function queueEmail(app: LoadedApp, user: CurrentUser | null, args: { to?
   sentLastHour.set(app.form.id, recent);
 
   const actor = user ? { id: user.userId, name: user.name } : { id: null, name: `Code form “${app.manifest.title}”` };
-  void sendMail({ to, subject, html: linkOnlyHtml(`You have something to look at in “${app.manifest.title}”.`, link), replyTo })
+  void sendLogged({ to, subject, html: linkOnlyHtml(`You have something to look at in “${app.manifest.title}”.`, link, { kicker: app.manifest.title }), replyTo, kind: "code", formId: app.form.id })
     .then(() => audit({ actor, action: "apps.email_sent", summary: `“${app.manifest.title}” emailed ${to.join(", ")}: ${subject}` }))
     .catch((err) => {
       console.error(`[apps] ${app.form.slug} email to ${to.join(", ")} failed:`, err);

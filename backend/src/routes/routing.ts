@@ -7,9 +7,12 @@ import { requirePermission } from "../auth/middleware.js";
 import { actorOf } from "../services/audit.js";
 import { ROLES } from "../services/permissions.js";
 import {
-  eventsOf, loadRouting, planRoutes, rerouteEntry, resetRouting, routingForm, routingLog, saveRouting,
+  emailableFields, eventsOf, loadRouting, planRoutes, rerouteEntry, resetRouting, routeEmailPreview, routingForm, routingLog, saveRouting,
 } from "../services/routing.js";
 import { routeSchema } from "../forms/routingSchema.js";
+import { loadReports, reportSchema, saveReports, sendReport } from "../services/emailReports.js";
+import { sentEmails } from "../services/mailer.js";
+import { followUpView, saveFollowUp } from "../services/followUp.js";
 
 /**
  * Admin → Notification routing: each form's routes (who's told about what),
@@ -68,6 +71,8 @@ routingRouter.get(
     res.json({
       form: { id: form.id, slug: form.slug, title: form.title, kind: form.kind, status: form.status, url: form.kind === "code" ? `/apps/${form.slug}` : `/f/${form.slug}` },
       events: eventsOf(form),
+      // The answers a route may put in its email (Lantern addresses only).
+      emailFields: emailableFields(form),
       roles: ROLES.map((r) => ({ key: r.key, name: r.name, everySite: r.allSites })),
       ...(await loadRouting(form)),
       log: await routingLog(form.id, { limit: 30 }),
@@ -108,6 +113,82 @@ routingRouter.post(
     const [plan] = await planRoutes(form, [route], { event: route.event, title: "Preview", site });
     res.json(plan ?? { people: [], emails: [], notes: ["This route doesn't apply at that site."] });
   })
+);
+
+/**
+ * The email one route would send, before saving it: for the form's latest
+ * entry (or a chosen one), as a Lantern address would get it, and as anyone
+ * else would. Nothing is sent.
+ */
+routingRouter.post(
+  "/:form/email-preview",
+  asyncHandler(async (req, res) => {
+    const body = z.object({ route: z.unknown(), entryId: z.string().optional() }).parse(req.body);
+    const form = await routingForm(req.params.form);
+    const parsed = routeSchema.safeParse(body.route);
+    if (!parsed.success) throw badRequest(parsed.error.issues.map((i) => `${i.path.join(".") || "route"}: ${i.message}`).join("; "));
+    res.json(await routeEmailPreview(form, parsed.data, body.entryId));
+  })
+);
+
+
+// ── Weekly summary reports ───────────────────────────────────────────────
+
+routingRouter.get(
+  "/:form/reports",
+  asyncHandler(async (req, res) => res.json(await loadReports(await routingForm(req.params.form))))
+);
+
+routingRouter.put(
+  "/:form/reports",
+  asyncHandler(async (req, res) => {
+    const body = z.object({ reports: z.array(z.unknown()).max(20), revision: z.number().int().optional() }).parse(req.body);
+    res.json(await saveReports(await routingForm(req.params.form), body.reports, actorOf(req), body.revision));
+  })
+);
+
+/** What a report (saved or not) would send now: who, per site, and the first email. Nothing is sent. */
+routingRouter.post(
+  "/:form/reports/preview",
+  asyncHandler(async (req, res) => {
+    const form = await routingForm(req.params.form);
+    const parsed = reportSchema.safeParse(req.body?.report);
+    if (!parsed.success) throw badRequest(parsed.error.issues.map((i) => `${i.path.join(".") || "report"}: ${i.message}`).join("; "));
+    res.json(await sendReport(form, parsed.data, { actor: actorOf(req), dryRun: true }));
+  })
+);
+
+/** Send a saved report now, on top of its weekly run. */
+routingRouter.post(
+  "/:form/reports/:id/send",
+  asyncHandler(async (req, res) => {
+    const form = await routingForm(req.params.form);
+    const r = (await loadReports(form)).reports.find((x) => x.id === req.params.id);
+    if (!r) throw badRequest(`No report "${req.params.id}".`);
+    const { nextRun: _next, ...report } = r;
+    res.json(await sendReport(form, report, { actor: actorOf(req) }));
+  })
+);
+
+/** The emails this form has sent, newest first (who, subject, whether it went; never the body). */
+routingRouter.get(
+  "/:form/emails",
+  asyncHandler(async (req, res) => {
+    const form = await routingForm(req.params.form);
+    res.json({ items: await sentEmails({ formId: form.id, limit: Number(req.query.limit) || 50, before: typeof req.query.before === "string" ? req.query.before : undefined }) });
+  })
+);
+
+// ── Follow-up ────────────────────────────────────────────────────────────
+
+routingRouter.get(
+  "/:form/follow-up",
+  asyncHandler(async (req, res) => res.json(await followUpView(await routingForm(req.params.form))))
+);
+
+routingRouter.put(
+  "/:form/follow-up",
+  asyncHandler(async (req, res) => res.json(await saveFollowUp(await routingForm(req.params.form), req.body, actorOf(req))))
 );
 
 routingRouter.get(

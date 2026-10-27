@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { badRequest } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 
 /**
@@ -13,7 +15,12 @@ import type { CurrentUser } from "../auth/middleware.js";
  * A form can be limited to some groups, positions (exact job titles) and/or
  * named people (FormAudience). No rows = everyone. A catalog category can be
  * limited the same way (key category:<id>): then it, and every form on its
- * cards, is only for those people, on top of each form's own limit. Admins (forms.manage) always see every form. The check is
+ * cards, is only for those people, on top of each form's own limit.
+ *
+ * Who sees a form's entries (entryReach) is kept here too: each form's
+ * "Who sees entries" (FormRecord "access"/"entries"), or, for a form saved
+ * before that setting existed, its old reader roles (entriesRoles / form.json
+ * entries.read) until an admin reviews it. Admins (forms.manage) always see every form. The check is
  * the same everywhere a form shows up or is used: the catalog and search, a
  * builder form's page and its entries, a code form and its server actions.
  *
@@ -47,16 +54,28 @@ let groups: GroupInfo[] = [];
 let audiences = new Map<string, Audience>();
 /** Built form id → the category of the catalog card that opens it. */
 let formCategory = new Map<string, string>();
+/** Built form id → its "Who sees entries"; none = the form's old reader roles still apply. */
+let entryAccess = new Map<string, EntryAccess>();
+/** Groups whose members see every form and every entry (the seeEverythingGroups setting; IT by default). */
+let everythingGroups = new Set<string>();
 let loading: Promise<void> | null = null;
 let loaded = false;
 
 async function load() {
-  const [rows, aud, linked, cards] = await Promise.all([
+  const [rows, aud, linked, cards, access, everything] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
     prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
     prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
     prisma.formLink.findMany({ select: { id: true, categoryId: true } }),
+    prisma.formRecord.findMany({ where: { collection: ACCESS_COLLECTION, docId: ACCESS_DOC }, select: { formId: true, data: true } }),
+    prisma.setting.findUnique({ where: { key: "seeEverythingGroups" } }),
   ]);
+  entryAccess = new Map(
+    access.flatMap((a) => {
+      const p = entryAccessSchema.safeParse(JSON.parse(a.data));
+      return p.success ? [[a.formId, p.data] as [string, EntryAccess]] : [];
+    })
+  );
   const cardCategory = new Map(cards.map((c) => [c.id, c.categoryId]));
   formCategory = new Map(linked.flatMap((f) => (cardCategory.has(f.catalogLinkId!) ? [[f.id, cardCategory.get(f.catalogLinkId!)!] as [string, string]] : [])));
   groups = rows.map((g) => ({
@@ -75,6 +94,10 @@ async function load() {
     next.set(a.formKey, entry);
   }
   audiences = next;
+  const wanted = (everything?.value ?? "@IT").split(",").map((x) => x.trim()).filter(Boolean);
+  everythingGroups = new Set(
+    groups.filter((g) => wanted.includes(g.id) || (wanted.includes("@IT") && g.name.trim().toLowerCase() === "it")).map((g) => g.id)
+  );
   for (const a of aud) if (a.title) titleCase.set(normTitle(a.title), a.title);
   loaded = true;
 }
@@ -160,9 +183,17 @@ const isEmpty = (a: Audience | undefined) => !a || (!a.groupIds.size && !a.userI
 
 export const isLimited = (formKey: string) => !isEmpty(audiences.get(formKey));
 
-/** Whether this person may see and use the form. Admins always may. */
+/** In a group that sees every form and every entry (IT by default): treated like an Admin for seeing them. */
+export function seesEverything(user: Pick<CurrentUser, "groupIds">): boolean {
+  return (user.groupIds ?? []).some((g) => everythingGroups.has(g));
+}
+
+/** The groups that see every form and every entry, for Admin → Settings. */
+export const everythingGroupIds = () => [...everythingGroups];
+
+/** Whether this person may see and use the form. Admins, and the groups that see everything, always may. */
 export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null }, formKey: string): boolean {
-  if (user.permissions.includes("forms.manage")) return true;
+  if (user.permissions.includes("forms.manage") || seesEverything(user)) return true;
   const a = audiences.get(formKey);
   if (isEmpty(a)) return true;
   if (a!.userIds.has(user.userId)) return true;
@@ -183,6 +214,79 @@ export function canUseBuiltForm(user: Parameters<typeof inAudience>[0], formId: 
 export function isBuiltFormLimited(formId: string): boolean {
   const category = formCategory.get(formId);
   return isLimited(builtFormKey(formId)) || (category ? isLimited(categoryKey(category)) : false);
+}
+
+// ── Who sees a form's entries ────────────────────────────────────────────
+
+const ACCESS_COLLECTION = "access";
+const ACCESS_DOC = "entries";
+
+export const entryAccessSchema = z
+  .object({
+    /** What everyone who can open the form sees: only their own entries, their sites' entries, or every entry. */
+    mode: z.enum(["own", "site", "everyone"]).default("own"),
+    /** These people see every entry, whatever the mode. */
+    seeAll: z
+      .object({
+        groupIds: z.array(z.string().max(64)).max(50).default([]),
+        titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
+        userIds: z.array(z.string().max(64)).max(500).default([]),
+        roles: z.array(z.string().max(64)).max(10).default([]),
+      })
+      .strict()
+      .default({}),
+    /** People a route, rule or follow-up tells about an entry can open that entry. */
+    notified: z.boolean().default(true),
+  })
+  .strict();
+export type EntryAccess = z.infer<typeof entryAccessSchema>;
+
+/** What a new form starts with: everyone sees only their own; the people it notifies can open those. */
+export const NEW_FORM_ENTRY_ACCESS: EntryAccess = { mode: "own", seeAll: { groupIds: [], titles: [], userIds: [], roles: [] }, notified: true };
+
+/** A form's "Who sees entries", or null while its old reader roles still apply. */
+export const entryAccessOf = (formId: string): EntryAccess | null => entryAccess.get(formId) ?? null;
+
+type Viewer = Pick<CurrentUser, "userId" | "permissions" | "groupIds" | "roleKey"> & { title?: string | null };
+
+/**
+ * How much of a form's entries this person sees: "all" (still only their own
+ * sites' if they work at some), "site" (their sites', and their own), or
+ * "own" (their own, and any they were told about). Admins see all.
+ * `legacyReaders` are the form's old reader roles, used until it's reviewed.
+ */
+export function entryReach(formId: string, legacyReaders: string[], user: Viewer): "all" | "site" | "own" {
+  if (user.permissions.includes("forms.manage") || seesEverything(user)) return "all";
+  const s = entryAccess.get(formId);
+  if (!s) return legacyReaders.includes(user.roleKey) ? "all" : "own";
+  const a = s.seeAll;
+  if (
+    a.userIds.includes(user.userId) ||
+    a.roles.includes(user.roleKey) ||
+    (user.title && a.titles.some((t) => normTitle(t) === normTitle(user.title))) ||
+    (user.groupIds ?? []).some((g) => a.groupIds.includes(g))
+  ) {
+    return "all";
+  }
+  return s.mode === "everyone" ? "all" : s.mode === "site" ? "site" : "own";
+}
+
+/** Whether people a form notifies about an entry may open it (the default, and always for an unreviewed form). */
+export const notifiedCanOpen = (formId: string) => entryAccess.get(formId)?.notified ?? true;
+
+/** Set a form's "Who sees entries". */
+export async function setEntryAccess(formId: string, input: unknown, by: string): Promise<EntryAccess> {
+  const p = entryAccessSchema.safeParse(input);
+  if (!p.success) throw badRequest(p.error.issues.map((i) => `${i.path.join(".") || "access"}: ${i.message}`).join("; "));
+  const bad = p.data.seeAll.groupIds.filter((g) => !groups.some((x) => x.id === g));
+  if (bad.length) throw badRequest(`No staff group ${bad.map((b) => `"${b}"`).join(", ")}. Reload and try again.`);
+  await prisma.formRecord.upsert({
+    where: { formId_collection_docId: { formId, collection: ACCESS_COLLECTION, docId: ACCESS_DOC } },
+    create: { formId, collection: ACCESS_COLLECTION, docId: ACCESS_DOC, data: JSON.stringify(p.data), updatedByName: by.slice(0, 255) },
+    update: { data: JSON.stringify(p.data), updatedByName: by.slice(0, 255) },
+  });
+  await reloadAccess();
+  return p.data;
 }
 
 /** Replaces a form's audience. Empty lists = everyone. */

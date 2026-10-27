@@ -46,6 +46,7 @@ const ConfigLayout = lazyScreen(() => import("./components/shell/ConfigLayout"),
 const AdminSites = lazyScreen(() => import("./screens/admin/Sites"), "AdminSites");
 const AdminImport = lazyScreen(() => import("./screens/admin/Import"), "AdminImport");
 const AdminPeople = lazyScreen(() => import("./screens/admin/People"), "AdminPeople");
+const PersonRecordsPage = lazyScreen(() => import("./screens/admin/PersonRecords"), "PersonRecordsPage");
 const AdminGroups = lazyScreen(() => import("./screens/admin/Groups"), "AdminGroups");
 const AdminSettings = lazyScreen(() => import("./screens/admin/Settings"), "AdminSettings");
 const AdminRouting = lazyScreen(() => import("./screens/admin/Routing"), "AdminRouting");
@@ -239,6 +240,12 @@ export function App() {
         <Route element={<RequirePermission anyOf={["users.manage", "users.manageSite"]} />}>
           <Route element={<PeopleFrame />}>
             <Route path="/admin/people" element={<AdminPeople />} />
+          </Route>
+        </Route>
+        {/* A person's Records: Super Admins only. */}
+        <Route element={<RequirePermission anyOf={["people.records"]} />}>
+          <Route element={<PeopleFrame />}>
+            <Route path="/admin/people/:id/records" element={<PersonRecordsPage />} />
           </Route>
         </Route>
 
