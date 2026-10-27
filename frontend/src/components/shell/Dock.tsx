@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { CalendarDays, ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, X } from "lucide-react";
+import { CalendarDays, ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, Pin, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
@@ -9,7 +9,7 @@ import { SearchInput } from "@/components/ui/input";
 import { formLinkIcon, isInternalForm } from "@/lib/formIcons";
 import type { FormLink } from "@/lib/types";
 import { useUnreadCount, useUrgentCount } from "@/lib/notifications";
-import { MAX_NAV_PINS, ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, useReviewCount, type NavForm } from "./navData";
+import { MAX_NAV_PINS, ROSTER_URL, searchForms, shortFormName, useIsLit, useNavCatalog, usePinToggle, useReviewCount, type NavForm } from "./navData";
 
 /**
  * Phone and tablet navigation: a floating dock at the bottom, within thumb
@@ -325,8 +325,24 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
 
   const results = searchForms(categories, q);
   const searching = q.trim() !== "";
-  const tile = (form: FormLink, Icon: React.ElementType, key: string) => (
-    <AppTile key={key} form={form} Icon={Icon} lit={isInternalForm(form.url) && lit(form.url)} count={form.url === ROSTER_URL ? reviewCount : 0} onPick={onClose} />
+  // Editing: tapping a tile pins or unpins it instead of opening it.
+  const [editing, setEditing] = useState(false);
+  const togglePin = usePinToggle();
+  const pinnedIds = new Set(pinned.map((p) => p.form.id));
+  const tile = (form: FormLink, Icon: React.ElementType, key: string, inPinRow = false) => (
+    <AppTile
+      key={key}
+      form={form}
+      Icon={Icon}
+      lit={!editing && isInternalForm(form.url) && lit(form.url)}
+      count={form.url === ROSTER_URL ? reviewCount : 0}
+      onPick={onClose}
+      editing={editing}
+      pinned={pinnedIds.has(form.id)}
+      markPinned={!inPinRow}
+      onTogglePin={() => togglePin(form, pinnedIds.has(form.id))}
+      onLongPress={() => setEditing(true)}
+    />
   );
 
   return (
@@ -365,6 +381,17 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
           {phone && <span className="mx-auto mb-2.5 block h-[5px] w-10 rounded-pill bg-hairline" aria-hidden />}
           <div className="mb-3 flex items-center gap-2">
             <h2 className="flex-1 font-heading text-[21px] font-extrabold text-ink">All forms</h2>
+            <button
+              type="button"
+              onClick={() => setEditing((e) => !e)}
+              aria-pressed={editing}
+              className={cn(
+                "flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-bold transition-colors",
+                editing ? "bg-navy text-white dark:bg-accent" : "bg-navsel/70 text-ink"
+              )}
+            >
+              {editing ? "Done" : <><Pin className="h-4 w-4" /> Edit pins</>}
+            </button>
             <button type="button" onClick={onClose} aria-label="Close" className="flex h-10 w-10 items-center justify-center rounded-full bg-navsel/70 text-ink">
               <X className="h-[18px] w-[18px]" />
             </button>
@@ -381,11 +408,9 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
             )
           ) : (
             <div className="grid gap-y-6 pt-1">
-              {pinned.length > 0 && (
-                <Group title="Pinned">
-                  {pinned.map((p) => tile(p.form, p.Icon, `pin-${p.form.id}`))}
-                </Group>
-              )}
+              <PinRow count={pinned.length} editing={editing} phone={phone}>
+                {pinned.slice(0, MAX_NAV_PINS).map((p) => tile(p.form, p.Icon, `pin-${p.form.id}`, true))}
+              </PinRow>
               {categories.map((c) => (
                 <Group key={c.category.id} title={c.category.name} Icon={c.Icon}>
                   {c.forms.map((f) => tile(f, formLinkIcon(f, c.category.icon || "folder"), f.id))}
@@ -475,16 +500,72 @@ function Group({ title, Icon, children }: { title: string; Icon?: React.ElementT
   );
 }
 
-/** A form as a home-screen app: a square icon with its name underneath, at most two lines. */
-function AppTile({ form, Icon, lit, count, onPick }: { form: FormLink; Icon: React.ElementType; lit: boolean; count: number; onPick: () => void }) {
+/**
+ * The launcher's top row: your pins, always there, in a tray of MAX_NAV_PINS
+ * slots. Open slots show as dashed outlines while editing; with nothing pinned
+ * and not editing, a line says how to pin.
+ */
+function PinRow({ count, editing, phone, children }: { count: number; editing: boolean; phone: boolean; children: React.ReactNode }) {
+  const open = Math.max(0, MAX_NAV_PINS - count);
+  return (
+    <section className="rounded-[18px] bg-sidebar px-2 pb-2 pt-2.5">
+      <h3 className="mb-2 flex items-center gap-1.5 px-1 text-micro font-extrabold uppercase tracking-[0.04em] text-muted">
+        <Pin className="h-3.5 w-3.5" />
+        <span className="flex-1">Pinned</span>
+        <span className="font-bold normal-case tracking-normal">{count} of {MAX_NAV_PINS}</span>
+      </h3>
+      {count === 0 && !editing ? (
+        <p className="px-1 pb-1.5 text-[13px] text-muted">Tap Edit pins, or press and hold a form, to keep it here and in the dock.</p>
+      ) : (
+        // A phone's five fill the width; a tablet's line up with the tiles below.
+        <div className={phone ? "grid grid-cols-5 gap-x-1 gap-y-4" : TILE_GRID}>
+          {children}
+          {editing &&
+            Array.from({ length: open }, (_, i) => (
+              <span key={i} aria-hidden className="flex justify-center py-1">
+                <span className="h-[58px] w-[58px] rounded-[16px] border-[1.5px] border-dashed border-muted/40" />
+              </span>
+            ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** How long a press has to be held to start editing pins. */
+const LONG_PRESS_MS = 450;
+
+/**
+ * A form as a home-screen app: a square icon with its name underneath, at
+ * most two lines. While editing pins it's a toggle instead of a link, with a
+ * pin badge on its corner; pressing and holding it starts editing.
+ */
+function AppTile({ form, Icon, lit, count, onPick, editing, pinned, markPinned, onTogglePin, onLongPress }: {
+  form: FormLink;
+  Icon: React.ElementType;
+  lit: boolean;
+  count: number;
+  onPick: () => void;
+  editing: boolean;
+  pinned: boolean;
+  /** Out of edit mode, a small pin on a pinned tile (not needed in the pin row itself). */
+  markPinned: boolean;
+  onTogglePin: () => Promise<boolean>;
+  onLongPress: () => void;
+}) {
   const internal = isInternalForm(form.url);
-  const className = "group flex min-w-0 flex-col items-center gap-1.5 rounded-[14px] px-0.5 py-1 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent";
+  // A refused pin (already at the limit) shakes, once (see .pin-refused).
+  const [refused, setRefused] = useState(false);
+  const press = useLongPress(onLongPress);
+  const className = "group flex min-w-0 flex-col items-center gap-1.5 rounded-[14px] px-0.5 py-1 text-center outline-none [-webkit-touch-callout:none] select-none focus-visible:ring-2 focus-visible:ring-accent";
   const body = (
     <>
       <span
+        onAnimationEnd={() => setRefused(false)}
         className={cn(
           "relative flex h-[58px] w-[58px] items-center justify-center rounded-[16px] transition-colors",
-          lit ? "bg-navy text-white dark:bg-accent" : "bg-navsel text-accent group-hover:bg-navsel/70 group-active:scale-95 dark:text-white"
+          lit ? "bg-navy text-white dark:bg-accent" : "bg-navsel text-accent group-hover:bg-navsel/70 group-active:scale-95 dark:text-white",
+          refused && "pin-refused"
         )}
       >
         <Icon className="h-[26px] w-[26px]" />
@@ -493,9 +574,22 @@ function AppTile({ form, Icon, lit, count, onPick }: { form: FormLink; Icon: Rea
             <CountBadge count={count} max={99} label={`${count} to review`} />
           </span>
         )}
-        {!internal && (
+        {!internal && !editing && (
           <span className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-hairline bg-surface text-muted" aria-hidden>
             <ExternalLink className="h-2.5 w-2.5" />
+          </span>
+        )}
+        {(editing || (pinned && markPinned)) && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute -left-1.5 -top-1.5 flex h-[22px] w-[22px] items-center justify-center rounded-full border transition-colors",
+              pinned ? "border-transparent bg-status-amberDot text-white" : "border-hairline bg-surface text-muted",
+              // Out of edit mode the badge is only a small mark on a pinned tile.
+              !editing && "scale-75"
+            )}
+          >
+            <Pin className={cn("h-3 w-3", pinned && "fill-current")} />
           </span>
         )}
       </span>
@@ -504,9 +598,74 @@ function AppTile({ form, Icon, lit, count, onPick }: { form: FormLink; Icon: Rea
       </span>
     </>
   );
+  if (editing) {
+    return (
+      <button
+        type="button"
+        onClick={async () => {
+          if (!(await onTogglePin())) setRefused(true);
+        }}
+        aria-pressed={pinned}
+        aria-label={pinned ? `Unpin ${form.title}` : `Pin ${form.title}`}
+        className={className}
+      >
+        {body}
+      </button>
+    );
+  }
   return internal ? (
-    <NavLink to={form.url} onClick={onPick} title={form.title} className={className}>{body}</NavLink>
+    <NavLink to={form.url} onClick={press.guard(onPick)} {...press.handlers} title={form.title} className={className}>{body}</NavLink>
   ) : (
-    <a href={form.url} target="_blank" rel="noopener noreferrer" onClick={onPick} title={`${form.title} (opens in a new tab)`} className={className}>{body}</a>
+    <a href={form.url} target="_blank" rel="noopener noreferrer" onClick={press.guard(onPick)} {...press.handlers} title={`${form.title} (opens in a new tab)`} className={className}>{body}</a>
   );
+}
+
+/**
+ * Press and hold (touch, or a right click) to do something other than the
+ * tap. A finger that moves is scrolling, and cancels it. The click that ends
+ * a long press is swallowed by guard(), so the form doesn't open as well.
+ */
+function useLongPress(onLongPress: () => void) {
+  const timer = useRef<number | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const fired = useRef(false);
+  const cancel = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    start.current = null;
+  };
+  useEffect(() => cancel, []);
+  return {
+    handlers: {
+      onPointerDown: (e: React.PointerEvent) => {
+        fired.current = false;
+        if (e.pointerType !== "touch") return;
+        start.current = { x: e.clientX, y: e.clientY };
+        timer.current = window.setTimeout(() => {
+          fired.current = true;
+          cancel();
+          onLongPress();
+        }, LONG_PRESS_MS);
+      },
+      onPointerMove: (e: React.PointerEvent) => {
+        const s = start.current;
+        if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 8) cancel();
+      },
+      onPointerUp: cancel,
+      onPointerCancel: cancel,
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (!fired.current) onLongPress();
+        fired.current = true;
+      },
+    },
+    guard: (onClick: () => void) => (e: React.MouseEvent) => {
+      if (fired.current) {
+        e.preventDefault();
+        fired.current = false;
+        return;
+      }
+      onClick();
+    },
+  };
 }

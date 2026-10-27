@@ -1,22 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, Lock, Pin } from "lucide-react";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
-import { MAX_NAV_PINS } from "@/components/shell/navData";
+import { usePinToggle } from "@/components/shell/navData";
 import { Tag } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
-import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { canOpenForm, formIcon, formLinkIcon, formNeeds, isInternalForm } from "@/lib/formIcons";
-import { formsApi, sampleKey, useForms } from "@/lib/queries";
-import { isSample } from "@/lib/tour/sampleData";
+import { useForms } from "@/lib/queries";
 import { useTourSample } from "@/lib/tour/store";
-import type { FormCatalog, FormCategory, FormLink } from "@/lib/types";
+import type { FormCategory, FormLink } from "@/lib/types";
 import { useSearchParam } from "@/lib/useSearchParam";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /**
  * The Forms page: every form Lantern staff fill out, in one place to browse,
@@ -46,7 +43,7 @@ export function useCatalogBrowser() {
   const [askedRaw, setPick] = useSearchParam("category");
   // "favorites" was this group's name before it became Pinned; old links still land on it.
   const asked = askedRaw === "favorites" ? FAVORITES : askedRaw;
-  const toggleFavorite = useFavoriteToggle();
+  const toggleFavorite = usePinToggle();
 
   // The welcome tour has its search typed in here; its sample forms leave with it, and so does the search.
   const sample = useTourSample();
@@ -252,39 +249,6 @@ function filterCatalog(categories: FormCategory[], q: string, pick: Selection, f
       }),
     }))
     .filter((c) => c.forms.length > 0);
-}
-
-/**
- * Pin / unpin, optimistically: the pin fills the instant it's tapped and
- * springs back, with a toast, only if the server refuses. Resolves false when
- * the pin wasn't taken (so the button can shake), true otherwise.
- */
-function useFavoriteToggle() {
-  const qc = useQueryClient();
-  const toast = useToast();
-  return async (form: FormLink, isFavorite: boolean): Promise<boolean> => {
-    // The welcome tour's sample forms keep their pins in their own cache (formsApi doesn't send them).
-    const key = isSample(form.id) ? sampleKey("forms") : ["forms", "visible"];
-    const before = qc.getQueryData<FormCatalog>(key);
-    if (!isFavorite && before && before.favorites.length >= MAX_NAV_PINS) {
-      toast(`You can pin up to ${MAX_NAV_PINS} forms. Unpin one to make room.`, "error");
-      return false;
-    }
-    if (before) {
-      qc.setQueryData<FormCatalog>(key, {
-        ...before,
-        favorites: isFavorite ? before.favorites.filter((id) => id !== form.id) : [...before.favorites, form.id],
-      });
-    }
-    try {
-      await (isFavorite ? formsApi.unfavorite(form.id) : formsApi.favorite(form.id));
-      return true;
-    } catch (e) {
-      if (before) qc.setQueryData(key, before);
-      toast(errorMessage(e, "Couldn't save that pin."), "error");
-      return false;
-    }
-  };
 }
 
 /** Where a link out goes, in words staff recognise. */

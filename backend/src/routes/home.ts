@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { canUseBuiltForm } from "../services/staffGroups.js";
+import { canUseBuiltForm, entryReach, groupFormKeys, personFormKeys } from "../services/staffGroups.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { asyncHandler } from "../http.js";
@@ -127,23 +127,54 @@ const VERBS: Record<string, string> = {
   "tenant.kept": "checked in",
 };
 
+/**
+ * How much of what happened a person's Recent activity shows, by role:
+ * - "sites": Site Managers (and Admins, whose sites are all of them) see
+ *   everything at their sites: every form entry, roster change and old-site
+ *   submission, whoever made it;
+ * - "assigned": Main Office Staff see entries at their sites too, but only on
+ *   the forms given to their groups or to them (People & roles → Groups);
+ * - "own": everyone else (Site Staff, Developers) sees only what they did.
+ * Everyone always sees their own.
+ */
+type ActivityReach = "sites" | "assigned" | "own";
+
+function activityReach(req: Request): ActivityReach {
+  const role = req.user!.roleKey;
+  if (role === "admin" || role === "site_manager") return "sites";
+  if (role === "main_office") return "assigned";
+  return "own";
+}
+
+/** The built forms given to this person's groups or to them directly (keys form:…; cards that open a built form use that key too). */
+function assignedBuiltFormIds(req: Request): string[] {
+  const keys = new Set([...req.user!.groupIds.flatMap(groupFormKeys), ...personFormKeys(req.user!.userId).added]);
+  return [...keys].filter((k) => k.startsWith("form:")).map((k) => k.slice("form:".length));
+}
+
 async function recentActivity(req: Request, rosterSites: ScopedSite[] | null): Promise<ActivityItem[]> {
   const me = req.user!.userId;
   const take = 15;
-  const siteName = new Map((rosterSites ?? []).map((s) => [s.id, s.name]));
+  const reach = activityReach(req);
+  // Null: every site (an Admin).
+  const mySites = req.user!.siteIds;
+  const siteWhere = mySites ? { siteId: { in: mySites } } : { siteId: { not: null } };
   const rosterIds = rosterSites?.map((s) => s.id) ?? [];
+  const assigned = reach === "assigned" ? assignedBuiltFormIds(req) : [];
 
-  const [audits, gfActivity, myEntries] = await Promise.all([
-    rosterIds.length
+  const entrySelect = { id: true, createdAt: true, siteId: true, createdById: true, createdByName: true, form: { select: { id: true, title: true, slug: true, kind: true } } } as const;
+  const [audits, gfActivity, myEntries, theirEntries] = await Promise.all([
+    // Roster changes: all of them at your sites, or only your own.
+    rosterIds.length && reach !== "assigned"
       ? prisma.auditEvent.findMany({
-          where: { siteId: { in: rosterIds }, action: { in: Object.keys(VERBS) } },
+          where: { siteId: { in: rosterIds }, action: { in: Object.keys(VERBS) }, ...(reach === "own" ? { actorId: me } : {}) },
           orderBy: { createdAt: "desc" },
           take,
           select: { id: true, actorId: true, actorName: true, action: true, summary: true, tenantId: true, siteId: true, createdAt: true, tenant: { select: { firstName: true, lastName: true, preferredName: true } } },
         })
       : Promise.resolve([]),
-    // Old-site (Gravity Forms) submissions that named a resident at these sites.
-    rosterIds.length
+    // Old-site (Gravity Forms) submissions that named a resident at these sites. Nobody's "own", so only for "sites".
+    rosterIds.length && reach === "sites"
       ? prisma.tenantActivity.findMany({
           where: { source: "gravity_forms", tenant: { siteId: { in: rosterIds } } },
           orderBy: { occurredAt: "desc" },
@@ -155,11 +186,32 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null): P
       where: { createdById: me, status: "active", source: { not: "preview" } },
       orderBy: { createdAt: "desc" },
       take,
-      select: { id: true, createdAt: true, siteId: true, form: { select: { title: true, slug: true, kind: true } } },
+      select: entrySelect,
     }),
+    // Other people's entries at your sites: any form, or only the ones given to you.
+    reach === "sites" || (reach === "assigned" && assigned.length && mySites?.length)
+      ? prisma.formEntry.findMany({
+          where: {
+            ...siteWhere,
+            status: "active",
+            source: { not: "preview" },
+            OR: [{ createdById: null }, { createdById: { not: me } }],
+            ...(reach === "assigned" ? { formId: { in: assigned } } : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take,
+          select: entrySelect,
+        })
+      : Promise.resolve([]),
   ]);
 
+  // Site names for every row, not only the roster's sites (an entry's site may be any of yours).
+  const siteIds = new Set<string>([...rosterIds, ...[...myEntries, ...theirEntries].map((e) => e.siteId).filter((s): s is string => Boolean(s))]);
+  const siteRows = siteIds.size ? await prisma.site.findMany({ where: { id: { in: [...siteIds] } }, select: { id: true, name: true } }) : [];
+  const siteName = new Map(siteRows.map((s) => [s.id, s.name]));
   const site = (id: string | null | undefined) => (id ? siteName.get(id) ?? null : null);
+  const formHref = (f: { slug: string; kind: string }) => (f.kind === "code" ? `/apps/${f.slug}` : `/f/${f.slug}`);
+
   const items: ActivityItem[] = [
     ...audits.map((a): ActivityItem => {
       const mine = a.actorId === me;
@@ -192,8 +244,26 @@ async function recentActivity(req: Request, rosterSites: ScopedSite[] | null): P
       subject: e.form.title,
       detail: site(e.siteId),
       at: e.createdAt,
-      href: e.form.kind === "code" ? `/apps/${e.form.slug}` : `/f/${e.form.slug}`,
+      href: formHref(e.form),
     })),
+    // Someone else's entry: listed only on a form this person can see, and
+    // linked only where its entries are open to them, so a row never leads to a 403.
+    ...theirEntries
+      .filter((e) => canUseBuiltForm(req.user!, e.form.id))
+      .map((e): ActivityItem => {
+        // A code form opens on its own pages (anyone who can see the form may); a built form's entry needs its entries open to them.
+        const opens = e.form.kind === "code" || entryReach(e.form.id, [], req.user!) !== "own";
+        return {
+          id: `entry:${e.id}`,
+          actorName: e.createdByName,
+          mine: false,
+          verb: `${e.createdByName.split(" ")[0] || "Someone"} submitted`,
+          subject: e.form.title,
+          detail: site(e.siteId),
+          at: e.createdAt,
+          href: opens ? (e.form.kind === "code" ? formHref(e.form) : `/f/${e.form.slug}/entries/${e.id}`) : null,
+        };
+      }),
   ];
   return items.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 20);
 }
@@ -226,6 +296,40 @@ async function recentForms(req: Request): Promise<RecentForm[]> {
   return [...byForm.values()].slice(0, 6);
 }
 
+/**
+ * The forms the Shortcuts widget suggests, as catalog card ids, best first:
+ * those given to the person's groups or to them (their group), then the ones
+ * people in their role have used most at their sites lately (their role and
+ * location), then what anyone uses there, so someone in a role nobody has
+ * used yet still gets their sites' forms. The screen keeps only those it lists in the person's catalog, so
+ * nothing here can show a form they can't open.
+ */
+async function shortcutForms(req: Request): Promise<string[]> {
+  const SHOWN = 8;
+  const user = req.user!;
+  const since = new Date(Date.now() - 30 * 86400_000);
+  const given = [...new Set([...user.groupIds.flatMap(groupFormKeys), ...personFormKeys(user.userId).added])];
+  const siteFilter = user.siteIds === null ? Prisma.empty : user.siteIds.length ? Prisma.sql`AND e.siteId IN (${Prisma.join(user.siteIds)})` : null;
+  const [cards, popular] = await Promise.all([
+    prisma.builtForm.findMany({ where: { catalogLinkId: { not: null }, status: "published" }, select: { id: true, catalogLinkId: true } }),
+    // Someone with no sites yet has no "location" to go on.
+    siteFilter
+      ? prisma.$queryRaw<{ formId: string }[]>`
+          SELECT TOP 20 e.formId FROM FormEntry e
+          LEFT JOIN [User] u ON u.id = e.createdById
+          WHERE e.status = 'active' AND e.source <> 'preview' AND e.createdAt >= ${since} ${siteFilter}
+          GROUP BY e.formId
+          ORDER BY SUM(CASE WHEN u.roleKey = ${user.roleKey} THEN 1 ELSE 0 END) DESC, COUNT(*) DESC`
+      : Promise.resolve([]),
+  ]);
+  const cardOf = new Map(cards.map((c) => [c.id, c.catalogLinkId!]));
+  const ids = [
+    ...given.map((k) => (k.startsWith("form:") ? cardOf.get(k.slice("form:".length)) : k.startsWith("card:") ? k.slice("card:".length) : undefined)),
+    ...popular.filter((p) => canUseBuiltForm(user, p.formId)).map((p) => cardOf.get(p.formId)),
+  ].filter((id): id is string => Boolean(id));
+  return [...new Set(ids)].slice(0, SHOWN);
+}
+
 homeRouter.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -233,11 +337,12 @@ homeRouter.get(
     const weekAgo = new Date(Date.now() - 7 * 86400_000);
     const rosterSites = has(req, "roster.view") ? await sitesInScope(req, undefined) : null;
 
-    const [roster, drafts, activity, recent, entriesWeek, residents] = await Promise.all([
+    const [roster, drafts, activity, recent, shortcuts, entriesWeek, residents] = await Promise.all([
       rosterSites ? rosterAttention(rosterSites) : Promise.resolve({ items: [], total: 0 }),
       myDrafts(req),
       recentActivity(req, rosterSites),
       recentForms(req),
+      shortcutForms(req),
       prisma.formEntry.count({ where: { createdById: me, status: "active", source: { not: "preview" }, createdAt: { gte: weekAgo } } }),
       rosterSites?.length ? prisma.tenant.count({ where: { siteId: { in: rosterSites.map((s) => s.id) }, status: "active" } }) : Promise.resolve(null),
     ]);
@@ -247,6 +352,9 @@ homeRouter.get(
       attention,
       activity,
       recentForms: recent,
+      shortcutForms: shortcuts,
+      // For the Shortcuts widget's per-site roster links.
+      rosterSites: rosterSites ? rosterSites.map((s) => ({ code: s.code, name: s.name })) : null,
       stats: {
         attention: attention.length,
         urgent: attention.filter((a) => a.tone === "warn").length,
