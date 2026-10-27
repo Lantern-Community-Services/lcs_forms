@@ -3,7 +3,8 @@ import { useSyncExternalStore } from "react";
 /**
  * Locking the device to one form, for handing it to a resident.
  *
- * Staff open a form and tap "Lock for resident". Until someone taps Unlock,
+ * Staff open a form and tap "Hide nav bar" ("Hide dock" on an iPad or phone).
+ * Until someone taps "Show nav bar" / "Show dock",
  * the app shows only that form: no sidebar, dock or launcher,
  * no admin links or other tabs, and any way out of the form (a link, the back
  * button) lands back on it. A code form can still move between its own pages.

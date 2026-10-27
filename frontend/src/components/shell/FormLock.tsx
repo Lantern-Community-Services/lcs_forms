@@ -1,5 +1,6 @@
-import { Lock, LockOpen } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useDeviceKind } from "@/lib/device";
 import { lockForm, unlockForm, useFormLock, type FormLock } from "@/lib/formLock";
 import { cn } from "@/lib/utils";
 
@@ -9,9 +10,15 @@ export function useLocked(): FormLock | null {
   return useFormLock(user?.id);
 }
 
-/** "Lock for resident", on a form's own screen: the device shows only this form until Unlock. */
+/** What the lock hides on this device: the sidebar on a computer, the dock on an iPad or phone. */
+function useChromeName() {
+  return useDeviceKind() === "desktop" ? "nav bar" : "dock";
+}
+
+/** "Hide nav bar" / "Hide dock", on a form's own screen: the device shows only this form until it's shown again. */
 export function LockFormButton({ base, title, className }: { base: string; title: string; className?: string }) {
   const { user } = useAuth();
+  const chrome = useChromeName();
   if (!user) return null;
   return (
     <button
@@ -19,23 +26,24 @@ export function LockFormButton({ base, title, className }: { base: string; title
       data-tour="form-lock"
       onClick={() => lockForm({ base, title, userId: user.id })}
       className={cn("inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white md:text-[13px]", className)}
-      title="Hand this device to a resident: only this form stays open until you unlock it"
+      title={`Hand this device to a resident: hides the ${chrome} so only this form stays open`}
     >
-      <Lock className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Lock for resident</span>
+      <EyeOff className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Hide {chrome}</span>
     </button>
   );
 }
 
 /** Along the top of the screen while the device is locked: what it's locked to, and the way out. */
 export function LockedBar({ lock }: { lock: FormLock }) {
+  const chrome = useChromeName();
   return (
     <div className="flex flex-none items-center gap-2 border-b border-hairline bg-sidebar px-4 pb-1.5 pt-[max(6px,var(--safe-top))] text-[13px] md:px-7">
-      <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />
+      <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted" />
       <span className="min-w-0 flex-1 truncate text-muted">
         Locked to <span className="font-semibold text-ink">{lock.title}</span>
       </span>
       <button type="button" onClick={unlockForm} className="inline-flex min-h-[36px] shrink-0 items-center gap-1 px-1 font-semibold text-accent dark:text-white">
-        <LockOpen className="h-3.5 w-3.5" /> Unlock
+        <Eye className="h-3.5 w-3.5" /> Show {chrome}
       </button>
     </div>
   );
