@@ -226,6 +226,10 @@ declare module "@lcs/sdk" {
     voidedAt: string | null;
     source: string;
     clientId: string | null;
+    /** The kind of device it was filled on (recorded for every entry made from a page), or null. */
+    deviceKind: "phone" | "tablet" | "desktop" | null;
+    /** Seconds from the person's first tap or keystroke on the page to saving it (since the page opened or the last save), or null. */
+    fillSeconds: number | null;
     updatedAt: string;
     /** Who last edited it (entries.update), or null. */
     updatedByName: string | null;
@@ -628,6 +632,10 @@ declare module "@lcs/server" {
     createdByName: string;
     status: "active" | "voided";
     overrideReason: string | null;
+    /** The kind of device it was filled on (recorded for every entry made from a page), or null. */
+    deviceKind: "phone" | "tablet" | "desktop" | null;
+    /** Seconds from the person's first tap or keystroke on the page to saving it (since the page opened or the last save), or null. */
+    fillSeconds: number | null;
     /** Pass to entries.update's ifUpdatedAt so a change made meanwhile isn't overwritten. */
     updatedAt: string;
   }

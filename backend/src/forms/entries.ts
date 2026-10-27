@@ -20,6 +20,7 @@ import {
   type Field, type FormDoc, type Values,
 } from "./engine.js";
 import { readDoc, versionDoc } from "./service.js";
+import { deviceLabel, fillMeta, fillMinutes } from "./fillMeta.js";
 
 /**
  * Filling in a built form and reading the entries back.
@@ -168,6 +169,9 @@ export interface SubmitInput {
   source: "app" | "public" | "api" | "mcp";
   ip?: string;
   userAgent?: string;
+  /** The device it was filled on and the seconds it took (forms/fillMeta.ts), as the fill page measured them. */
+  deviceKind?: string | null;
+  fillSeconds?: number | null;
   /** Messages from custom code blocks that reported themselves invalid. */
   codeErrors?: Record<string, string>;
   /** Machine callers with no person: the site ids they may use (null = every site). */
@@ -289,6 +293,7 @@ export async function submitEntry(input: SubmitInput) {
         createdByName: actorName,
         ip: input.ip?.slice(0, 64) ?? null,
         userAgent: input.userAgent?.slice(0, 300) ?? null,
+        ...fillMeta(input),
       },
     });
   } catch (e) {
@@ -487,6 +492,8 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     starred: e.starred,
     createdByName: e.createdByName,
     createdAt: e.createdAt,
+    deviceKind: e.deviceKind,
+    fillSeconds: e.fillSeconds,
     updatedAt: e.updatedAt,
     updatedByName: e.updatedByName,
     voidedAt: e.voidedAt,
@@ -555,10 +562,10 @@ export async function exportEntries(form: BuiltForm, doc: FormDoc, where: Prisma
   const rows = await prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take: 50_000 });
   const sites = new Map((await prisma.site.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
   const cols = exportColumns(doc);
-  const header = ["Entry ID", "Submitted", "Submitted by", "Site", ...cols.map((c) => c.header), "Status", "Void reason"];
+  const header = ["Entry ID", "Submitted", "Submitted by", "Site", ...cols.map((c) => c.header), "Status", "Void reason", "Device", "Time to fill (minutes)"];
   const data = rows.map((e) => {
     const v = JSON.parse(e.data) as Values;
-    return [e.id, stamp(e.createdAt), e.createdByName, e.siteId ? sites.get(e.siteId) ?? "" : "", ...cols.map((c) => c.get(v)), e.status, e.voidReason ?? ""];
+    return [e.id, stamp(e.createdAt), e.createdByName, e.siteId ? sites.get(e.siteId) ?? "" : "", ...cols.map((c) => c.get(v)), e.status, e.voidReason ?? "", deviceLabel(e.deviceKind), fillMinutes(e.fillSeconds)];
   });
   const base = `${form.slug}-entries-${new Date().toISOString().slice(0, 10)}`;
   if (format === "csv") {

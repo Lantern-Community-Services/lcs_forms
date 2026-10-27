@@ -6,7 +6,7 @@ import { loadTenants } from "@/lib/rosterStore";
 import { useToast } from "@/components/ui/toast";
 import type { Site, Tenant } from "@/lib/types";
 import { runtimeApi, submitAppEntry, type AppRuntime } from "./api";
-import { forcedDevice } from "@/lib/device";
+import { entryDeviceKind, forcedDevice } from "@/lib/device";
 import { mobileBrowser, printPdf } from "@/lib/exportPipeline";
 import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
 import { CameraCapture, shrinkImage, type CameraRequest } from "./CameraCapture";
@@ -309,7 +309,8 @@ export function AppFrame({
       "entries.get": async (id: string) => runtimeApi.entry(slug, draft, id),
       "entries.create": async (entry: Record<string, unknown>, opts: { offline?: boolean; offlineOverride?: string }) => {
         const clientId = (entry.clientId as string) || crypto.randomUUID();
-        const body = { ...entry, clientId };
+        // The device is the host's to say (forms/fillMeta.ts on the server); the frame sends fillSeconds.
+        const body = { ...entry, clientId, deviceKind: entryDeviceKind() };
         if (opts?.offline) {
           await enqueue({ clientId, slug, title: latest.current.runtime.form.title, draft, userId: latest.current.runtime.user.id, entry: body, offlineOverride: opts.offlineOverride });
           return { status: "queued", clientId };

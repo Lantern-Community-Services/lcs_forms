@@ -217,7 +217,7 @@ const HANDOFF_SCRIPT = String.raw`
       case "local.remove": delete store[args[0]]; return null;
       case "entries.create":
         if (args[1] && args[1].offline) return { status: "queued", clientId: args[0].clientId || "demo" };
-        return { status: "saved", entry: { id: "demo-" + Date.now(), data: args[0].data, site: null, tenantId: args[0].tenantId || null, occurredAt: now, createdAt: now, createdById: "demo", createdByName: "Demo Staff", status: "active", overrideReason: args[0].override || null, voidReason: null, voidedByName: null, voidedAt: null, source: "demo", clientId: args[0].clientId || null } };
+        return { status: "saved", entry: { id: "demo-" + Date.now(), data: args[0].data, site: null, tenantId: args[0].tenantId || null, occurredAt: now, createdAt: now, createdById: "demo", createdByName: "Demo Staff", status: "active", overrideReason: args[0].override || null, voidReason: null, voidedByName: null, voidedAt: null, source: "demo", clientId: args[0].clientId || null, deviceKind: "tablet", fillSeconds: args[0].fillSeconds == null ? null : Math.round(args[0].fillSeconds) } };
       case "entries.list": return { items: [], total: 0 };
       case "entries.get": throw new Error("No sample entry " + args[0]);
       case "collections.list": return [];

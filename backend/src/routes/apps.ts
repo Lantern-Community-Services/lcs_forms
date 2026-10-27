@@ -18,6 +18,7 @@ import {
 } from "../apps/runtime.js";
 import { readAppFile, uploadAppFile } from "../apps/files.js";
 import { fileBytes } from "../services/fileStore.js";
+import { fillMetaFields } from "../forms/fillMeta.js";
 import {
   createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, projectDetail, publishProject, restoreProjectVersion,
   saveProject, versionFiles,
@@ -259,10 +260,11 @@ appsRouter.post(
         occurredAt: z.string().max(40).nullable().optional(),
         clientId: z.string().max(100).nullable().optional(),
         override: z.string().max(500).nullable().optional(),
+        ...fillMetaFields,
       })
       .parse(req.body);
     const app = await appFor(req);
-    const out = await createEntry(app, req.user!, body);
+    const out = await createEntry(app, req.user!, { ...body, ip: req.ip, userAgent: req.headers["user-agent"] });
     const status = out.status === "saved" ? 201 : out.status === "needs_override" ? 409 : 422;
     res.status(status).json({ ...out, logs: app.draft ? out.logs : undefined });
   })
