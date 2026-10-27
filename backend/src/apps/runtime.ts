@@ -22,6 +22,7 @@ import { noteCalendarChange } from "../services/outlookSync.js";
 import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
 import { canUseBuiltForm, entryReach } from "../services/staffGroups.js";
+import { fillMeta } from "../forms/fillMeta.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -152,6 +153,8 @@ export function entryOut(e: FormEntry, sites: Sites, fields?: string[]) {
     voidedAt: e.voidedAt?.toISOString() ?? null,
     source: e.source,
     clientId: e.clientId,
+    deviceKind: e.deviceKind,
+    fillSeconds: e.fillSeconds,
     updatedAt: e.updatedAt.toISOString(),
     updatedByName: e.updatedByName,
   };
@@ -160,7 +163,7 @@ export function entryOut(e: FormEntry, sites: Sites, fields?: string[]) {
 /** Every FormEntry column but `data`. */
 const ENTRY_META = {
   id: true, formId: true, formVersion: true, siteId: true, source: true, status: true, occurredAt: true, tenantId: true, overrideReason: true,
-  clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, voidedAt: true, voidedByName: true, voidReason: true,
+  clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, deviceKind: true, fillSeconds: true, voidedAt: true, voidedByName: true, voidReason: true,
   starred: true, updatedByName: true, createdAt: true, updatedAt: true,
   followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpRemindedAt: true, followUpReminders: true,
 } satisfies Prisma.FormEntrySelect;
@@ -298,6 +301,11 @@ export interface NewEntryInput {
   occurredAt?: string | null;
   clientId?: string | null;
   override?: string | null;
+  /** The device it was filled on and the seconds it took (forms/fillMeta.ts); the page's runtime sends them. */
+  deviceKind?: string | null;
+  fillSeconds?: number | null;
+  ip?: string | null;
+  userAgent?: string | null;
 }
 
 const siteAllowed = (user: CurrentUser | null, siteId: string, machineSiteId?: string | null) =>
@@ -385,6 +393,9 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
         overrideReason: input.override?.trim().slice(0, 500) || null,
         createdById: user?.userId ?? null,
         createdByName: user?.name ?? opts.actorName ?? "System",
+        ip: input.ip?.slice(0, 64) ?? null,
+        userAgent: input.userAgent?.slice(0, 300) ?? null,
+        ...fillMeta(input),
       },
     });
   } catch (e) {
@@ -576,6 +587,8 @@ function serverEntry(e: FormEntry, fields?: string[]) {
     createdByName: e.createdByName,
     status: e.status,
     overrideReason: e.overrideReason,
+    deviceKind: e.deviceKind,
+    fillSeconds: e.fillSeconds,
     updatedAt: e.updatedAt.toISOString(),
   };
 }

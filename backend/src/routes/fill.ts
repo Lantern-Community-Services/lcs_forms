@@ -7,6 +7,7 @@ import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized 
 import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
 import { canFollowUp, loadFollowUp, requireFollowUp, setFollowUp } from "../services/followUp.js";
+import { fillMetaFields } from "../forms/fillMeta.js";
 import {
   canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
   entryScope, liveDoc, saveUpload, submitEntry, updateEntry, type EntryFilter,
@@ -56,6 +57,7 @@ const submitBody = z.object({
   codeErrors: z.record(z.string().max(300)).optional(),
   /** The published version the page showed (forms/entries.ts SubmitInput.formVersion). */
   formVersion: z.number().int().positive().nullable().optional(),
+  ...fillMetaFields,
   /** Honeypot: a hidden input real people never fill in. */
   website_hp: z.string().optional(),
 });
@@ -80,6 +82,8 @@ fillRouter.post(
       source: req.user ? "app" : "public",
       ip: req.ip,
       userAgent: req.headers["user-agent"],
+      deviceKind: body.deviceKind,
+      fillSeconds: body.fillSeconds,
     });
     res.status(duplicate ? 200 : 201).json({ id: entry.id, duplicate, values: JSON.parse(entry.data) });
   })

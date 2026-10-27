@@ -42,6 +42,20 @@ export function isMobileDevice(): boolean {
 }
 
 /**
+ * The hardware an entry was filled on, recorded with it (backend forms/fillMeta.ts):
+ * the device itself, not the window, so a narrow computer window is still a
+ * computer. A mobile device (as isMobileDevice) whose screen's short side is
+ * under 600px is a phone, any other a tablet; everything else a computer.
+ */
+export function entryDeviceKind(): DeviceKind {
+  const forced = forcedDevice();
+  if (forced) return forced;
+  if (typeof window === "undefined" || !isMobileDevice()) return "desktop";
+  const short = Math.min(window.screen?.width ?? window.innerWidth, window.screen?.height ?? window.innerHeight);
+  return short < 600 ? "phone" : "tablet";
+}
+
+/**
  * The same answer as useDeviceKind, read from the browser right now rather
  * than through a hook. useDeviceKind's first render always says "desktop"
  * (useMediaQuery starts false and corrects itself in an effect), which is

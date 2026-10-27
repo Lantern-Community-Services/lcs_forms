@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { ApiError } from "./api";
 import { fillApi, submitErrors } from "./builder";
 import type { Values } from "./formEngine";
+import type { DeviceKind } from "./device";
 import { errorMessage } from "./utils";
 
 /**
@@ -30,6 +31,9 @@ export interface QueuedFill {
   codeErrors?: Record<string, string>;
   /** The published version it was filled in on; missing on entries queued before this was kept. */
   formVersion?: number | null;
+  /** The device it was filled on and the seconds it took (lib/device entryDeviceKind, FormRenderer). */
+  deviceKind?: DeviceKind | null;
+  fillSeconds?: number | null;
   queuedAt: number;
   attempts: number;
   /** The server refused it (not a network problem); it waits for a person. */
@@ -211,7 +215,7 @@ export async function syncFills() {
           await putRow(current);
           for (const id of locals) await delFile(id).catch(() => undefined);
         }
-        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion });
+        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion, deviceKind: row.deviceKind, fillSeconds: row.fillSeconds });
         await delRow(row.clientId);
       } catch (e) {
         if (transient(e)) {

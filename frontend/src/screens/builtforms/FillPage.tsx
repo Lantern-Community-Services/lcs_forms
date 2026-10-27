@@ -17,7 +17,7 @@ import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit
 import { fillApi, submitErrors, useFillForm } from "@/lib/builder";
 import { ApiError } from "@/lib/api";
 import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
-import { useDeviceKind } from "@/lib/device";
+import { entryDeviceKind, useDeviceKind } from "@/lib/device";
 import { errorMessage } from "@/lib/utils";
 
 const newClientId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -92,7 +92,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   /** No connection: keep it on the device; lib/fillQueue.ts uploads it later. */
   async function saveOnDevice(values: Values, extra: SubmitExtra) {
     try {
-      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version });
+      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds });
     } catch {
       toast("No connection, and this device couldn't keep the entry. Try again once the internet is back.", "error");
       return;
@@ -110,7 +110,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
     try {
       // A file attached offline is only on the device, so the queue (which uploads it first) has to send this.
       if (canQueue && (!isOnline() || hasLocalFiles(values))) return await saveOnDevice(values, extra);
-      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, website_hp: extra.honeypot || undefined });
+      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, website_hp: extra.honeypot || undefined });
       clearDraft();
       const conf = doc.settings.confirmation;
       if (conf?.type === "redirect" && conf.url) {

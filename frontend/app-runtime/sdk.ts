@@ -117,10 +117,26 @@ export const roster = {
   open: (id: string) => void call("app.openApp", `/tenants/${encodeURIComponent(id)}`),
 };
 
+/**
+ * Time to fill, recorded with every entry a page saves: from the first tap or
+ * keystroke since the page opened (or since it last saved one) to the save.
+ * The host adds the kind of device.
+ */
+let firstTouch: number | null = null;
+for (const type of ["pointerdown", "keydown", "input"]) {
+  window.addEventListener(type, () => { firstTouch ??= Date.now(); }, { capture: true, passive: true });
+}
+
 export const entries = {
   list: (query?: Json) => call("entries.list", query ?? {}),
   get: (id: string) => call("entries.get", id),
-  create: (entry: Json, opts?: Json) => call("entries.create", entry, opts ?? {}),
+  create: async (entry: Json, opts?: Json) => {
+    const fillSeconds = firstTouch === null ? null : (Date.now() - firstTouch) / 1000;
+    const out = await call<{ status?: string }>("entries.create", { ...(entry as Record<string, unknown>), fillSeconds }, opts ?? {});
+    // Saved (or kept for later): the next entry's clock starts at its own first touch.
+    if (out?.status === "saved" || out?.status === "queued") firstTouch = null;
+    return out;
+  },
   update: (id: string, data: Json, opts?: { reason?: string }) => call("entries.update", id, { data, reason: opts?.reason }),
   history: (id: string) => call("entries.history", id),
   void: (id: string, reason: string) => call("entries.void", id, reason),

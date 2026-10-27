@@ -26,6 +26,8 @@ export interface SubmitExtra {
   siteCode: string | null;
   codeErrors: Record<string, string>;
   honeypot: string;
+  /** Seconds from the first answer to submitting (kept with a saved draft), or null when nothing was touched. */
+  fillSeconds: number | null;
 }
 
 /**
@@ -76,6 +78,19 @@ export function FormRenderer({
     }
     return fresh();
   });
+  // When the person first answered something: the start of the entry's time to fill (backend forms/fillMeta.ts).
+  const startedAt = useRef<number | null>(null);
+  if (startedAt.current === null && saveDrafts) {
+    try {
+      const at = JSON.parse(localStorage.getItem(draftKey!) ?? "null")?.startedAt;
+      if (typeof at === "number") startedAt.current = at;
+    } catch {
+      /* storage blocked */
+    }
+  }
+  const touched = () => {
+    startedAt.current ??= Date.now();
+  };
   const [restored] = useState(() => {
     if (!saveDrafts) return false;
     try {
@@ -106,7 +121,7 @@ export function FormRenderer({
     if (!saveDrafts) return;
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(draftKey!, JSON.stringify({ values, savedAt: Date.now() }));
+        localStorage.setItem(draftKey!, JSON.stringify({ values, savedAt: Date.now(), startedAt: startedAt.current }));
       } catch {
         /* full or blocked: drafts are a convenience */
       }
@@ -115,6 +130,7 @@ export function FormRenderer({
   }, [values]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (id: string, v: unknown) => {
+    touched();
     setValues((prev) => ({ ...prev, [id]: v }));
     setErrors((prev) => {
       if (!Object.keys(prev).some((k) => k === id || k.startsWith(`${id}.`))) return prev;
@@ -151,7 +167,7 @@ export function FormRenderer({
       if (firstBad >= 0 && firstBad !== page) setPage(firstBad);
       return;
     }
-    onSubmit?.(computed, { siteCode, codeErrors, honeypot });
+    onSubmit?.(computed, { siteCode, codeErrors, honeypot, fillSeconds: startedAt.current === null ? null : (Date.now() - startedAt.current) / 1000 });
   }
 
   function startOver() {
@@ -163,6 +179,7 @@ export function FormRenderer({
     setValues(fresh());
     setErrors({});
     setPage(0);
+    startedAt.current = null;
   }
 
   const scope = useMemo(() => `lcsf-${Math.abs(hash(doc.title + (slug ?? ""))).toString(36)}`, [doc.title, slug]);
@@ -193,7 +210,7 @@ export function FormRenderer({
       )}
 
       {doc.settings.requireSite && mode === "fill" && page === 0 && (
-        <SitePickerRow value={siteCode} onChange={(v) => { setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
+        <SitePickerRow value={siteCode} onChange={(v) => { touched(); setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
       )}
 
       {current.pageField?.content && <div className="prose-form mb-4 text-[14px] text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(current.pageField.content, merge) }} />}
