@@ -13,6 +13,7 @@ import { lazyScreen } from "@/lib/lazyScreen";
 import { cn, errorMessage } from "@/lib/utils";
 import { AppFrame, type ConsoleLine } from "./AppFrame";
 import { useAppRuntime, type PageWidth } from "./api";
+import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { onQueueChange, queueStatus, type QueueStatus } from "./queue";
 
 /**
@@ -28,7 +29,9 @@ const RoutingEditor = lazyScreen(() => import("@/screens/admin/Routing"), "Routi
 export function AppHostPage() {
   const { slug = "", page } = useParams();
   const { can } = useAuth();
-  const canRoute = can("forms.manage");
+  // Handed to a resident (lib/formLock.ts): only the page they're on — no other tabs, Notifications or Edit.
+  const locked = Boolean(useLocked());
+  const canRoute = can("forms.manage") && !locked;
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
   // The code editor is desktop only, so no way into it elsewhere.
@@ -106,7 +109,7 @@ export function AppHostPage() {
         <div className={cn("mx-auto flex items-end gap-3 md:px-7", HEADER_WIDTH[headerWidth])}>
           <div className="min-w-0 flex-1">
             <h1 className="hidden font-heading text-[24px] font-extrabold text-ink md:block">{runtime.form.title}</h1>
-            {visible.length > 1 || canRoute ? (
+            {!locked && (visible.length > 1 || canRoute) ? (
               <nav aria-label={runtime.form.title} data-tour="app-tabs" className="chiprow flex px-1.5 md:mt-1 md:gap-1 md:px-0">
                 {visible.map((p) => (
                   <NavLink
@@ -141,7 +144,7 @@ export function AppHostPage() {
             ) : (
               <p className="px-4 pb-2 font-heading text-[18px] font-extrabold text-ink md:hidden">{runtime.form.title}</p>
             )}
-            {visible.length <= 1 && <div className="hidden h-3 md:block" />}
+            {(locked || visible.length <= 1) && <div className="hidden h-3 md:block" />}
           </div>
           <div className="flex items-center gap-2 pb-2 pr-3 md:pr-0">
             {draft && <span className="rounded-pill bg-status-violetBg px-2 py-0.5 text-micro font-bold text-status-violetText">Draft</span>}
@@ -151,7 +154,8 @@ export function AppHostPage() {
                 <CircleHelp className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Show me how</span>
               </button>
             )}
-            {runtime.canEdit && canOpenEditor && (
+            {!draft && !locked && <LockFormButton base={`/apps/${slug}`} title={runtime.form.title} />}
+            {runtime.canEdit && canOpenEditor && !locked && (
               <Link to={`/admin/apps/${runtime.form.id}`} className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Edit this code form">
                 <Code2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Edit</span>
               </Link>

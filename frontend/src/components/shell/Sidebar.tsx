@@ -31,6 +31,10 @@ const EASE = "ease-[cubic-bezier(.2,.8,.2,1)]";
  */
 const TAIL_W = "w-[169px]";
 
+/** How far pins sit in under "All forms", and their narrower tail to match. */
+const PIN_INDENT = "pl-7";
+const PIN_TAIL_W = "w-[141px]";
+
 /** Out fast before the width moves, back in only once there's room for it. */
 const fade = (collapsed: boolean) =>
   cn(
@@ -118,7 +122,7 @@ function NavItem({ to, label, Icon, collapsed, end, lit, count, tour }: {
  * category, as an indented line of text. Internal forms are links in the app;
  * the rest still live on WordPress and open in a new tab.
  */
-function FormRow({ form, Icon, subtitle, collapsed, lit, count }: {
+function FormRow({ form, Icon, subtitle, collapsed, lit, count, indented }: {
   form: FormLink;
   Icon?: React.ElementType;
   /** A second line, e.g. the category in search results. */
@@ -127,6 +131,8 @@ function FormRow({ form, Icon, subtitle, collapsed, lit, count }: {
   lit: boolean;
   /** Amber count, e.g. people waiting in the Roster's review queue. */
   count?: number;
+  /** A pin, sitting in under "All forms" (PinThread). */
+  indented?: boolean;
 }) {
   const internal = isInternalForm(form.url);
   const waiting = (count ?? 0) > 0;
@@ -139,7 +145,7 @@ function FormRow({ form, Icon, subtitle, collapsed, lit, count }: {
           {waiting && <WaitingDot collapsed={collapsed} />}
         </span>
       )}
-      <span className={cn("flex items-start gap-2 py-[11px] pr-2 text-left leading-[18px]", Icon ? cn("shrink-0", TAIL_W) : "min-w-0 flex-1 pl-2.5", fade(collapsed))}>
+      <span className={cn("flex items-start gap-2 py-[11px] pr-2 text-left leading-[18px]", Icon ? cn("shrink-0", indented ? PIN_TAIL_W : TAIL_W) : "min-w-0 flex-1 pl-2.5", fade(collapsed))}>
         <span className="min-w-0 flex-1">
           {form.title}
           {subtitle && <span className="mt-0.5 block text-micro font-medium text-muted">{subtitle}</span>}
@@ -384,9 +390,15 @@ export function Sidebar() {
             {/* The forms: the whole catalog, then your pins under it. */}
             <div className="mx-2 my-2.5 h-px shrink-0 bg-hairline" />
             <NavItem to="/forms" label="All forms" Icon={LayoutGrid} collapsed={collapsed} lit={formsLit} tour="nav-forms" />
-            {pinned.map((p) => (
-              <FormRow key={p.form.id} form={p.form} Icon={p.Icon} collapsed={collapsed} lit={lit(p.form.url)} count={countFor(p.form)} />
-            ))}
+            {pinned.length > 0 && (
+              <div className={cn("relative flex shrink-0 flex-col gap-0.5 transition-[padding] duration-[240ms] motion-reduce:transition-none", EASE, collapsed ? "pl-0" : PIN_INDENT)}>
+                {/* One line down from the "All forms" icon beside the pins; gone when collapsed, where they line up with everything else. */}
+                <span aria-hidden className={cn("pointer-events-none absolute -top-0.5 bottom-2 left-[19px] w-[1.5px] rounded-full bg-muted/35", fade(collapsed))} />
+                {pinned.map((p) => (
+                  <FormRow key={p.form.id} form={p.form} Icon={p.Icon} collapsed={collapsed} lit={lit(p.form.url)} count={countFor(p.form)} indented />
+                ))}
+              </div>
+            )}
           </>
         )}
       </nav>

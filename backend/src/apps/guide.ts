@@ -101,6 +101,9 @@ Admins and developers pass every role check.
   the file on the server in the app's export style. charts (PDF): dailyBars, rankedBars, heatGrid — the screen's charts
   redrawn for paper, same colors. Print a page with charts as app.print(spec) (the same spec, no format): it prints that
   PDF, as the app's own reports do. Plain app.print() prints the page as the browser sees it (charts don't print well).
+- A record as its paper form: app.export / app.print with documents: [{ title, org, intro, footer, blocks }] (PDF; sheets
+  may be []). Blocks: section bars, rows of labelled boxes (fields, with signature images), check-box rows (choices, every
+  option drawn, the chosen ones ticked) and notes. Use it when staff expect the PDF to look like the form they know.
 - Who recorded it: ctx.people(ids) in server code gives each person's name and avatarColor, so a "by staff member"
   chart can color each bar like their avatar (<Avatar color> and the chart row's color; null = #2c3453).
 - Email: ctx.email.send({ to, subject, link? }) from server code (afterCreate, actions). LINK-ONLY: the email is the

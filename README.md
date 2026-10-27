@@ -19,7 +19,10 @@ built to be extended with LLM help.
   roster app's old paths (`/review`, `/dashboard`, `/attendance`, `/activity`) redirect to the tabs.
 - **Hot Foods** (`/apps/hot-foods`), which replaces Gravity Forms form 21: a code form. See below.
 - **Admin → Forms catalog**, where admins add, edit, hide, reorder and recategorize the links
-  without a deploy.
+  without a deploy. Editing a card opens a page, not a pop-up: a card for a form built here opens that
+  form's editor on Settings (on a computer), where its card (title, line under it, search words, tag,
+  visible) sits with its category and who can see it; any other card, and **Add form**, open the card's
+  own page (`/admin/forms/card/<id>`, `/admin/forms/card/new`).
 - **Calendar** (`/calendar`): events for every site or for chosen sites, with repeat rules. Admins
   add them; everyone sees the ones for their sites. See below.
 
@@ -598,7 +601,7 @@ the app is in view. Notifications are kept 120 days.
 | Sender | How | Kind |
 | --- | --- | --- |
 | The site | An access request (to people with `users.manage`), being let in or a changed role or sites, an entry another form couldn't save | `people.request`, `account`, `forms.problem` |
-| Form builder | A **Notify in the app** rule in Settings → Notifications: roles (optionally only at the entry's site) and/or addresses (`{user:email}` is whoever filled it in), a title, an in-app message that may use any merge tag, and a page to open (the entry by default) | `forms.entry` |
+| Form builder | The form's notification routing (below). Older forms may still have their own **Notify in the app** and email rules saved in the form; they keep working until they're moved into routing | `forms.entry` |
 | Code forms | `ctx.notify.send(...)` from server code | `forms.message` (or `forms.entry`) |
 | MCP / Power Automate | `send_notification`, or `POST /api/v1/notifications`, with an API key holding `notifications:send` (a site-pinned key reaches only that site's people) | `forms.message` or `announcement` |
 
@@ -622,11 +625,25 @@ notifications still appear in the app.
 ### Notification routing
 
 Who each form tells, and when, kept outside the form (`backend/src/services/routing.ts`), so changing a
-list never needs a new version of the form. Every form has its own: Admins see a **Notifications** tab on
-each code form (`/apps/<slug>/_notifications`) and a **Notifications** link on each basic form
-(`/f/<slug>/notifications`), and **Admin → Notification routing** (`/admin/routing`) lists them all. The MCP has
-the same: `get_routing`, `save_route`, `set_routing`,
+list never needs a new version of the form. Every form has its own: a basic form's editor has a
+**Notifications** tab (`/admin/builder/<id>?tab=notifications`) with everything about who's told in one
+place: a line at the top saying how many routes, follow-up, weekly reports and the last email, then the
+routes, follow-up, weekly reports, emails sent and the form's webhooks. The form's and its entries'
+**Notifications** buttons open it (`/f/<slug>/notifications` sends you there; on a phone or tablet, where
+the editor isn't, it shows the same routing). Code forms have a **Notifications** tab
+(`/apps/<slug>/_notifications`), linked from their editor's Settings. **Admin → Notification routing**
+(`/admin/routing`) lists every form. The MCP has the same: `get_routing`, `save_route`, `set_routing`,
 `remove_route`, `reset_routing`, `preview_routing`, `routing_log`, `reroute_entry`.
+
+- **A form's own rules move into routing.** A builder form made before routing may have email and
+  in-app rules saved in the form (`settings.notifications`). Its Notifications tab lists them with
+  **See what would change**, then **Move them into routing** (`POST /api/routing/<form>/convert-rules`,
+  `{ "dryRun": true }` to look first; MCP `convert_notification_rules`). Each becomes a route with the
+  same people (addresses, `{user:email}`, email fields, roles, groups, positions), condition (a "hide
+  when" turns into its opposite), subject, What to do, answers and urgency; anything that can't come
+  across is listed. The rules leave the draft, and the exact rules moved are recorded
+  (FormRecord `routing`/`converted-rules`, `services/ruleConversion.ts`), so a version published before
+  the move skips them and nobody is told twice. Webhooks stay in the form.
 
 - **Events.** Every form has *A new entry* (`entry.created`), routed when an entry is saved. A code form
   declares its own in form.json `"routing": { "events": [...] }`, each with the values a route can test

@@ -4,13 +4,30 @@ import { prisma } from "../prisma.js";
 import { asyncHandler, notFound } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
-import { allGroups, effectiveGroups, groupsForTitle, knownTitles, reloadAccess } from "../services/staffGroups.js";
+import { permissionsFor, roleFor } from "../services/permissions.js";
+import {
+  allGroups,
+  canSeeFormKey,
+  effectiveGroups,
+  groupFormKeys,
+  groupsForTitle,
+  keyForCard,
+  knownTitles,
+  limitedToGroupForms,
+  personFormKeys,
+  reloadAccess,
+  seesEverything,
+  setGroupForms,
+  setPersonForms,
+} from "../services/staffGroups.js";
 
 /**
  * Staff groups (People & roles → Groups): the teams forms can be limited to.
  * Admins only (users.manage). Someone is in a group when their job title
  * matches one of its rules, or an admin added them; an admin can also take
- * them out. See services/staffGroups.ts.
+ * them out. A group can be given forms: then its members see only their
+ * groups' forms, and one person can be given more or have some hidden. See
+ * services/staffGroups.ts.
  */
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
@@ -50,7 +67,7 @@ groupsRouter.get(
           } else if (o?.include === true) members.push({ ...person, via: byTitle ? "title" : "added" });
           else if (byTitle) members.push({ ...person, via: "title" });
         }
-        return { ...g, members, removed };
+        return { ...g, members, removed, forms: groupFormKeys(g.id) };
       })
     );
   })
@@ -61,6 +78,120 @@ groupsRouter.get(
   "/titles",
   requirePermission("users.manage", "forms.manage"),
   asyncHandler(async (_req, res) => res.json(await knownTitles()))
+);
+
+/** Every form on the catalog, by the key a group or person is given it with (keyForCard). */
+async function catalogForms() {
+  const [cards, built] = await Promise.all([
+    prisma.formLink.findMany({
+      select: { id: true, title: true, active: true, roles: true, categoryId: true, category: { select: { name: true } } },
+      orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+    }),
+    prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
+  ]);
+  const byCard = new Map(built.map((b) => [b.catalogLinkId!, b.id]));
+  return cards.map((c) => ({
+    key: keyForCard(c.id, byCard.get(c.id)),
+    title: c.title,
+    category: c.category.name,
+    categoryId: c.categoryId,
+    roles: c.roles ? c.roles.split(",").filter(Boolean) : [],
+    active: c.active,
+  }));
+}
+
+/** Every form on the catalog, for the pickers. */
+groupsRouter.get(
+  "/forms",
+  requirePermission("users.manage"),
+  asyncHandler(async (_req, res) => {
+    res.json((await catalogForms()).map(({ key, title, category, active }) => ({ key, title, category, active })));
+  })
+);
+
+const formKeys = z.array(z.string().trim().min(1).max(100)).max(500);
+
+/** Replaces the forms given to a group. Any forms at all: its members then see only their groups' forms. */
+groupsRouter.put(
+  "/:id/forms",
+  requirePermission("users.manage"),
+  asyncHandler(async (req, res) => {
+    const { keys } = z.object({ keys: formKeys }).parse(req.body);
+    const g = await prisma.staffGroup.findUnique({ where: { id: req.params.id } });
+    if (!g) throw notFound();
+    const before = groupFormKeys(g.id);
+    await setGroupForms(g.id, keys);
+    await audit({
+      actor: actorOf(req),
+      action: "groups.forms_changed",
+      summary: `Gave staff group “${g.name}” ${keys.length} form${keys.length === 1 ? "" : "s"}`,
+      changes: { forms: [before, keys] },
+    });
+    res.json({ forms: groupFormKeys(g.id) });
+  })
+);
+
+/** One person's forms: what their groups give them, and their own additions and hidden forms. */
+groupsRouter.get(
+  "/person/:userId/forms",
+  requirePermission("users.manage"),
+  asyncHandler(async (req, res) => {
+    const u = await prisma.user.findUnique({
+      where: { id: req.params.userId },
+      select: { id: true, title: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, groupOverrides: { select: { groupId: true, include: true } } },
+    });
+    if (!u) throw notFound();
+    const groupIds = effectiveGroups(u.title, u.groupOverrides);
+    const role = roleFor(u.roleKey);
+    const viewer = { userId: u.id, permissions: permissionsFor(role, u), groupIds, title: u.title };
+    const own = personFormKeys(u.id);
+    const added = new Set(own.added);
+    const hidden = new Set(own.hidden);
+    res.json({
+      /** Admins and the see-everything groups see every form, whatever is given or hidden. */
+      seesAll: viewer.permissions.includes("forms.manage") || seesEverything(viewer),
+      /** Their groups have forms, so those are all they see (plus their own changes). */
+      limited: limitedToGroupForms(groupIds),
+      groupIds,
+      forms: (await catalogForms()).map((f) => {
+        const roleOk = !f.roles.length || f.roles.includes(role.key) || viewer.permissions.includes("forms.manage");
+        return {
+          key: f.key,
+          title: f.title,
+          category: f.category,
+          active: f.active,
+          /** A form for other roles: giving it doesn't show it. */
+          roleOk,
+          /** Seen through their groups and the form's own limits, before their own changes. */
+          fromGroups: canSeeFormKey(viewer, f.key, f.categoryId, { ignoreOwn: true }),
+          /** Their own change: given (true), hidden (false), or none. */
+          own: added.has(f.key) ? true : hidden.has(f.key) ? false : null,
+          groups: groupIds.filter((g) => groupFormKeys(g).includes(f.key)),
+        };
+      }),
+    });
+  })
+);
+
+/** Replaces one person's own changes: forms given to them, and forms hidden from them. */
+groupsRouter.put(
+  "/person/:userId/forms",
+  requirePermission("users.manage"),
+  asyncHandler(async (req, res) => {
+    const body = z.object({ added: formKeys, hidden: formKeys }).parse(req.body);
+    const u = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true, name: true } });
+    if (!u) throw notFound();
+    const before = personFormKeys(u.id);
+    await setPersonForms(u.id, body.added, body.hidden);
+    const after = personFormKeys(u.id);
+    await audit({
+      actor: actorOf(req),
+      action: "groups.person_forms_changed",
+      summary: `Changed ${u.name}'s own forms: ${after.added.length} given, ${after.hidden.length} hidden`,
+      changes: { added: [before.added, after.added], hidden: [before.hidden, after.hidden] },
+    });
+    res.json(after);
+  })
 );
 
 groupsRouter.post(

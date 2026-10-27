@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, Copy, Download, ExternalLink, Eye, GripVertical, History, Loader2, Monitor,
-  Plus, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock, GraduationCap,
+  Plus, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock, GraduationCap, Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,9 @@ import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { FieldView, FormRenderer } from "@/components/formkit/FormRenderer";
 import { DevicePreview } from "@/components/preview/DevicePreview";
 import { FieldProperties } from "./FieldProperties";
-import { SettingsPanel } from "./SettingsPanel";
+import { SettingsPanel, WebhooksSection } from "./SettingsPanel";
+import { lazyScreen } from "@/lib/lazyScreen";
+
 import { TutorialEditor, tutorialShapeProblems, type TutorialTargets } from "./TutorialEditor";
 import { StatusBadge, ProblemList } from "./BuilderList";
 import { moveItem, referencesTo, renameFieldId } from "./docOps";
@@ -26,7 +28,7 @@ import {
   builderApi, builderKeys, docProblems, formPath, useBuilderReference, useBuiltForm, useFormVersions,
   type BuiltFormDetail, type DocProblem,
 } from "@/lib/builder";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import {
   FIELD_TYPES, cleanValues, lintForm, makeFieldId, newField, pagesOf, typeInfo, validateValues,
   type Field, type FieldType, type FormDoc, type FormTutorial, type Values,
@@ -34,7 +36,10 @@ import {
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 
-type Tab = "build" | "code" | "settings" | "tutorial" | "preview" | "history";
+/** The form's routing, follow-up, reports and sent emails: Admin's editor, loaded only on the Notifications tab. */
+const RoutingEditor = lazyScreen(() => import("@/screens/admin/Routing"), "RoutingEditor");
+
+type Tab = "build" | "code" | "settings" | "notifications" | "tutorial" | "preview" | "history";
 
 /** The editor/preview split, as the editor's share of the width; kept per device. */
 const SPLIT_KEY = "ln.builder.split";
@@ -63,7 +68,11 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
   const [doc, setDoc] = useState<FormDoc>(initial.draft);
   const [slug, setSlug] = useState(initial.slug);
   const [saved, setSaved] = useState(() => ({ json: JSON.stringify(initial.draft), slug: initial.slug }));
-  const [tab, setTab] = useState<Tab>("build");
+  // ?tab=notifications (the form's Notifications button) or ?tab=settings (the catalog's Edit) opens on that tab.
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t === "notifications" || t === "settings" || t === "tutorial" || t === "history" ? t : "build";
+  });
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [serverProblems, setServerProblems] = useState<DocProblem[]>([]);
@@ -145,6 +154,13 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
     setSaved({ json: JSON.stringify(row.draft), slug: row.slug });
     qc.setQueryData(builderKeys.form(row.id), row);
     void qc.invalidateQueries({ queryKey: ["builder", "list"] });
+  };
+
+  /** The form's own rules were moved into routing, which took them out of the draft: take that in, keeping unsaved edits. */
+  const rulesMoved = async () => {
+    const row = await api.get<BuiltFormDetail>(`/builder/forms/${form.id}`);
+    adopt(row);
+    setDoc((d) => ({ ...d, settings: { ...d.settings, notifications: row.draft.settings.notifications } }));
   };
 
   const save = useCallback(async (): Promise<BuiltFormDetail | null> => {
@@ -289,7 +305,7 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
           style={split ? { width: `clamp(${MIN_EDITOR}px, ${ratio * 100}%, calc(100% - ${MIN_PREVIEW + 9}px))`, transition: resizing || prefersReducedMotion() ? undefined : `width 300ms ${EASE}` } : undefined}
         >
           <div className="flex flex-none gap-1 overflow-x-auto border-b border-hairline bg-surface px-3 md:px-4">
-            {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["tutorial", "Tutorial", GraduationCap], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
+            {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["notifications", "Notifications", Bell], ["tutorial", "Tutorial", GraduationCap], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
               .filter(([k]) => !(split && k === "preview"))
               .map(([k, label, Icon]) => (
                 <button key={k} onClick={() => setTab(k)} className={cn("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold", view === k ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
@@ -312,6 +328,16 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
             {view === "settings" && (
               <div className="h-full overflow-y-auto scroll-thin">
                 <SettingsPanel doc={doc} onChange={commit} slug={slug} onSlug={setSlug} reference={reference} form={form} onCatalog={setCatalog} />
+              </div>
+            )}
+            {view === "notifications" && (
+              <div className="h-full overflow-y-auto scroll-thin">
+                <Suspense fallback={<LoadingState />}>
+                  <RoutingEditor formId={form.id} inForm onRulesMoved={() => void rulesMoved()} />
+                </Suspense>
+                <div className="mx-auto max-w-[920px] px-4 pb-16 md:px-7">
+                  <WebhooksSection doc={doc} onChange={commit} />
+                </div>
               </div>
             )}
             {view === "tutorial" && (

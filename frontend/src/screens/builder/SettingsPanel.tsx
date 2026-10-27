@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/utils";
 import { EMAIL_FIELD_TYPES, type FormDoc, type FormSettings, type Notification } from "@/lib/formEngine";
 import { cn } from "@/lib/utils";
+import { CatalogCardFields } from "@/components/CatalogCardFields";
 import { WhoSeesEntries } from "@/components/WhoSeesEntries";
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -155,7 +156,6 @@ export function SettingsPanel({
         )}
       </Section>
 
-      <Notifications doc={doc} set={set} mailConfigured={reference?.mailConfigured ?? false} roles={(reference?.roles ?? []).map((r) => ({ value: r.key, label: r.name }))} />
 
       <Section title="Custom CSS" hint="Applies to this form only — write rules as if inside the form, e.g. .big { font-size: 20px } or label { color: navy }.">
         <CodeEditor language="css" value={s.customCss ?? ""} onChange={(v) => set({ customCss: v })} minHeight={120} />
@@ -236,6 +236,7 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
         />
         {form.status === "draft" && currentCategory && <p className="mt-1 text-micro text-muted">The card stays hidden until the form is published.</p>}
       </Row>
+      {form.catalogLinkId && currentCategory && <CatalogCardFields linkId={form.catalogLinkId} />}
       {categoryLimit && (
         <p className="rounded-input bg-navsel px-3 py-2 text-[12.5px] leading-snug text-ink">
           <span className="font-semibold">{category!.name}</span> is only for {categoryLimit}, so this form is too: nobody else sees it or can open it, even with a link.
@@ -284,7 +285,17 @@ function clean(s: FormSettings): FormSettings {
   return out as FormSettings;
 }
 
-function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set: (p: Partial<FormSettings>) => void; mailConfigured: boolean; roles: { value: string; label: string }[] }) {
+/**
+ * The form's webhooks, on its Notifications tab: each new entry POSTed as JSON
+ * to another system. Saved with the form (publish to apply). Who's told by
+ * email and in the app is the form's routing, on the same tab.
+ */
+export function WebhooksSection({ doc, onChange }: { doc: FormDoc; onChange: (d: FormDoc) => void }) {
+  const set = (patch: Partial<FormSettings>) => onChange({ ...doc, settings: clean({ ...doc.settings, ...patch }) });
+  return <Notifications doc={doc} set={set} mailConfigured roles={[]} only="webhook" />;
+}
+
+function Notifications({ doc, set, mailConfigured, roles, only }: { doc: FormDoc; set: (p: Partial<FormSettings>) => void; mailConfigured: boolean; roles: { value: string; label: string }[]; only?: "webhook" }) {
   const { data: staffGroups } = useStaffGroups();
   const { data: jobTitles } = useJobTitles();
   const groupName = (id: string) => staffGroups?.find((g) => g.id === id)?.name ?? "a deleted group";
@@ -306,9 +317,12 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
       ? `In the app to ${[...(n.roles ?? []).map((k) => roles.find((r) => r.value === k)?.label ?? k), ...(n.groups ?? []).map(groupName), ...(n.titles ?? []), ...(n.to?.trim() ? [n.to.trim()] : [])].join(", ") || "—"}${n.siteOnly && (n.roles?.length || n.groups?.length || n.titles?.length) ? " at the entry's site" : ""}${n.urgent ? " · urgent" : ""}`
       : n.kind === "email" ? `Email to ${n.to || "—"}` : `Webhook to ${n.url}`;
   return (
-    <Section title="Notifications" hint="Sent after each entry, optionally only when rules match. The outcome is written on the entry's notes.">
-      {!mailConfigured && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Email isn't set up on this server yet (MAIL_FROM), so emails are noted on the entry but not sent. Webhooks work.</p>}
-      {list.map((n) => (
+    <Section
+      title={only ? "Webhooks" : "Notifications"}
+      hint={only ? "Each new entry, sent as JSON to another system, optionally only when rules match. Saved with the form: publish to apply. The outcome is written on the entry's notes." : "Sent after each entry, optionally only when rules match. The outcome is written on the entry's notes."}
+    >
+      {!mailConfigured && !only && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Email isn't set up on this server yet (MAIL_FROM), so emails are noted on the entry but not sent. Webhooks work.</p>}
+      {list.filter((n) => !only || n.kind === only).map((n) => (
         <div key={n.id} className="rounded-card border border-hairline">
           <div className="flex items-center gap-2 px-3 py-2">
             <Switch checked={n.enabled} onCheckedChange={(v) => update(n.id, { enabled: v })} />
@@ -390,8 +404,8 @@ function Notifications({ doc, set, mailConfigured, roles }: { doc: FormDoc; set:
         </div>
       ))}
       <div className="flex gap-2">
-        <Button variant="secondary" size="sm" onClick={() => add("notify")}><Plus className="h-3.5 w-3.5" /> Notify in the app</Button>
-        <Button variant="secondary" size="sm" onClick={() => add("email")}><Plus className="h-3.5 w-3.5" /> Email</Button>
+        {!only && <Button variant="secondary" size="sm" onClick={() => add("notify")}><Plus className="h-3.5 w-3.5" /> Notify in the app</Button>}
+        {!only && <Button variant="secondary" size="sm" onClick={() => add("email")}><Plus className="h-3.5 w-3.5" /> Email</Button>}
         <Button variant="secondary" size="sm" onClick={() => add("webhook")}><Plus className="h-3.5 w-3.5" /> Webhook</Button>
       </div>
     </Section>

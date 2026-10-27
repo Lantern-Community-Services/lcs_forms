@@ -17,12 +17,14 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { cn, errorMessage } from "@/lib/utils";
+import { GroupFormsSection } from "./GroupForms";
 
 /**
  * People & roles → Groups: the teams forms can be limited to (Forms catalog →
  * a form → Who can see it). A role says what someone can do; a group says
  * which team they're on. People join a group from their job title (its
- * rules), or by hand; an admin can also take someone out.
+ * rules), or by hand; an admin can also take someone out. A group can be
+ * given forms: then its members see only those (GroupForms.tsx).
  */
 export function AdminGroups() {
   const { data: groups, isLoading } = useStaffGroups();
@@ -34,7 +36,7 @@ export function AdminGroups() {
     <Page className="max-w-[1000px]">
       <PageHeader
         title="Groups"
-        subtitle="Teams that forms can be limited to. People join a group from their job title, or you add them by hand."
+        subtitle="Teams that forms can be limited to or given to. People join a group from their job title, or you add them by hand."
         actions={
           <Button onClick={() => setEditing("new")}>
             <Plus className="h-4 w-4" /> Add a group
@@ -61,6 +63,7 @@ export function AdminGroups() {
                       <span className="block text-[12.5px] text-muted">
                         {g.members.length} {g.members.length === 1 ? "person" : "people"}
                         {g.members.some((m) => m.via === "added") && ` · ${g.members.filter((m) => m.via === "added").length} added by hand`}
+                        {g.forms.length > 0 && ` · sees only ${g.forms.length} form${g.forms.length === 1 ? "" : "s"}`}
                       </span>
                     </span>
                   </div>
@@ -167,7 +170,7 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
   }
 
   async function remove() {
-    if (!group || !window.confirm(`Delete “${group.name}”? Forms limited to it lose it; a form left with nobody becomes open to everyone.`)) return;
+    if (!group || !window.confirm(`Delete “${group.name}”? Forms limited to it lose it; a form left with nobody becomes open to everyone. Its members stop being limited to the forms given to it.`)) return;
     setBusy(true);
     try {
       const out = await groupsApi.remove(group.id);
@@ -234,6 +237,8 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
                 <PositionList titles={titles.filter((t) => titleMatches(t.title, preview))} />
               </div>
             )}
+
+            {group && <GroupFormsSection group={group} />}
 
             {group && (
               <div className="rounded-input border border-hairline">

@@ -1,8 +1,12 @@
 import { useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
-import { useForms, useSites } from "@/lib/queries";
+import { formsApi, sampleKey, useForms, useSites } from "@/lib/queries";
 import { canOpenForm, formIcon, formLinkIcon } from "@/lib/formIcons";
-import type { FormCategory, FormLink } from "@/lib/types";
+import { isSample } from "@/lib/tour/sampleData";
+import type { FormCatalog, FormCategory, FormLink } from "@/lib/types";
+import { errorMessage } from "@/lib/utils";
 
 /**
  * What the app's navigation shows, shared by the desktop sidebar and the
@@ -22,6 +26,40 @@ export const ROSTER_URL = "/roster";
 
 /** The most pinned forms the sidebar and the tablet dock show; the rest stay on the Forms page's Pinned row. */
 export const MAX_NAV_PINS = 5;
+
+/**
+ * Pin / unpin, optimistically: the pin fills the instant it's tapped and
+ * springs back, with a toast, only if the server refuses. Resolves false when
+ * the pin wasn't taken (so the button can shake), true otherwise. Shared by
+ * the Forms page and the launcher.
+ */
+export function usePinToggle() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return async (form: FormLink, isPinned: boolean): Promise<boolean> => {
+    // The welcome tour's sample forms keep their pins in their own cache (formsApi doesn't send them).
+    const key = isSample(form.id) ? sampleKey("forms") : ["forms", "visible"];
+    const before = qc.getQueryData<FormCatalog>(key);
+    if (!isPinned && before && before.favorites.length >= MAX_NAV_PINS) {
+      toast(`You can pin up to ${MAX_NAV_PINS} forms. Unpin one to make room.`, "error");
+      return false;
+    }
+    if (before) {
+      qc.setQueryData<FormCatalog>(key, {
+        ...before,
+        favorites: isPinned ? before.favorites.filter((id) => id !== form.id) : [...before.favorites, form.id],
+      });
+    }
+    try {
+      await (isPinned ? formsApi.unfavorite(form.id) : formsApi.favorite(form.id));
+      return true;
+    } catch (e) {
+      if (before) qc.setQueryData(key, before);
+      toast(errorMessage(e, "Couldn't save that pin."), "error");
+      return false;
+    }
+  };
+}
 
 export interface NavCategory {
   category: FormCategory;

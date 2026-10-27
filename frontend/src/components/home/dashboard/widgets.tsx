@@ -185,7 +185,7 @@ export const WIDGETS: WidgetDef[] = [
   {
     id: "activity",
     title: "Recent activity",
-    description: "What you and your sites did lately.",
+    description: "What happened lately: your own, or your sites' if you manage them.",
     icon: History,
     sizes: SIZES,
     render: ({ home, homeLoading, homeFailed }, size) => (
@@ -236,10 +236,10 @@ export const WIDGETS: WidgetDef[] = [
   {
     id: "quick_actions",
     title: "Shortcuts",
-    description: "Jumps to the screens your role uses.",
+    description: "Filled in for you: your groups' forms, what your role uses at your sites, and your role's screens.",
     icon: ClipboardCheck,
     sizes: SIZES,
-    render: (_ctx, size) => <QuickActionsWidget size={size} />,
+    render: (ctx, size) => <QuickActionsWidget ctx={ctx} size={size} />,
   },
 ];
 
@@ -562,31 +562,62 @@ const SHORTCUT_COLS: Record<WidgetSize, string> = {
   full: "grid-cols-3 xl:grid-cols-5",
 };
 
-function QuickActionsWidget({ size }: { size: WidgetSize }) {
+/** How many shortcuts each width shows: a full row or two of its grid. */
+const SHORTCUT_COUNT: Record<WidgetSize, number> = { small: 4, medium: 6, large: 9, full: 10 };
+
+type Shortcut = { to: string; label: string; icon: React.ElementType; external?: boolean };
+
+/**
+ * Shortcuts, filled in for the person rather than picked: the forms their
+ * groups were given and the ones their role uses most at their sites (the
+ * server's shortcutForms), then each of their sites' rosters when they have a
+ * few, then the screens their role works in. Pinned forms are left out: they
+ * have their own widget and the nav.
+ */
+function QuickActionsWidget({ ctx, size }: { ctx: WidgetCtx; size: WidgetSize }) {
   const { can } = useAuth();
-  const actions: { to: string; label: string; icon: LucideIcon; show: boolean }[] = [
-    { to: "/roster/review", label: "Review residents", icon: ListChecks, show: can("roster.view") },
-    { to: "/roster/attendance", label: "Attendance", icon: ClipboardCheck, show: can("roster.view") },
-    { to: "/calendar", label: "Calendar", icon: CalendarDays, show: true },
-    { to: "/notifications", label: "Notifications", icon: Bell, show: true },
+  const byId = new Map(ctx.categories.flatMap((c) => c.forms.map((f) => [f.id, { f, c }] as const)));
+  const pinned = new Set(ctx.favoriteForms.map((e) => e.form.id));
+  const forms: Shortcut[] = (ctx.home?.shortcutForms ?? [])
+    .map((id) => byId.get(id))
+    .filter((x): x is NonNullable<typeof x> => Boolean(x) && !pinned.has(x!.f.id) && canOpenForm(x!.f.url, can))
+    .map(({ f, c }) => ({ to: f.url, label: f.title, icon: formLinkIcon(f, c.icon), external: !isInternalForm(f.url) }));
+  const sites = ctx.home?.rosterSites ?? [];
+  // A site's roster is worth a shortcut when there are only a few; an Admin's twenty aren't.
+  const siteLinks: Shortcut[] = sites.length > 1 && sites.length <= 3 ? sites.map((s) => ({ to: `/roster?site=${encodeURIComponent(s.code)}`, label: `${s.name} roster`, icon: Users })) : [];
+  const screens: (Shortcut & { show: boolean })[] = [
+    { to: "/roster/review", label: "Review residents", icon: ListChecks, show: can("roster.archive") },
+    { to: "/roster/attendance", label: "Attendance", icon: ClipboardCheck, show: can("roster.edit") },
+    { to: "/roster", label: "Roster", icon: Users, show: can("roster.view") && siteLinks.length === 0 },
+    { to: "/admin/people", label: can("users.manage") ? "People" : "Site settings", icon: UserRound, show: can("users.manage") || can("users.manageSite") },
     { to: "/admin/builder", label: "Build a form", icon: FilePlus2, show: can("forms.manage") },
     { to: "/admin/apps", label: "Code forms", icon: Code2, show: can("apps.develop") },
-    { to: "/admin/people", label: "People", icon: Users, show: can("users.manage") || can("users.manageSite") },
-    { to: "/profile", label: "Your profile", icon: UserRound, show: true },
+    { to: "/calendar", label: "Calendar", icon: CalendarDays, show: true },
+    { to: "/notifications", label: "Notifications", icon: Bell, show: true },
   ];
+  const shown = [...forms, ...siteLinks, ...screens.filter((s) => s.show)].slice(0, SHORTCUT_COUNT[size]);
+  const className = "flex min-h-[44px] items-center gap-2.5 rounded-input bg-subtle px-3 text-[13px] font-bold text-ink hover:bg-subtle2";
   return (
     <WidgetCard title="Shortcuts" icon={Zap}>
       <ul className={cn("grid gap-2 p-3 xl:p-4", SHORTCUT_COLS[size])}>
-        {actions
-          .filter((a) => a.show)
-          .map((a) => (
+        {shown.map((a) => {
+          const body = (
+            <>
+              <a.icon className="h-4 w-4 shrink-0 text-accent dark:text-white" />
+              <span className="min-w-0 flex-1 truncate">{a.label}</span>
+              {a.external && <ExternalLink className="h-3 w-3 shrink-0 opacity-50" aria-hidden />}
+            </>
+          );
+          return (
             <li key={a.to}>
-              <Link to={a.to} className="flex min-h-[44px] items-center gap-2.5 rounded-input bg-subtle px-3 text-[13px] font-bold text-ink hover:bg-subtle2">
-                <a.icon className="h-4 w-4 shrink-0 text-accent dark:text-white" />
-                <span className="truncate">{a.label}</span>
-              </Link>
+              {a.external ? (
+                <a href={a.to} target="_blank" rel="noopener noreferrer" title={`${a.label} (opens in a new tab)`} className={className}>{body}</a>
+              ) : (
+                <Link to={a.to} title={a.label} className={className}>{body}</Link>
+              )}
             </li>
-          ))}
+          );
+        })}
       </ul>
     </WidgetCard>
   );
