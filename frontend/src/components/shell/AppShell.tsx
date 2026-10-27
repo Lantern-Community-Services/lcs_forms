@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { Sidebar } from "./Sidebar";
@@ -17,6 +17,8 @@ import { OfflineBar, useOfflineBarVisible } from "./OfflineBar";
 import { useCascade } from "@/lib/cascade";
 import { useNewNotificationToast } from "@/lib/notifications";
 import { SiteTourStarter } from "@/lib/tour/SiteTourStarter";
+import { inLock } from "@/lib/formLock";
+import { LockedBar, useLocked } from "./FormLock";
 import { cn } from "@/lib/utils";
 
 /**
@@ -82,8 +84,10 @@ export function AppShell() {
     [qc]
   );
   const offlineBar = useOfflineBarVisible();
-  // A toast when a notification arrives while the app is open.
-  useNewNotificationToast();
+  // Locked to one form for a resident (lib/formLock.ts): no way to anywhere else.
+  const lock = useLocked();
+  // A toast when a notification arrives while the app is open — not over a resident's form.
+  useNewNotificationToast(!lock);
 
   const device = useDeviceKind();
   const touch = device !== "desktop";
@@ -121,6 +125,7 @@ export function AppShell() {
   // reason to scroll the page, which the reset above would snap back on every
   // keystroke — a flicker, most of all in code forms, whose fields live in a frame.
   const keyboard = useKeyboardArea(touch);
+  const nav = !lock;
   // Once the app has shrunk above the keyboard, the field being typed into may sit below
   // the new edge: bring it back into view. (Code forms do the same inside their frame.)
   useEffect(() => {
@@ -133,6 +138,8 @@ export function AppShell() {
     }, 80);
     return () => window.clearTimeout(t);
   }, [keyboard]);
+
+  if (lock && !inLock(lock, pathname)) return <Navigate to={lock.base} replace />;
 
   return (
     <div
@@ -150,23 +157,25 @@ export function AppShell() {
       }}
       className={cn("fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-appbg", !touch && "md:flex-row")}
     >
-      {!touch && <Sidebar />}
+      {!touch && nav && <Sidebar />}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {lock && <LockedBar lock={lock} />}
         {/* Floats over the top of the screen; it takes no room. */}
         <OfflineBar state={offlineBar} />
         {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
             page is short, so content doesn't jump sideways when a list grows or
             shrinks past the fold (collapsing roster sites, filtering). */}
-        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
+        {/* Locked, the bar above already clears the status bar, so screens' own headers needn't. */}
+        <main ref={mainRef} style={lock ? ({ "--safe-top": "0px" } as React.CSSProperties) : undefined} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
           <Outlet />
         </main>
         {/* Installed to the home screen there's no reload button: pull down from the top instead. */}
-        {touch && <PullToRefresh scrollRef={mainRef} />}
+        {touch && nav && <PullToRefresh scrollRef={mainRef} />}
       </div>
       {/* The welcome tour, the first time someone reaches their home screen. */}
-      <SiteTourStarter />
-      {touch && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
-      {touch && !keyboard && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
+      {nav && <SiteTourStarter />}
+      {touch && nav && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
+      {touch && nav && !keyboard && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
     </div>
   );
 }
