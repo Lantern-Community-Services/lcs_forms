@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { z } from "zod";
 import { stamp, TZ } from "../services/exportCommon.js";
+import { drawDocument, exportDocument } from "./exportDocuments.js";
 
 /**
  * Excel, PDF and CSV files for code forms (app.export and app.print(spec) in a
@@ -52,7 +53,8 @@ const chart = z.discriminatedUnion("type", [
 ]);
 export type ExportChart = z.infer<typeof chart>;
 
-export const exportSpec = z.object({
+export const exportSpec = z
+  .object({
   format: z.enum(["xlsx", "pdf", "csv"]),
   filename: z.string().trim().min(1).max(120),
   title: z.string().trim().min(1).max(200),
@@ -67,7 +69,6 @@ export const exportSpec = z.object({
         rows: z.array(z.record(z.unknown())).max(20_000),
       })
     )
-    .min(1)
     .max(12),
   /** PDF only: default true when there are charts, or a table has more than 5 columns. */
   landscape: z.boolean().optional(),
@@ -75,7 +76,13 @@ export const exportSpec = z.object({
   charts: z.array(chart).max(12).optional(),
   /** PDF only: false leaves the tables out (the charts say it all). */
   pdfTables: z.boolean().optional(),
-});
+  /** PDF only: records laid out as their paper form, each from a new page, after any tables. */
+  documents: z.array(exportDocument).max(25).optional(),
+})
+  .refine((s) => s.sheets.length > 0 || (s.format === "pdf" && Boolean(s.documents?.length)), {
+    message: "Give at least one table (a PDF can have documents instead).",
+    path: ["sheets"],
+  });
 export type ExportSpec = z.infer<typeof exportSpec>;
 
 const TYPES = {
@@ -216,7 +223,7 @@ async function xlsx(spec: ExportSpec, by: string, at: Date): Promise<Buffer> {
 }
 
 function pdf(spec: ExportSpec, by: string, at: Date): Promise<Buffer> {
-  const landscape = spec.landscape ?? (Boolean(spec.charts?.length) || spec.sheets.some((s) => s.columns.length > 5));
+  const landscape = spec.landscape ?? (!spec.documents?.length && (Boolean(spec.charts?.length) || spec.sheets.some((s) => s.columns.length > 5)));
   const doc = new PDFDocument({ size: "LETTER", layout: landscape ? "landscape" : "portrait", margin: 36, bufferPages: true, info: { Title: spec.title, Author: "Lantern Forms" } });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
@@ -227,10 +234,16 @@ function pdf(spec: ExportSpec, by: string, at: Date): Promise<Buffer> {
   const left = doc.page.margins.left;
   const width = doc.page.width - left - doc.page.margins.right;
   const bottom = () => doc.page.height - doc.page.margins.bottom - 6;
+  const tables = spec.pdfTables === false ? [] : spec.sheets;
+  const documents = spec.documents ?? [];
+  // Paper-form documents alone: each draws its own title block, so there's no report header.
+  const report = tables.length > 0 || Boolean(spec.stats?.length) || Boolean(spec.charts?.length) || !documents.length;
 
-  doc.fillColor(INK).font("Helvetica-Bold").fontSize(16).text(spec.title, left, doc.page.margins.top, { width });
-  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(`${spec.subtitle ? `${spec.subtitle} · ` : ""}printed ${stamp(at)} by ${by}`, { width });
-  doc.moveDown(0.8);
+  if (report) {
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(16).text(spec.title, left, doc.page.margins.top, { width });
+    doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(`${spec.subtitle ? `${spec.subtitle} · ` : ""}printed ${stamp(at)} by ${by}`, { width });
+    doc.moveDown(0.8);
+  }
 
   if (spec.stats?.length) {
     // One row of tiles on a landscape page (up to six), as the Reports screen.
@@ -254,7 +267,18 @@ function pdf(spec: ExportSpec, by: string, at: Date): Promise<Buffer> {
   }
 
   if (spec.charts?.length) drawCharts(doc, spec.charts, { left, width, bottom });
-  for (const sheet of spec.pdfTables === false ? [] : spec.sheets) drawTable(doc, sheet, spec.sheets.length > 1, { left, width, bottom });
+  for (const sheet of tables) drawTable(doc, sheet, spec.sheets.length > 1, { left, width, bottom });
+
+  // Which document each page belongs to, for its footer.
+  const footers: (string | undefined)[] = [];
+  documents.forEach((d, i) => {
+    // Paper forms are portrait, even after a landscape summary (later pages follow the current one).
+    if (report || i > 0) doc.addPage({ size: "LETTER", layout: "portrait", margin: 36 });
+    const from = doc.bufferedPageRange().count - 1;
+    doc.y = doc.page.margins.top;
+    drawDocument(doc, d, { left: doc.page.margins.left, width: doc.page.width - doc.page.margins.left - doc.page.margins.right, bottom });
+    for (let p = from; p < doc.bufferedPageRange().count; p++) footers[p] = d.footer;
+  });
 
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
@@ -262,9 +286,12 @@ function pdf(spec: ExportSpec, by: string, at: Date): Promise<Buffer> {
     const margin = doc.page.margins.bottom;
     doc.page.margins.bottom = 0;
     const y = doc.page.height - margin + 10;
+    // This page's own width: a document's portrait page can follow a landscape summary.
+    const w = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const x = doc.page.margins.left;
     doc.fillColor(MUTED).font("Helvetica").fontSize(8);
-    doc.text("Confidential — may contain resident information.", left, y, { width: width / 2, lineBreak: false });
-    doc.text(`Page ${i + 1} of ${range.count}`, left + width / 2, y, { width: width / 2, align: "right", lineBreak: false });
+    doc.text(footers[i] ? `${footers[i]} · Confidential` : "Confidential — may contain resident information.", x, y, { width: w / 2, lineBreak: false });
+    doc.text(`Page ${i + 1} of ${range.count}`, x + w / 2, y, { width: w / 2, align: "right", lineBreak: false });
     doc.page.margins.bottom = margin;
   }
   doc.end();
