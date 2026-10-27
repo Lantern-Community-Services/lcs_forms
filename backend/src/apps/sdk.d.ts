@@ -119,7 +119,38 @@ declare module "@lcs/sdk" {
     charts?: ExportChart[];
     /** PDF only: false leaves the tables out (a report whose charts say it all). Excel and CSV always have them. */
     pdfTables?: boolean;
+    /**
+     * PDF only: records laid out as their paper form (up to 25), each from a new portrait page, after
+     * any tables. A PDF of documents alone needs no sheets (pass []) and has no report header: each
+     * document has its own title block. Keep the whole spec under 5 MB (signature images count).
+     */
+    documents?: ExportDocument[];
   }
+
+  /** One record as its paper form: a title block, then blocks top to bottom. */
+  export interface ExportDocument {
+    title: string;
+    /** Right of the title, in small capitals (e.g. "Lantern Community Services"). */
+    org?: string;
+    /** Italic line under the title. */
+    intro?: string;
+    /** In red under the title, e.g. "VOIDED". */
+    stamp?: string;
+    /** Left of each of its pages' footers. */
+    footer?: string;
+    blocks: ExportDocumentBlock[];
+  }
+
+  export type ExportDocumentBlock =
+    /** A shaded bar: "1.  VISIT INFORMATION" on the left, an italic note on the right. */
+    | { type: "section"; title: string; note?: string }
+    /** One row of labelled, shaded boxes. width: share of the row (default 1). lines: the box's minimum
+     *  height in lines (it grows to fit). image: a signature, as a PNG/JPEG data: URL, drawn in the box. */
+    | { type: "fields"; fields: { label?: string; value?: string; width?: number; lines?: number; image?: string }[] }
+    /** Every option with a check box, the checked ones ticked. Each inner array is one printed line. */
+    | { type: "choices"; label?: string; rows: string[][]; checked: string[]; strong?: boolean }
+    /** An italic line of guidance. */
+    | { type: "note"; text: string };
 
   /** A color for an exported chart: a palette slot, a site type, or a hex color. */
   export type ExportColor = { slot: number | null } | { siteType: string } | { color: string };
