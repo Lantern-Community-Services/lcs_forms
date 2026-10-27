@@ -12,6 +12,7 @@ import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
 import { canFollowUp, openFollowUp } from "../services/followUp.js";
+import { movedRuleCheck } from "../services/ruleConversion.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
 import {
@@ -334,7 +335,10 @@ function linkOnlySubject(tpl: string | undefined, ctx: Parameters<typeof renderT
 
 async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry, values: Values, user: Viewer) {
   const site = entry.siteId ? await prisma.site.findUnique({ where: { id: entry.siteId }, select: { name: true, code: true } }) : null;
+  // Rules moved into the form's routing stop here, even in a version published before the move.
+  const moved = await movedRuleCheck(form.id);
   for (const n of doc.settings.notifications ?? []) {
+    if (moved(n)) continue;
     if (!n.enabled || !conditionPasses(n.conditional, values)) continue;
     const ctx = { values, doc, user: user ? { name: user.name, email: user.email } : null, entry: { id: entry.id, createdAt: entry.createdAt }, site, entryUrl: entryUrl(form.slug, entry.id) };
     // The rule's chosen answers, for Lantern addresses only (checked again per address).

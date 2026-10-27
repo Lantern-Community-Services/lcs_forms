@@ -9,6 +9,7 @@ import {
 import { loadReports, saveReports, sendReport } from "../services/emailReports.js";
 import { sentEmails } from "../services/mailer.js";
 import { followUpView, saveFollowUp, setFollowUp } from "../services/followUp.js";
+import { convertRules } from "../services/ruleConversion.js";
 import { ENTRY_CREATED } from "./routingSchema.js";
 import type { ToolRegistrar } from "./mcp.js";
 
@@ -363,6 +364,18 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       if (!entry) throw new HttpError(404, "That form has no such entry.");
       const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note });
       return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, note: out.followUpNote };
+    },
+    { destructiveHint: true }
+  );
+
+
+  tool(
+    "convert_notification_rules",
+    "Move a builder form's own email and in-app notification rules (its settings.notifications, not webhooks) into its notification routing, so who's told is in one place. Keeps the people, the only-when rules, the subject, whatToDo, the chosen answers and urgent; says what couldn't come across. The moved rules stop running at once and leave the draft. dryRun: true shows the routes without saving.",
+    { form: formRef, dryRun: z.boolean().optional() },
+    async ({ form, dryRun }) => {
+      need("forms:build");
+      return convertRules(await routingForm(form), actor, { dryRun });
     },
     { destructiveHint: true }
   );

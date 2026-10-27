@@ -78,7 +78,7 @@ export function BuiltFormEntriesPage() {
         actions={
           <>
             <Link to={`/f/${slug}`}><Button variant="secondary"><ExternalLink className="h-4 w-4" /> Open form</Button></Link>
-            {data.isAdmin && <Link to={`/f/${slug}/notifications`}><Button variant="secondary"><Bell className="h-4 w-4" /> Notifications</Button></Link>}
+            {data.isAdmin && <Link to={canOpenBuilder ? `/admin/builder/${data.form.id}?tab=notifications` : `/f/${slug}/notifications`}><Button variant="secondary"><Bell className="h-4 w-4" /> Notifications</Button></Link>}
             {data.isAdmin && canOpenBuilder && <Link to={`/admin/builder/${data.form.id}`}><Button variant="secondary">Edit form</Button></Link>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button><Download className="h-4 w-4" /> Export</Button></DropdownMenuTrigger>

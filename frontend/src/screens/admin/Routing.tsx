@@ -81,6 +81,8 @@ interface RoutingView {
   events: RoutingEvent[];
   /** The answers a route's email may show (never residents, names, contact details, signatures, files or paragraphs). */
   emailFields: EmailField[];
+  /** A builder form's own email and in-app rules, saved in the form, not moved into routing yet. */
+  rulesToMove?: { id: string; name: string; kind: string; enabled: boolean }[];
   roles: { key: string; name: string; everySite: boolean }[];
   routes: Route[];
   revision: number;
@@ -157,7 +159,7 @@ export function AdminRoutingForm() {
  * form; `inForm` is the same editor as the form's own Notifications tab, where
  * the form is already open around it.
  */
-export function RoutingEditor({ formId: id, inForm = false }: { formId: string; inForm?: boolean }) {
+export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { formId: string; inForm?: boolean; onRulesMoved?: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -239,6 +241,10 @@ export function RoutingEditor({ formId: id, inForm = false }: { formId: string; 
           residents, names, contact details, signatures and files never go in an email. Nobody is told twice about one event.
         </p>
       </Card>
+
+      {inForm && <NotificationsSummary formId={id} routes={data.routes} />}
+
+      {(data.rulesToMove?.length ?? 0) > 0 && <MoveRules formId={id} rules={data.rulesToMove!} unsaved={dirty} onMoved={() => { void refetch(); onRulesMoved?.(); }} />}
 
       {data.events.map((ev) => {
         const mine = routes.filter((r) => r.event === ev.id);
@@ -387,7 +393,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
             <Button variant="ghost" size="sm" onClick={() => setRules([...rules, { field: fields[0].id, op: "is", value: "" }])}>
               <Plus className="h-3.5 w-3.5" /> {rules.length ? "Another condition" : "Add a condition"}
             </Button>
-            {!rules.length && <span className="ml-1 text-[12.5px] text-muted">Always, for every {event.label.toLowerCase()}.</span>}
+            {!rules.length && <span className="ml-1 text-[12.5px] text-muted">Always, for every {event.label.toLowerCase().replace(/^(a|an|the) /, "")}.</span>}
           </div>
         </Row>
 
@@ -760,6 +766,83 @@ function PositionDialog({ taken, onClose, onAdd }: { taken: Recipient[]; onClose
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── At a glance ──────────────────────────────────────────────────────────
+
+/** One line for each part of the form's notifications, at the top of its Notifications tab. */
+function NotificationsSummary({ formId, routes }: { formId: string; routes: Route[] }) {
+  const { data: follow } = useQuery({ queryKey: ["routing", formId, "follow-up"], queryFn: () => api.get<{ enabled: boolean; open?: number }>(`/routing/${formId}/follow-up`), retry: false });
+  const { data: reports } = useQuery({ queryKey: ["routing", formId, "reports"], queryFn: () => api.get<{ reports: { name: string; enabled: boolean; day: number; hour: number }[] }>(`/routing/${formId}/reports`) });
+  const { data: emails } = useQuery({ queryKey: ["routing", formId, "emails"], queryFn: () => api.get<{ items: { createdAt: string; status: string }[] }>(`/routing/${formId}/emails?limit=50`) });
+  const live = routes.filter((r) => r.enabled);
+  const urgent = live.filter((r) => r.urgent).length;
+  const weekly = (reports?.reports ?? []).filter((r) => r.enabled);
+  const last = emails?.items[0];
+  const parts = [
+    live.length ? `${live.length} route${live.length === 1 ? " tells" : "s tell"} people${urgent ? ` (${urgent} urgent)` : ""}` : "Nobody is told yet",
+    follow ? (follow.enabled ? `Follow-up on${typeof follow.open === "number" ? `, ${follow.open} open` : ""}` : "No follow-up") : null,
+    weekly.length ? `${weekly.length} weekly report${weekly.length === 1 ? "" : "s"}` : "No weekly report",
+    last ? `Last email ${relativeTime(last.createdAt)}${last.status !== "sent" ? ` (${last.status})` : ""}` : "No emails yet",
+  ].filter(Boolean);
+  return (
+    <div className="mb-5 flex flex-wrap gap-2" aria-label="At a glance">
+      {parts.map((p) => <span key={p} className="rounded-pill bg-subtle px-3 py-1 text-[12.5px] font-semibold text-ink">{p}</span>)}
+    </div>
+  );
+}
+
+/**
+ * A builder form's own email and in-app rules (from before routing) moved in
+ * here, so who's told is in one place. Shows what would change first.
+ */
+function MoveRules({ formId, rules, unsaved, onMoved }: { formId: string; rules: { id: string; name: string; kind: string; enabled: boolean }[]; unsaved: boolean; onMoved: () => void }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [preview, setPreview] = useState<{ routes: { name: string }[]; notes: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function look() {
+    try {
+      setPreview(await api.post(`/routing/${formId}/convert-rules`, { dryRun: true }));
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't look at the rules."), "error");
+    }
+  }
+  async function move() {
+    setBusy(true);
+    try {
+      const out = await api.post<{ converted: number }>(`/routing/${formId}/convert-rules`, {});
+      await qc.invalidateQueries({ queryKey: ["routing"] });
+      toast(`Moved ${out.converted} rule${out.converted === 1 ? "" : "s"} into routing.`);
+      setPreview(null);
+      onMoved();
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't move them."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="mb-5 border-status-amberText/40 p-4">
+      <p className="text-[14px] font-semibold text-ink">
+        This form also has {rules.length} notification rule{rules.length === 1 ? "" : "s"} saved in the form
+      </p>
+      <p className="mt-0.5 text-[12.5px] text-muted">
+        {rules.map((r) => `${r.name}${r.enabled ? "" : " (off)"}`).join(", ")}. Move {rules.length === 1 ? "it here as a route" : "them here as routes"} so everything about who's told is in one place, with the same people, conditions, subject, What to do and answers.
+      </p>
+      {preview && (
+        <div className="mt-3 space-y-1 rounded-input bg-subtle px-3 py-2 text-[12.5px]">
+          <p className="font-semibold text-ink">They'd become: {preview.routes.map((r) => r.name).join(", ") || "nothing"}</p>
+          {preview.notes.map((n, i) => <p key={i} className="text-status-amberText">{n}</p>)}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {!preview && <Button size="sm" variant="secondary" onClick={() => void look()}>See what would change</Button>}
+        {preview && <Button size="sm" onClick={() => void move()} disabled={busy || unsaved || !preview.routes.length}>{busy ? "Moving…" : "Move them into routing"}</Button>}
+        {preview && unsaved && <span className="text-[12.5px] text-muted">Save your changes to the routes first.</span>}
+      </div>
+    </Card>
   );
 }
 

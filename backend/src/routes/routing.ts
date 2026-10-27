@@ -13,6 +13,7 @@ import { routeSchema } from "../forms/routingSchema.js";
 import { loadReports, reportSchema, saveReports, sendReport } from "../services/emailReports.js";
 import { sentEmails } from "../services/mailer.js";
 import { followUpView, saveFollowUp } from "../services/followUp.js";
+import { convertRules, rulesToConvert } from "../services/ruleConversion.js";
 
 /**
  * Admin → Notification routing: each form's routes (who's told about what),
@@ -73,6 +74,8 @@ routingRouter.get(
       events: eventsOf(form),
       // The answers a route may put in its email (Lantern addresses only).
       emailFields: emailableFields(form),
+      // A builder form's own email and in-app rules not moved into routing yet.
+      rulesToMove: (await rulesToConvert(form)).map((n) => ({ id: n.id, name: n.name, kind: n.kind, enabled: n.enabled })),
       roles: ROLES.map((r) => ({ key: r.key, name: r.name, everySite: r.allSites })),
       ...(await loadRouting(form)),
       log: await routingLog(form.id, { limit: 30 }),
@@ -176,6 +179,15 @@ routingRouter.get(
   asyncHandler(async (req, res) => {
     const form = await routingForm(req.params.form);
     res.json({ items: await sentEmails({ formId: form.id, limit: Number(req.query.limit) || 50, before: typeof req.query.before === "string" ? req.query.before : undefined }) });
+  })
+);
+
+/** Move a builder form's own email and in-app rules into its routing (dryRun: say what would happen). */
+routingRouter.post(
+  "/:form/convert-rules",
+  asyncHandler(async (req, res) => {
+    const { dryRun } = z.object({ dryRun: z.boolean().optional() }).parse(req.body ?? {});
+    res.json(await convertRules(await routingForm(req.params.form), actorOf(req), { dryRun }));
   })
 );
 
