@@ -567,6 +567,15 @@ model FormEntry {
   notes FormEntryNote[]
   files FormFile[]
 
+  /// Follow-up (services/followUp.ts): "open" until someone it's for marks it done; null when the form doesn't track it.
+  followUp           String?   @db.NVarChar(16)
+  followUpDoneAt     DateTime?
+  followUpDoneByName String?   @db.NVarChar(255)
+  /// What they did, written when marking it done.
+  followUpNote       String?   @db.NVarChar(2000)
+  followUpRemindedAt DateTime?
+  followUpReminders  Int       @default(0)
+
   @@unique([formId, clientId])
   @@index([formId, createdAt])
   @@index([formId, status])
@@ -577,6 +586,7 @@ model FormEntry {
   @@index([siteId])
   /// Someone's own entries, newest first (the Forms home, "mine" lists, undo).
   @@index([createdById, createdAt])
+  @@index([formId, followUp])
 }
 
 /// A note on an entry — typed by a person, or written by the system
@@ -1087,6 +1097,9 @@ model Notification {
   emailError  String?   @db.NVarChar(Max)
   emailTries  Int       @default(0)
   emailedAt   DateTime?
+  /// The email's own parts (services/emailTemplate.ts): what to do, and the
+  /// chosen answers, JSON. Answers only for a Lantern address; never shown in the app.
+  emailDetail String?   @db.NVarChar(Max)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -1135,4 +1148,25 @@ model TutorialProgress {
 
   @@id([userId, key])
   @@index([key])
+}
+
+/// Every email the site sends, for Admins and the MCP (list_sent_emails): who,
+/// what subject, whether it went, and whether it carried answers. Never the body.
+model EmailLog {
+  id          String   @id @default(cuid()) @db.NVarChar(64)
+  createdAt   DateTime @default(now())
+  /// The form it's about, when there is one.
+  formId      String?  @db.NVarChar(64)
+  /// notification | digest | route | rule | report | code
+  kind        String   @db.NVarChar(32)
+  to          String   @db.NVarChar(320)
+  subject     String   @db.NVarChar(255)
+  /// sent | failed | skipped
+  status      String   @db.NVarChar(32)
+  error       String?  @db.NVarChar(Max)
+  /// It carried chosen answers (only ever to a Lantern address).
+  withAnswers Boolean  @default(false)
+
+  @@index([formId, createdAt])
+  @@index([createdAt])
 }

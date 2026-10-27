@@ -122,8 +122,10 @@ Admins and developers pass every role check.
   (get_routing, save_route), with no code change. A route: { id, name, event, sites?: [codes], when?: { match, rules },
   to: [{ kind: "person", email, sites? } | { kind: "role", role, siteOnly? } | { kind: "field", field } |
   { kind: "submitter" }], email?: "always" | "prefs", subject? }. "entry.created" exists for every form and is routed
-  automatically on save. Account holders get the app notification plus a link-only email; other addresses get the
-  link-only email. In the draft only the person previewing is told.
+  automatically on save. Account holders get the app notification plus an email; other addresses get the email.
+  The email (the Lantern layout) shows the route's whatToDo and, for Lantern addresses only, the values chosen in
+  its fields: only values your event declares with "choices" can be chosen, plus _site, _date and _by. In the draft
+  only the person previewing is told.
 - Scheduled actions: form.json "schedule" runs an action once a New York day at "at" (daily, weekdays, or monthly on
   "day"), as nobody: ctx.user is null and args is { scheduled: true, day }. Check args.scheduled, read across everyone
   (ctx.db, ctx.directory), and email or notify. Only the published form runs them; a run missed while the server was down happens

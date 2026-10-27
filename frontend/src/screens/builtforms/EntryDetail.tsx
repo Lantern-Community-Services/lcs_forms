@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { AnswerList, FormRenderer } from "@/components/formkit/FormRenderer";
-import { fillApi, submitErrors, useEntry } from "@/lib/builder";
+import { fillApi, submitErrors, useEntry, type EntryDetail } from "@/lib/builder";
 import type { Errors, Values } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 
@@ -119,6 +119,8 @@ export function BuiltFormEntryPage() {
         )}
       </Card>
 
+      {entry.followUp && <FollowUpPanel entry={entry} canDo={data.canFollowUp} onDone={(done, text) => act(() => fillApi.followUp(slug, id, done, text), done ? "Marked done. Whoever filed it has been told." : "Opened again.")} />}
+
       <Card className="p-5 print:hidden">
         <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">Notes</p>
         {data.notes.length === 0 && <p className="mb-3 text-[13px] text-muted">No notes yet.</p>}
@@ -150,6 +152,57 @@ export function BuiltFormEntryPage() {
       </Dialog>
       <p className="mt-4 text-center text-micro text-muted"><Link to={`/f/${slug}/entries`} className="font-semibold text-accent">Back to all entries</Link></p>
     </Page>
+  );
+}
+
+/**
+ * The entry's follow-up: open until someone it's for marks it done, with what
+ * they did; then whoever filed it is told. Done ones can be opened again.
+ */
+function FollowUpPanel({ entry, canDo, onDone }: { entry: EntryDetail["entry"]; canDo: boolean; onDone: (done: boolean, note?: string) => Promise<void> }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const f = entry.followUp!;
+  const run = async (done: boolean) => {
+    setBusy(true);
+    try {
+      await onDone(done, text.trim() || undefined);
+      setText("");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className={cn("mb-4 p-5 print:hidden", f.status === "open" ? "border-status-amberText/40" : "")}>
+      <div className="mb-3 flex items-center gap-2">
+        {f.status === "open" ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
+        <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up: {f.status === "open" ? "open" : "done"}</p>
+        {f.status === "open" && f.reminders > 0 && <span className="text-micro text-muted">· {f.reminders} reminder{f.reminders === 1 ? "" : "s"} sent</span>}
+      </div>
+      {f.status === "done" ? (
+        <>
+          <p className="text-[13.5px] text-ink">
+            Done by <span className="font-semibold">{f.doneByName}</span>{f.doneAt ? `, ${formatDateTime(f.doneAt)}` : ""}.
+          </p>
+          {f.note && <p className="mt-1 whitespace-pre-wrap rounded-input bg-subtle px-3 py-2 text-[13.5px] text-ink">{f.note}</p>}
+          {canDo && (
+            <div className="mt-3">
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => void run(false)}><RotateCcw className="h-4 w-4" /> Open it again</Button>
+            </div>
+          )}
+        </>
+      ) : canDo ? (
+        <>
+          <p className="mb-2 text-[13px] text-muted">When it's done, say what you did. Whoever filed it is told.</p>
+          <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="e.g. Accounts created, laptop handed over at orientation." className="min-h-[64px]" />
+          <div className="mt-2 flex justify-end">
+            <Button disabled={busy} onClick={() => void run(true)}><CheckCircle2 className="h-4 w-4" /> Mark as done</Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-[13px] text-muted">Waiting for the people it's for to mark it done.</p>
+      )}
+    </Card>
   );
 }
 

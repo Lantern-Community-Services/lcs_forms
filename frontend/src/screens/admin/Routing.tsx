@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AtSign, Briefcase, Copy, ExternalLink, MoreHorizontal, Plus, RotateCcw, Search, Trash2, User, UserCheck, Users, UsersRound, X } from "lucide-react";
+import { ArrowLeft, AtSign, Briefcase, Copy, ExternalLink, Eye, Mail, MoreHorizontal, Plus, RotateCcw, Search, Send, Trash2, User, UserCheck, Users, UsersRound, X } from "lucide-react";
 import { GroupChecklist, PositionsDropdown } from "@/components/AccessPickers";
 import { useJobTitles, useStaffGroups } from "@/lib/groups";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, SearchInput } from "@/components/ui/input";
+import { Input, SearchInput, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -56,7 +56,13 @@ interface Route {
   /** Needs attention now: red in the bell, pinned on their list, emailed at once. */
   urgent?: boolean;
   subject?: string;
+  /** What the people on it have to do, shown in the email. */
+  whatToDo?: string;
+  /** Answers shown in the email, to Lantern addresses only (RoutingView.emailFields). */
+  fields?: string[];
 }
+
+interface EmailField { id: string; label: string }
 
 interface RoutingEvent {
   id: string;
@@ -73,6 +79,8 @@ interface LogItem { id: string; at: string; event: string; title?: string; entry
 interface RoutingView {
   form: { id: string; slug: string; title: string; kind: "basic" | "code"; status: string; url: string };
   events: RoutingEvent[];
+  /** The answers a route's email may show (never residents, names, contact details, signatures, files or paragraphs). */
+  emailFields: EmailField[];
   roles: { key: string; name: string; everySite: boolean }[];
   routes: Route[];
   revision: number;
@@ -226,7 +234,10 @@ export function RoutingEditor({ formId: id, inForm = false }: { formId: string; 
             <Button variant="ghost" size="sm" onClick={reset}><RotateCcw className="h-3.5 w-3.5" /> Back to the form's defaults</Button>
           </div>
         )}
-        <p className="mt-1.5">People with an account are told in the app and by email; anyone else gets an email with a link. Emails never include answers or resident details. Nobody is told twice about one event.</p>
+        <p className="mt-1.5">
+          People with an account are told in the app and by email; anyone else gets the email. Each email says what to do and can show the answers you choose, to Lantern addresses only:
+          residents, names, contact details, signatures and files never go in an email. Nobody is told twice about one event.
+        </p>
       </Card>
 
       {data.events.map((ev) => {
@@ -250,6 +261,7 @@ export function RoutingEditor({ formId: id, inForm = false }: { formId: string; 
                     roles={data.roles}
                     sites={siteList}
                     formId={id}
+                    emailFields={data.emailFields}
                     onChange={(next) => change(r.id, next)}
                     onDuplicate={() => setRoutes([...routes, { ...structuredClone(r), id: uniqueId(routes.map((x) => x.id), r.id), name: `${r.name} (copy)` }])}
                   />
@@ -262,7 +274,13 @@ export function RoutingEditor({ formId: id, inForm = false }: { formId: string; 
         );
       })}
 
+      {data.form.kind === "basic" && <FollowUpSection formId={id} roles={data.roles} sites={siteList} />}
+
+      <ReportsSection formId={id} emailFields={data.emailFields} roles={data.roles} sites={siteList} />
+
       <RecentSends items={data.log} />
+
+      <SentEmails formId={id} />
 
       {dirty && (
         <div className="sticky bottom-0 z-10 -mx-4 mt-5 flex items-center justify-between gap-3 border-t border-hairline bg-surface px-4 py-3 md:-mx-7 md:px-7">
@@ -286,12 +304,13 @@ function uniqueId(taken: string[], base: string) {
 
 // ── A route ──────────────────────────────────────────────────────────────
 
-function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }: {
+function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, onDuplicate }: {
   route: Route;
   event: RoutingEvent;
   roles: RoutingView["roles"];
   sites: Site[];
   formId: string;
+  emailFields: EmailField[];
   onChange: (r: Route | null) => void;
   onDuplicate: () => void;
 }) {
@@ -428,6 +447,14 @@ function RouteCard({ route, event, roles, sites, formId, onChange, onDuplicate }
           <Input value={route.subject ?? ""} onChange={(e) => set({ subject: e.target.value || undefined })} placeholder="The form's own subject" className="max-w-[420px]" aria-label="Subject" />
           <p className="mt-1 text-[12px] text-muted">Optional. Can use {"{form}"}, {"{site}"}, {"{title}"} and {"{date}"}. Never put a resident's name here: it's the email subject.</p>
         </Row>
+
+        <EmailParts
+          whatToDo={route.whatToDo}
+          fields={route.fields}
+          emailFields={emailFields}
+          onChange={(patch) => set(patch)}
+          preview={() => api.post<EmailPreview>(`/routing/${formId}/email-preview`, { route: { ...route, name: route.name || "Route" } })}
+        />
 
         <WhoGetsIt route={route} sites={sites} formId={formId} />
       </div>
@@ -733,6 +760,504 @@ function PositionDialog({ taken, onClose, onAdd }: { taken: Recipient[]; onClose
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── What the email says ──────────────────────────────────────────────────
+
+interface EmailPreview { subject: string; from: string; inside: string; outside: string }
+
+/** A route's (or report's) "What to do" and "Answers in the email", with a preview of the email. */
+function EmailParts({ whatToDo, fields, emailFields, onChange, preview, answersLabel = "Answers in the email" }: {
+  whatToDo?: string;
+  fields?: string[];
+  emailFields: EmailField[];
+  onChange: (patch: { whatToDo?: string; fields?: string[] }) => void;
+  preview?: () => Promise<EmailPreview>;
+  answersLabel?: string;
+}) {
+  const [shown, setShown] = useState<EmailPreview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  async function open() {
+    if (!preview) return;
+    setLoading(true);
+    try {
+      setShown(await preview());
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't make the preview."), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <>
+      <Row label="What to do">
+        <Textarea
+          value={whatToDo ?? ""}
+          onChange={(e) => onChange({ whatToDo: e.target.value || undefined })}
+          rows={2}
+          maxLength={500}
+          placeholder="e.g. Review and sign within 24 hours."
+          aria-label="What to do"
+          className="max-w-[560px]"
+        />
+        <p className="mt-1 text-[12px] text-muted">Shown at the top of the email, so people know what's expected of them. No resident details.</p>
+      </Row>
+      <Row label={answersLabel}>
+        <CheckboxList options={emailFields.map((f) => ({ value: f.id, label: f.label }))} value={fields ?? []} onChange={(v) => onChange({ fields: v.length ? v : undefined })} className="max-w-[560px]" />
+        <p className="mt-1 text-[12px] text-muted">
+          Shown to Lantern addresses only; anyone else gets the email without them. Residents, names, contact details, signatures, files and paragraphs can't be chosen.
+        </p>
+        {preview && (
+          <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={() => void open()} disabled={loading}>
+            <Eye className="h-4 w-4" /> {loading ? "Making the preview…" : "Preview the email"}
+          </Button>
+        )}
+      </Row>
+      {shown && <EmailPreviewDialog preview={shown} onClose={() => setShown(null)} />}
+    </>
+  );
+}
+
+/** The email as a Lantern address gets it, and as anyone else does. */
+function EmailPreviewDialog({ preview, onClose }: { preview: EmailPreview; onClose: () => void }) {
+  const [who, setWho] = useState<"inside" | "outside">("inside");
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent aria-describedby={undefined} className="w-[min(780px,calc(100vw-2rem))]">
+        <DialogHeader title={preview.subject} subtitle={preview.from} />
+        <DialogBody className="space-y-3">
+          <div className="inline-flex rounded-input border border-hairline p-0.5" role="radiogroup">
+            {([["inside", "A Lantern address"], ["outside", "Anyone else"]] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={who === k}
+                onClick={() => setWho(k)}
+                className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", who === k ? "bg-navy text-white" : "text-muted hover:text-ink")}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <iframe title="Email preview" sandbox="" srcDoc={who === "inside" ? preview.inside : preview.outside} className="h-[560px] w-full rounded-input border border-hairline bg-white" />
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Follow-up ────────────────────────────────────────────────────────────
+
+interface FollowUp {
+  enabled: boolean;
+  doers: Recipient[];
+  remindAfterDays: number | null;
+  maxReminders: number;
+  tellSubmitter: boolean;
+  whatToDo?: string;
+  open?: number;
+}
+
+/**
+ * Follow-up: each new entry stays open until someone it's for marks it done
+ * (with what they did), whoever filed it is told, and the people it's for are
+ * reminded until then. Saved on its own.
+ */
+function FollowUpSection({ formId, roles, sites }: { formId: string; roles: RoutingView["roles"]; sites: Site[] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const key = ["routing", formId, "follow-up"];
+  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<FollowUp>(`/routing/${formId}/follow-up`) });
+  const [f, setF] = useState<FollowUp | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState<null | "person" | "role" | "group" | "title">(null);
+  useEffect(() => {
+    if (data) setF(data);
+  }, [data]);
+  if (!data || !f) return null;
+  const strip = ({ open: _o, ...x }: FollowUp & { updatedAt?: unknown; updatedByName?: unknown }) => {
+    const { updatedAt: _a, updatedByName: _b, ...rest } = x;
+    return rest;
+  };
+  const dirty = JSON.stringify(strip(f)) !== JSON.stringify(strip(data));
+  const set = (patch: Partial<FollowUp>) => setF({ ...f, ...patch });
+  const siteName = (code: string) => sites.find((s) => s.code === code)?.name ?? code;
+
+  async function save() {
+    if (f!.enabled && !f!.doers.length) return toast("Say who it's for: they mark entries done and get the reminders.", "error");
+    setBusy(true);
+    try {
+      await api.put(`/routing/${formId}/follow-up`, strip(f!));
+      toast(f!.enabled ? "Follow-up saved. New entries start open." : "Follow-up saved.");
+      await qc.invalidateQueries({ queryKey: key });
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't save the follow-up."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mb-6 mt-8">
+      <div className="mb-2 px-1">
+        <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up</p>
+        <p className="text-[12.5px] text-muted">Keep each new entry open until the people it's for mark it done, with what they did. Whoever filed it is told, and they're reminded until it's done.</p>
+      </div>
+      <Card className={cn("p-0", !f.enabled && "opacity-80")}>
+        <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
+          <Switch checked={f.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label="Track follow-ups" />
+          <p className="min-w-0 flex-1 text-[14px] font-semibold text-ink">{f.enabled ? "Entries are followed up" : "Not followed up"}</p>
+          {f.enabled && typeof data.open === "number" && <Tag tone={data.open ? "amber" : "neutral"}>{data.open} open</Tag>}
+        </div>
+        {f.enabled && (
+          <div className="grid gap-4 px-4 py-4 md:px-5">
+            <Row label="Who does it">
+              <ul className="divide-y divide-hairline rounded-input border border-hairline">
+                {f.doers.map((t, i) => (
+                  <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ doers: next ? f.doers.map((x, j) => (j === i ? next : x)) : f.doers.filter((_, j) => j !== i) })} />
+                ))}
+                {!f.doers.length && <li className="px-3 py-2 text-[13px] text-muted">Nobody yet.</li>}
+              </ul>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="mt-1"><Plus className="h-4 w-4" /> Add people</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onSelect={() => setPicking("person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPicking("role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPicking("group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPicking("title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <p className="mt-1 text-[12px] text-muted">They can mark entries done and get the reminders. Admins always can.</p>
+            </Row>
+            <Row label="Reminders">
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={f.remindAfterDays === null ? "never" : String(f.remindAfterDays)}
+                  onChange={(e) => set({ remindAfterDays: e.target.value === "never" ? null : Number(e.target.value) })}
+                  className="w-56"
+                  aria-label="Remind after"
+                  options={[{ value: "never", label: "Never remind" }, ...[1, 2, 3, 5, 7, 14].map((d) => ({ value: String(d), label: `After ${d} day${d === 1 ? "" : "s"}, then every ${d}` }))]}
+                />
+                {f.remindAfterDays !== null && (
+                  <Select value={String(f.maxReminders)} onChange={(e) => set({ maxReminders: Number(e.target.value) })} className="w-40" aria-label="At most" options={[1, 2, 3, 5, 10].map((n) => ({ value: String(n), label: `At most ${n}` }))} />
+                )}
+              </div>
+            </Row>
+            <Row label="When it's done">
+              <label className="flex items-center gap-2 pt-1 text-[13px] text-ink">
+                <Switch checked={f.tellSubmitter} onCheckedChange={(v) => set({ tellSubmitter: v })} />
+                Tell whoever filed it, with the note of what was done
+              </label>
+            </Row>
+            <Row label="What to do">
+              <Textarea value={f.whatToDo ?? ""} onChange={(e) => set({ whatToDo: e.target.value || undefined })} rows={2} maxLength={500} placeholder="e.g. Set up their accounts, then mark it done." className="max-w-[560px]" />
+              <p className="mt-1 text-[12px] text-muted">Shown in the reminder emails.</p>
+            </Row>
+            <p className="text-[12px] text-muted">Applies to entries saved after it's turned on.</p>
+          </div>
+        )}
+      </Card>
+      {dirty && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <span className="mr-auto text-[13px] font-semibold text-ink">Unsaved follow-up changes</span>
+          <Button variant="secondary" onClick={() => setF(data)} disabled={busy}>Undo</Button>
+          <Button onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save follow-up"}</Button>
+        </div>
+      )}
+      <PersonDialog open={picking === "person"} sites={sites} taken={f.doers} onClose={() => setPicking(null)} onAdd={(r) => set({ doers: [...f.doers, r] })} />
+      <RoleDialog open={picking === "role"} roles={roles} onClose={() => setPicking(null)} onAdd={(r) => set({ doers: [...f.doers, r] })} />
+      {picking === "group" && <TeamDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
+      {picking === "title" && <PositionDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
+    </section>
+  );
+}
+
+// ── Weekly summary reports ───────────────────────────────────────────────
+
+interface Report {
+  id: string;
+  name: string;
+  enabled: boolean;
+  day: number;
+  hour: number;
+  split: "all" | "site";
+  includeEmpty: boolean;
+  fields: string[];
+  to: Recipient[];
+  whatToDo?: string;
+  lastSentAt?: string | null;
+  nextRun?: string | null;
+}
+
+interface ReportsView { reports: Report[]; revision: number }
+
+interface ReportRun {
+  sent: number;
+  emails: { to: string; subject: string; site: string; entries: number; withAnswers: boolean }[];
+  notes: string[];
+  preview: string | null;
+}
+
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12}:00 ${h < 12 ? "AM" : "PM"}`;
+/** For a recipient row: reports have no event of their own. */
+const REPORT_EVENT: RoutingEvent = { id: "entry.created", label: "Summary report" };
+const strip = ({ nextRun: _n, lastSentAt: _l, ...r }: Report) => r;
+
+/**
+ * The form's weekly summary reports: the past week's entries, emailed on a day
+ * and time to the same kinds of people a route reaches, for every site or one
+ * per site. Saved apart from the routes, with their own Save.
+ */
+function ReportsSection({ formId, emailFields, roles, sites }: { formId: string; emailFields: EmailField[]; roles: RoutingView["roles"]; sites: Site[] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const key = ["routing", formId, "reports"];
+  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<ReportsView>(`/routing/${formId}/reports`) });
+  const [reports, setReports] = useState<Report[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [run, setRun] = useState<ReportRun | null>(null);
+  useEffect(() => {
+    if (data) setReports(data.reports);
+  }, [data]);
+  if (!data || !reports) return null;
+  const dirty = JSON.stringify(reports.map(strip)) !== JSON.stringify(data.reports.map(strip));
+
+  const change = (rid: string, next: Report | null) => setReports(next ? reports.map((r) => (r.id === rid ? next : r)) : reports.filter((r) => r.id !== rid));
+  const add = () =>
+    setReports([
+      ...reports,
+      { id: uniqueId(reports.map((r) => r.id), "weekly-report"), name: "Weekly report", enabled: true, day: 1, hour: 8, split: "all", includeEmpty: false, fields: ["_site", "_date"], to: [] },
+    ]);
+
+  async function save() {
+    const empty = reports!.find((r) => !r.to.length);
+    if (empty) return toast(`“${empty.name}” goes to nobody. Add someone, or remove it.`, "error");
+    setBusy(true);
+    try {
+      await api.put(`/routing/${formId}/reports`, { reports: reports!.map(strip), revision: data!.revision });
+      toast("Reports saved.");
+      await qc.invalidateQueries({ queryKey: key });
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't save the reports."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function preview(r: Report) {
+    try {
+      setRun(await api.post<ReportRun>(`/routing/${formId}/reports/preview`, { report: strip(r) }));
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't make the preview."), "error");
+    }
+  }
+
+  async function sendNow(r: Report) {
+    if (!window.confirm(`Send “${r.name}” now? It still goes at its usual time too.`)) return;
+    try {
+      const out = await api.post<ReportRun>(`/routing/${formId}/reports/${r.id}/send`, {});
+      toast(out.sent ? `Sent to ${out.sent} ${out.sent === 1 ? "person" : "people"}.` : out.notes[0] ?? "Nothing was sent.");
+      await qc.invalidateQueries({ queryKey: ["routing", formId, "emails"] });
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't send it."), "error");
+    }
+  }
+
+  return (
+    <section className="mb-6 mt-8">
+      <div className="mb-2 flex items-end gap-3 px-1">
+        <div className="min-w-0 flex-1">
+          <p className="font-heading text-[15px] font-extrabold text-ink">Weekly summary reports</p>
+          <p className="text-[12.5px] text-muted">The past week's entries, emailed on a day and time: a count, a table of the answers you choose (Lantern addresses only), and a button to the entries.</p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={add}><Plus className="h-4 w-4" /> Add a report</Button>
+      </div>
+      {reports.length ? (
+        <div className="space-y-3">
+          {reports.map((r) => (
+            <ReportCard
+              key={r.id}
+              report={r}
+              saved={data.reports.some((x) => x.id === r.id)}
+              emailFields={emailFields}
+              roles={roles}
+              sites={sites}
+              onChange={(next) => change(r.id, next)}
+              onPreview={() => void preview(r)}
+              onSend={() => void sendNow(r)}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-card border border-dashed border-hairline px-4 py-3 text-[13px] text-muted">No summary reports.</p>
+      )}
+      {dirty && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <span className="mr-auto text-[13px] font-semibold text-ink">Unsaved report changes</span>
+          <Button variant="secondary" onClick={() => setReports(data.reports)} disabled={busy}>Undo</Button>
+          <Button onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save reports"}</Button>
+        </div>
+      )}
+      {run && <ReportRunDialog run={run} onClose={() => setRun(null)} />}
+    </section>
+  );
+}
+
+function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPreview, onSend }: {
+  report: Report;
+  saved: boolean;
+  emailFields: EmailField[];
+  roles: RoutingView["roles"];
+  sites: Site[];
+  onChange: (r: Report | null) => void;
+  onPreview: () => void;
+  onSend: () => void;
+}) {
+  const [picking, setPicking] = useState<null | "person" | "role" | "group" | "title">(null);
+  const set = (patch: Partial<Report>) => onChange({ ...report, ...patch });
+  const siteName = (code: string) => sites.find((s) => s.code === code)?.name ?? code;
+  return (
+    <Card className={cn("p-0", !report.enabled && "opacity-70")}>
+      <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
+        <Switch checked={report.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label={report.enabled ? "Turn this report off" : "Turn this report on"} />
+        <Mail className="h-4 w-4 shrink-0 text-muted" />
+        <input value={report.name} onChange={(e) => set({ name: e.target.value })} aria-label="Report name" className="min-w-0 flex-1 bg-transparent font-heading text-[15px] font-extrabold text-ink outline-none focus:underline" />
+        <Button variant="ghost" size="icon" aria-label="Remove report" onClick={() => onChange(null)}><Trash2 className="h-4 w-4" /></Button>
+      </div>
+      <div className="grid gap-4 px-4 py-4 md:px-5">
+        <Row label="When">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={String(report.day)} onChange={(e) => set({ day: Number(e.target.value) })} className="w-40" aria-label="Day" options={DAYS.map((d, i) => ({ value: String(i), label: `Every ${d}` }))} />
+            <Select value={String(report.hour)} onChange={(e) => set({ hour: Number(e.target.value) })} className="w-32" aria-label="Time" options={Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }))} />
+            <span className="text-[12px] text-muted">New York time{report.nextRun && saved ? ` · next ${formatDateTime(report.nextRun)}` : ""}{report.lastSentAt ? ` · last sent ${relativeTime(report.lastSentAt)}` : ""}</span>
+          </div>
+        </Row>
+        <Row label="Sites">
+          <Select value={report.split} onChange={(e) => set({ split: e.target.value as Report["split"] })} className="max-w-[420px]" aria-label="Sites">
+            <option value="all">One report for every site</option>
+            <option value="site">One report per site, to that site's people</option>
+          </Select>
+          <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
+            <Switch checked={report.includeEmpty} onCheckedChange={(v) => set({ includeEmpty: v })} />
+            Send it even when there were no entries
+          </label>
+        </Row>
+        <Row label="Send to">
+          <ul className="divide-y divide-hairline rounded-input border border-hairline">
+            {report.to.map((t, i) => (
+              <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ to: next ? report.to.map((x, j) => (j === i ? next : x)) : report.to.filter((_, j) => j !== i) })} />
+            ))}
+            {!report.to.length && <li className="px-3 py-2 text-[13px] text-muted">Nobody yet.</li>}
+          </ul>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="mt-1"><Plus className="h-4 w-4" /> Add people</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => setPicking("person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setPicking("role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setPicking("group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setPicking("title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Row>
+        <EmailParts
+          whatToDo={report.whatToDo}
+          fields={report.fields}
+          emailFields={emailFields}
+          answersLabel="Columns"
+          onChange={(patch) => set({ ...(patch.whatToDo !== undefined || "whatToDo" in patch ? { whatToDo: patch.whatToDo } : {}), ...("fields" in patch ? { fields: patch.fields ?? [] } : {}) })}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onPreview} disabled={!report.to.length}><Eye className="h-4 w-4" /> Preview this week's report</Button>
+          {saved && <Button type="button" variant="secondary" size="sm" onClick={onSend}><Send className="h-4 w-4" /> Send now</Button>}
+        </div>
+      </div>
+      <PersonDialog open={picking === "person"} sites={sites} taken={report.to} onClose={() => setPicking(null)} onAdd={(r) => set({ to: [...report.to, r] })} />
+      <RoleDialog open={picking === "role"} roles={roles} onClose={() => setPicking(null)} onAdd={(r) => set({ to: [...report.to, r] })} />
+      {picking === "group" && <TeamDialog taken={report.to} onClose={() => setPicking(null)} onAdd={(rs) => set({ to: [...report.to, ...rs] })} />}
+      {picking === "title" && <PositionDialog taken={report.to} onClose={() => setPicking(null)} onAdd={(rs) => set({ to: [...report.to, ...rs] })} />}
+    </Card>
+  );
+}
+
+/** Who a report would go to now, per site, and the email itself. Nothing was sent. */
+function ReportRunDialog({ run, onClose }: { run: ReportRun; onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent aria-describedby={undefined} className="w-[min(780px,calc(100vw-2rem))]">
+        <DialogHeader title="This week's report" subtitle="A preview: nothing was sent." />
+        <DialogBody className="max-h-[72vh] space-y-3 overflow-y-auto">
+          {run.emails.length ? (
+            <ul className="divide-y divide-hairline rounded-input border border-hairline text-[13px]">
+              {run.emails.map((e, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate font-semibold text-ink">{e.to}</span>
+                  <span className="text-muted">{e.site} · {e.entries} {e.entries === 1 ? "entry" : "entries"}</span>
+                  <Tag tone={e.withAnswers ? "accent" : "neutral"}>{e.withAnswers ? "With the table" : "Count and link only"}</Tag>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[13px] text-muted">It wouldn't send anything this week{run.notes.length ? "" : ": there were no entries"}.</p>
+          )}
+          {run.notes.map((n, i) => <p key={i} className="text-[12.5px] text-status-amberText">{n}</p>)}
+          {run.preview && <iframe title="Report preview" sandbox="" srcDoc={run.preview} className="h-[520px] w-full rounded-input border border-hairline bg-white" />}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Emails sent ──────────────────────────────────────────────────────────
+
+interface SentEmail { id: string; createdAt: string; to: string; subject: string; kind: string; status: string; error: string | null; withAnswers: boolean }
+
+const KIND_LABEL: Record<string, string> = { notification: "Notification", digest: "Daily summary", route: "Routing", rule: "Form rule", report: "Summary report", code: "Code form" };
+
+/** The emails this form has sent: to whom, what, and whether it went. */
+function SentEmails({ formId }: { formId: string }) {
+  const { data } = useQuery({ queryKey: ["routing", formId, "emails"], queryFn: () => api.get<{ items: SentEmail[] }>(`/routing/${formId}/emails?limit=50`) });
+  const items = data?.items ?? [];
+  return (
+    <section className="mt-8">
+      <p className="mb-2 px-1 font-heading text-[15px] font-extrabold text-ink">Emails sent</p>
+      <Card className="p-0">
+        {items.length ? (
+          <ul className="divide-y divide-hairline">
+            {items.map((e) => (
+              <li key={e.id} className="px-4 py-2.5 md:px-5">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{e.subject}</span>
+                  <span className="text-[12px] text-muted" title={formatDateTime(e.createdAt)}>{relativeTime(e.createdAt)}</span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+                  <span className="truncate">{e.to}</span>
+                  <span>· {KIND_LABEL[e.kind] ?? e.kind}</span>
+                  <Tag tone={e.status === "sent" ? "accent" : e.status === "failed" ? "red" : "neutral"}>{e.status === "sent" ? "Sent" : e.status === "failed" ? "Failed" : "Not sent"}</Tag>
+                  {e.withAnswers && <Tag tone="neutral">With answers</Tag>}
+                </div>
+                {e.error && <p className="mt-0.5 text-[12px] text-status-redText">{e.error}</p>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-4 py-3 text-[13px] text-muted md:px-5">No emails yet.</p>
+        )}
+      </Card>
+    </section>
   );
 }
 

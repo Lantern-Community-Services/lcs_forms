@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { personRecords } from "../services/personRecords.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
@@ -397,6 +398,18 @@ usersRouter.post(
     });
     const person = removed ? null : await prisma.user.findUnique({ where: { id: u.id }, include: SITES_INCLUDE });
     res.json({ removed, person: person ? shape(person) : null });
+  })
+);
+
+// ── Their records (Super Admins) ─────────────────────────────────────────
+
+/** Everything one person filed, was told, was emailed and did, and what they can see. Super Admins only. */
+usersRouter.get(
+  "/:id/records",
+  requirePermission("people.records"),
+  asyncHandler(async (req, res) => {
+    const q = req.query;
+    res.json(await personRecords(req.params.id, { form: typeof q.form === "string" && q.form ? q.form : undefined, before: typeof q.before === "string" && q.before ? q.before : undefined }));
   })
 );
 

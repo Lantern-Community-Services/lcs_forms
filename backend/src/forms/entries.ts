@@ -7,11 +7,13 @@ import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { appBaseUrl } from "../env.js";
 import { displayName, recordActivity } from "../services/roster.js";
-import { linkOnlyHtml, mailConfigured, sendMail } from "../services/mailer.js";
+import { mailConfigured, sendLogged } from "../services/mailer.js";
+import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
-import { entryInput, outcomeNote, routeQuietly } from "../services/routing.js";
+import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
+import { canFollowUp, openFollowUp } from "../services/followUp.js";
 import { TZ, stamp } from "../services/exportCommon.js";
-import { canUseBuiltForm, isBuiltFormLimited } from "../services/staffGroups.js";
+import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
   type Field, type FormDoc, type Values,
@@ -96,14 +98,54 @@ function periodStart(period: "day" | "week" | "month" | "ever"): Date | null {
   return new Date(start.getTime() + offset);
 }
 
-export function canReadEntries(doc: FormDoc, user: Viewer): boolean {
-  if (!user) return false;
-  if (isFormAdmin(user)) return true;
-  return (doc.settings.entriesRoles ?? DEFAULT_ENTRIES_ROLES).includes(user.roleKey);
+/** A basic form's old reader roles: they see every entry until the form's "Who sees entries" is set. */
+export const legacyReadersOf = (doc: FormDoc) => doc.settings.entriesRoles ?? DEFAULT_ENTRIES_ROLES;
+
+/**
+ * How much of a basic form's entries this person sees (services/staffGroups.ts
+ * entryReach): "all", "site" (their sites' and their own) or "own" (their own
+ * and the ones they were told about). Nobody signed out sees any.
+ */
+export function entryReachOf(form: BuiltForm, doc: FormDoc, user: Viewer): "all" | "site" | "own" | null {
+  if (!user) return null;
+  return entryReach(form.id, legacyReadersOf(doc), user);
 }
 
-export function canVoidEntries(doc: FormDoc, user: Viewer) {
-  return canReadEntries(doc, user) && Boolean(user && (user.permissions.includes("entries.void") || isFormAdmin(user)));
+/** Sees every entry (exports, voiding, reading it from another form). */
+export function canReadEntries(form: BuiltForm, doc: FormDoc, user: Viewer): boolean {
+  return entryReachOf(form, doc, user) === "all";
+}
+
+export function canVoidEntries(form: BuiltForm, doc: FormDoc, user: Viewer) {
+  return canReadEntries(form, doc, user) && Boolean(user && (user.permissions.includes("entries.void") || isFormAdmin(user)));
+}
+
+/** Entries of this form a notification, reminder or "done" message pointed this person at. */
+async function notifiedEntryIds(form: BuiltForm, userId: string): Promise<string[]> {
+  if (!notifiedCanOpen(form.id)) return [];
+  const prefix = `/f/${form.slug}/entries/`;
+  const rows = await prisma.notification.findMany({ where: { userId, formId: form.id, link: { startsWith: prefix } }, select: { link: true }, take: 500, orderBy: { createdAt: "desc" } });
+  return [...new Set(rows.map((r) => (r.link ?? "").slice(prefix.length).split(/[/?#]/)[0]).filter(Boolean))];
+}
+
+/** The entries of a form this person may see, as a where (on top of their sites, entryScope). */
+export async function visibleWhere(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own"): Promise<Prisma.FormEntryWhereInput> {
+  if (!user || reach === "all") return {};
+  const mine: Prisma.FormEntryWhereInput[] = [{ createdById: user.userId }];
+  const told = await notifiedEntryIds(form, user.userId);
+  if (told.length) mine.push({ id: { in: told } });
+  if (reach === "site" && user.siteIds) mine.push({ siteId: { in: user.siteIds } });
+  if (reach === "site" && !user.siteIds) return {};
+  return { OR: mine };
+}
+
+/** Whether this person may open this one entry: theirs, their site's (by the form's setting), told about it, or theirs to follow up. */
+export async function canSeeEntry(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own", entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp">): Promise<boolean> {
+  if (!user) return false;
+  if (reach === "all" || entry.createdById === user.userId) return true;
+  if (reach === "site" && (!user.siteIds || (entry.siteId && user.siteIds.includes(entry.siteId)))) return true;
+  if ((await notifiedEntryIds(form, user.userId)).includes(entry.id)) return true;
+  return entry.followUp ? canFollowUp(form, user as CurrentUser, entry) : false;
 }
 
 /** Entries limited to the person's sites; entries not made for a site stay visible to readers. */
@@ -257,6 +299,8 @@ export async function submitEntry(input: SubmitInput) {
   }
   const fileIds = filled.doc.fields.filter((f) => f.type === "file").flatMap((f) => ((values[f.id] as { id: string }[] | undefined) ?? []).map((x) => x.id));
   if (fileIds.length) await prisma.formFile.updateMany({ where: { id: { in: fileIds } }, data: { entryId: entry.id } });
+  // Tracked for follow-up when the form asks for it: open until someone it's for marks it done.
+  await openFollowUp(form, entry.id);
 
   // The roster hears that these residents were seen.
   for (const f of filled.doc.fields) {
@@ -293,6 +337,8 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
   for (const n of doc.settings.notifications ?? []) {
     if (!n.enabled || !conditionPasses(n.conditional, values)) continue;
     const ctx = { values, doc, user: user ? { name: user.name, email: user.email } : null, entry: { id: entry.id, createdAt: entry.createdAt }, site, entryUrl: entryUrl(form.slug, entry.id) };
+    // The rule's chosen answers, for Lantern addresses only (checked again per address).
+    const fields = emailValues(form, n.fields, { data: values, site, createdAt: entry.createdAt, byName: entry.createdByName });
     let note: string;
     try {
       if (n.kind === "webhook") {
@@ -334,6 +380,7 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
             formId: form.id,
             maxRecipients: 500,
             urgent: n.urgent,
+            email: { whatToDo: n.whatToDo ?? null, fields },
           });
           note = `Notification “${n.name}” sent to ${out.sent} ${out.sent === 1 ? "person" : "people"}${out.muted ? ` (${out.muted} had turned these off)` : ""}${out.unknown?.length ? `; no account for ${out.unknown.join(", ")}` : ""}.`;
         }
@@ -342,14 +389,17 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
         if (!to.length) note = `Email “${n.name}” not sent: no valid address in “${n.to}”.`;
         else if (!mailConfigured()) note = `Email “${n.name}” to ${to.join(", ")} not sent: email isn't set up on this server (MAIL_FROM).`;
         else {
-          // Link-only: the entry's answers never go in an email (a saved body is ignored).
-          await sendMail({
-            to,
-            subject: linkOnlySubject(n.subject, ctx),
-            html: linkOnlyHtml(`There's a new entry in “${form.title}”${site ? ` for ${site.name}` : ""}.`, ctx.entryUrl),
-            replyTo: user?.email,
-          });
-          note = `Email “${n.name}” sent to ${to.join(", ")}.`;
+          // The rule's chosen answers go to Lantern addresses only; anyone else gets the link (a saved body is ignored).
+          const subject = linkOnlySubject(n.subject, ctx);
+          const intro = `There's a new entry in “${form.title}”${site ? ` for ${site.name}` : ""}.`;
+          const inside = to.filter(isInternalAddress);
+          const outside = to.filter((a) => !isInternalAddress(a));
+          for (const group of [inside, outside]) {
+            if (!group.length) continue;
+            const mail = routeEmail(form, { whatToDo: n.whatToDo, urgent: Boolean(n.urgent) }, { subject, to: group[0], intro, url: ctx.entryUrl, fields });
+            await sendLogged({ to: group, subject, html: mail.html, replyTo: user?.email, kind: "rule", formId: form.id, withAnswers: mail.withAnswers });
+          }
+          note = `Email “${n.name}” sent to ${to.join(", ")}${fields.length && outside.length ? ` (without answers to ${outside.join(", ")})` : ""}.`;
         }
       }
     } catch (err) {
@@ -395,6 +445,8 @@ export interface EntryFilter {
   status?: "active" | "voided" | "all";
   starred?: boolean;
   site?: string;
+  /** Follow-up: still open, or done. */
+  followUp?: "open" | "done";
 }
 
 export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): Prisma.FormEntryWhereInput {
@@ -404,6 +456,7 @@ export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): 
   if (filter.from) and.push({ createdAt: { gte: nyDayStart(filter.from) } });
   if (filter.to) and.push({ createdAt: { lt: new Date(nyDayStart(filter.to).getTime() + 86_400_000) } });
   if (filter.site) and.push({ siteId: filter.site });
+  if (filter.followUp) and.push({ followUp: filter.followUp });
   if (filter.q?.trim()) {
     const q = filter.q.trim();
     and.push({ OR: [{ data: { contains: q } }, { createdByName: { contains: q } }, { id: q }] });
@@ -435,6 +488,7 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     voidedAt: e.voidedAt,
     voidedByName: e.voidedByName,
     voidReason: e.voidReason,
+    followUp: e.followUp ? { status: e.followUp, doneAt: e.followUpDoneAt, doneByName: e.followUpDoneByName, note: e.followUpNote, reminders: e.followUpReminders } : null,
     noteCount: e._count?.notes,
   };
 }

@@ -79,6 +79,10 @@ export const routeSchema = z.object({
    * holders get it as each has chosen on their Profile.
    */
   email: z.enum(["always", "prefs"]).default("always"),
+  /** What the people on this route have to do, shown in the email (plain text, no answers). */
+  whatToDo: z.string().trim().max(500).optional(),
+  /** Answers shown in the email (to Lantern addresses only): ids from emailableFields. */
+  fields: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
   /** Needs attention now: marked urgent in the app and emailed at once (services/notifications.ts). */
   urgent: z.boolean().default(false),
   /** The notification's title and email subject. {form} {site} {event} {title} {date}. Default: the event's own title. */

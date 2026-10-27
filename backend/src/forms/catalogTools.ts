@@ -6,6 +6,7 @@ import { categoryBody, formBody } from "../routes/forms.js";
 import { LEGACY_FORM_ICON_KEYS } from "./iconKeys.js";
 import { builtSlugOf, linkCatalogCard, unlinkCatalogCard } from "./service.js";
 import type { ToolRegistrar } from "./mcp.js";
+import { builtFormRef, entryAccessReview, entryAccessView, saveEntryAccess } from "../services/entryAccess.js";
 import { allGroups, audienceOf, categoryKey, keyForCard, knownTitles, setAudience } from "../services/staffGroups.js";
 
 /**
@@ -245,4 +246,41 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
     },
     { destructiveHint: true }
   );
+
+  tool(
+    "get_entry_access",
+    "Who sees a form's entries (a basic or code form, by id or slug): mode own (everyone sees only their own; the default for new forms), site (their sites' and their own) or everyone; seeAll (groupIds, titles, userIds, roles who see every entry); notified (people a route, rule or follow-up tells about an entry can open it). access is null for a form saved before this setting: then its legacyReaders roles see every entry until it's reviewed. Admins always see every entry.",
+    { form: z.string() },
+    async ({ form }) => {
+      need("forms:build");
+      return entryAccessView(await builtFormRef(form));
+    }
+  );
+
+  tool(
+    "set_entry_access",
+    "Set who sees a form's entries: mode own | site | everyone, seeAll { groupIds, titles, userIds, roles } who see every entry, notified (default true). Applies at once to the form's entries list, entry pages, files and exports, for basic and code forms. Check with the person first: it can hide entries people use now.",
+    {
+      form: z.string(),
+      mode: z.enum(["own", "site", "everyone"]),
+      seeAll: z.object({ groupIds: z.array(z.string()).optional(), titles: z.array(z.string()).optional(), userIds: z.array(z.string()).optional(), roles: z.array(z.string()).optional() }).optional(),
+      notified: z.boolean().optional(),
+    },
+    async ({ form, ...input }) => {
+      need("forms:build");
+      return saveEntryAccess(await builtFormRef(form), input, actor);
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
+    "list_entry_access",
+    "Every live form and who sees its entries: reviewed (has a Who sees entries setting) and its mode, or, if not, the old reader roles that still see every entry.",
+    {},
+    async () => {
+      need("forms:build");
+      return { forms: await entryAccessReview() };
+    }
+  );
+
 }

@@ -153,7 +153,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
             </button>
           )}
           {data.canReadEntries && !publicView && (
-            <Link to={`/f/${slug}/entries`} data-tour="form-entries" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> Entries</Link>
+            <Link to={`/f/${slug}/entries`} data-tour="form-entries" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> {data.entriesReach === "all" ? "Entries" : "Your entries"}</Link>
           )}
         </div>
       )}

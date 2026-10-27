@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Search, UserPlus } from "lucide-react";
+import { ClipboardList, RotateCcw, Search, UserPlus } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -413,6 +414,11 @@ export function AdminPeople() {
             </DialogBody>
           )}
           <DialogFooter>
+            {draft?.id && can("people.records") && (
+              <Link to={`/admin/people/${draft.id}/records`} className="mr-auto">
+                <Button variant="secondary"><ClipboardList className="h-4 w-4" /> Records</Button>
+              </Link>
+            )}
             {draft?.superAdmin ? (
               <Button variant="secondary" onClick={() => setDraft(null)}>Close</Button>
             ) : (

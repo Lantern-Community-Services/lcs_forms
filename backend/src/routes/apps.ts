@@ -221,6 +221,8 @@ appsRouter.get(
       hash: app.build.hash,
       user: { id: u.userId, name: u.name, email: u.email, roleKey: u.roleKey, roleName: u.roleName, permissions: u.permissions, siteIds: u.siteIds },
       canEdit: isDeveloper(u),
+      // Sees everyone's entries (else only their own): from the form's "Who sees entries".
+      canReadAll: a.readAll,
       offlineActions: app.manifest.offline?.actions ?? [],
       // The client picks this person's steps (tutorialStepsFor); roles aren't secret.
       tutorial: app.manifest.tutorial ?? null,

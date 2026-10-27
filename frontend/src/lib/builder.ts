@@ -84,6 +84,8 @@ export interface FillData {
   closed: string | null;
   user: { name: string; email: string } | null;
   canReadEntries: boolean;
+  /** How many entries this person sees: all, their sites' (and their own), or only their own. */
+  entriesReach?: "all" | "site" | "own" | null;
   isAdmin: boolean;
 }
 
@@ -102,6 +104,8 @@ export interface EntryRow {
   voidedAt: string | null;
   voidedByName: string | null;
   voidReason: string | null;
+  /** Follow-up (backend services/followUp.ts): null when the form doesn't track it. */
+  followUp: { status: "open" | "done"; doneAt: string | null; doneByName: string | null; note: string | null; reminders: number } | null;
   noteCount?: number;
 }
 
@@ -112,6 +116,10 @@ export interface EntryList {
   items: EntryRow[];
   canVoid: boolean;
   isAdmin: boolean;
+  /** The form tracks follow-ups. */
+  followUp: boolean;
+  /** all: every entry; site: their sites' and their own; own: their own and the ones they were told about. */
+  reach: "all" | "site" | "own";
 }
 
 export interface EntryNote {
@@ -131,6 +139,8 @@ export interface EntryDetail {
   olderId: string | null;
   canVoid: boolean;
   isAdmin: boolean;
+  /** This person can mark the follow-up done or reopen it. */
+  canFollowUp: boolean;
 }
 
 export const builderKeys = {
@@ -228,6 +238,8 @@ export const fillApi = {
   restore: (slug: string, id: string) => api.post(`/f/${slug}/entries/${id}/void`, { restore: true }),
   star: (slug: string, id: string, starred: boolean) => api.post(`/f/${slug}/entries/${id}/star`, { starred }),
   note: (slug: string, id: string, body: string) => api.post<EntryNote>(`/f/${slug}/entries/${id}/notes`, { body }),
+  /** Mark the entry's follow-up done (with what was done), or open it again. */
+  followUp: (slug: string, id: string, done: boolean, note?: string) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note }),
   remove: (slug: string, id: string) => api.delete(`/f/${slug}/entries/${id}`),
   exportFile: (slug: string, qs: string, format: "csv" | "xlsx") => downloadGet(`/f/${slug}/entries-export?${qs}&format=${format}`, `${slug}-entries.${format}`),
 };

@@ -1,5 +1,6 @@
 import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { NEW_FORM_ENTRY_ACCESS, entryAccessOf, setEntryAccess } from "../services/staffGroups.js";
 import { HttpError, badRequest, notFound } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
 import { checkSlug, syncCatalogUrl, uniqueSlug } from "../forms/service.js";
@@ -69,7 +70,8 @@ export async function listProjects(opts: { includeArchived?: boolean } = {}) {
   });
 }
 
-export async function createProject(input: { title?: string; files?: unknown; slug?: string }, actor: Actor): Promise<BuiltForm> {
+/** A new code form: "Who sees entries" starts at only their own, unless it's a copy or an import (`keepOldReaders`). */
+export async function createProject(input: { title?: string; files?: unknown; slug?: string }, actor: Actor, opts: { keepOldReaders?: boolean } = {}): Promise<BuiltForm> {
   const files = input.files === undefined ? starterProject(input.title?.trim() || "Untitled code form") : validFiles(input.files);
   const title = titleOf(files);
   if (input.slug) await checkSlug(input.slug);
@@ -77,6 +79,7 @@ export async function createProject(input: { title?: string; files?: unknown; sl
   const row = await prisma.builtForm.create({
     data: { kind: "code", slug, title, draftSchema: JSON.stringify({ format: APP_FORMAT, version: 1, files }), createdById: actor.id, createdByName: actor.name, updatedByName: actor.name },
   });
+  if (!opts.keepOldReaders) await setEntryAccess(row.id, NEW_FORM_ENTRY_ACCESS, actor.name);
   await audit({ actor, action: "apps.created", summary: `Created code form “${title}” (/apps/${slug})` });
   return row;
 }
@@ -161,7 +164,10 @@ export async function duplicateProject(id: string, actor: Actor) {
   } catch {
     /* leave it */
   }
-  return createProject({ files }, actor);
+  const row = await createProject({ files }, actor, { keepOldReaders: true });
+  const access = entryAccessOf(src.id);
+  if (access) await setEntryAccess(row.id, access, actor.name);
+  return row;
 }
 
 // ── Import / export ──────────────────────────────────────────────────────
@@ -192,7 +198,7 @@ export async function importProject(payload: unknown, actor: Actor, opts: { with
   const { manifest, problems } = readManifest(files);
   if (!manifest) throw new ProjectError(problems, "The bundle's form.json has problems.");
   const slug = await uniqueSlug(p.slug && /^[a-z0-9-]+$/.test(p.slug) ? p.slug : manifest.title);
-  const row = await createProject({ files, slug }, actor);
+  const row = await createProject({ files, slug }, actor, { keepOldReaders: true });
   for (const c of p.collections ?? []) {
     await prisma.formRecord.create({ data: { formId: row.id, collection: c.collection, docId: c.id, data: JSON.stringify(c.data ?? null), updatedByName: actor.name } }).catch(() => undefined);
   }

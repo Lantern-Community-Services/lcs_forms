@@ -258,11 +258,75 @@ Notifications send through Microsoft Graph as the mailbox in `MAIL_FROM`, which 
 Exchange application access policy). Until it's set, each email is noted on the entry as "not
 sent"; webhooks work regardless.
 
-**Every email is link-only** (`linkOnlyHtml` in `services/mailer.ts`): one line naming the form
-and a link to the entry. Answers, form contents and resident details never go in an email, and
-nothing is attached. A notification's subject keeps the form, site, person and date merge tags
-(`{form:title}`, `{site:name}`…) and drops any answer tags; a body saved on an older form is
-ignored. Code forms' `ctx.email.send` works the same way (below).
+**Every email uses one Lantern layout** (`services/emailTemplate.ts`), modelled on the Power
+Automate emails: a navy band ("Lantern Community Services" and the form), a heading, **What to do**,
+the chosen answers, and a button into the site. Nothing is ever attached.
+
+- **What to do:** a line on each route, builder rule or summary report saying what's expected
+  ("Review and sign within 24 hours").
+- **Chosen answers, Lantern addresses only.** A route, rule or report can tick which answers go in
+  its email (`emailableFields` in `services/routing.ts`): where, when and by whom, and a basic form's
+  fields of the types in `EMAIL_FIELD_TYPES`. Residents, names, phone, email and address fields,
+  signatures, files and paragraphs can't be ticked; on a code form only values with a fixed list of
+  choices can. The answers go only to addresses at `SSO_ALLOWED_DOMAINS` (`isInternalAddress`);
+  anyone else gets the same email without them.
+- **Subjects** keep the form, site, person and date merge tags (`{form:title}`, `{site:name}`…) and
+  drop any answer tags; a body saved on an older form is ignored.
+- **Weekly summary reports** (`services/emailReports.ts`): per form, a day and hour (New York), the
+  same recipients a route can have, one report for every site or one per site, a count and a table of
+  the chosen answers (Lantern addresses only), like the weekly Unit Inspection report. Set them under
+  a form's Notifications; `startEmailReports` sends each once a week.
+- **Every send is logged** (`EmailLog`: who, subject, kind, sent/failed/skipped, whether it carried
+  answers; never the body), shown under a form's Notifications as "Emails sent".
+- **MCP** (`forms:build`): `get_email_settings`, `preview_email`, `save_email_report`,
+  `remove_email_report`, `send_email_report` (with `dryRun`), `list_sent_emails`; a route's
+  `whatToDo` and `fields` go through `save_route`.
+
+Code forms' `ctx.email.send` uses the same layout with a link only (below).
+
+### Who sees entries
+
+Each form (both kinds) sets who sees its entries, in its editor under Settings → **Who sees entries**
+(`entryReach` in `services/staffGroups.ts`, saved straight away):
+
+- **Everyone who can open the form sees** only their own entries (the default for new forms), their
+  sites' entries (and their own), or every entry. People at some sites only ever see those sites'.
+- **These people see every entry:** groups, positions, named people and roles. Admins always do.
+- **People the form notifies** (a route, a rule, a follow-up) can open the entries they're told about,
+  so the links in its emails work; it can be turned off.
+- Only people who see every entry can export or void entries; on code forms, editing or voiding
+  someone else's entry needs it too.
+- A form saved before this setting keeps its old readers (`entriesRoles`, or form.json `entries.read`)
+  until it's reviewed: the Forms catalog lists those forms with a **Review** link. Imports and copies
+  keep the readers they came with.
+- **MCP:** `get_entry_access`, `set_entry_access`, `list_entry_access`.
+
+**IT sees everything.** Members of the groups in the `seeEverythingGroups` setting (the **IT** group by
+default) see every form and every entry, like Admins, whatever each form says (`seesEverything` in
+`services/staffGroups.ts`). It's shown at the top of Admin → Groups; only Super Admins change it.
+
+### A person's records (Super Admins)
+
+People & roles → a person → **Records** (`/admin/people/:id/records`, `services/personRecords.ts`,
+permission `people.records`, which only Super Admins hold): every entry they filed (by form, with
+links), follow-ups they did and the ones waiting on them, their notifications, the emails sent to
+them, their audit-log activity, and each form they can open with how much of its entries they see.
+Read only. A Super Admin's API key with `people:manage` can read it too (MCP `get_person_records`).
+
+### Follow-ups
+
+A builder form can keep each new entry **open** until the people it's for mark it **done**
+(`services/followUp.ts`, set under the form's Notifications → Follow-up):
+
+- **Who does it:** the same recipient kinds as a route (people, roles, groups, positions). They and
+  Admins see **Mark as done** on the entry, with a note of what they did; done ones can be opened again.
+- **When it's done** whoever filed it is told (in the app and by email, the note only to a Lantern
+  address), and the entry's notes record it.
+- **Reminders:** after a set number of days, then every as many, up to a limit, to the people it's
+  for, until it's done (`startFollowUpReminders`, every 15 minutes).
+- Entries can be filtered by follow-up (open or done); summary reports can show it as a column and
+  count the open ones. Applies to entries saved after it's turned on; code forms run their own steps.
+- **MCP:** `get_follow_up`, `set_follow_up`, `list_follow_ups`, `mark_follow_up`.
 
 ## Code forms
 

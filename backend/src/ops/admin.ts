@@ -123,6 +123,21 @@ export const adminOps = [
   }),
 
   defineOp({
+    name: "get_person_records",
+    description: "One person's records (by user id or email): the entries they filed on every form (form, when, site, status, follow-up; page with before), the follow-ups they did and the ones waiting on them, their notifications, the emails sent to them, their audit-log activity, and which forms they can open and how much of each form's entries they see. Super Admins' keys only. Entry answers aren't included: use get_entry.",
+    scope: "people:manage",
+    as: "creator",
+    http: { method: "GET", path: "/people/:person/records" },
+    shape: {
+      person: z.string().describe("User id or email"),
+      form: z.string().optional().describe("Only entries of this form (id)"),
+      before: z.string().optional().describe("ISO time: entries filed before it"),
+    },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(usersRouter, { method: "GET", path: `/${enc(a.person)}/records`, query: { form: a.form, before: a.before } }),
+  }),
+
+  defineOp({
     name: "list_roles",
     description: "The roles, what each can do, and which ones this key may give out (never Admin).",
     scope: "people:manage",
