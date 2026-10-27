@@ -19,7 +19,8 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRoles, useSites, useUsers } from "@/lib/queries";
-import { GROUPS_KEY, groupsApi, useStaffGroups } from "@/lib/groups";
+import { GROUPS_KEY, groupsApi, personFormsKey, useStaffGroups } from "@/lib/groups";
+import { PersonForms } from "./GroupForms";
 import { errorMessage, relativeTime } from "@/lib/utils";
 import { useSearchParam } from "@/lib/useSearchParam";
 import type { ManagedUser, UserStatus } from "@/lib/types";
@@ -410,6 +411,7 @@ export function AdminPeople() {
               )}
               {/* Super Admins are changed only on the server, tutorials included: theirs reset from their own Profile. */}
               {draft.id && can("users.manage") && <PersonGroups person={users?.find((u) => u.id === draft.id)} />}
+              {draft.id && can("users.manage") && <PersonForms userId={draft.id} name={draft.name} />}
               {draft.id && !draft.superAdmin && <PersonTutorials userId={draft.id} name={draft.name} isSelf={draft.isSelf} />}
             </DialogBody>
           )}
@@ -582,7 +584,11 @@ function PersonGroups({ person }: { person: ManagedUser | undefined }) {
     setBusy(groupId);
     try {
       await groupsApi.setPerson(groupId, person!.id, include);
-      await Promise.all([qc.invalidateQueries({ queryKey: ["admin", "users"] }), qc.invalidateQueries({ queryKey: GROUPS_KEY })]);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+        qc.invalidateQueries({ queryKey: GROUPS_KEY }),
+        qc.invalidateQueries({ queryKey: personFormsKey(person!.id) }),
+      ]);
       toast(on ? `${first} is in ${name}.` : `${first} is out of ${name}.`);
     } catch (e) {
       toast(errorMessage(e, "Couldn't change that."), "error");
@@ -596,7 +602,7 @@ function PersonGroups({ person }: { person: ManagedUser | undefined }) {
       <div className="px-3 py-2.5">
         <span className="block text-[13.5px] font-semibold text-ink">Groups</span>
         <span className="block text-micro text-muted">
-          Decide which limited forms {first} sees.{person.title ? ` Their job title: ${person.title}.` : ""} Saves straight away.
+          Decide which forms {first} sees.{person.title ? ` Their job title: ${person.title}.` : ""} Saves straight away.
         </span>
       </div>
       <ul className="grid gap-px border-t border-hairline sm:grid-cols-2">

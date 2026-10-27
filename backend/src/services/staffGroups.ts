@@ -17,6 +17,16 @@ import type { CurrentUser } from "../auth/middleware.js";
  * limited the same way (key category:<id>): then it, and every form on its
  * cards, is only for those people, on top of each form's own limit.
  *
+ * A group can also be given forms (GroupForm). Once any of someone's groups
+ * has forms, those are the only forms they see: forms open to everyone, or
+ * limited some other way, stop showing for them unless the form also names
+ * them. One person can then be given more forms, or have some hidden
+ * (PersonForm), whatever their groups say. Someone whose groups have no forms
+ * sees what each form's own limit allows, as before. Giving a form to a group
+ * or a person is deliberate, so it passes the form's and its category's own
+ * limits. Admins and Super Admins (forms.manage), and the see-everything
+ * groups, ignore all of it and see every form.
+ *
  * Who sees a form's entries (entryReach) is kept here too: each form's
  * "Who sees entries" (FormRecord "access"/"entries"), or, for a form saved
  * before that setting existed, its old reader roles (entriesRoles / form.json
@@ -58,18 +68,30 @@ let formCategory = new Map<string, string>();
 let entryAccess = new Map<string, EntryAccess>();
 /** Groups whose members see every form and every entry (the seeEverythingGroups setting; IT by default). */
 let everythingGroups = new Set<string>();
+/** Group id → the forms given to it (form keys). */
+let groupForms = new Map<string, Set<string>>();
+/** User id → form key → given (true) or hidden (false). */
+let personForms = new Map<string, Map<string, boolean>>();
 let loading: Promise<void> | null = null;
 let loaded = false;
 
 async function load() {
-  const [rows, aud, linked, cards, access, everything] = await Promise.all([
+  const [rows, aud, linked, cards, access, everything, given, personal] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
     prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
     prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
     prisma.formLink.findMany({ select: { id: true, categoryId: true } }),
     prisma.formRecord.findMany({ where: { collection: ACCESS_COLLECTION, docId: ACCESS_DOC }, select: { formId: true, data: true } }),
     prisma.setting.findUnique({ where: { key: "seeEverythingGroups" } }),
+    prisma.groupForm.findMany({ select: { groupId: true, formKey: true } }),
+    prisma.personForm.findMany({ select: { userId: true, formKey: true, include: true } }),
   ]);
+  const nextGroupForms = new Map<string, Set<string>>();
+  for (const g of given) nextGroupForms.set(g.groupId, (nextGroupForms.get(g.groupId) ?? new Set<string>()).add(g.formKey));
+  groupForms = nextGroupForms;
+  const nextPersonForms = new Map<string, Map<string, boolean>>();
+  for (const p of personal) nextPersonForms.set(p.userId, (nextPersonForms.get(p.userId) ?? new Map<string, boolean>()).set(p.formKey, p.include));
+  personForms = nextPersonForms;
   entryAccess = new Map(
     access.flatMap((a) => {
       const p = entryAccessSchema.safeParse(JSON.parse(a.data));
@@ -201,13 +223,82 @@ export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "g
   return (user.groupIds ?? []).some((g) => a!.groupIds.has(g));
 }
 
+// ── Forms given to groups and people ─────────────────────────────────────
+
+/** The forms given to a group (form keys). */
+export const groupFormKeys = (groupId: string) => [...(groupForms.get(groupId) ?? [])];
+
+/** One person's own changes: forms given to them, and forms hidden from them. */
+export function personFormKeys(userId: string): { added: string[]; hidden: string[] } {
+  const m = [...(personForms.get(userId) ?? new Map<string, boolean>())];
+  return { added: m.filter(([, v]) => v).map(([k]) => k), hidden: m.filter(([, v]) => !v).map(([k]) => k) };
+}
+
+/** Whether someone in these groups sees only their groups' forms (one of the groups has some). */
+export const limitedToGroupForms = (groupIds: string[]) => groupIds.some((g) => (groupForms.get(g)?.size ?? 0) > 0);
+
 /**
- * Whether this person may open and use a form built here: its own limit, and
- * the limit of the category its catalog card is in.
+ * What giving forms to groups and people says about this form for this
+ * person: true (given), false (hidden, or not among their groups' forms), or
+ * null when it says nothing and the form's own limits decide.
  */
-export function canUseBuiltForm(user: Parameters<typeof inAudience>[0], formId: string): boolean {
-  const category = formCategory.get(formId);
-  return inAudience(user, builtFormKey(formId)) && (!category || inAudience(user, categoryKey(category)));
+function givenVerdict(user: Pick<CurrentUser, "userId" | "groupIds">, formKey: string, ignoreOwn = false): boolean | null {
+  const own = ignoreOwn ? undefined : personForms.get(user.userId)?.get(formKey);
+  if (own !== undefined) return own;
+  const mine = user.groupIds ?? [];
+  if (!limitedToGroupForms(mine)) return null;
+  // A form that names them still shows: someone chose them for it.
+  return mine.some((g) => groupForms.get(g)?.has(formKey)) || Boolean(audiences.get(formKey)?.userIds.has(user.userId));
+}
+
+type FormViewer = Parameters<typeof inAudience>[0];
+
+/**
+ * Whether this person sees a catalog form (key form:… or card:…) in this
+ * category: what was given to their groups and to them, else the form's and
+ * the category's own limits. Admins and the see-everything groups always do.
+ * ignoreOwn leaves out the person's own changes: what their groups alone give them.
+ */
+export function canSeeFormKey(user: FormViewer, formKey: string, categoryId: string | null | undefined, opts: { ignoreOwn?: boolean } = {}): boolean {
+  if (user.permissions.includes("forms.manage") || seesEverything(user)) return true;
+  const given = givenVerdict(user, formKey, opts.ignoreOwn);
+  if (given !== null) return given;
+  return inAudience(user, formKey) && (!categoryId || inAudience(user, categoryKey(categoryId)));
+}
+
+/**
+ * Whether this person may open and use a form built here: as canSeeFormKey,
+ * with the category of the catalog card that opens it.
+ */
+export function canUseBuiltForm(user: FormViewer, formId: string): boolean {
+  return canSeeFormKey(user, builtFormKey(formId), formCategory.get(formId));
+}
+
+/** Replaces the forms given to a group. */
+export async function setGroupForms(groupId: string, formKeys: string[]) {
+  await prisma.$transaction([
+    prisma.groupForm.deleteMany({ where: { groupId } }),
+    ...[...new Set(formKeys)].map((formKey) => prisma.groupForm.create({ data: { groupId, formKey } })),
+  ]);
+  await reloadAccess();
+}
+
+/** A form gone for good: nobody is given it, or has it hidden, any more. */
+export async function forgetGivenForm(formKey: string) {
+  const [g, p] = await Promise.all([prisma.groupForm.deleteMany({ where: { formKey } }), prisma.personForm.deleteMany({ where: { formKey } })]);
+  if (g.count || p.count) await reloadAccess();
+}
+
+/** Replaces one person's own changes: forms given to them, and forms hidden from them (given wins a clash). */
+export async function setPersonForms(userId: string, added: string[], hidden: string[]) {
+  const give = new Set(added);
+  const hide = [...new Set(hidden)].filter((k) => !give.has(k));
+  await prisma.$transaction([
+    prisma.personForm.deleteMany({ where: { userId } }),
+    ...[...give].map((formKey) => prisma.personForm.create({ data: { userId, formKey, include: true } })),
+    ...hide.map((formKey) => prisma.personForm.create({ data: { userId, formKey, include: false } })),
+  ]);
+  await reloadAccess();
 }
 
 /** A built form limited by itself or by its category, so never public. */
@@ -327,11 +418,15 @@ export async function knownTitles(): Promise<KnownTitle[]> {
   return [...byKey.values()].sort((x, y) => x.title.localeCompare(y.title));
 }
 
-/** Moves a card's audience onto the built form it now opens (or back), so a relink keeps the limit. */
+/** Moves a card's audience, and who it's given to, onto the built form it now opens (or back), so a relink keeps them. */
 export async function moveAudience(from: string, to: string) {
   if (from === to) return;
-  const n = await prisma.formAudience.updateMany({ where: { formKey: from }, data: { formKey: to } });
-  if (n.count) await reloadAccess();
+  const [n, g, p] = await Promise.all([
+    prisma.formAudience.updateMany({ where: { formKey: from }, data: { formKey: to } }),
+    prisma.groupForm.updateMany({ where: { formKey: from }, data: { formKey: to } }),
+    prisma.personForm.updateMany({ where: { formKey: from }, data: { formKey: to } }),
+  ]);
+  if (n.count || g.count || p.count) await reloadAccess();
 }
 
 // ── Lantern's positions ──────────────────────────────────────────────────
