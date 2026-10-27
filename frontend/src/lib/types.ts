@@ -324,6 +324,10 @@ export interface HomeData {
   activity: HomeActivityItem[];
   /** Optional: an older server, or the welcome tour's sample, may leave it out. */
   recentForms?: HomeRecentForm[];
+  /** Catalog card ids the Shortcuts widget suggests, best first (from the person's groups, role and sites). Optional as recentForms. */
+  shortcutForms?: string[];
+  /** The person's roster sites, for Shortcuts' per-site links. Null without roster access. */
+  rosterSites?: { code: string; name: string }[] | null;
   stats: {
     attention: number;
     urgent: number;
