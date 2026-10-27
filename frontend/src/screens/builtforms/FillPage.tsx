@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/misc";
 import { ToneBadge } from "@/components/ui/badge";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
+import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { useToast } from "@/components/ui/toast";
 import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit/FormRenderer";
 import { fillApi, submitErrors, useFillForm } from "@/lib/builder";
@@ -37,6 +38,8 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   /** queued: kept on this device to upload later — there's no entry id yet. */
   const [done, setDone] = useState<{ id: string | null; values: Values; queued?: boolean } | null>(null);
   const { user } = useAuth();
+  // Handed to a resident (lib/formLock.ts): only the form itself, none of the staff links.
+  const locked = Boolean(useLocked()) && !publicView;
   // Uploads run from AppShell when signed in; a public form has no shell.
   useEffect(() => {
     if (publicView) startFillQueue(undefined);
@@ -136,7 +139,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
 
   return (
     <Shell>
-      {data.isAdmin && !publicView && (
+      {data.isAdmin && !publicView && !locked && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-[13px]">
           <ToneBadge tone={form.isDraft ? "amber" : form.status === "published" ? "green" : "neutral"}>{form.isDraft ? "Draft" : form.status === "published" ? `Live · v${form.version}` : form.status}</ToneBadge>
           <span className="text-muted">You're an admin.</span>
@@ -145,14 +148,15 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
           {canOpenBuilder && <Link to={`/admin/builder/${form.id}`} className="inline-flex items-center gap-1 font-semibold text-accent"><PencilRuler className="h-3.5 w-3.5" /> Edit form</Link>}
         </div>
       )}
-      {((data.canReadEntries && !publicView) || (tutorial.available && !done)) && (
+      {(!publicView || (tutorial.available && !done)) && (
         <div className="mb-3 flex justify-end gap-5">
+          {!publicView && !locked && <LockFormButton base={`/f/${slug}`} title={doc.title} className="mr-auto" />}
           {tutorial.available && !done && (
             <button type="button" data-tour="form-help" onClick={tutorial.start} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent dark:text-white">
               <CircleHelp className="h-3.5 w-3.5" /> Show me how
             </button>
           )}
-          {data.canReadEntries && !publicView && (
+          {data.canReadEntries && !publicView && !locked && (
             <Link to={`/f/${slug}/entries`} data-tour="form-entries" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> {data.entriesReach === "all" ? "Entries" : "Your entries"}</Link>
           )}
         </div>
@@ -165,7 +169,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
         </div>
         <div className="mt-6">
           {done ? (
-            <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} />
+            <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} locked={locked} />
           ) : data.closed ? (
             <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-[14px] text-ink">{data.closed}</div>
           ) : (
@@ -187,7 +191,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   );
 }
 
-function Confirmation({ data, values, entryId, queued, onAnother, slug }: { data: NonNullable<ReturnType<typeof useFillForm>["data"]>; values: Values; entryId: string | null; queued?: boolean; onAnother: () => void; slug: string }) {
+function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }: { data: NonNullable<ReturnType<typeof useFillForm>["data"]>; values: Values; entryId: string | null; queued?: boolean; onAnother: () => void; slug: string; locked: boolean }) {
   const conf = data.doc.settings.confirmation;
   const html = useMemo(
     () => renderTemplate(conf?.message || "<p>Thanks — your response has been saved.</p>", { values, doc: data.doc, user: data.user, entry: { id: entryId ?? "" }, html: true }),
@@ -219,7 +223,7 @@ function Confirmation({ data, values, entryId, queued, onAnother, slug }: { data
       )}
       <div className="mt-6 flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onAnother}>Fill in another</Button>
-        {data.canReadEntries && entryId && <Link to={`/f/${slug}/entries/${entryId}`}><Button variant="ghost">View this entry</Button></Link>}
+        {data.canReadEntries && entryId && !locked && <Link to={`/f/${slug}/entries/${entryId}`}><Button variant="ghost">View this entry</Button></Link>}
       </div>
     </div>
   );

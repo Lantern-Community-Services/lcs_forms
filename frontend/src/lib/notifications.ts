@@ -117,7 +117,7 @@ export function useNotificationPrefs() {
  * /notifications, where it shows up in the list anyway. An urgent one is red
  * and stays up for half a minute rather than ten seconds.
  */
-export function useNewNotificationToast() {
+export function useNewNotificationToast(enabled = true) {
   const { data } = useUnreadNotifications();
   const toast = useToast();
   const navigate = useNavigate();
@@ -129,11 +129,11 @@ export function useNewNotificationToast() {
     const first = seen.current === undefined;
     const fresh = latest && latest.id !== seen.current;
     seen.current = latest?.id ?? null;
-    if (first || !fresh || pathname.startsWith("/notifications")) return;
+    if (first || !fresh || !enabled || pathname.startsWith("/notifications")) return;
     // Only one that arrived since the last look, not an older one surfacing after the newest was read.
     if (Date.now() - new Date(latest.createdAt).getTime() > POLL_MS * 3) return;
     const action = { label: "Open", onClick: () => navigate(`/notifications/${latest.id}`) };
     if (latest.urgent) toast(`Urgent: ${latest.title}`, "error", { action, duration: 30_000 });
     else toast(latest.title, "info", { action });
-  }, [data, latest, pathname, toast, navigate]);
+  }, [data, latest, pathname, toast, navigate, enabled]);
 }
