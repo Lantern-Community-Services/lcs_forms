@@ -99,6 +99,9 @@ export interface EntryRow {
   starred: boolean;
   createdByName: string;
   createdAt: string;
+  /** The device it was filled on, and the seconds from the first answer to submitting (null when unknown). */
+  deviceKind: "phone" | "tablet" | "desktop" | null;
+  fillSeconds: number | null;
   updatedAt: string;
   updatedByName: string | null;
   voidedAt: string | null;
@@ -219,7 +222,7 @@ export const builderApi = {
 
 export const fillApi = {
   /** formVersion: the published version the page showed, so a late upload is checked against the fields the person saw. */
-  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; website_hp?: string }) =>
+  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string }) =>
     api.post<{ id: string; duplicate: boolean; values: Values }>(`/f/${slug}/submit`, body),
   upload: async (slug: string, fieldId: string, file: File) => {
     const res = await fetch(`${API_BASE}/f/${slug}/files?field=${encodeURIComponent(fieldId)}`, {

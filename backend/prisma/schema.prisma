@@ -555,6 +555,10 @@ model FormEntry {
   createdByName  String    @db.NVarChar(255)
   ip             String?   @db.NVarChar(64)
   userAgent      String?   @db.NVarChar(512)
+  /// The kind of device it was filled on: "phone" | "tablet" | "desktop" (null: made by server code, the MCP, an import, or before 2026-10-27).
+  deviceKind     String?   @db.NVarChar(16)
+  /// Seconds from the first answer to submitting, measured on the filling device (null when unknown).
+  fillSeconds    Int?
   voidedAt       DateTime?
   voidedByName   String?   @db.NVarChar(255)
   voidReason     String?   @db.NVarChar(Max)
