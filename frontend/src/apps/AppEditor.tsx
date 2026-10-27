@@ -18,6 +18,7 @@ import type { FormTutorial } from "@/lib/formEngine";
 import { ApiError } from "@/lib/api";
 import { useForms } from "@/lib/queries";
 import { WhoSeesEntries } from "@/components/WhoSeesEntries";
+import { CatalogCardFields } from "@/components/CatalogCardFields";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import type { ConsoleLine } from "./AppFrame";
 import { DevicePreview } from "@/components/preview/DevicePreview";
@@ -69,7 +70,11 @@ function AppEditor({ initial }: { initial: Project }) {
   const [jump, setJump] = useState<{ line: number; column?: number; n: number } | undefined>();
   const [saving, setSaving] = useState(false);
   const [problems, setProblems] = useState<FileProblem[]>([]);
-  const [panel, setPanel] = useState<Panel>("console");
+  // ?panel=settings (the Forms catalog's Edit) opens on that panel.
+  const [panel, setPanel] = useState<Panel>(() => {
+    const p = new URLSearchParams(window.location.search).get("panel");
+    return p === "settings" || p === "versions" ? p : "console";
+  });
   const [panelOpen, setPanelOpen] = useState(true);
   const [consoleLines, setConsole] = useState<ConsoleLine[]>([]);
   const [nonce, setNonce] = useState(0);
@@ -545,6 +550,11 @@ function SettingsPanel({ project, onChange }: { project: Project; onChange: (p: 
           }
         }} options={[{ value: "", label: "Not listed" }, ...(catalog?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
       </label>
+      {project.catalogLinkId && current && <CatalogCardFields linkId={project.catalogLinkId} />}
+      <div className="flex flex-wrap items-center gap-3 rounded-input border border-hairline p-3">
+        <p className="min-w-0 flex-1 text-muted"><span className="font-semibold text-ink">Notifications</span>: who this form tells and when, its weekly reports and the emails it sent.</p>
+        <Link to={`/apps/${project.slug}/_notifications`} className="font-semibold text-accent dark:text-white">Open</Link>
+      </div>
       <div className="rounded-input border border-hairline p-3">
         <p className="mb-2 text-[13px] font-semibold text-ink">Who sees entries</p>
         <WhoSeesEntries formId={project.id} />

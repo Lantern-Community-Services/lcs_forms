@@ -56,6 +56,7 @@ const AdminApiKeys = lazyScreen(() => import("./screens/admin/Integrations"), "A
 const AdminWebhooks = lazyScreen(() => import("./screens/admin/Integrations"), "AdminWebhooks");
 const AdminWordPress = lazyScreen(() => import("./screens/admin/Integrations"), "AdminWordPress");
 const AdminFormsCatalog = lazyScreen(() => import("./screens/admin/FormsCatalog"), "AdminFormsCatalog");
+const CatalogCardPage = lazyScreen(() => import("./screens/admin/CatalogCard"), "CatalogCardPage");
 const AdminDevLog = lazyScreen(() => import("./screens/admin/DevLog"), "AdminDevLog");
 const AdminBuilderList = lazyScreen(() => import("./screens/builder/BuilderList"), "AdminBuilderList");
 const FormEditorPage = lazyScreen(() => import("./screens/builder/Editor"), "FormEditorPage");
@@ -262,6 +263,7 @@ export function App() {
           <Route element={<ConfigLayout />}>
             <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
+              <Route path="/admin/forms/card/:id" element={<CatalogCardPage />} />
               <Route path="/admin/builder" element={<AdminBuilderList />} />
               <Route path="/admin/ai" element={<AdminAiBuilder />} />
               <Route path="/admin/routing" element={<AdminRouting />} />
