@@ -113,7 +113,7 @@ export const adminOps = [
   // ── People & roles ──
   defineOp({
     name: "list_people",
-    description: "People with an account (active, pending, requests, deactivated), with role, sites and whether this key may change their role. A Site Manager's key sees their sites' people and the requests for them (requestedSites, canApproveSiteIds).",
+    description: "People with an account (active, pending, requests, deactivated), with role, sites and whether this key may change their role. Requests for access (status requested) are listed for Admin keys only; a Site Manager's key sees their sites' people (and requestedSites / canApproveSiteIds on older requests for more sites).",
     scope: "people:manage",
     as: "creator",
     http: { method: "GET", path: "/people" },
@@ -187,13 +187,13 @@ export const adminOps = [
   defineOp({
     name: "approve_person",
     description:
-      "Approve sites someone asked for at their first sign-in (list_people: requestedSites). A Site Manager's key approves only its own sites; the rest wait for their own managers. The first approval lets the person in with roleKey (Site Staff if left out).",
+      "Let in someone who asked for access at their first sign-in (status requested; Admin keys only), with roleKey (Site Staff if left out) and siteIds (any sites; they replace anything an older request asked for). For an active person asking for more sites (requestedSites), approves those sites; a Site Manager's key only its own.",
     scope: "people:manage",
     as: "creator",
     http: { method: "POST", path: "/people/:id/approve" },
     shape: {
       id: z.string().describe("The person's id (list_people)"),
-      siteIds: z.array(z.string()).min(1).describe("Requested site ids to approve"),
+      siteIds: z.array(z.string()).optional().describe("A request: the sites to give them. An active person: requested site ids to approve"),
       roleKey: z.string().optional().describe("A role key from list_roles"),
     },
     confirm: true,
@@ -202,13 +202,13 @@ export const adminOps = [
 
   defineOp({
     name: "decline_person",
-    description: "Decline sites someone asked for (a Site Manager's key: its own). A request left with no sites at all is removed.",
+    description: "Decline a request for access (Admin keys only; the request is removed, siteIds ignored), or sites an active person asked for (a Site Manager's key: its own).",
     scope: "people:manage",
     as: "creator",
     http: { method: "POST", path: "/people/:id/decline" },
     shape: {
       id: z.string().describe("The person's id (list_people)"),
-      siteIds: z.array(z.string()).min(1).describe("Requested site ids to decline"),
+      siteIds: z.array(z.string()).optional().describe("For an active person: requested site ids to decline"),
     },
     confirm: true,
     annotations: { destructiveHint: true },

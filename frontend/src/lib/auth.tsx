@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function devSignIn(userId: string) {
     const out = await api.post<{ onboarding?: boolean }>("/auth/dev-login", { userId });
-    // A request: off to choose their sites, as a real first sign-in does.
+    // A request: off to /welcome, as a real first sign-in is.
     if (out?.onboarding) {
       window.location.assign("/welcome");
       return;

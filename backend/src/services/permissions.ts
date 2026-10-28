@@ -105,12 +105,12 @@ export const ROLES: RoleDef[] = [
   {
     key: "site_manager",
     name: "Site Manager",
-    description: "Everything Site Staff can do, plus managing the roster and approving people for their sites (Site settings).",
+    description: "Everything Site Staff can do, plus managing the roster and the people at their sites (Site settings).",
     permissions: ["roster.view", "entries.view", ...ROSTER_MANAGEMENT, "users.manageSite"],
     allSites: false,
   },
   {
-    // What a new person is requested as. Approved per site in People & roles.
+    // What a new request is let in as unless the approving Admin picks otherwise.
     key: "site_staff",
     name: "Site Staff",
     description: "Submits and reads forms, and looks up residents, at their sites. A Site Manager can let them manage the roster.",
