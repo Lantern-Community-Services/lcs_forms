@@ -274,6 +274,15 @@ model CalendarEvent {
   sourceFormId  String?           @db.NVarChar(64)
   /// The form's own reference for it, e.g. the entry id of the request.
   sourceRef     String?           @db.NVarChar(255)
+  /// People the form invites by name (ctx.calendar.form `invitees`), as JSON
+  /// [{ email, name }]. They get the Outlook invite whatever their calendar
+  /// choices, besides anyone following its sites. A form's event may have no
+  /// sites: then they're the only ones it reaches (and only Admins see it on
+  /// the calendar).
+  invitees      String?           @db.NVarChar(Max)
+  /// Who the form would like it sent from (JSON user ids, in order), tried
+  /// before whoever changed it last (ctx.calendar.form `sendFrom`).
+  sendFromIds   String?           @db.NVarChar(Max)
   /// The day it first happens, and the day its last occurrence ends, so a
   /// month's events are an indexed range query. lastDate null = repeats forever.
   firstDate     String            @db.NVarChar(255)
