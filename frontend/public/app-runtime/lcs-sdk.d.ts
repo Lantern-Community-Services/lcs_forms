@@ -689,6 +689,25 @@ declare module "@lcs/server" {
     lastDate: string | null;
     repeats: boolean;
     sites: { code: string; name: string }[];
+    /** People it invites by name (create/update `invitees`). */
+    invitees: { email: string; name: string }[];
+    /** The Teams link, once Outlook has made it (teamsMeeting events). */
+    teamsJoinUrl: string | null;
+    /** Where it stands in Outlook: sent (the meeting exists), waiting to be sent, or why it can't be. */
+    outlook: { sent: boolean; waiting: boolean; problem: string | null };
+  }
+
+  /**
+   * Who a form's own event invites by name, besides anyone following its sites in Outlook.
+   * `invitees` get the Outlook invite (an email from Exchange) whatever their calendar choices;
+   * an event with no siteIds reaches only them (and shows on the calendar to Admins only).
+   * `sendFrom` (user ids or emails, in order) is whose Outlook sends it: the first of them who
+   * has signed in to Lantern Forms with Microsoft, else whoever changed it last. Once sent,
+   * the meeting stays with that person. null clears either; leave one out to keep it.
+   */
+  export interface FormEventPeople {
+    invitees?: { email: string; name?: string }[] | null;
+    sendFrom?: string[] | null;
   }
 
   /** A member of staff, from ctx.directory. */
@@ -883,9 +902,9 @@ declare module "@lcs/server" {
       form: {
         /** Its events, or only those with this ref. */
         list(ref?: string): FormCalendarEvent[];
-        create(event: import("@lcs/sdk").CalendarEventInput, opts?: { ref?: string; pending?: boolean }): { id: string };
-        /** Change it (scope/date as calendar.update), and/or mark it pending or approved. */
-        update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event?: import("@lcs/sdk").CalendarEventInput; pending?: boolean }): { id: string };
+        create(event: import("@lcs/sdk").CalendarEventInput, opts?: { ref?: string; pending?: boolean } & FormEventPeople): { id: string };
+        /** Change it (scope/date as calendar.update), mark it pending or approved, and/or change who it invites (no event needed). */
+        update(id: string, change: { scope?: "all" | "this" | "following"; date?: string; event?: import("@lcs/sdk").CalendarEventInput; pending?: boolean } & FormEventPeople): { id: string };
         setPending(id: string, pending: boolean): void;
         remove(id: string, opts?: { scope?: "all" | "this" | "following"; date?: string }): void;
       };

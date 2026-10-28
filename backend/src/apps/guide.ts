@@ -80,6 +80,11 @@ Admins and developers pass every role check.
   setPending(id, false) confirms it and sends it to Outlook. Occurrences carry pending and source { slug, ref }. Nobody
   edits these on the calendar itself; its "Open in <form>" button opens /apps/<slug>?ref=<ref>, so the form's first page
   should read params.ref and show that record. In the preview they're simulated ("preview:" ids).
+  A meeting for chosen people: create/update with { invitees: [{ email, name }], sendFrom: [hostUserId, …] } and
+  siteIds [] — the invitees get an Outlook invite (teamsMeeting: true adds a Teams link), sent from the first sendFrom
+  person who has signed in with Microsoft; nobody following a site gets it, and only Admins see it on the calendar.
+  update(id, { invitees }) alone changes who's invited. list() gives each event's invitees, teamsJoinUrl and outlook
+  status, so a page can show the join link.
 - Approvals and other server-side changes: ctx.db.entries.update(id, data, { reason, ifUpdatedAt: entry.updatedAt })
   in an action that checks who's asking (ctx.user). It skips entries.edit and beforeUpdate, keeps history, and throws
   "CONFLICT…" if someone saved the entry meanwhile — read it again and retry once.
