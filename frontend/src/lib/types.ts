@@ -66,7 +66,8 @@ export interface User {
 
 export interface Site extends SiteRef {
   entityName?: string | null;
-  siteType: "supportive" | "shelter" | "other";
+  /** "office": the Main Office and the like (no roster, only in forms that include it). */
+  siteType: "supportive" | "shelter" | "other" | "office";
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;

@@ -19,6 +19,7 @@ import { entryInput, routeQuietly } from "../services/routing.js";
 import type { Request } from "express";
 import { createEvent, deleteEvent, eventInput, formEvents, inviteesSchema, loadOccurrences, scopeSchema, setEventPending, setEventPeople, updateEvent, type FormOwner } from "../services/calendar.js";
 import { noteCalendarChange } from "../services/outlookSync.js";
+import { OFFICE, formIncludesOffice, isOffice, notOffice } from "../services/officeSites.js";
 import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
 import { canUseBuiltForm, entryReach } from "../services/staffGroups.js";
@@ -340,7 +341,10 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
   if (input.site) {
     site = await prisma.site.findFirst({ where: { OR: [{ code: input.site }, { id: input.site }] } });
     if (!site || !site.active) throw badRequest("That site doesn't exist.");
-    if (!siteAllowed(user, site.id, opts.machineSiteId)) throw forbidden("You aren't assigned to that site.");
+    if (isOffice(site)) {
+      // The Main Office: only for forms that include it, and then anyone using the form may pick it.
+      if (!(await formIncludesOffice(app.form.id))) throw badRequest("This form isn't for that site.");
+    } else if (!siteAllowed(user, site.id, opts.machineSiteId)) throw forbidden("You aren't assigned to that site.");
   }
   if (input.tenantId) {
     tenant = await prisma.tenant.findUnique({ where: { id: input.tenantId } });
@@ -833,7 +837,13 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
       }
       case "roster.sites": {
         // all: every active site's name and code (to choose where something happens), not just the person's own.
-        const rows = await prisma.site.findMany({ where: { active: true, ...(user?.siteIds && !args?.all ? { id: { in: user.siteIds } } : {}) }, orderBy: { name: "asc" } });
+        // Office sites (the Main Office) only when the form includes them, and then for everyone.
+        const office = await formIncludesOffice(app.form.id);
+        const mine = user?.siteIds && !args?.all ? user.siteIds : null;
+        const rows = await prisma.site.findMany({
+          where: { active: true, ...(mine ? (office ? { OR: [{ id: { in: mine } }, { siteType: OFFICE }] } : { id: { in: mine } }) : {}), ...(office ? {} : notOffice) },
+          orderBy: { name: "asc" },
+        });
         return rows.map(siteOut);
       }
       case "roster.resident": {

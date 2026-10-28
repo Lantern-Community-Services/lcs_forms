@@ -20,6 +20,7 @@ import { EMAIL_FIELD_TYPES, type FormDoc, type FormSettings, type Notification }
 import { cn } from "@/lib/utils";
 import { CatalogCardFields } from "@/components/CatalogCardFields";
 import { WhoSeesEntries } from "@/components/WhoSeesEntries";
+import { IncludeMainOffice } from "@/components/IncludeMainOffice";
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -115,6 +116,7 @@ export function SettingsPanel({
         {access === "roles" && <CheckboxList options={roles} value={s.access?.roles ?? []} onChange={(v) => set({ access: { mode: "roles", roles: v } })} />}
         {access === "public" && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Public forms can't use Site or Resident fields, and have spam protection (a hidden trap field and a rate limit).</p>}
         <Toggle label="Ask which site this is for" hint="Entries are then only visible to people assigned to that site." checked={Boolean(s.requireSite)} onChange={(v) => set({ requireSite: v || undefined })} />
+        <IncludeMainOffice formId={form.id} />
       </Section>
 
       <FormsScreenAccess form={form} currentCategory={currentCategory} categories={catalog?.categories ?? []} onCatalog={onCatalog} />

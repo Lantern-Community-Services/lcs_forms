@@ -201,7 +201,10 @@ declare module "@lcs/sdk" {
   }
 
   export const roster: {
-    /** Sites this person can use. */
+    /**
+     * Sites this person can use. Office sites (siteType "office", the Main Office: no roster) only when
+     * the form's editor has "Include the Main Office" on, and then for everyone using the form.
+     */
     sites(): Promise<Site[]>;
     /** Active residents at a site (code) — the device's own copy, so it's instant and works offline. */
     residents(siteCode: string): Promise<Resident[]>;
@@ -767,7 +770,10 @@ declare module "@lcs/server" {
     };
     roster: {
       site(idOrCode: string): ServerSite | null;
-      /** The person's sites; { all: true } for every active site (names and codes, e.g. to choose where an event is). */
+      /**
+       * The person's sites; { all: true } for every active site (names and codes, e.g. to choose where an event is).
+       * Office sites (siteType "office", the Main Office) only when the form includes them ("Include the Main Office").
+       */
       sites(opts?: { all?: boolean }): ServerSite[];
       resident(id: string): ServerResident | null;
       /** Active residents, by last name; includeArchived for everyone who has lived there. */
