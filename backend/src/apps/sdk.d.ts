@@ -514,6 +514,12 @@ declare module "@lcs/sdk" {
   };
 }
 
+/**
+ * The shared component library: `import { SitePicker } from "@lcs/components/SitePicker"`. Each component's
+ * exports and props are in the library (MCP list_components / get_component), not typed here.
+ */
+declare module "@lcs/components/*";
+
 declare module "@lcs/ui" {
   import type * as React from "react";
   type Props<T = HTMLElement> = React.HTMLAttributes<T> & { className?: string; children?: React.ReactNode };

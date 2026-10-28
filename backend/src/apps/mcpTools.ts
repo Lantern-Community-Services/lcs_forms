@@ -12,6 +12,7 @@ import { DESIGN_BRIEF } from "./designBrief.js";
 import { buildProject } from "./compile.js";
 import { createEntry, entryOut, findCodeForm, loadApp, runAction } from "./runtime.js";
 import { createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, patchFiles, publishProject, restoreProjectVersion, versionFiles } from "./service.js";
+import { componentVersionFiles, deleteComponent, getComponent, listComponents, saveComponent } from "./components.js";
 
 /**
  * MCP tools for code forms. An assistant works on one the way it would on a
@@ -39,6 +40,65 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     {},
     async () => DESIGN_BRIEF(),
     { readOnlyHint: true }
+  );
+
+  // ── The component library ──
+
+  tool(
+    "list_components",
+    "The shared component library: UI pieces and helpers any code form imports as @lcs/components/<name> (on top of @lcs/ui). CALL THIS BEFORE WRITING A CODE FORM'S UI, and reuse what fits instead of writing your own; get_component shows one's code and props. Each lists what it is, its exports (api), its version and which forms use it. search and category narrow it.",
+    { search: z.string().optional(), category: z.string().optional() },
+    async ({ search, category }) => {
+      need("apps:build");
+      return listComponents({ search, category });
+    },
+    { readOnlyHint: true }
+  );
+
+  tool(
+    "get_component",
+    "One library component: its description, exports and props (api), an example (usage), its files, the forms that use it and its versions. Import it in a code form with: import { … } from \"@lcs/components/<name>\". version: an older version's files instead.",
+    { name: z.string(), version: z.number().int().min(1).optional() },
+    async ({ name, version }) => {
+      need("apps:build");
+      return version ? { name, version, files: await componentVersionFiles(name, version) } : getComponent(name);
+    },
+    { readOnlyHint: true }
+  );
+
+  tool(
+    "save_component",
+    "Add a component to the library, or save a new version. Save here anything a second form could use (a picker, a card, a row, a formatting helper) rather than keeping it in one form, and generalise it first (props, not one form's types). files: { path: source } with index.tsx (or index.ts) as what the import gives; it may import react, @lcs/ui, @lcs/sdk, @lcs/charts, lucide-react, other components and its own files. It must build. A new one needs title, description (what it is, when to use it), category (Inputs, Display, Layout, Lists, Helpers…), and should have api (each export and its props) and usage (a short example). Leave out files to change only the words. Drafts of forms that use it build with the new version at once (their build results come back here); published forms keep theirs until republished.",
+    {
+      name: z.string(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      category: z.string().optional(),
+      files: z.record(z.string()).optional(),
+      api: z.string().nullable().optional(),
+      usage: z.string().nullable().optional(),
+      note: z.string().optional().describe("What changed, kept with the version"),
+    },
+    async (input) => {
+      need("apps:build");
+      const saved = await saveComponent(input, actor);
+      // The drafts that use it build with this version now: say whether they still do.
+      const users = (await getComponent(saved.name)).usedBy;
+      const forms = await Promise.all(users.map(async (u) => ({ form: u.slug, build: await buildReport(u.slug) })));
+      return { ...saved, forms };
+    }
+  );
+
+  tool(
+    "delete_component",
+    "Remove a component from the library. Refused while any code form imports it. Needs confirm: true.",
+    { name: z.string(), confirm: z.boolean().optional() },
+    async ({ name, confirm }) => {
+      need("apps:build");
+      if (confirm !== true) throw new HttpError(400, "Pass confirm: true to remove the component.");
+      return deleteComponent(name, actor);
+    },
+    { destructiveHint: true }
   );
 
   tool("list_code_forms", "Every code form with its status and entry count.", { includeArchived: z.boolean().optional() }, async ({ includeArchived }) => {
