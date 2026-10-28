@@ -7,6 +7,7 @@ import type { Values } from "../forms/engine.js";
 import { ENTRY_CREATED, ROUTE_ID_RE, recipientSchema, type Route } from "../forms/routingSchema.js";
 import { checkEmailFields, checkRoutes, emailValues, emailableFields, planRoutes } from "./routing.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
+import { checkTemplateKeys, fillTags, templateByKey } from "./emailTemplates.js";
 import { logEmail, mailConfigured, sendLogged } from "./mailer.js";
 import { audit, type Actor } from "./audit.js";
 
@@ -49,6 +50,8 @@ export const reportSchema = z
     fields: z.array(z.string().trim().min(1).max(64)).max(12).default([]),
     to: z.array(recipientSchema).min(1, "A report needs someone to send it to.").max(50),
     whatToDo: z.string().trim().max(500).optional(),
+    /** A report email template's key (services/emailTemplates.ts): its subject, heading, line and What to do instead of whatToDo. */
+    template: z.string().trim().min(1).max(64).optional(),
     /** Set by the server when the scheduled report goes. */
     lastSentAt: z.string().nullable().optional(),
   })
@@ -133,6 +136,7 @@ export async function checkReports(form: BuiltForm, input: unknown[]): Promise<R
   });
   // Recipients: the same rules as a route's (known roles, groups, sites).
   await checkRoutes(form, reports.map(asRoute));
+  for (const r of reports) await checkTemplateKeys([r.template], "report", `Report “${r.name}”`);
   return reports;
 }
 
@@ -192,6 +196,7 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
   }
 
   const columns = emailableFields(form).filter((f) => report.fields.includes(f.id));
+  const t = report.template ? await templateByKey(report.template) : null;
   const notes: string[] = [];
   const emails: ReportEmail[] = [];
   const url = `${appBaseUrl}${form.kind === "code" ? `/apps/${form.slug}` : `/f/${form.slug}/entries`}`;
@@ -212,9 +217,16 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
       const values = emailValues(form, report.fields, { data: JSON.parse(e.data) as Values, site, createdAt: e.createdAt, byName: e.createdByName, followUp: e.followUp });
       return columns.map((c) => values.find((v) => v.label === c.label)?.value ?? "");
     });
-    const subject = `${report.name} - ${g.label} - ${nyDate(now)}`.slice(0, 200);
     const count = g.rows.length;
     const open = g.rows.filter((e) => e.followUp === "open").length;
+    const tags = { form: form.title, report: report.name, site: g.label, count: String(count), date: nyDate(now) };
+    const countLine = count
+      ? `Entries submitted in the past 7 days: ${count}${g.rows.some((e) => e.followUp) ? ` (${open} still open)` : ""}`
+      : `No entries were submitted for ${g.label} in the past 7 days.`;
+    const subject = (fillTags(t?.subject, tags, { line: true, max: 200 }) ?? `${report.name} - ${g.label} - ${nyDate(now)}`).slice(0, 200);
+    const heading = fillTags(t?.heading, tags, { line: true, max: 200 }) ?? `${report.name}: ${g.label}`;
+    const line = fillTags(t?.intro, tags);
+    const whatToDo = t ? fillTags(t.whatToDo, tags) : report.whatToDo;
     for (const to of [...new Set(addresses.map((a) => a.toLowerCase()))]) {
       const withAnswers = isInternalAddress(to) && columns.length > 0 && rows.length > 0;
       emails.push({
@@ -225,13 +237,11 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
         withAnswers,
         html: brandedEmail({
           kicker: form.title,
-          heading: `${report.name}: ${g.label}`,
-          intro: count
-            ? `Entries submitted in the past 7 days: ${count}${g.rows.some((e) => e.followUp) ? ` (${open} still open)` : ""}`
-            : `No entries were submitted for ${g.label} in the past 7 days.`,
-          whatToDo: report.whatToDo,
+          heading,
+          intro: line ? `${countLine}\n${line}` : countLine,
+          whatToDo,
           table: withAnswers ? { columns: columns.map((c) => c.label), rows, more: Math.max(0, count - shown.length) } : null,
-          button: { label: "Open the entries", url },
+          button: { label: fillTags(t?.buttonLabel, tags, { line: true, max: 60 }) ?? "Open the entries", url },
           note: withAnswers || !count ? null : "The entries aren't in this email. Sign in to see them.",
         }),
       });

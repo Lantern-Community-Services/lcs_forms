@@ -46,10 +46,16 @@ export function liveDoc(form: BuiltForm): FormDoc | null {
   return form.liveSchema ? readDoc(form.liveSchema) : null;
 }
 
-/** Why this person can't fill the form in, or null if they can. */
-export function fillBlocker(form: BuiltForm, doc: FormDoc, user: Viewer): { status: number; message: string } | null {
+/**
+ * Why this person can't fill the form in, or null if they can. `shared`: they
+ * came through a share link that works (services/shareLinks.ts resolveShare),
+ * which is how anyone fills in a form shared by link.
+ */
+export function fillBlocker(form: BuiltForm, doc: FormDoc, user: Viewer, shared = false): { status: number; message: string } | null {
   if (form.status === "archived" || form.status === "draft" || !form.liveSchema) return { status: 404, message: "This form isn't available." };
   const mode = doc.settings.access?.mode ?? "signed_in";
+  if (mode === "link" && shared) return null;
+  if (mode === "link" && !user) return { status: 401, message: "This form is shared by link. Ask the person who told you about it for theirs, or sign in." };
   // Limited to some groups or people: never public, whatever its own setting says.
   const limited = isBuiltFormLimited(form.id);
   if ((mode !== "public" || limited) && !user) return { status: 401, message: "Sign in to fill in this form." };
@@ -133,7 +139,8 @@ async function notifiedEntryIds(form: BuiltForm, userId: string): Promise<string
 /** The entries of a form this person may see, as a where (on top of their sites, entryScope). */
 export async function visibleWhere(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own"): Promise<Prisma.FormEntryWhereInput> {
   if (!user || reach === "all") return {};
-  const mine: Prisma.FormEntryWhereInput[] = [{ createdById: user.userId }];
+  // Their own, and what came through their share link.
+  const mine: Prisma.FormEntryWhereInput[] = [{ createdById: user.userId }, { sharedById: user.userId }];
   const told = await notifiedEntryIds(form, user.userId);
   if (told.length) mine.push({ id: { in: told } });
   if (reach === "site" && user.siteIds) mine.push({ siteId: { in: user.siteIds } });
@@ -142,9 +149,9 @@ export async function visibleWhere(form: BuiltForm, user: Viewer, reach: "all" |
 }
 
 /** Whether this person may open this one entry: theirs, their site's (by the form's setting), told about it, or theirs to follow up. */
-export async function canSeeEntry(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own", entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp">): Promise<boolean> {
+export async function canSeeEntry(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own", entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null }): Promise<boolean> {
   if (!user) return false;
-  if (reach === "all" || entry.createdById === user.userId) return true;
+  if (reach === "all" || entry.createdById === user.userId || (entry.sharedById && entry.sharedById === user.userId)) return true;
   if (reach === "site" && (!user.siteIds || (entry.siteId && user.siteIds.includes(entry.siteId)))) return true;
   if ((await notifiedEntryIds(form, user.userId)).includes(entry.id)) return true;
   return entry.followUp ? canFollowUp(form, user as CurrentUser, entry) : false;
@@ -166,7 +173,9 @@ export interface SubmitInput {
   user: Viewer;
   /** Who, when there's no signed-in person (an API key, the MCP server). */
   actorName?: string;
-  source: "app" | "public" | "api" | "mcp";
+  source: "app" | "public" | "share" | "api" | "mcp";
+  /** Filled through an employee's share link (source "share"). */
+  share?: { linkId: string; userId: string; userName: string } | null;
   ip?: string;
   userAgent?: string;
   /** The device it was filled on and the seconds it took (forms/fillMeta.ts), as the fill page measured them. */
@@ -241,8 +250,8 @@ export async function submitEntry(input: SubmitInput) {
   if (!doc) throw notFound("This form isn't available.");
   // A person is held to the form's access rules; an API key or the MCP server
   // was already authorised for forms as a whole, so only needs the form live.
-  if (input.source === "app" || input.source === "public") {
-    const blocked = fillBlocker(form, doc, user);
+  if (input.source === "app" || input.source === "public" || input.source === "share") {
+    const blocked = fillBlocker(form, doc, user, Boolean(input.share));
     if (blocked) throw new HttpError(blocked.status, blocked.message);
   } else if (form.status === "archived" || form.status === "draft") throw notFound("This form isn't live.");
   // A retried upload gets back the entry it already made — before any limit
@@ -277,7 +286,7 @@ export async function submitEntry(input: SubmitInput) {
   }
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
 
-  const actorName = user?.name ?? input.actorName ?? "Public visitor";
+  const actorName = user?.name ?? input.actorName ?? (input.share ? `Visitor (shared by ${input.share.userName})` : "Public visitor");
   let entry: FormEntry;
   try {
     entry = await prisma.formEntry.create({
@@ -290,7 +299,8 @@ export async function submitEntry(input: SubmitInput) {
         // None sent (the MCP server): the database makes one.
         clientId: input.clientId || undefined,
         createdById: user?.userId ?? null,
-        createdByName: actorName,
+        createdByName: actorName.slice(0, 255),
+        ...(input.share ? { shareLinkId: input.share.linkId, sharedById: input.share.userId, sharedByName: input.share.userName } : {}),
         ip: input.ip?.slice(0, 64) ?? null,
         userAgent: input.userAgent?.slice(0, 300) ?? null,
         ...fillMeta(input),
@@ -491,6 +501,8 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     status: e.status,
     starred: e.starred,
     createdByName: e.createdByName,
+    /** Filled through this employee's share link. */
+    sharedByName: e.sharedByName,
     createdAt: e.createdAt,
     deviceKind: e.deviceKind,
     fillSeconds: e.fillSeconds,

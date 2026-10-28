@@ -84,7 +84,7 @@ export function AdminAiBuilder() {
 
   return (
     <Page className="max-w-[900px]">
-      <PageHeader title="AI form builder" subtitle="Let Claude — or any assistant that speaks MCP — build and edit forms here. Everything it makes lands as a draft for you to check before publishing." />
+      <PageHeader title="AI form builder" help={{ article: "admin-integrations", text: "Connect Claude to build and change forms here. Everything it makes is a draft until someone publishes it." }} subtitle="Let Claude — or any assistant that speaks MCP — build and edit forms here. Everything it makes lands as a draft for you to check before publishing." />
 
       <Card className="mb-4 p-5">
         <div className="flex items-start gap-3">

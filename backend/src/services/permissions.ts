@@ -52,6 +52,11 @@ export const PERMISSIONS = [
    * people:manage may read it too (it changes nothing).
    */
   "people.records",
+  /**
+   * Admin → Notifications → Templates: make, change, hide and remove the
+   * organization's email templates (Admins pick from them). Super Admins only.
+   */
+  "email.templates",
   /** Admin → Dev log: response times, errors, memory and the server log. Admin only. */
   "devlog.view",
 ] as const;
@@ -81,7 +86,7 @@ export const ROLES: RoleDef[] = [
     key: "admin",
     name: "Admin",
     description: "Full control on every site — the forms catalog, people, sites, integrations and settings. Only a Super Admin can make someone an Admin.",
-    permissions: PERMISSIONS.filter((p) => p !== "admins.manage" && p !== "people.records"),
+    permissions: PERMISSIONS.filter((p) => p !== "admins.manage" && p !== "people.records" && p !== "email.templates"),
     allSites: true,
   },
   {
@@ -158,7 +163,7 @@ export function permissionsFor(
   const extra: PermissionKey[] = [];
   if (person.calendarEditor && !role.permissions.includes("calendar.edit")) extra.push("calendar.edit");
   if (person.rosterEditor) for (const p of ROSTER_MANAGEMENT) if (!role.permissions.includes(p)) extra.push(p);
-  if (person.globalAdmin && role.key === "admin") extra.push("admins.manage", "people.records");
+  if (person.globalAdmin && role.key === "admin") extra.push("admins.manage", "people.records", "email.templates");
   return extra.length ? [...role.permissions, ...extra] : role.permissions;
 }
 

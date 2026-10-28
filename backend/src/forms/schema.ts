@@ -114,7 +114,7 @@ const notification = z.object({
 const settings = z.object({
   submitLabel: z.string().max(60).optional(),
   access: z.object({
-    mode: z.enum(["signed_in", "roles", "public"]).default("signed_in"),
+    mode: z.enum(["signed_in", "roles", "public", "link"]).default("signed_in"),
     roles: z.array(z.string()).optional(),
   }).strict().optional(),
   entriesRoles: z.array(z.string()).optional(),

@@ -74,6 +74,7 @@ export function BuiltFormEntriesPage() {
       <DesktopBackLink to={`/f/${slug}`}>{data.form.title}</DesktopBackLink>
       <PageHeader
         title={`${data.form.title}: entries`}
+        help={{ article: "entries", text: "What's been filed on this form that you can see. Search, filter, star and export; each entry opens on its own page." }}
         subtitle={`${data.total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${data.total === 1 ? "y" : "ies"}${q || from || to || starred ? " match" : ""}${data.reach === "own" ? " · yours, and any you were told about" : data.reach === "site" ? " · your sites' and your own" : ""}`}
         actions={
           <>

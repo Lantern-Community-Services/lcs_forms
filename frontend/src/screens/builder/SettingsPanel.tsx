@@ -19,6 +19,7 @@ import { errorMessage } from "@/lib/utils";
 import { EMAIL_FIELD_TYPES, type FormDoc, type FormSettings, type Notification } from "@/lib/formEngine";
 import { cn } from "@/lib/utils";
 import { CatalogCardFields } from "@/components/CatalogCardFields";
+import { ShareSettings } from "@/components/ShareSettings";
 import { WhoSeesEntries } from "@/components/WhoSeesEntries";
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -104,8 +105,8 @@ export function SettingsPanel({
       </Section>
 
       <Section title="Who can fill it in">
-        <div className="grid gap-2 sm:grid-cols-3">
-          {([["signed_in", "Anyone signed in", "Every staff account."], ["roles", "Some roles", "Only the roles you pick."], ["public", "Public", "Anyone with the link, no sign-in."]] as const).map(([k, l, h]) => (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {([["signed_in", "Anyone signed in", "Every staff account."], ["roles", "Some roles", "Only the roles you pick."], ["public", "Public", "Anyone with the link, no sign-in."], ["link", "Anyone with a share link", "Each employee shares their own link or QR code; no open address."]] as const).map(([k, l, h]) => (
             <button key={k} onClick={() => set({ access: { mode: k, roles: k === "roles" ? s.access?.roles ?? [] : undefined } })} className={cn("rounded-card border p-3 text-left", access === k ? "border-navy bg-navsel" : "border-hairline hover:border-strongline")}>
               <p className="text-[13.5px] font-semibold text-ink">{l}</p>
               <p className="text-[12px] text-muted">{h}</p>
@@ -114,6 +115,15 @@ export function SettingsPanel({
         </div>
         {access === "roles" && <CheckboxList options={roles} value={s.access?.roles ?? []} onChange={(v) => set({ access: { mode: "roles", roles: v } })} />}
         {access === "public" && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Public forms can't use Site or Resident fields, and have spam protection (a hidden trap field and a rate limit).</p>}
+        {access === "link" && (
+          <>
+            <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+              Anyone given an employee's link can fill it in without an account, and nobody can without one. Every entry says whose link it came through, and that person sees it.
+              Forms shared by link can't use Site or Resident fields, and have the same spam protection as public forms.
+            </p>
+            <ShareSettings formId={form.id} live={form.live?.settings.access?.mode === "link"} />
+          </>
+        )}
         <Toggle label="Ask which site this is for" hint="Entries are then only visible to people assigned to that site." checked={Boolean(s.requireSite)} onChange={(v) => set({ requireSite: v || undefined })} />
       </Section>
 

@@ -42,7 +42,7 @@ export function AdminSettings() {
   if (isLoading) return <LoadingState />;
   return (
     <Page className="max-w-[720px]">
-      <PageHeader title="Roster rules" />
+      <PageHeader title="Roster rules" help={{ article: "admin-sites", text: "How long before a resident shows in Review, for everyone or for each site." }} />
       <Card className="p-5">
         <Field label="Review after (hours without activity)" hint="Someone lands in the review queue when no form has named them and nobody has confirmed them for this long. Sites can override it (Admin → Sites) — shelters may want 24.">
           <div className="flex gap-2">
@@ -143,7 +143,7 @@ export function AdminSignInAccess() {
   if (isLoading) return <LoadingState />;
   return (
     <Page className="max-w-[760px]">
-      <PageHeader title="Sign-in access" subtitle="Everyone signs in through Lantern's Microsoft Entra ID. Partner organisations can use their own Google Workspace or Microsoft accounts." />
+      <PageHeader title="Sign-in access" help={{ article: "admin-sites", text: "Which other email domains may sign in, and whether the welcome tour starts by itself." }} subtitle="Everyone signs in through Lantern's Microsoft Entra ID. Partner organisations can use their own Google Workspace or Microsoft accounts." />
       <Card className="mb-4 p-5">
         <p className="kicker mb-2">New people</p>
         <p className="text-[13px] text-muted">

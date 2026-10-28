@@ -131,6 +131,7 @@ export function NotificationsPage() {
     <div className="flex min-h-full flex-col">
       <PhoneHeader
         title="Notifications"
+        help={{ article: "your-notifications", text: "What forms and the site have told you. Urgent ones are red and stay at the top. Choose what's emailed to you in Profile." }}
         subtitle={subtitle}
         back={{ to: "/home", label: "Home" }}
         actions={
@@ -154,6 +155,7 @@ export function NotificationsPage() {
       <Page className="hidden max-w-[820px] md:block">
         <PageHeader
           title="Notifications"
+          help={{ article: "your-notifications", text: "What forms and the site have told you. Urgent ones are red and stay at the top. Choose what's emailed to you in Profile." }}
           subtitle={subtitle}
           actions={
             <>

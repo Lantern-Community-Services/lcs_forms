@@ -20,6 +20,7 @@ import { SiteTourStarter } from "@/lib/tour/SiteTourStarter";
 import { inLock } from "@/lib/formLock";
 import { LockedBar, useLocked } from "./FormLock";
 import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/PageHelp";
 
 /**
  * Full-page shell.
@@ -280,19 +281,37 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  help,
 }: {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  /** A "?" beside the title: what the page is for, and its help article (lib/help/content.ts). */
+  help?: { article: string; text: string };
 }) {
   // Inside a tabbed section the active tab is the title (see SectionTabs).
   const inTabs = useInSectionTabs();
-  if (inTabs && !subtitle && !actions) return null;
+  if (inTabs && !subtitle && !actions && !help) return null;
   return (
     <div className={`mb-4 flex flex-wrap justify-between gap-3 md:mb-6 md:gap-4 ${inTabs ? "items-center" : "items-start"}`}>
       <div className="min-w-0">
-        {!inTabs && <h1 className="text-[23px] font-heading font-extrabold text-ink md:text-[24px]">{title}</h1>}
-        {subtitle && <p className={`text-[13px] text-muted md:text-[13.5px] ${inTabs ? "" : "mt-1"}`}>{subtitle}</p>}
+        {!inTabs && (
+          <div className="flex items-center gap-1">
+            <h1 className="text-[23px] font-heading font-extrabold text-ink md:text-[24px]">{title}</h1>
+            {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
+          </div>
+        )}
+        {inTabs ? (
+          // The tab is the title: the "?" sits with the line under it.
+          (subtitle || help) && (
+            <div className="flex items-center gap-1">
+              {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
+              {subtitle && <p className="text-[13px] text-muted md:text-[13.5px]">{subtitle}</p>}
+            </div>
+          )
+        ) : (
+          subtitle && <p className="mt-1 text-[13px] text-muted md:text-[13.5px]">{subtitle}</p>
+        )}
       </div>
       {/* Wraps rather than running off the edge when the column is narrow
           (an iPad in portrait beside the sidebar). */}

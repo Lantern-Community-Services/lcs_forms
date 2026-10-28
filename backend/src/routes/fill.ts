@@ -8,6 +8,7 @@ import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
 import { canFollowUp, loadFollowUp, requireFollowUp, setFollowUp } from "../services/followUp.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
+import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
   canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
   entryScope, liveDoc, saveUpload, submitEntry, updateEntry, type EntryFilter,
@@ -28,11 +29,32 @@ async function liveForm(req: Request) {
   return { form, doc };
 }
 
+/** The share link a request came through (?share= or the body's shareToken), checked: it must open this form. */
+async function shareOf(form: BuiltForm, token: unknown): Promise<ShareContext | null> {
+  if (typeof token !== "string" || !token) return null;
+  const share = await resolveShare(token);
+  if (share.form.id !== form.id) throw new HttpError(410, "This link doesn't work any more. Ask the person who shared it with you for a new one.");
+  return share;
+}
+
+/**
+ * Where a share link (/s/<token>) goes: the form's slug, and whose link it is.
+ * A link that doesn't work answers 410, saying nothing about the form.
+ */
+fillRouter.get(
+  "/share/:token",
+  asyncHandler(async (req, res) => {
+    const { link, form } = await resolveShare(req.params.token);
+    res.json({ slug: form.slug, title: form.title, sharedBy: link.userName, expiresAt: link.expiresAt });
+  })
+);
+
 fillRouter.get(
   "/:slug",
   asyncHandler(async (req, res) => {
     const { form, doc } = await liveForm(req);
-    const blocker = form.liveSchema ? fillBlocker(form, doc, req.user) : null;
+    const share = await shareOf(form, req.query.share);
+    const blocker = form.liveSchema ? fillBlocker(form, doc, req.user, Boolean(share)) : null;
     if (blocker && !isFormAdmin(req.user)) {
       if (blocker.status === 401) throw unauthorized(blocker.message);
       throw new HttpError(blocker.status, blocker.message);
@@ -46,6 +68,7 @@ fillRouter.get(
       canReadEntries: Boolean(req.user),
       entriesReach: entryReachOf(form, doc, req.user),
       isAdmin: isFormAdmin(req.user),
+      ...(share ? { share: { sharedBy: share.link.userName, expiresAt: share.link.expiresAt } } : {}),
     });
   })
 );
@@ -60,6 +83,8 @@ const submitBody = z.object({
   ...fillMetaFields,
   /** Honeypot: a hidden input real people never fill in. */
   website_hp: z.string().optional(),
+  /** Came through an employee's share link (/s/<token>). */
+  shareToken: z.string().max(64).optional(),
 });
 
 fillRouter.post(
@@ -71,6 +96,7 @@ fillRouter.post(
     if (!doc) throw notFound("This form isn't available.");
     // A bot filled the trap: act as if it worked so it doesn't try harder.
     if (body.website_hp) return res.status(201).json({ id: "ok", confirmation: doc.settings.confirmation ?? null });
+    const share = await shareOf(form, body.shareToken);
     const { entry, duplicate } = await submitEntry({
       form,
       values: body.values,
@@ -79,12 +105,14 @@ fillRouter.post(
       codeErrors: body.codeErrors,
       formVersion: body.formVersion,
       user: req.user,
-      source: req.user ? "app" : "public",
+      source: share ? "share" : req.user ? "app" : "public",
+      share: share ? { linkId: share.link.id, userId: share.link.userId, userName: share.link.userName } : null,
       ip: req.ip,
       userAgent: req.headers["user-agent"],
       deviceKind: body.deviceKind,
       fillSeconds: body.fillSeconds,
     });
+    if (share && !duplicate) await linkUsed(share.link);
     res.status(duplicate ? 200 : 201).json({ id: entry.id, duplicate, values: JSON.parse(entry.data) });
   })
 );
@@ -97,7 +125,8 @@ fillRouter.post(
     const form = await findForm(req.params.slug);
     const doc = liveDoc(form) ?? (isFormAdmin(req.user) ? readDoc(form.draftSchema) : null);
     if (!doc) throw notFound("This form isn't available.");
-    const blocker = form.liveSchema ? fillBlocker(form, doc, req.user) : null;
+    const share = await shareOf(form, req.query.share);
+    const blocker = form.liveSchema ? fillBlocker(form, doc, req.user, Boolean(share)) : null;
     if (blocker && !isFormAdmin(req.user)) throw new HttpError(blocker.status, blocker.message);
     const field = String(req.query.field ?? "");
     const name = decodeURIComponent(String(req.headers["x-file-name"] ?? "upload"));

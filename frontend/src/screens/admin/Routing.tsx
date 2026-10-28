@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AtSign, Briefcase, Copy, ExternalLink, Eye, Mail, MoreHorizontal, Plus, RotateCcw, Search, Send, Trash2, User, UserCheck, Users, UsersRound, X } from "lucide-react";
+import { ArrowLeft, AtSign, Briefcase, Copy, ExternalLink, Eye, Mail, MoreHorizontal, Plus, RotateCcw, Search, Send, Share2, Trash2, User, UserCheck, Users, UsersRound, X } from "lucide-react";
 import { GroupChecklist, PositionsDropdown } from "@/components/AccessPickers";
 import { useJobTitles, useStaffGroups } from "@/lib/groups";
 import { Page, PageHeader } from "@/components/shell/AppShell";
@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import { useSites } from "@/lib/queries";
 import type { Site } from "@/lib/types";
 import { cn, errorMessage, formatDateTime, relativeTime } from "@/lib/utils";
+import { listWords, templateOptions, useEmailTemplates, type TemplateKind } from "@/lib/emailTemplates";
 
 /**
  * Admin → Notification routing: for each form, who's told about what. A form
@@ -37,6 +38,8 @@ type Recipient =
   | { kind: "role"; role: string; siteOnly?: boolean }
   | { kind: "field"; field: string }
   | { kind: "submitter" }
+  /** The employee whose share link the entry came through (a form shared by link). */
+  | { kind: "sharer" }
   /** Everyone in a staff group (People & roles → Groups); siteOnly keeps it to the event's site. */
   | { kind: "group"; group: string; siteOnly?: boolean }
   /** Everyone with a position (an exact job title). */
@@ -60,6 +63,8 @@ interface Route {
   whatToDo?: string;
   /** Answers shown in the email, to Lantern addresses only (RoutingView.emailFields). */
   fields?: string[];
+  /** An organization email template's key: its wording instead of subject and whatToDo. */
+  template?: string;
 }
 
 interface EmailField { id: string; label: string }
@@ -107,13 +112,13 @@ const OPS: { value: string; label: string; needsValue: boolean }[] = [
 
 // ── The list of forms ────────────────────────────────────────────────────
 
-export function AdminRouting() {
+/** Every form and who it tells: Admin → Notifications → Forms. */
+export function RoutingFormsList() {
   const { data, isLoading } = useQuery({ queryKey: ["routing"], queryFn: () => api.get<{ items: FormRow[] }>("/routing") });
   const [q, setQ] = useState("");
   const rows = (data?.items ?? []).filter((f) => !q.trim() || f.title.toLowerCase().includes(q.trim().toLowerCase()));
   return (
-    <Page className="max-w-[920px]">
-      <PageHeader title="Notification routing" subtitle="Who each form tells, and when: by email and in the app." />
+    <>
       <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form" wrapperClassName="mb-3 max-w-[360px]" className="!pl-9" />
       {isLoading ? (
         <LoadingState />
@@ -124,7 +129,7 @@ export function AdminRouting() {
           <ul className="divide-y divide-hairline">
             {rows.map((f) => (
               <li key={f.id}>
-                <Link to={`/admin/routing/${f.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-rowhover">
+                <Link to={`/admin/notifications/forms/${f.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-rowhover">
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="truncate text-[14px] font-semibold text-ink">{f.title}</span>
@@ -143,7 +148,7 @@ export function AdminRouting() {
           </ul>
         </Card>
       )}
-    </Page>
+    </>
   );
 }
 
@@ -155,7 +160,7 @@ export function AdminRoutingForm() {
 }
 
 /**
- * One form's routes. In Admin (`/admin/routing/:id`) with a way back to every
+ * One form's routes. In Admin (`/admin/notifications/forms/:id`) with a way back to every
  * form; `inForm` is the same editor as the form's own Notifications tab, where
  * the form is already open around it.
  */
@@ -165,6 +170,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
   const toast = useToast();
   const { data, isLoading, refetch } = useQuery({ queryKey: ["routing", id], queryFn: () => api.get<RoutingView>(`/routing/${id}`) });
   const { data: sites } = useSites(true);
+  const { data: templates } = useEmailTemplates();
   const [routes, setRoutes] = useState<Route[] | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -178,7 +184,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
   const change = (rid: string, next: Route | null) => setRoutes(next ? routes.map((r) => (r.id === rid ? next : r)) : routes.filter((r) => r.id !== rid));
   const add = (event: RoutingEvent) => {
     const rid = uniqueId(routes.map((r) => r.id), event.id === "entry.created" ? "new-entry" : event.id);
-    setRoutes([...routes, { id: rid, name: "New route", event: event.id, enabled: true, to: [], email: "always" }]);
+    setRoutes([...routes, { id: rid, name: "New route", event: event.id, enabled: true, to: [], email: "always", ...(templates ? { template: templates.defaults.message } : {}) }]);
   };
 
   async function save() {
@@ -212,7 +218,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
   return (
     <Page className="max-w-[920px] pb-24">
       {!inForm && (
-        <button type="button" onClick={() => navigate("/admin/routing")} className="mb-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+        <button type="button" onClick={() => navigate("/admin/notifications")} className="mb-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
           <ArrowLeft className="h-3.5 w-3.5" /> All forms
         </button>
       )}
@@ -323,6 +329,9 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
   const [picking, setPicking] = useState<null | "sites" | "person" | "role" | "group" | "title">(null);
   const set = (patch: Partial<Route>) => onChange({ ...route, ...patch });
   const siteName = (code: string) => sites.find((s) => s.code === code)?.name ?? code;
+  const { data: templates } = useEmailTemplates();
+  // What the route's template already shows isn't offered again under its answers.
+  const shownByTemplate = new Set(templates?.templates.find((t) => t.key === route.template)?.details ?? []);
   const rules = route.when?.rules ?? [];
   const setRules = (next: Rule[]) => set({ when: next.length ? { match: route.when?.match ?? "all", rules: next } : undefined });
   const fields = [...(event.fields ?? []), { id: "site", label: "Site (code)", choices: sites.map((s) => s.code) }];
@@ -425,6 +434,9 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
                 <DropdownMenuItem disabled={route.to.some((t) => t.kind === "submitter")} onSelect={() => set({ to: [...route.to, { kind: "submitter" }] })}>
                   <UserCheck className="h-4 w-4" /> The person who filed it
                 </DropdownMenuItem>
+                <DropdownMenuItem disabled={route.to.some((t) => t.kind === "sharer")} onSelect={() => set({ to: [...route.to, { kind: "sharer" }] })}>
+                  <Share2 className="h-4 w-4" /> Whoever shared the link
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -449,15 +461,21 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
           </label>
         </Row>
 
-        <Row label="Subject">
-          <Input value={route.subject ?? ""} onChange={(e) => set({ subject: e.target.value || undefined })} placeholder="The form's own subject" className="max-w-[420px]" aria-label="Subject" />
-          <p className="mt-1 text-[12px] text-muted">Optional. Can use {"{form}"}, {"{site}"}, {"{title}"} and {"{date}"}. Never put a resident's name here: it's the email subject.</p>
-        </Row>
+        <Wording kind="message" value={route.template} onChange={(template) => set({ template })} emailFields={emailFields} />
+
+        {!route.template && (
+          <Row label="Subject">
+            <Input value={route.subject ?? ""} onChange={(e) => set({ subject: e.target.value || undefined })} placeholder="The form's own subject" className="max-w-[420px]" aria-label="Subject" />
+            <p className="mt-1 text-[12px] text-muted">Optional. Can use {"{form}"}, {"{site}"}, {"{title}"} and {"{date}"}. Never put a resident's name here: it's the email subject.</p>
+          </Row>
+        )}
 
         <EmailParts
           whatToDo={route.whatToDo}
-          fields={route.fields}
-          emailFields={emailFields}
+          fields={route.fields?.filter((f) => !shownByTemplate.has(f))}
+          emailFields={emailFields.filter((f) => !shownByTemplate.has(f.id))}
+          showWhatToDo={!route.template}
+          answersLabel={route.template ? "More answers in the email" : undefined}
           onChange={(patch) => set(patch)}
           preview={() => api.post<EmailPreview>(`/routing/${formId}/email-preview`, { route: { ...route, name: route.name || "Route" } })}
         />
@@ -520,6 +538,10 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
     icon = <AtSign className="h-4 w-4" />;
     title = event.people?.find((p) => p.id === r.field)?.label ?? r.field;
     sub = "Named on the form";
+  } else if (r.kind === "sharer") {
+    icon = <Share2 className="h-4 w-4" />;
+    title = "Whoever shared the link";
+    sub = "The employee whose link it came through, on a form shared by link";
   } else {
     icon = <UserCheck className="h-4 w-4" />;
     title = "The person who filed it";
@@ -568,7 +590,7 @@ function WhoGetsIt({ route, sites, formId }: { route: Route; sites: Site[]; form
       setBusy(false);
     }
   }
-  const placeholders = route.to.filter((t) => t.kind === "field" || t.kind === "submitter").length;
+  const placeholders = route.to.filter((t) => t.kind === "field" || t.kind === "submitter" || t.kind === "sharer").length;
   return (
     <div className="rounded-input bg-subtle px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -590,7 +612,7 @@ function WhoGetsIt({ route, sites, formId }: { route: Route; sites: Site[]; form
           ) : (
             <p className="text-muted">Nobody listed here{placeholders ? " (besides the people named on each entry)" : ""}.</p>
           )}
-          {placeholders > 0 && <p className="mt-0.5 text-muted">Plus whoever each entry names{route.to.some((t) => t.kind === "submitter") ? " and whoever filed it" : ""}.</p>}
+          {placeholders > 0 && <p className="mt-0.5 text-muted">Plus whoever each entry names{route.to.some((t) => t.kind === "submitter") ? " and whoever filed it" : ""}{route.to.some((t) => t.kind === "sharer") ? " and whoever shared the link" : ""}.</p>}
           {plan.notes.filter((n) => !/^Nobody in|Nobody filed/.test(n)).map((n) => <p key={n} className="mt-0.5 text-status-amberText">{n}</p>)}
         </div>
       )}
@@ -850,14 +872,56 @@ function MoveRules({ formId, rules, unsaved, onMoved }: { formId: string; rules:
 
 interface EmailPreview { subject: string; from: string; inside: string; outside: string }
 
+/**
+ * Which words an email uses: one of the organization's templates (Admin →
+ * Notifications → Templates, Super Admins), or this route's or report's own.
+ */
+function Wording({ kind, value, onChange, emailFields }: { kind: TemplateKind; value?: string; onChange: (key: string | undefined) => void; emailFields: EmailField[] }) {
+  const { data } = useEmailTemplates();
+  const options = templateOptions(data, kind, value);
+  const t = options.find((x) => x.key === value);
+  const detailLabel = (id: string) => data?.details.find((d) => d.id === id)?.label ?? emailFields.find((f) => f.id === id)?.label ?? id;
+  return (
+    <Row label="Wording">
+      <Select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || undefined)}
+        aria-label="Wording"
+        className="max-w-[420px]"
+        options={[...options.map((o) => ({ value: o.key, label: `${o.name}${o.urgent ? " (always urgent)" : ""}${o.hidden ? " (hidden)" : ""}` })), { value: "", label: kind === "report" ? "This report's own wording" : "This route's own wording" }]}
+      />
+      {value && data && !t && <p className="mt-1 text-[12px] text-status-amberText">The template “{value}” is gone, so this uses its own wording until you pick another.</p>}
+      {t ? (
+        <div className="mt-2 max-w-[560px] space-y-0.5 rounded-input bg-subtle px-3 py-2 text-[12.5px] text-ink">
+          {t.description && <p className="text-muted">{t.description}</p>}
+          <p><span className="font-semibold">Subject:</span> {t.subject || "the event's own title"}</p>
+          {t.whatToDo && <p><span className="font-semibold">What to do:</span> {t.whatToDo}</p>}
+          {t.details.length > 0 && <p><span className="font-semibold">Always shows:</span> {listWords(t.details.map(detailLabel))}</p>}
+          {t.urgent && <p className="font-semibold text-status-redText">Always urgent.</p>}
+          <p className="pt-1">
+            <a href={`/admin/notifications/templates/${t.key}`} target="_blank" rel="noreferrer" className="font-semibold text-accent dark:text-white">
+              {data?.canEdit ? "Change this template" : "See this template"}
+            </a>
+            <span className="text-muted"> · changing it changes every {kind === "report" ? "report" : "route"} that uses it.</span>
+          </p>
+        </div>
+      ) : (
+        <p className="mt-1 text-[12px] text-muted">{kind === "report" ? "This report's own What to do, below." : "This route's own subject and What to do, below."}</p>
+      )}
+    </Row>
+  );
+}
+
 /** A route's (or report's) "What to do" and "Answers in the email", with a preview of the email. */
-function EmailParts({ whatToDo, fields, emailFields, onChange, preview, answersLabel = "Answers in the email" }: {
+function EmailParts({ whatToDo, fields, emailFields, onChange, preview, answersLabel = "Answers in the email", showWhatToDo = true }: {
   whatToDo?: string;
   fields?: string[];
   emailFields: EmailField[];
   onChange: (patch: { whatToDo?: string; fields?: string[] }) => void;
   preview?: () => Promise<EmailPreview>;
   answersLabel?: string;
+  /** False when a template says what to do. */
+  showWhatToDo?: boolean;
 }) {
   const [shown, setShown] = useState<EmailPreview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -875,18 +939,20 @@ function EmailParts({ whatToDo, fields, emailFields, onChange, preview, answersL
   }
   return (
     <>
-      <Row label="What to do">
-        <Textarea
-          value={whatToDo ?? ""}
-          onChange={(e) => onChange({ whatToDo: e.target.value || undefined })}
-          rows={2}
-          maxLength={500}
-          placeholder="e.g. Review and sign within 24 hours."
-          aria-label="What to do"
-          className="max-w-[560px]"
-        />
-        <p className="mt-1 text-[12px] text-muted">Shown at the top of the email, so people know what's expected of them. No resident details.</p>
-      </Row>
+      {showWhatToDo && (
+        <Row label="What to do">
+          <Textarea
+            value={whatToDo ?? ""}
+            onChange={(e) => onChange({ whatToDo: e.target.value || undefined })}
+            rows={2}
+            maxLength={500}
+            placeholder="e.g. Review and sign within 24 hours."
+            aria-label="What to do"
+            className="max-w-[560px]"
+          />
+          <p className="mt-1 text-[12px] text-muted">Shown at the top of the email, so people know what's expected of them. No resident details.</p>
+        </Row>
+      )}
       <Row label={answersLabel}>
         <CheckboxList options={emailFields.map((f) => ({ value: f.id, label: f.label }))} value={fields ?? []} onChange={(v) => onChange({ fields: v.length ? v : undefined })} className="max-w-[560px]" />
         <p className="mt-1 text-[12px] text-muted">
@@ -1076,6 +1142,8 @@ interface Report {
   fields: string[];
   to: Recipient[];
   whatToDo?: string;
+  /** A report template's key: its subject, heading and What to do instead of whatToDo. */
+  template?: string;
   lastSentAt?: string | null;
   nextRun?: string | null;
 }
@@ -1105,6 +1173,7 @@ function ReportsSection({ formId, emailFields, roles, sites }: { formId: string;
   const toast = useToast();
   const key = ["routing", formId, "reports"];
   const { data } = useQuery({ queryKey: key, queryFn: () => api.get<ReportsView>(`/routing/${formId}/reports`) });
+  const { data: templates } = useEmailTemplates();
   const [reports, setReports] = useState<Report[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<ReportRun | null>(null);
@@ -1118,7 +1187,7 @@ function ReportsSection({ formId, emailFields, roles, sites }: { formId: string;
   const add = () =>
     setReports([
       ...reports,
-      { id: uniqueId(reports.map((r) => r.id), "weekly-report"), name: "Weekly report", enabled: true, day: 1, hour: 8, split: "all", includeEmpty: false, fields: ["_site", "_date"], to: [] },
+      { id: uniqueId(reports.map((r) => r.id), "weekly-report"), name: "Weekly report", enabled: true, day: 1, hour: 8, split: "all", includeEmpty: false, fields: ["_site", "_date"], to: [], ...(templates ? { template: templates.defaults.report } : {}) },
     ]);
 
   async function save() {
@@ -1253,10 +1322,12 @@ function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPrev
             </DropdownMenuContent>
           </DropdownMenu>
         </Row>
+        <Wording kind="report" value={report.template} onChange={(template) => set({ template })} emailFields={emailFields} />
         <EmailParts
           whatToDo={report.whatToDo}
           fields={report.fields}
           emailFields={emailFields}
+          showWhatToDo={!report.template}
           answersLabel="Columns"
           onChange={(patch) => set({ ...(patch.whatToDo !== undefined || "whatToDo" in patch ? { whatToDo: patch.whatToDo } : {}), ...("fields" in patch ? { fields: patch.fields ?? [] } : {}) })}
         />

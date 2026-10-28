@@ -62,6 +62,7 @@ export function AdminBuilderList() {
     <Page className="max-w-[1100px]">
       <PageHeader
         title="Form builder"
+        help={{ article: "admin-forms", text: "Every form built here. Open one to build it, set who can fill it in and who's told, and publish." }}
         subtitle="Build forms here, in code, from Gravity Forms, or with an AI assistant. New forms are drafts until you publish them."
         actions={
           <>

@@ -565,6 +565,10 @@ model FormEntry {
   /// Starred by an entry viewer (Gravity Forms' star), for follow-up.
   starred        Boolean   @default(false)
   updatedByName  String?   @db.NVarChar(255)
+  /// Filled through an employee's share link (FormShareLink): the link, and whose it is.
+  shareLinkId    String?   @db.NVarChar(64)
+  sharedById     String?   @db.NVarChar(64)
+  sharedByName   String?   @db.NVarChar(255)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -590,6 +594,7 @@ model FormEntry {
   @@index([siteId])
   /// Someone's own entries, newest first (the Forms home, "mine" lists, undo).
   @@index([createdById, createdAt])
+  @@index([formId, sharedById])
   @@index([formId, followUp])
 }
 
@@ -1201,4 +1206,61 @@ model EmailLog {
 
   @@index([formId, createdAt])
   @@index([createdAt])
+}
+
+/// An organization-wide email template (Admin → Notifications → Templates).
+/// Routes and weekly reports pick one by key, or keep their own wording; code
+/// forms send with one by key. Presets ship with the site (services/emailTemplates.ts):
+/// a preset can be edited and put back, hidden, never deleted. Only Super
+/// Admins change templates (email.templates).
+model EmailTemplate {
+  id            String   @id @default(cuid()) @db.NVarChar(64)
+  /// What routes, reports and code forms name it by. Never changes.
+  key           String   @unique @db.NVarChar(64)
+  name          String   @db.NVarChar(120)
+  /// When to use it, for whoever picks it.
+  description   String?  @db.NVarChar(300)
+  /// message (routes, code forms, the site's own notices) | report (weekly reports)
+  kind          String   @default("message") @db.NVarChar(16)
+  subject       String?  @db.NVarChar(200)
+  heading       String?  @db.NVarChar(200)
+  intro         String?  @db.NVarChar(500)
+  whatToDo      String?  @db.NVarChar(500)
+  /// Built-in details shown above the route's chosen answers: _site,_date,_by,_followup.
+  details       String?  @db.NVarChar(200)
+  buttonLabel   String?  @db.NVarChar(60)
+  /// Always urgent, whatever the route says.
+  urgent        Boolean  @default(false)
+  /// The preset it is (its key), for "Back to preset". Null = made here.
+  preset        String?  @db.NVarChar(64)
+  /// Not offered for new routes; whatever already uses it keeps working.
+  hidden        Boolean  @default(false)
+  revision      Int      @default(1)
+  createdByName String?  @db.NVarChar(255)
+  updatedByName String?  @db.NVarChar(255)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// An employee's own link to a form anyone with the link can fill in (access
+/// mode "link", services/shareLinks.ts): /s/<token>, shown with a QR code.
+/// Refreshing turns this one off and makes a new one; links expire, and stop
+/// working when their owner can no longer open the form.
+model FormShareLink {
+  id            String    @id @default(cuid()) @db.NVarChar(64)
+  formId        String    @db.NVarChar(64)
+  /// The employee it belongs to: entries through it are theirs to see.
+  userId        String    @db.NVarChar(64)
+  userName      String    @db.NVarChar(255)
+  /// What's in the address: random, unguessable.
+  token         String    @unique @db.NVarChar(64)
+  /// Null: until it's refreshed or turned off.
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  revokedByName String?   @db.NVarChar(255)
+  entries       Int       @default(0)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([formId, userId])
 }

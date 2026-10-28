@@ -8,6 +8,7 @@ import { formOps } from "./forms.js";
 import { rosterOps } from "./roster.js";
 import { adminOps } from "./admin.js";
 import { calendarOps } from "./calendar.js";
+import { emailOps } from "./email.js";
 
 const WHOAMI =
   "This API key: its name, scopes, site, who made it, and for each delegated scope the permissions and sites it acts with right now (or why it can't). Start here to see what you can do. Needs no scope.\n[REST GET /api/v1/me]";
@@ -39,7 +40,7 @@ export async function describeKey(key: ResolvedKey) {
 }
 
 /** Every operation, MCP tool and /api/v1 route alike. More specific REST paths come first. */
-export const OPS: Op<any>[] = [...formOps, ...rosterOps, ...adminOps, ...calendarOps];
+export const OPS: Op<any>[] = [...formOps, ...rosterOps, ...adminOps, ...calendarOps, ...emailOps];
 
 /** Register every operation (and whoami) as an MCP tool. */
 export function registerOps(tool: ToolRegistrar, key: ResolvedKey) {

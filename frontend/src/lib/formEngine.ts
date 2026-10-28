@@ -208,8 +208,10 @@ export interface FormSettings {
   /**
    * Who can fill it in. "signed_in": anyone with an account. "roles": only
    * the listed roles. "public": anyone with the link, no sign-in (/p/<slug>).
+   * "link": anyone outside Lantern, but only through an employee's own share
+   * link (/s/<token>, backend services/shareLinks.ts); staff fill it signed in.
    */
-  access?: { mode: "signed_in" | "roles" | "public"; roles?: string[] };
+  access?: { mode: "signed_in" | "roles" | "public" | "link"; roles?: string[] };
   /** Roles (besides Admin) that can read entries. Default: Main Office, Site Manager, Site Staff. */
   entriesRoles?: string[];
   /** Ask which site the entry is for (entries are then limited to that site's staff). */
@@ -1328,11 +1330,12 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
     }
     if (n.enabled && n.kind === "webhook" && !/^https:\/\//.test(n.url ?? "")) problems.push({ path: `settings.notifications[${i}].url`, message: "A webhook needs an https:// URL." });
   });
-  if (doc.settings.access?.mode === "public") {
+  if (doc.settings.access?.mode === "public" || doc.settings.access?.mode === "link") {
+    const what = doc.settings.access.mode === "link" ? "A form shared by link" : "A public form";
     doc.fields.forEach((f, i) => {
-      if (f.type === "resident" || f.type === "site") problems.push({ path: `fields[${i}].type`, message: `A public form can't use a ${f.type} field — it would show roster data to anyone.` });
+      if (f.type === "resident" || f.type === "site") problems.push({ path: `fields[${i}].type`, message: `${what} can't use a ${f.type} field — it would show roster data to anyone.` });
     });
-    if (doc.settings.requireSite) problems.push({ path: "settings.requireSite", message: "A public form can't require a site." });
+    if (doc.settings.requireSite) problems.push({ path: "settings.requireSite", message: `${what} can't require a site.` });
   }
   if (doc.tutorial) problems.push(...lintTutorial(doc.tutorial, { kind: "basic", fieldIds: known }));
   return problems;

@@ -5,6 +5,7 @@ import { asyncHandler, badRequest, unauthorized } from "../http.js";
 import { ONBOARDING_COOKIE, verifyOnboarding } from "../auth/auth.js";
 import { audit } from "../services/audit.js";
 import { notifyQuietly } from "../services/notifications.js";
+import { systemEmail } from "../services/emailTemplates.js";
 
 /**
  * A new person's first sign-in (/welcome): where they work and which sites
@@ -84,10 +85,19 @@ onboardingRouter.post(
       summary: `${user.name} (${user.email}) ${first ? "asked" : "changed their request"} to see ${names.join(", ")}`,
     });
     // Admins see every site, so this reaches them and each chosen site's managers.
+    // Worded by the "Someone asks to see sites" email (Admin → Notifications → System emails).
+    const sitesWord = names.length === 1 ? names[0] : `${names.length} sites`;
+    const mail = await systemEmail(
+      "access-request",
+      { person: user.name, email: user.email, position: user.title ?? "", sites: sitesWord, all_sites: names.join(", ") },
+      `${user.name} is asking to see ${sitesWord}`
+    );
     notifyQuietly({
       to: { permissions: ["users.manage", "users.manageSite"], sites: siteIds },
       type: "people.request",
-      title: `${user.name} is asking to see ${names.length === 1 ? names[0] : `${names.length} sites`}`,
+      title: mail.title,
+      urgent: mail.urgent,
+      email: mail.email,
       body: `${user.email}${user.title ? ` · ${user.title}` : ""} wants to see ${names.join(", ")}. Approve or decline it in People & roles.`,
       link: "/admin/people?tab=requests",
       sourceLabel: "People & roles",

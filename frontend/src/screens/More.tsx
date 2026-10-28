@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Bell, ChevronRight, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, Webhook } from "lucide-react";
+import { Bell, ChevronRight, CircleHelp, FileText, KeyRound, Layers, LogIn, Plug, Settings2, Upload, UserRound, Users, Webhook } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/badge";
 import { ADMIN_AREA, isSiteSettingsOnly, useAuth } from "@/lib/auth";
@@ -36,6 +36,7 @@ export function MorePage() {
       <Section title="You">
         <Row to="/notifications" icon={Bell} label="Notifications" badge={unread ? (urgent ? `${urgent} urgent · ${unread} unread` : `${unread} unread`) : undefined} />
         <Row to="/profile" icon={UserRound} label="Profile & settings" />
+        <Row to="/help" icon={CircleHelp} label="Help" />
         <button onClick={() => void logout()} className="flex min-h-[50px] w-full items-center gap-3 border-b border-hairline px-4 text-left active:bg-rowhover">
           <LogIn className="h-[18px] w-[18px] shrink-0 rotate-180 text-muted" />
           <span className="flex-1 text-[14px] font-semibold text-status-redText">Sign out</span>

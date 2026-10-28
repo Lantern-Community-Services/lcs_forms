@@ -12,6 +12,7 @@ import { notifyQuietly } from "../services/notifications.js";
 import { randomAvatarColor } from "../services/avatars.js";
 import { MAIN_OFFICE_LOCATION, parseLocations } from "./onboarding.js";
 import { effectiveGroups, groupsForTitle } from "../services/staffGroups.js";
+import { systemEmail, withArticle } from "../services/emailTemplates.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -282,10 +283,17 @@ usersRouter.patch(
       if (letIn || roleChanged || sitesChanged) {
         const role = roleNameFor(roleFor(user.roleKey), user);
         const where = whereText(user);
+        const mail = await systemEmail(
+          letIn ? "access-granted" : "access-changed",
+          { by: req.user!.name, role, a_role: withArticle(role), where },
+          letIn ? "You can now sign in to Lantern Forms" : "Your access in Lantern Forms changed"
+        );
         notifyQuietly({
           to: { users: [user.id] },
           type: "account",
-          title: letIn ? "You can now sign in to Lantern Forms" : "Your access in Lantern Forms changed",
+          title: mail.title,
+          urgent: mail.urgent,
+          email: mail.email,
           body: `${req.user!.name} ${letIn ? "let you in" : "changed your access"}. You're ${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}, at ${where}.`,
           link: "/home",
           sourceLabel: "People & roles",
@@ -361,10 +369,17 @@ usersRouter.post(
       action: "user.approved",
       summary: `Approved ${user.name} for ${names.join(", ")}${letIn || roleKey ? ` as ${role}` : ""}`,
     });
+    const mail = await systemEmail(
+      letIn ? "access-granted" : "sites-added",
+      { by: req.user!.name, role, a_role: withArticle(role), where: whereText(user), sites: names.join(", ") },
+      letIn ? "You can now sign in to Lantern Forms" : "You've been given more sites in Lantern Forms"
+    );
     notifyQuietly({
       to: { users: [user.id] },
       type: "account",
-      title: letIn ? "You can now sign in to Lantern Forms" : "You've been given more sites in Lantern Forms",
+      title: mail.title,
+      urgent: mail.urgent,
+      email: mail.email,
       body: `${req.user!.name} approved ${names.join(", ")}. You're ${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}, at ${whereText(user)}.`,
       link: "/home",
       sourceLabel: "People & roles",

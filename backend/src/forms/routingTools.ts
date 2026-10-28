@@ -10,6 +10,7 @@ import { loadReports, saveReports, sendReport } from "../services/emailReports.j
 import { sentEmails } from "../services/mailer.js";
 import { followUpView, saveFollowUp, setFollowUp } from "../services/followUp.js";
 import { convertRules } from "../services/ruleConversion.js";
+import { DEFAULT_MESSAGE_TEMPLATE, DEFAULT_REPORT_TEMPLATE, listTemplates } from "../services/emailTemplates.js";
 import { ENTRY_CREATED } from "./routingSchema.js";
 import type { ToolRegistrar } from "./mcp.js";
 
@@ -24,7 +25,7 @@ const formRef = z.string().describe("The form's id or slug — either kind.");
 
 const recipient = z
   .record(z.unknown())
-  .describe('One of: { kind: "person", email, name?, sites?: [site codes] } (anyone: an account holder is told in the app and by email, anyone else gets a link-only email; sites = only for events at those sites) · { kind: "role", role, siteOnly?: true } (everyone with the role at the event\'s site; siteOnly false = everywhere) · { kind: "field", field } (a person the event names, e.g. "supervisor") · { kind: "submitter" } (whoever filed the entry) · { kind: "group", group: <staff group id from list_staff_groups>, siteOnly?: true } (everyone in that team; default wherever they work, siteOnly = only at the event\'s site) · { kind: "title", title, siteOnly?: true } (everyone with that exact job title, a position)');
+  .describe('One of: { kind: "person", email, name?, sites?: [site codes] } (anyone: an account holder is told in the app and by email, anyone else gets a link-only email; sites = only for events at those sites) · { kind: "role", role, siteOnly?: true } (everyone with the role at the event\'s site; siteOnly false = everywhere) · { kind: "field", field } (a person the event names, e.g. "supervisor") · { kind: "submitter" } (whoever filed the entry) · { kind: "sharer" } (the employee whose share link the entry came through, on a form shared by link) · { kind: "group", group: <staff group id from list_staff_groups>, siteOnly?: true } (everyone in that team; default wherever they work, siteOnly = only at the event\'s site) · { kind: "title", title, siteOnly?: true } (everyone with that exact job title, a position)');
 
 const routeShape = {
   id: z.string().optional().describe("Keep a route's id to change it; omit to add a new one (made from the name)."),
@@ -38,7 +39,11 @@ const routeShape = {
   sites: z.array(z.string()).optional().describe("Only events at these sites (codes, see list_sites). Omit for every site."),
   to: z.array(recipient).describe("Who's told"),
   email: z.enum(["always", "prefs"]).optional().describe('"always" (default): everyone on it is emailed (link-only) whatever their settings. "prefs": account holders get it as they chose on their Profile.'),
-  subject: z.string().optional().describe("Title and email subject; tags {form} {site} {event} {title} {date}. Default: the event's own title. Never resident details."),
+  template: z
+    .string()
+    .optional()
+    .describe(`An organization email template's key (get_email_settings lists them; "${DEFAULT_MESSAGE_TEMPLATE}" is the everyday one): its subject, heading, line, What to do, details and button are the email's wording, instead of subject and whatToDo. The route still says who, when, which answers and whether it's urgent. Omit to use the route's own subject and whatToDo.`),
+  subject: z.string().optional().describe("Title and email subject when the route has no template; tags {form} {site} {event} {title} {date}. Default: the event's own title. Never resident details."),
   whatToDo: z.string().optional().describe("What the people on this route have to do, shown in the email, e.g. \"Review and sign within 24 hours.\" Plain text; no resident details."),
   fields: z
     .array(z.string())
@@ -202,12 +207,18 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       return {
         form: { id: f.id, slug: f.slug, title: f.title, kind: f.kind },
         emailFields: emailableFields(f),
-        routes: routing.routes.map((r) => ({ id: r.id, name: r.name, event: r.event, subject: r.subject ?? null, whatToDo: r.whatToDo ?? null, fields: r.fields ?? [], urgent: Boolean(r.urgent) })),
+        routes: routing.routes.map((r) => ({ id: r.id, name: r.name, event: r.event, template: r.template ?? null, subject: r.subject ?? null, whatToDo: r.whatToDo ?? null, fields: r.fields ?? [], urgent: Boolean(r.urgent) })),
         reports: (await loadReports(f)).reports,
+        // The organization's templates a route or report can use (Super Admins change them: list_email_templates).
+        templates: (await listTemplates())
+          .filter((t) => !t.hidden)
+          .map((t) => ({ key: t.key, name: t.name, kind: t.kind, description: t.description, urgent: t.urgent })),
+        defaults: { route: DEFAULT_MESSAGE_TEMPLATE, report: DEFAULT_REPORT_TEMPLATE },
         rules: [
           "Every email uses the Lantern layout: band, heading, What to do, the chosen answers, a button into the site.",
           "Chosen answers go to Lantern addresses only. Anyone else gets the same email without them.",
           "Subjects never carry answers: use {form} {site} {title} {date}.",
+          "A route or report with a template uses the template's wording: change it for every form in Admin → Notifications → Templates (Super Admins), or give that one route its own subject and whatToDo instead.",
         ],
       };
     }
@@ -247,7 +258,8 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       includeEmpty: z.boolean().optional(),
       fields: z.array(z.string()).optional(),
       to: z.array(recipient).describe("Who gets it: the same recipient kinds as a route"),
-      whatToDo: z.string().optional(),
+      template: z.string().optional().describe(`A report template's key (get_email_settings templates, kind "report"; "${DEFAULT_REPORT_TEMPLATE}" is the standard one): its subject, heading and What to do. Omit for the report's own whatToDo.`),
+      whatToDo: z.string().optional().describe("What to do, when the report has no template"),
     },
     async ({ form, ...report }) => {
       need("forms:build");

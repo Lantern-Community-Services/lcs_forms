@@ -23,6 +23,8 @@ export const SETTING_DEFAULTS = {
    * the default, is the group called IT. Only Super Admins change it.
    */
   seeEverythingGroups: "@IT",
+  /** How every email looks (services/emailLook.ts): JSON, empty = the default. Only Super Admins change it. */
+  emailLook: "",
   /** Set when a build that wrote a default forms catalog had written it; see formCatalog.ts. */
   formCatalogSeeded: "",
   /** Set once the old default catalog has been taken out; see formCatalog.ts retireLegacyCatalog. */

@@ -76,6 +76,7 @@ export function AdminSites() {
     <Page>
       <PageHeader
         title="Sites"
+        help={{ article: "admin-sites", text: "Every Lantern property or shelter with a roster." }}
         subtitle="Every Lantern property or shelter with a roster. The code is what WordPress and the API use — keep it stable."
         actions={<Button onClick={() => setDraft({ ...empty })}><Plus className="h-4 w-4" /> New site</Button>}
       />

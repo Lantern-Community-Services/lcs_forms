@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CloudOff, Loader2, Paperclip, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Select } from "@/components/ui/select";
 import { SignaturePad, type SignaturePadHandle } from "@/components/attendance/SignaturePad";
 import { CodeBlockFrame } from "./CodeBlockFrame";
 import { useSites, useTenants } from "@/lib/queries";
-import { fillApi } from "@/lib/builder";
+import { FillShareContext, fillApi } from "@/lib/builder";
 import { ApiError } from "@/lib/api";
 import { isLocalFile, saveLocalFile } from "@/lib/fillQueue";
 import { isOnline } from "@/lib/offline";
@@ -684,6 +684,8 @@ interface UploadedFile {
 function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: { field: Field; value: UploadedFile[]; onChange: (v: unknown) => void; disabled?: boolean; slug?: string; keepOffline?: boolean }) {
   const [busy, setBusy] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  // Filling in through someone's share link: uploads go with it.
+  const share = useContext(FillShareContext);
   const max = f.maxFiles ?? 1;
   const latest = useRef(value);
   latest.current = value;
@@ -700,7 +702,7 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
       }
       setBusy((n) => n + 1);
       try {
-        const up = slug ? (keepOffline ? await uploadOrKeep(slug, f.id, file) : await fillApi.upload(slug, f.id, file)) : { id: `preview-${Math.random().toString(36).slice(2)}`, name: file.name, size: file.size, mime: file.type };
+        const up = slug ? (keepOffline ? await uploadOrKeep(slug, f.id, file, share) : await fillApi.upload(slug, f.id, file, share)) : { id: `preview-${Math.random().toString(36).slice(2)}`, name: file.name, size: file.size, mime: file.type };
         latest.current = [...latest.current, up];
         onChange(latest.current);
       } catch (e) {
@@ -753,10 +755,10 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
  * with the entry from the offline queue (lib/fillQueue.ts). A refusal from the
  * server (wrong type, too big) is still an error.
  */
-async function uploadOrKeep(slug: string, fieldId: string, file: File) {
+async function uploadOrKeep(slug: string, fieldId: string, file: File, share?: string | null) {
   if (!isOnline()) return saveLocalFile(slug, fieldId, file);
   try {
-    return await fillApi.upload(slug, fieldId, file);
+    return await fillApi.upload(slug, fieldId, file, share);
   } catch (e) {
     if (e instanceof ApiError && e.status < 500) throw e;
     return saveLocalFile(slug, fieldId, file);

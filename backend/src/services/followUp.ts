@@ -6,6 +6,7 @@ import type { CurrentUser } from "../auth/middleware.js";
 import { ENTRY_CREATED, recipientSchema, type Route } from "../forms/routingSchema.js";
 import { checkRoutes, planRoutes } from "./routing.js";
 import { notify } from "./notifications.js";
+import { FOLLOW_UP_DONE_TEMPLATE, REMINDER_TEMPLATE, messageTags, messageWording, templateByKey } from "./emailTemplates.js";
 import { audit, type Actor } from "./audit.js";
 
 /**
@@ -145,17 +146,28 @@ export async function setFollowUp(form: BuiltForm, entry: FormEntry, actor: { us
   const s = await loadFollowUp(form);
   if (input.done && s.tellSubmitter && entry.createdById && entry.createdById !== actor.userId) {
     const site = await siteOf(entry.siteId);
+    // Worded by the "Follow-up done" template (Admin → Notifications → Templates).
+    const fallback = `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
+    const t = await templateByKey(FOLLOW_UP_DONE_TEMPLATE);
+    const w = t ? messageWording(t, messageTags({ form: form.title, title: fallback, site: site?.name }), fallback) : null;
     await notify({
       to: { users: [entry.createdById] },
       type: "forms.entry",
-      title: `Done: ${form.title}${site ? ` at ${site.name}` : ""}`,
+      title: w?.subject ?? fallback,
       body: note ? `${actor.name}: ${note}` : `${actor.name} marked it done.`,
       link: entryPath(form, entry.id),
       source: `form:${form.slug}`,
       sourceLabel: form.title,
       formId: form.id,
       forceEmail: true,
-      email: { whatToDo: null, fields: [{ label: "Done by", value: actor.name }, ...(note ? [{ label: "What was done", value: note }] : [])] },
+      urgent: w?.urgent,
+      email: {
+        whatToDo: w?.whatToDo ?? null,
+        heading: w?.heading,
+        intro: w?.intro,
+        buttonLabel: w?.buttonLabel,
+        fields: [{ label: "Done by", value: actor.name }, ...(note ? [{ label: "What was done", value: note }] : [])],
+      },
     }).catch((err) => console.error(`[follow-up] couldn't tell the submitter of ${entry.id}:`, err));
   }
   return updated;
@@ -172,6 +184,7 @@ export async function requireFollowUp(form: BuiltForm, user: CurrentUser | null 
 export async function runFollowUpReminders(now = new Date()): Promise<number> {
   const rows = await prisma.formRecord.findMany({ where: { collection: COLLECTION, docId: DOC }, select: { formId: true } });
   let sent = 0;
+  const reminder = rows.length ? await templateByKey(REMINDER_TEMPLATE) : null;
   for (const { formId } of rows) {
     const form = await prisma.builtForm.findUnique({ where: { id: formId } });
     if (!form || form.status === "archived") continue;
@@ -201,18 +214,25 @@ export async function runFollowUpReminders(now = new Date()): Promise<number> {
       if (!people.length) continue;
       const days = Math.max(1, Math.floor((now.getTime() - e.createdAt.getTime()) / DAY));
       const site = await siteOf(e.siteId);
+      // Worded by the "Reminder" template; the follow-up's own What to do comes first.
+      const fallback = `Reminder: ${form.title}${site ? ` at ${site.name}` : ""} is still open`;
+      const w = reminder ? messageWording(reminder, messageTags({ form: form.title, title: fallback, site: site?.name }), fallback) : null;
       await notify({
         to: { users: people.map((p) => p.id) },
         type: "forms.entry",
-        title: `Reminder: ${form.title}${site ? ` at ${site.name}` : ""} is still open`,
+        title: w?.subject ?? fallback,
         body: `Filed by ${e.createdByName} ${days} day${days === 1 ? "" : "s"} ago and not marked done yet.`,
         link: entryPath(form, e.id),
         source: `form:${form.slug}`,
         sourceLabel: form.title,
         formId: form.id,
         forceEmail: true,
+        urgent: w?.urgent,
         email: {
-          whatToDo: s.whatToDo ?? "Do what it asks, then open it and mark it done.",
+          heading: w?.heading,
+          intro: w?.intro,
+          buttonLabel: w?.buttonLabel,
+          whatToDo: s.whatToDo ?? w?.whatToDo ?? "Do what it asks, then open it and mark it done.",
           fields: [
             { label: "Filed by", value: e.createdByName },
             { label: "Open for", value: `${days} day${days === 1 ? "" : "s"}` },

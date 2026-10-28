@@ -14,6 +14,7 @@ import { useTourSample } from "@/lib/tour/store";
 import type { FormCategory, FormLink } from "@/lib/types";
 import { useSearchParam } from "@/lib/useSearchParam";
 import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/PageHelp";
 
 /**
  * The Forms page: every form Lantern staff fill out, in one place to browse,
@@ -115,7 +116,7 @@ export function FormsPage() {
   return (
     <div className="flex min-h-full flex-col">
       {/* ── Phone ─────────────────────────────────────────────────────── */}
-      <PhoneHeader title="Forms" subtitle={`${totalForms} ${totalForms === 1 ? "form" : "forms"}`} enter>
+      <PhoneHeader title="Forms" subtitle={`${totalForms} ${totalForms === 1 ? "form" : "forms"}`} enter help={{ article: "filling-forms", text: "Every form open to you, by category. Search, pin the ones you use most, and open one to fill it in." }}>
         <div data-tour="forms-search" className="enter-up mt-3">
           <SearchInput ref={phoneSearchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter forms" aria-label="Filter forms" />
         </div>
@@ -132,7 +133,10 @@ export function FormsPage() {
           <div className="sticky top-0 z-20 -mx-7 mb-2 border-b border-hairline bg-surface/95 px-7 pb-3 pt-7 backdrop-blur">
             <div className="enter-up flex flex-wrap items-end justify-between gap-4">
               <div className="min-w-0">
-                <h1 id="forms-title" className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">Forms</h1>
+                <div className="flex items-center gap-1">
+                  <h1 id="forms-title" className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">Forms</h1>
+                  <PageHelp article="filling-forms">Every form open to you, by category. Search, pin the ones you use most, and open one to fill it in.</PageHelp>
+                </div>
                 <p className="mt-1 text-[13.5px] text-muted" aria-live="polite">{summary}</p>
               </div>
               <div data-tour="forms-search" className="w-[300px] xl:w-[380px]">
