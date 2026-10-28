@@ -233,6 +233,7 @@ export function checkFiles(files: unknown): { files: Files | null; problems: Fil
   for (const [path, src] of entries) {
     if (typeof src !== "string") problems.push({ file: path, message: "File contents must be text." });
     else if (!PATH_RE.test(path) || !ALLOWED_EXT.test(path)) problems.push({ file: path, message: "Use a relative path like pages/record.tsx (.ts .tsx .js .jsx .css .json .md .txt)." });
+    else if (path.startsWith("_components/")) problems.push({ file: path, message: "_components/ is the component library's: import a shared component as @lcs/components/<name> instead (save_component adds one)." });
     else {
       out[path] = src;
       total += src.length;

@@ -1211,3 +1211,48 @@ model EmailLog {
   @@index([formId, createdAt])
   @@index([createdAt])
 }
+
+// ───────────────────────── Component library (code forms) ─────────────────────────
+
+/// A shared piece of code-form UI (or a helper), kept here so every code form
+/// can use it and the MCP form builder looks here before writing its own.
+/// Forms import it as `@lcs/components/<name>`. A draft builds with the latest
+/// version; publishing bakes the version it built with into the form's build,
+/// so changing a component never changes a live form until it's republished.
+model UiComponent {
+  id            String   @id @default(cuid()) @db.NVarChar(64)
+  /// The import name: PascalCase for UI ("SitePicker"), camelCase for helpers ("formatting").
+  name          String   @unique @db.NVarChar(80)
+  title         String   @db.NVarChar(160)
+  /// What it is and when to use it (what the form builder reads first).
+  description   String   @db.NVarChar(Max)
+  /// "Inputs", "Display", "Layout", "Lists", "Helpers"…
+  category      String   @db.NVarChar(60)
+  /// JSON { path: source }; must include index.tsx or index.ts (what the import gives).
+  files         String   @db.NVarChar(Max)
+  /// Its exports and their props, in a line or two each.
+  api           String?  @db.NVarChar(Max)
+  /// A short example of using it.
+  usage         String?  @db.NVarChar(Max)
+  version       Int      @default(1)
+  createdByName String   @db.NVarChar(255)
+  updatedByName String?  @db.NVarChar(255)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  versions UiComponentVersion[]
+}
+
+/// Every saved version of a component, to see what changed or go back.
+model UiComponentVersion {
+  id            String      @id @default(cuid()) @db.NVarChar(64)
+  component     UiComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  componentId   String      @db.NVarChar(64)
+  version       Int
+  files         String      @db.NVarChar(Max)
+  note          String?     @db.NVarChar(Max)
+  createdByName String      @db.NVarChar(255)
+  createdAt     DateTime    @default(now())
+
+  @@unique([componentId, version])
+}
