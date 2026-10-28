@@ -138,7 +138,8 @@ function checkWhen(input: Pick<EventInput, "allDay" | "startDate" | "startTime" 
 }
 
 /** Everything a series row holds, from an admin's input. */
-async function seriesFields(input: EventInput) {
+/** `noSites`: a form's own event may have no sites, when it's only for the people it invites. */
+async function seriesFields(input: EventInput, noSites = false) {
   const when = checkWhen(input);
   let rule: Recurrence | null = null;
   if (input.recurrence) {
@@ -161,8 +162,8 @@ async function seriesFields(input: EventInput) {
   }
   const siteIds = input.allSites ? [] : [...new Set(input.siteIds)];
   if (!input.allSites) {
-    if (siteIds.length === 0) throw badRequest("Choose at least one site, or make it for every site.");
-    if ((await prisma.site.count({ where: { id: { in: siteIds } } })) !== siteIds.length) throw badRequest("One of those sites no longer exists.");
+    if (siteIds.length === 0 && !noSites) throw badRequest("Choose at least one site, or make it for every site.");
+    if (siteIds.length && (await prisma.site.count({ where: { id: { in: siteIds } } })) !== siteIds.length) throw badRequest("One of those sites no longer exists.");
   }
   return {
     data: {
@@ -242,6 +243,49 @@ export interface FormOwner {
   ref?: string | null;
   /** Mark it waiting on approval (true) or approved (false); omit to leave it. */
   pending?: boolean;
+  /** People invited by name (null clears them); omit to leave them. */
+  invitees?: Invitee[] | null;
+  /** User ids to send it from, in order (null clears them); omit to leave them. */
+  sendFrom?: string[] | null;
+}
+
+export interface Invitee {
+  email: string;
+  name: string;
+}
+
+export const inviteesSchema = z
+  .array(z.object({ email: z.string().trim().toLowerCase().email("An invitee needs an email address."), name: z.string().trim().max(160).nullish() }))
+  .max(300, "Up to 300 invitees.")
+  .transform((list) => {
+    const seen = new Set<string>();
+    return list.filter((p) => !seen.has(p.email) && seen.add(p.email)).map((p): Invitee => ({ email: p.email, name: p.name || p.email }));
+  });
+
+/** The invitees and senders as stored, for create/update data. */
+const ownerPeople = (owner: FormOwner) => ({
+  ...(owner.invitees === undefined ? {} : { invitees: owner.invitees?.length ? JSON.stringify(owner.invitees) : null }),
+  ...(owner.sendFrom === undefined ? {} : { sendFromIds: owner.sendFrom?.length ? JSON.stringify(owner.sendFrom) : null }),
+});
+
+export function parseInvitees(text: string | null | undefined): Invitee[] {
+  if (!text) return [];
+  try {
+    const list = JSON.parse(text);
+    return Array.isArray(list) ? list.filter((p) => p && typeof p.email === "string").map((p) => ({ email: String(p.email).toLowerCase(), name: String(p.name || p.email) })) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function parseIds(text: string | null | undefined): string[] {
+  if (!text) return [];
+  try {
+    const list = JSON.parse(text);
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function assertOwns(owner: FormOwner, ev: { sourceFormId: string | null }) {
@@ -438,11 +482,11 @@ async function siteNames(ids: string[]) {
 export async function createEvent(req: Request, input: EventInput, owner?: FormOwner) {
   if (owner) assertFormSites(input);
   else assertCanChange(req, input);
-  const { data, rule, siteIds } = await seriesFields(input);
+  const { data, rule, siteIds } = await seriesFields(input, Boolean(owner));
   const ev = await prisma.calendarEvent.create({
     data: {
       ...data,
-      ...(owner ? { sourceFormId: owner.formId, sourceRef: owner.ref ?? null, pending: owner.pending ?? false } : {}),
+      ...(owner ? { sourceFormId: owner.formId, sourceRef: owner.ref ?? null, pending: owner.pending ?? false, ...ownerPeople(owner) } : {}),
       createdById: req.user?.userId ?? null,
       createdByName: req.user?.name ?? "A form",
       sites: { create: siteIds.map((siteId) => ({ siteId })) },
@@ -461,7 +505,7 @@ export async function createEvent(req: Request, input: EventInput, owner?: FormO
 
 /** Change the whole series. Days changed on their own stay changed while the series still falls on them. */
 async function updateSeries(req: Request, ev: SeriesRow, input: EventInput) {
-  const { data, rule, siteIds } = await seriesFields(input);
+  const { data, rule, siteIds } = await seriesFields(input, Boolean(ev.sourceFormId));
   // Outlook can't take a Teams link away once it's made one.
   if (ev.teamsJoinUrl) data.teamsMeeting = true;
   const stale = ev.exceptions.filter((x) => !rule || !isOccurrence(data.startDate, rule, x.originalDate)).map((x) => x.id);
@@ -523,14 +567,14 @@ async function updateFollowing(req: Request, ev: SeriesRow, rule: Recurrence, da
   if (rule.end.kind === "count" && input.recurrence?.end.kind === "count" && input.recurrence.end.count === rule.end.count) {
     input = { ...input, recurrence: { ...input.recurrence, end: { kind: "count", count: Math.max(1, rule.end.count - countBefore(ev.startDate, rule, date)) } } };
   }
-  const { data, rule: nextRule, siteIds } = await seriesFields(input);
+  const { data, rule: nextRule, siteIds } = await seriesFields(input, Boolean(ev.sourceFormId));
   const later = ev.exceptions.filter((x) => x.originalDate >= date);
   const carried = later.filter((x) => isOccurrence(data.startDate, nextRule, x.originalDate)).map((x) => x.id);
   const dropped = later.filter((x) => !carried.includes(x.id)).map((x) => x.id);
   const next = await prisma.$transaction(async (tx) => {
     await tx.calendarEvent.update({ where: { id: ev.id }, data: { ...truncate(ev, rule, date), updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } });
     const created = await tx.calendarEvent.create({
-      data: { ...data, createdById: req.user?.userId ?? null, createdByName: req.user?.name ?? "A form", sites: { create: siteIds.map((siteId) => ({ siteId })) } },
+      data: { ...data, invitees: ev.invitees, sendFromIds: ev.sendFromIds, createdById: req.user?.userId ?? null, createdByName: req.user?.name ?? "A form", sites: { create: siteIds.map((siteId) => ({ siteId })) } },
     });
     await tx.calendarException.updateMany({ where: { id: { in: carried } }, data: { eventId: created.id } });
     await tx.calendarException.deleteMany({ where: { id: { in: dropped } } });
@@ -563,7 +607,7 @@ export async function updateEvent(req: Request, id: string, scope: Scope, date: 
     // The part that takes over "from this one on" belongs to the form as well.
     await prisma.calendarEvent.updateMany({
       where: { id: { in: [...new Set([id, result])] } },
-      data: { sourceFormId: owner.formId, sourceRef: owner.ref === undefined ? ev.sourceRef : owner.ref, ...(owner.pending === undefined ? {} : { pending: owner.pending }) },
+      data: { sourceFormId: owner.formId, sourceRef: owner.ref === undefined ? ev.sourceRef : owner.ref, ...(owner.pending === undefined ? {} : { pending: owner.pending }), ...ownerPeople(owner) },
     });
   }
   const what = !rule || scope === "all" ? "" : scope === "this" ? ` on ${date}` : ` from ${date} on`;
@@ -638,6 +682,22 @@ export async function setEventPending(req: Request, id: string, pending: boolean
   await noteCalendarChange([id]);
 }
 
+/** Change who a form's own event invites by name, or who it's sent from. Outlook follows. */
+export async function setEventPeople(req: Request, id: string, owner: FormOwner) {
+  const ev = await loadForWrite(id);
+  assertOwns(owner, ev);
+  const data = ownerPeople(owner);
+  if (!Object.keys(data).length) return;
+  await prisma.calendarEvent.update({ where: { id }, data: { ...data, ...(req.user ? { updatedById: req.user.userId, updatedByName: req.user.name } : {}) } });
+  await audit({
+    actor: actorOf(req),
+    action: "calendar.event_updated",
+    summary: owner.invitees === undefined ? `Changed who "${ev.title}" is sent from` : `Changed who's invited to "${ev.title}" (${owner.invitees?.length ?? 0})`,
+    changes: { eventId: id, invitees: owner.invitees?.length ?? undefined },
+  });
+  await noteCalendarChange([id]);
+}
+
 /** A form's own events, all of them or those with one reference. */
 export async function formEvents(formId: string, ref?: string | null) {
   const rows = await prisma.calendarEvent.findMany({
@@ -659,5 +719,8 @@ export async function formEvents(formId: string, ref?: string | null) {
     lastDate: ev.lastDate,
     repeats: Boolean(ev.recurrence),
     sites: ev.sites.map((x) => ({ code: x.site.code, name: x.site.name })),
+    invitees: parseInvitees(ev.invitees),
+    teamsJoinUrl: ev.teamsJoinUrl,
+    outlook: { sent: Boolean(ev.outlookEventId), waiting: ev.outlookDirty, problem: ev.outlookError },
   }));
 }
