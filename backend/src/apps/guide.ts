@@ -67,6 +67,13 @@ Admins and developers pass every role check.
 - Signatures: <SignaturePad>, then files.upload(pngBlob, { shrink: false }) and keep the FileRef in the entry; show it
   with useFileUrl(ref). Never put a data: URL (a signature or photo) inside entry data: it's 50–250 KB, and every
   list, report and limit check then reads it from the database.
+- Shared components: before writing UI, list_components (MCP). The library holds pickers, cards, rows and helpers other forms
+  use; import one as  import { SitePicker } from "@lcs/components/SitePicker"  (it builds into the page like your own files). Build
+  something a second form could use? Generalise it (props, not this form's types) and save_component it instead of keeping it in
+  lib/. Drafts get a component's latest version; a published form keeps the version it was published with until republished.
+- Days and times: <DatePicker> and <TimePicker> from @lcs/ui, never <Input type="date"|"time">: one look in every form, a sheet on phones,
+  nothing filled in until picked. DatePicker min/max (max today: Today/Yesterday shortcuts); TimePicker after (an end time, with
+  durations) and now (a Now button). Show a record with <DetailList><DetailRow label="When">…</DetailRow></DetailList>.
 - Location: device.location() — with roster.sites() latitude/longitude and distanceMeters() to pick the nearest site.
 - Editing: entries.update(id, data, { reason }) — every change is kept; show it with <EntryHistory entryId={id} />.
   Server code can check edits in beforeUpdate.

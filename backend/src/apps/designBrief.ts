@@ -22,7 +22,8 @@ can be built exactly; anything else has to be invented, so flag it.
   Card, Input, Textarea, SearchInput, Select, Field, Label, Checkbox, Switch, Chip, ToneBadge (amber, blue,
   green, red, violet, neutral), Badge, Avatar, Spinner, LoadingState, EmptyState, Page, PageHeader, Modal,
   Sheet (bottom sheet on phones), DropdownMenu, SignaturePad, DateRangeBar, PhotoInput (camera thumbnails),
-  FileInput, Photo, FileChip, EntryHistory.
+  FileInput, Photo, FileChip, EntryHistory, DatePicker (calendar popover with shortcuts), TimePicker (time list,
+  "type a time", optional Now), DetailList / DetailRow (labelled rows for reading a record).
 - Charts: @lcs/charts — TrendChart (lines over time), ColumnChart, DonutChart (parts of a whole, up to 6),
   DailyBars (stacked per day), RankedBars (horizontal, with avatar or note), HeatGrid (weekday × hour),
   StatTile, Legend. Categorical colors come from an 8-slot palette checked for

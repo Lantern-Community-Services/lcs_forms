@@ -265,6 +265,8 @@ export function FileChip({ file, onRemove }: { file: FileRef; onRemove?: () => v
   );
 }
 
+export { DatePicker, TimePicker, parseTime, DetailList, DetailRow } from "./pickers";
+
 export {
   Button, Card, Input, SearchInput, Textarea, Field, Label, Select, Checkbox, Switch, Chip, Badge, ToneBadge, Avatar, EmptyState, LoadingState,
   Spinner, SignaturePad, presetRange, cn, initials, tintFor, distanceMeters, formatDistance,
