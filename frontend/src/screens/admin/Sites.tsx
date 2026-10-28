@@ -123,9 +123,9 @@ export function AdminSites() {
               <Field label="Code" hint={draft.id ? "Changing this breaks integrations that use the old code." : "Used in URLs and the API."}>
                 <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: slug(e.target.value) })} className="font-mono" />
               </Field>
-              <Field label="Type" hint="Forms read it: Hot Foods gives shelters more meals a day, with a cooldown.">
+              <Field label="Type" hint="Forms read it: Hot Foods gives shelters more meals a day, with a cooldown. An office has no roster and only shows in forms that include it.">
                 <Select value={draft.siteType} onChange={(e) => setDraft({ ...draft, siteType: e.target.value })}
-                  options={[{ value: "supportive", label: "Supportive housing" }, { value: "shelter", label: "Shelter (high turnover)" }, { value: "other", label: "Other" }]} />
+                  options={[{ value: "supportive", label: "Supportive housing" }, { value: "shelter", label: "Shelter (high turnover)" }, { value: "other", label: "Other" }, { value: "office", label: "Office (no roster, e.g. the Main Office)" }]} />
               </Field>
               <Field label="Entity name" hint="As it appears in the property-management export, e.g. “Amber Hall LP”.">
                 <Input value={draft.entityName} onChange={(e) => setDraft({ ...draft, entityName: e.target.value })} />

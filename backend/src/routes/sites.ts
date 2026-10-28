@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { OFFICE, formRefIncludesOffice, notOffice } from "../services/officeSites.js";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
@@ -23,10 +24,15 @@ sitesRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const includeInactive = req.query.all === "1" && req.user!.permissions.includes("sites.manage");
+    // Office sites (the Main Office) have no roster: only site management and
+    // forms that include them (?form=<slug>) see them, whatever sites the person has.
+    const office = includeInactive || (await formRefIncludesOffice(req.query.form));
+    const mine = req.user!.siteIds;
     const sites = await prisma.site.findMany({
       where: {
         ...(includeInactive ? {} : { active: true }),
-        ...(req.user!.siteIds ? { id: { in: req.user!.siteIds } } : {}),
+        ...(mine ? (office ? { OR: [{ id: { in: mine } }, { siteType: OFFICE }] } : { id: { in: mine } }) : {}),
+        ...(office ? {} : notOffice),
       },
       orderBy: { name: "asc" },
     });
@@ -70,7 +76,8 @@ const siteBody = z.object({
     .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers and dashes")
     .max(60),
   entityName: z.string().trim().max(160).nullable().optional(),
-  siteType: z.enum(["supportive", "shelter", "other"]).default("supportive"),
+  /** "office": the Main Office and the like — no roster, and only in forms that include it. */
+  siteType: z.enum(["supportive", "shelter", "other", "office"]).default("supportive"),
   address: z.string().trim().max(240).nullable().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),

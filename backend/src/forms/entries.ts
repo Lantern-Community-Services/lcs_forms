@@ -15,6 +15,7 @@ import { canFollowUp, openFollowUp } from "../services/followUp.js";
 import { movedRuleCheck } from "../services/ruleConversion.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
+import { formIncludesOffice, isOffice } from "../services/officeSites.js";
 import {
   cleanValues, conditionPasses, formatValue, isEmptyValue, isInputField, renderTemplate, validateValues,
   type Field, type FormDoc, type Values,
@@ -263,7 +264,9 @@ export async function submitEntry(input: SubmitInput) {
     if (!input.siteCode) throw badRequest("Pick the site this entry is for.", { errors: { _site: "Pick a site." } });
     const site = await prisma.site.findUnique({ where: { code: input.siteCode } });
     if (!site || !site.active) throw badRequest("That site doesn't exist.");
-    if (!siteAllowed({ user, machineSiteIds: input.machineSiteIds }, site.id)) throw forbidden("You aren't assigned to that site.");
+    if (isOffice(site)) {
+      if (!(await formIncludesOffice(form.id))) throw badRequest("This form isn't for that site.");
+    } else if (!siteAllowed({ user, machineSiteIds: input.machineSiteIds }, site.id)) throw forbidden("You aren't assigned to that site.");
     siteId = site.id;
   }
 
