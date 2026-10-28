@@ -18,6 +18,7 @@ import type { FormTutorial } from "@/lib/formEngine";
 import { ApiError } from "@/lib/api";
 import { useForms } from "@/lib/queries";
 import { WhoSeesEntries } from "@/components/WhoSeesEntries";
+import { IncludeMainOffice } from "@/components/IncludeMainOffice";
 import { CatalogCardFields } from "@/components/CatalogCardFields";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import type { ConsoleLine } from "./AppFrame";
@@ -558,6 +559,9 @@ function SettingsPanel({ project, onChange }: { project: Project; onChange: (p: 
       <div className="rounded-input border border-hairline p-3">
         <p className="mb-2 text-[13px] font-semibold text-ink">Who sees entries</p>
         <WhoSeesEntries formId={project.id} />
+      </div>
+      <div className="rounded-input border border-hairline p-3">
+        <IncludeMainOffice formId={project.id} />
       </div>
       <p className="text-muted">Title, icon and tabs are in <code>form.json</code>. Who sees entries is set here, and replaces form.json's <code>entries.read</code> once saved. The URL is <code>/apps/{project.slug}</code>.</p>
       <div className="flex gap-2">

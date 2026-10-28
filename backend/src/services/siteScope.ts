@@ -2,6 +2,7 @@ import type { Request } from "express";
 import { prisma } from "../prisma.js";
 import { forbidden, notFound } from "../http.js";
 import { canAccessSite } from "../auth/middleware.js";
+import { notOffice } from "./officeSites.js";
 
 const SELECT = { id: true, code: true, name: true, siteType: true, attentionHours: true } as const;
 export type ScopedSite = { id: string; code: string; name: string; siteType: string; attentionHours: number | null };
@@ -23,8 +24,9 @@ export async function sitesInScope(req: Request, raw: unknown): Promise<ScopedSi
       : [];
 
   if (asked.length === 0) {
+    // Office sites (the Main Office) have no roster.
     return prisma.site.findMany({
-      where: { active: true, ...(allowed ? { id: { in: allowed } } : {}) },
+      where: { active: true, ...(allowed ? { id: { in: allowed } } : {}), ...notOffice },
       select: SELECT,
       orderBy: { name: "asc" },
     });

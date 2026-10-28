@@ -8,6 +8,7 @@ import { isRoleKey } from "../services/permissions.js";
 import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../forms/service.js";
 import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
 import { builtFormRef, entryAccessReview, entryAccessView, saveEntryAccess } from "../services/entryAccess.js";
+import { officeSitesView, saveOfficeSites } from "../services/officeSites.js";
 import { audienceOf, builtFormKey, canSeeFormKey, cardKey, categoryKey, forgetGivenForm, keyForCard, moveAudience, reloadAccess, setAudience } from "../services/staffGroups.js";
 
 export const formsRouter = Router();
@@ -176,6 +177,20 @@ formsRouter.put(
   "/built/:id/entry-access",
   requirePermission("forms.manage"),
   asyncHandler(async (req, res) => res.json(await saveEntryAccess(await builtFormRef(req.params.id), req.body, actorOf(req))))
+);
+
+// ── Include the Main Office (office sites) in a form's site list ─────────
+
+formsRouter.get(
+  "/built/:id/office-sites",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => res.json(await officeSitesView(await builtFormRef(req.params.id))))
+);
+
+formsRouter.put(
+  "/built/:id/office-sites",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => res.json(await saveOfficeSites(await builtFormRef(req.params.id), req.body, actorOf(req))))
 );
 
 /** Forms built in this app (Form builder and Code forms) that a catalog card can open. */
