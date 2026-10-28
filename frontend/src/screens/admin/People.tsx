@@ -139,9 +139,10 @@ function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
  * Pending, Requests and Deactivated (see TABS). Name and job title always come from
  * Microsoft at sign-in; an admin only ever types an email.
  *
- * An Admin sees everyone. A Site Manager (this screen is their "Site settings")
- * sees the people at their sites and the requests for them, approves or
- * declines only their own sites, can hand out only the site roles, and can
+ * An Admin sees everyone, and alone lets in requests for access. A Site
+ * Manager (this screen is their "Site settings") sees the people at their
+ * sites, approves or declines only their own sites when an active person asks
+ * for more, can hand out only the site roles, and can
  * only tick their own sites — the server enforces the same. The "Can edit the
  * calendar" switch is an Admin's alone; "Can manage the roster" is theirs too.
  */
@@ -238,8 +239,8 @@ export function AdminPeople() {
       <PageHeader
         title="People & roles"
         subtitle={everyone
-          ? "New people choose where they work and which sites they want to see when they first sign in; approve them in Requests. You can also add someone by work email ahead of time."
-          : "People at your sites, and requests to see them. Approve or decline requests for your own sites; the rest wait for their own site's manager."}
+          ? "Add someone by work email ahead of time and they sign straight in. Anyone else who signs in can request access; let them in from Requests, with their role and sites."
+          : "People at your sites. New people are let in by an Admin; you can change what the people at your sites can do."}
         actions={
           <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, rosterEditor: false, canDelete: false, superAdmin: false, isSelf: false })}>
             <UserPlus className="h-4 w-4" /> Add person
@@ -268,9 +269,9 @@ export function AdminPeople() {
           <ul>
             {shown.map((u) => {
               const named = hasName(u);
-              const asking = u.requestedSites.length ? `asking for ${u.requestedSites.map((s) => s.name).join(", ")}` : "";
+              const asking = u.requestedSites.length ? `asking for ${u.requestedSites.map((s) => s.name).join(", ")}` : u.status === "requested" ? "asking for access" : "";
               const has = u.role.allSites ? "all sites" : u.sites.length ? u.sites.map((s) => s.name).join(", ") : u.status === "requested" ? "" : "no sites assigned";
-              const where = [has, asking || (u.status === "requested" ? "still choosing their sites" : "")].filter(Boolean).join(" · ");
+              const where = [has, asking].filter(Boolean).join(" · ");
               const via = u.identityProvider && u.identityProvider !== "microsoft" ? ` · via ${u.identityProvider === "google.com" ? "Google" : u.identityProvider}` : "";
               return (
                 <li key={u.id}>
@@ -436,18 +437,19 @@ export function AdminPeople() {
         </DialogContent>
       </Dialog>
 
-      <RequestDialog person={request} onClose={() => setRequest(null)} />
+      <RequestDialog person={request} sites={sites ?? []} onClose={() => setRequest(null)} />
     </Page>
   );
 }
 
 /**
- * One request: where they work, the sites they asked for, and the ones this
- * viewer decides (their own sites; every site, for an Admin). Approving lets
- * them in with the chosen role; sites run by other managers stay waiting for
- * them. Declining the last site, or deleting, removes the request.
+ * Two kinds of request. A request for access (status "requested", which only
+ * an Admin sees): they only pressed "Request access", so the Admin picks their
+ * role and sites and lets them in, or declines it, which removes it. More
+ * sites for an active person: the sites they asked for, and the ones this
+ * viewer decides (their own sites; every site, for an Admin).
  */
-function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClose: () => void }) {
+function RequestDialog({ person, sites, onClose }: { person: ManagedUser | null; sites: { id: string; name: string }[]; onClose: () => void }) {
   const { data: roles } = useRoles();
   const qc = useQueryClient();
   const toast = useToast();
@@ -458,7 +460,8 @@ function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClos
   // Fresh choices each time a different request opens.
   if (person && openFor !== person.id) {
     setOpenFor(person.id);
-    setPicked(person.canApproveSiteIds);
+    // A request for access starts from whatever an older request asked for.
+    setPicked(person.status === "requested" ? person.requestedSites.map((s) => s.id) : person.canApproveSiteIds);
     setRoleKey(person.roleKey);
   }
   if (!person && openFor) setOpenFor(null);
@@ -476,10 +479,12 @@ function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClos
     try {
       if (kind === "approve") {
         await api.post(`/users/${person.id}/approve`, { siteIds: picked, ...(firstApproval ? { roleKey } : {}) });
-        toast(`Approved ${person.name} for ${mineToDecide.filter((s) => picked.includes(s.id)).map((s) => s.name).join(", ")}.`);
+        toast(firstApproval
+          ? `Let ${person.name} in as ${role?.name ?? "Site Staff"}.`
+          : `Approved ${person.name} for ${mineToDecide.filter((s) => picked.includes(s.id)).map((s) => s.name).join(", ")}.`);
       } else if (kind === "decline") {
-        const out = await api.post<{ removed: boolean }>(`/users/${person.id}/decline`, { siteIds: picked });
-        toast(out.removed ? `Declined. ${person.name}'s request had nothing left, so it was removed.` : "Declined those sites.");
+        await api.post(`/users/${person.id}/decline`, firstApproval ? {} : { siteIds: picked });
+        toast(firstApproval ? `Declined ${person.name}'s request.` : "Declined those sites.");
       } else {
         await api.delete(`/users/${person.id}`);
         toast(`Deleted ${person.name}'s request.`);
@@ -503,16 +508,23 @@ function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClos
         {person && (
           <DialogBody className="grid gap-3">
             <div className="grid gap-1 text-[13px]">
-              <p><span className="text-muted">Works at: </span><span className="text-ink">{person.locationNames.length ? person.locationNames.join(", ") : "not said"}</span></p>
+              {person.locationNames.length > 0 && (
+                <p><span className="text-muted">Works at: </span><span className="text-ink">{person.locationNames.join(", ")}</span></p>
+              )}
               {person.sites.length > 0 && (
                 <p><span className="text-muted">Already has: </span><span className="text-ink">{person.sites.map((s) => s.name).join(", ")}</span></p>
               )}
               <p className="text-micro text-muted">Asked {relativeTime(person.createdAt)}</p>
             </div>
-            {person.requestedSites.length === 0 ? (
-              <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
-                They signed in but haven't chosen their sites yet. They'll be asked again next time they sign in.
-              </p>
+            {firstApproval ? (
+              <>
+                <Field label="Role" hint={role?.description}>
+                  <Select value={roleKey} onChange={(e) => setRoleKey(e.target.value)} options={roleOptions} />
+                </Field>
+                <Field label="Sites" hint={role?.allSites ? "This role sees every site." : "The sites they'll see: rosters, forms and calendar."}>
+                  <CheckboxList options={sites.map((s) => ({ value: s.id, label: s.name }))} value={picked} onChange={setPicked} className="max-h-[260px] overflow-y-auto" />
+                </Field>
+              </>
             ) : (
               <Field label={`Sites they want to see (${mineToDecide.length} for you to decide)`} hint="Tick the ones to approve or decline.">
                 {mineToDecide.length > 0 ? (
@@ -527,19 +539,16 @@ function RequestDialog({ person, onClose }: { person: ManagedUser | null; onClos
                 )}
               </Field>
             )}
-            {firstApproval && mineToDecide.length > 0 && (
-              <Field label="Role" hint={role?.description}>
-                <Select value={roleKey} onChange={(e) => setRoleKey(e.target.value)} options={roleOptions} />
-              </Field>
-            )}
           </DialogBody>
         )}
         <DialogFooter>
-          {person?.canDelete && (
+          {person?.canDelete && !firstApproval && (
             <Button variant="outlineDanger" className="mr-auto" disabled={busy} onClick={() => act("delete")}>Delete request</Button>
           )}
-          <Button variant="secondary" disabled={busy || picked.length === 0} onClick={() => act("decline")}>Decline</Button>
-          <Button disabled={busy || picked.length === 0} onClick={() => act("approve")}>Approve</Button>
+          <Button variant="secondary" disabled={busy || (!firstApproval && picked.length === 0)} onClick={() => act("decline")}>Decline</Button>
+          <Button disabled={busy || (!firstApproval && picked.length === 0)} onClick={() => act("approve")}>
+            {firstApproval ? "Let them in" : "Approve"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

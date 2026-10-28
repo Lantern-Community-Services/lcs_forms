@@ -147,9 +147,8 @@ export function AdminSignInAccess() {
       <Card className="mb-4 p-5">
         <p className="kicker mb-2">New people</p>
         <p className="text-[13px] text-muted">
-          Everyone's first sign-in is a request. They choose where they work and which sites they want to see, and each of
-          those sites' managers — or an Admin — approves it in <b className="text-ink">People &amp; roles → Requests</b>.
-          Someone you add by email ahead of time signs straight in.
+          Someone you add by email ahead of time signs straight in. Anyone else who signs in is asked to request access,
+          and an Admin approves it, with their role and sites, in <b className="text-ink">People &amp; roles → Requests</b>.
         </p>
         <label className="mt-4 flex items-start gap-3 border-t border-hairline pt-4">
           <Switch className="mt-0.5" checked={data?.welcomeTour !== "false"} onCheckedChange={(on) => void setWelcomeTour(on)} />
