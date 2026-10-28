@@ -370,7 +370,9 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **With AI:** the MCP server has code tools (scope `apps:build`): `get_code_reference`,
   `create_code_form`, `list_files`, `read_files`, `write_files`, `edit_file` (each returns the build
   result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, `get_entry_file`
-  (entries:read), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
+  (entries:read), `import_code_entries` (entries:manage, Admin keys only: migrates old-system
+  entries into a live code form as given, without its rules or notifications; idempotent by
+  `externalId`), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
   `add_to_catalog`, `save_catalog_card` (links to forms elsewhere), `delete_catalog_card`,
   `save_catalog_category`.
 - **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).
