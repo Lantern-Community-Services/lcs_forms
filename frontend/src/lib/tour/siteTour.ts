@@ -233,7 +233,7 @@ export function buildSiteTour(
         target: at("nav-admin"),
         placement: "right",
         title: "Site settings",
-        body: "When someone asks to work at one of your sites, approve them here, and change what the people at your sites can do.",
+        body: "Change what the people at your sites can do, and which of your sites they're on.",
       });
     } else if (admin) {
       const areas = [

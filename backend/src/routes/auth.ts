@@ -2,14 +2,14 @@ import { Router, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, forbidden, notFound, unauthorized } from "../http.js";
-import { AUTH_COOKIE, ONBOARDING_COOKIE, signOnboarding, signSession } from "../auth/auth.js";
+import { AUTH_COOKIE, ONBOARDING_COOKIE, signOnboarding, signSession, type OnboardingPass } from "../auth/auth.js";
 import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, safeReturnTo } from "../auth/entra.js";
 import { requireAuth } from "../auth/middleware.js";
 import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured } from "../env.js";
 import { guestDomains } from "../services/settings.js";
 import { audit } from "../services/audit.js";
 import { notifyQuietly } from "../services/notifications.js";
-import { DEFAULT_ROLE_KEY, ROLES, SITE_ROLE_KEYS, roleFor, roleNameFor } from "../services/permissions.js";
+import { ROLES, SITE_ROLE_KEYS, roleFor, roleNameFor } from "../services/permissions.js";
 import { dropGraphToken, saveGraphToken } from "../services/graphTokens.js";
 import { noteGraphTokenArrived } from "../services/outlookSync.js";
 import { randomAvatarColor } from "../services/avatars.js";
@@ -21,12 +21,12 @@ export const authRouter = Router();
  * users come through the same Entra flow as B2B guests — Entra federates to
  * Google, so this server only ever redeems Entra tokens.
  *
- * Everyone's first sign-in is a request: they go to /welcome, choose where
- * they work and which sites they want to see, and each of those sites' Site
- * Managers (or an Admin) approves it in People & roles (routes/users.ts). An
- * admin can also pre-invite an address (for a partner's Google Workspace
- * staff); that address is then admitted even if its domain is not on the
- * allow-list, and signs straight in.
+ * Most people have an account made for them ahead of time (People & roles →
+ * Add person), and their first sign-in simply activates it; that also admits
+ * an address whose domain isn't on the allow-list (a partner's Google
+ * Workspace staff). Anyone else lands on /welcome, where they can ask for
+ * access with one button, and an Admin lets them in from People & roles →
+ * Requests (routes/users.ts).
  */
 
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -39,9 +39,13 @@ const failTo = (res: Response, message: string) =>
   res.redirect(`${appBaseUrl}/signin?error=${encodeURIComponent(message)}`);
 const noticeTo = (res: Response, message: string) =>
   res.redirect(`${appBaseUrl}/signin?notice=${encodeURIComponent(message)}`);
-/** A request still being made or waiting: back to /welcome, where they can see and change it. */
-function toWelcome(res: Response, userId: string) {
-  res.cookie(ONBOARDING_COOKIE, signOnboarding(userId), { ...COOKIE_ATTRS, maxAge: 2 * 60 * 60 * 1000 });
+/** The pass to /welcome (auth/auth.ts). */
+export function setOnboardingCookie(res: Response, pass: OnboardingPass) {
+  res.cookie(ONBOARDING_COOKIE, signOnboarding(pass), { ...COOKIE_ATTRS, maxAge: 2 * 60 * 60 * 1000 });
+}
+/** No account yet, or a request still waiting: to /welcome, to ask for access or see that they have. */
+function toWelcome(res: Response, pass: OnboardingPass) {
+  setOnboardingCookie(res, pass);
   res.redirect(`${appBaseUrl}/welcome`);
 }
 
@@ -116,19 +120,11 @@ authRouter.get(
         await audit({ actor: { id: user.id, name: user.name }, action: "user.super_admin", summary: `${user.name} (${user.email}) signed in as a Super Admin (SUPER_ADMINS)` });
       }
 
-      if (!user) {
-        // Managers hear about it once they've chosen their sites (routes/onboarding.ts).
-        const requester = await prisma.user.create({ data: { ...fromDirectory, avatarColor: randomAvatarColor(), roleKey: DEFAULT_ROLE_KEY, status: "requested" } });
-        await audit({
-          actor: { id: requester.id, name: requester.name },
-          action: "user.access_requested",
-          summary: `${requester.name} (${requester.email}) signed in for the first time and is choosing their sites`,
-        });
-        return toWelcome(res, requester.id);
-      }
+      // No account made for them: nothing is saved until they ask for access (routes/onboarding.ts).
+      if (!user) return toWelcome(res, { newcomer: fromDirectory });
 
       user = await prisma.user.update({ where: { id: user.id }, data: fromDirectory });
-      if (user.status === "requested") return toWelcome(res, user.id);
+      if (user.status === "requested") return toWelcome(res, { userId: user.id });
       if (user.status === "denied" || user.status === "deactivated") {
         await dropGraphToken(user.id);
         return noticeTo(res, "You don't have access to Lantern Forms. If you think that's a mistake, contact the IT Team.");
@@ -177,12 +173,23 @@ authRouter.post(
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (user?.status === "requested") {
       // Lets the dev screen try the first-sign-in flow.
-      res.cookie(ONBOARDING_COOKIE, signOnboarding(user.id), { ...COOKIE_ATTRS, maxAge: 2 * 60 * 60 * 1000 });
+      setOnboardingCookie(res, { userId: user.id });
       return res.json({ ok: true, onboarding: true });
     }
     if (!user || user.status !== "active") throw unauthorized();
     await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() } });
     setSessionCookie(res, signSession({ userId: user.id, name: user.name, email: user.email }));
+    res.json({ ok: true });
+  })
+);
+
+/** Lets the dev screen try a first sign-in by someone nobody made an account for. */
+authRouter.post(
+  "/dev-newcomer",
+  asyncHandler(async (_req, res) => {
+    if (!devAuthEnabled) throw forbidden("Dev sign-in is disabled.");
+    const n = Date.now().toString(36).slice(-5);
+    setOnboardingCookie(res, { newcomer: { name: `New Person ${n}`, email: `new.person.${n}@example.org`, entraObjectId: null, identityProvider: "microsoft", title: "Case Manager" } });
     res.json({ ok: true });
   })
 );

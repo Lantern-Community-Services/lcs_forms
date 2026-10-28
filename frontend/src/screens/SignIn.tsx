@@ -190,6 +190,13 @@ export function SignInPage() {
                     </span>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => void api.post("/auth/dev-newcomer").then(() => window.location.assign("/welcome")).catch((e) => setMessage({ text: String(e?.message ?? e), tone: "error" }))}
+                  className="flex min-h-[44px] items-center gap-2.5 rounded-input px-2 text-left text-[13px] text-muted hover:bg-rowhover"
+                >
+                  Someone new (no account yet)
+                </button>
               </div>
             </div>
           )}
