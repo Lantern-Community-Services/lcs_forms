@@ -556,6 +556,23 @@ declare module "@lcs/ui" {
   export function DropdownMenu(props: { trigger: React.ReactNode; items: ({ label: string; onSelect: () => void; danger?: boolean } | "separator")[]; align?: "start" | "end" }): React.JSX.Element;
   export interface SignaturePadHandle { clear(): void; toDataURL(): string | null; isEmpty(): boolean }
   export const SignaturePad: React.ForwardRefExoticComponent<{ className?: string; onChangeEmpty?: (empty: boolean) => void } & React.RefAttributes<SignaturePadHandle>>;
+  /**
+   * A day: a button like the other inputs that opens a calendar (a popover; a sheet on a phone), with
+   * shortcuts (Today / Tomorrow / In a week, or Today / Yesterday when max is today or earlier). value is
+   * "YYYY-MM-DD" or "" for none; nothing is picked until someone picks. Use it instead of <Input type="date">.
+   */
+  export function DatePicker(props: { value: string; onChange: (day: string) => void; min?: string; max?: string; placeholder?: string; clearable?: boolean; invalid?: boolean; label?: string }): React.JSX.Element;
+  /**
+   * A time ("HH:MM", New York): a list in 15-minute steps plus "type a time" (9:30am, 930, 14:00).
+   * after: an end time's start, so the list begins there and shows how long it lasts. now: a "Now" button.
+   * Use it instead of <Input type="time">.
+   */
+  export function TimePicker(props: { value: string | null; onChange: (time: string) => void; after?: string | null; now?: boolean; placeholder?: string; invalid?: boolean; label?: string }): React.JSX.Element;
+  /** Typed time text ("930", "9:30pm", "21:30") → "HH:MM", or null. A bare 1–7 means the afternoon. */
+  export function parseTime(text: string): string | null;
+  /** Reading a record: a <dl> of DetailRows, each a label (left; above on a phone) and its value, hairlines between. */
+  export function DetailList(props: { className?: string; children: React.ReactNode }): React.JSX.Element;
+  export function DetailRow(props: { label: string; className?: string; children: React.ReactNode }): React.JSX.Element;
   /** A row of preset date ranges plus from/to, New York days. */
   export function DateRangeBar(props: { from: string; to: string; preset?: string | null; onChange: (r: { from: string; to: string }) => void; className?: string }): React.JSX.Element;
   export const DATE_PRESETS: { key: string; label: string }[];
