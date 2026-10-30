@@ -1,4 +1,4 @@
-import { FormBackupBar } from "@/components/FormBackupBar";
+import { BackupSyncLabel, FormBackupBar } from "@/components/FormBackupBar";
 import { DeleteFormDialog } from "@/components/DeleteFormDialog";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -75,7 +75,7 @@ export function CodeFormsList() {
           </>
         }
       />
-      <FormBackupBar />
+      <FormBackupBar kind="code" listKey={["apps"]} />
       {isLoading ? <LoadingState /> : !data?.length ? (
         <Card>
           <EmptyState icon={<Code2 className="h-6 w-6" />} title={archived ? "No archived code forms" : "No code forms yet"} hint="Start from a template, or ask the AI form builder to write one." />
@@ -93,6 +93,7 @@ export function CodeFormsList() {
                     <p className="truncate text-[14px] font-semibold text-ink">{p.title}</p>
                     <p className="truncate text-micro text-muted">/apps/{p.slug} · {p.fileCount} files · edited {relativeTime(p.updatedAt)}{p.updatedByName ? ` by ${p.updatedByName}` : ""}</p>
                   </Link>
+                  <BackupSyncLabel kind="code" slug={p.slug} listKey={["apps"]} />
                   <div className="hidden sm:block"><StatusBadge status={p.status} unpublished={p.unpublishedChanges} /></div>
                   <span className="hidden w-24 text-right text-[13px] text-muted md:block"><span className="tabular font-semibold text-ink">{p.entryCount.toLocaleString()}</span> entries</span>
                   <RowMenu p={p} run={run} onDelete={() => setDeleting(p)} />

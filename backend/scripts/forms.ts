@@ -20,7 +20,8 @@
  * Backup (services/formBackup.ts) — every built form, both kinds, plus the catalog:
  *   npm run forms -- backup                       push to FORM_BACKUP_REPO through the GitHub API (FORM_BACKUP_TOKEN)
  *   npm run forms -- backup --dir <clone> [--commit] [--push]   write into a local clone of the repo; commit / push with your git login
- *   npm run forms -- backup:restore <clone> [slug ...] [--publish]   load forms back (creates missing ones, replaces drafts)
+ *   npm run forms -- backup:restore <clone> [slug ...] [--publish] [--site <site>]   load forms back (creates missing ones,
+ *        replaces drafts); --site: whose code-form data (settings, lists) to bring back, e.g. lcsforms.lanterncommunity.org
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -32,7 +33,7 @@ import { ProjectError, createProject, draftFiles, publishProject, saveProject } 
 import { buildProject } from "../src/apps/compile.js";
 import { SDK_TYPES } from "../src/apps/sdkText.js";
 import { execFileSync } from "node:child_process";
-import { backupConfigured, backupSnapshot, commitMessage, pushToGitHub } from "../src/services/formBackup.js";
+import { backupSite, blobSha, planBackup, runFormBackup } from "../src/services/formBackup.js";
 import { collectionPut } from "../src/apps/runtime.js";
 
 /** Files in a code form folder that are tooling, not the form. */
@@ -181,40 +182,44 @@ async function main() {
       return;
     }
     case "backup": {
-      const snap = await backupSnapshot();
       const dirOpt = option("dir");
       if (!dirOpt) {
-        if (!backupConfigured()) throw new Error("Set FORM_BACKUP_REPO and FORM_BACKUP_TOKEN (in .env.local), or pass --dir <a clone of the backup repo>.");
-        const r = await pushToGitHub(snap, commitMessage(null, snap));
-        console.log(r.changed ? `Backed up ${Object.keys(snap).length} files: ${r.url}` : "Nothing changed since the last backup.");
+        const s = await runFormBackup({ by: "npm run forms -- backup" });
+        if (s.lastError) throw new Error(s.lastError);
+        console.log(`Backed up as ${s.site}. ${s.lastCommitUrl ?? "Nothing changed since the last backup."}`);
+        for (const f of s.forms) console.log(`  ${f.state.padEnd(11)} ${f.key}`);
         return;
       }
       const dir = resolve(dirOpt);
       if (!existsSync(join(dir, ".git"))) throw new Error(`${dir} isn't a git clone. git clone the backup repository there first.`);
-      // The folder ends up holding exactly the snapshot (apart from .git).
-      const old: string[] = [];
+      // The clone stands in for the repository: same rules (never over a newer form), written to disk.
+      const files = new Map<string, string>();
       const walk = (d: string) => {
         for (const name of readdirSync(d)) {
           if (d === dir && name === ".git") continue;
           const full = join(d, name);
           if (statSync(full).isDirectory()) walk(full);
-          else old.push(relative(dir, full).split("\\").join("/"));
+          else files.set(relative(dir, full).split("\\").join("/"), blobSha(readFileSync(full, "utf8")));
         }
       };
       walk(dir);
-      for (const rel of old) if (!(rel in snap)) rmSync(join(dir, rel));
-      for (const [rel, text] of Object.entries(snap)) {
-        mkdirSync(dirname(join(dir, rel)), { recursive: true });
+      const plan = await planBackup({ files, read: async (rel) => readFileSync(join(dir, rel), "utf8") });
+      for (const [rel, text] of plan.writes) {
         const full = join(dir, rel);
-        if (!existsSync(full) || readFileSync(full, "utf8") !== text) writeFileSync(full, text);
+        if (text === null) rmSync(full, { force: true });
+        else {
+          mkdirSync(dirname(full), { recursive: true });
+          writeFileSync(full, text);
+        }
       }
-      console.log(`Wrote ${Object.keys(snap).length} files to ${dir}.`);
+      console.log(`Wrote ${plan.writes.size} files to ${dir} as ${backupSite()}${plan.saved.length ? ` (forms: ${plan.saved.join(", ")})` : ""}.`);
+      for (const f of plan.forms.filter((f) => f.state !== "in_sync")) console.log(`  ${f.state.padEnd(11)} ${f.key}`);
       if (flag("commit") || flag("push")) {
         const git = (...a: string[]) => execFileSync("git", ["-C", dir, ...a], { encoding: "utf8" });
         git("add", "-A");
         if (!git("status", "--porcelain").trim()) console.log("Nothing changed since the last backup.");
         else {
-          git("commit", "-q", "-m", commitMessage(null, snap));
+          git("commit", "-q", "-m", plan.message);
           console.log("Committed.");
         }
         if (flag("push")) {
@@ -260,8 +265,12 @@ async function main() {
               row = await publishProject(row.id, actor, "Restored from backup");
               if (existsSync(liveDir)) row = await saveProject(row.id, { files }, actor);
             }
-            // A form's own data (settings, lists) comes back only into a form that has none.
-            const colDir = join(base, ".backup", "collections");
+            // A form's own data (settings, lists) comes back only into a form that has none. It's per site
+            // (sites/<site>/forms/code/<slug>/collections); backups from before that kept it in the form's folder.
+            const sites = existsSync(join(dir, "sites")) ? readdirSync(join(dir, "sites")) : [];
+            const site = option("site") ?? (sites.length === 1 ? sites[0] : null);
+            const colDir = site ? join(dir, "sites", site, "forms", "code", slug, "collections") : join(base, ".backup", "collections");
+            if (!site && sites.length > 1) console.warn(`  ${slug}: pass --site (${sites.join(", ")}) to bring back its data.`);
             const hasData = await prisma.formRecord.count({ where: { formId: row.id } });
             if (existsSync(colDir) && !hasData) {
               for (const file of readdirSync(colDir)) {
@@ -285,7 +294,7 @@ async function main() {
           n++;
         }
       }
-      console.log(n ? `Restored ${n} forms. Put new ones on the Forms screen from their editor (catalog.json lists where they were).` : "No forms found to restore.");
+      console.log(n ? `Restored ${n} forms. Put new ones on the Forms screen from their editor (sites/<site>/catalog.json lists where they were).` : "No forms found to restore.");
       return;
     }
     default:

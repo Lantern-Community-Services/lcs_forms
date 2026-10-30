@@ -58,22 +58,29 @@ Every form built in the app — form builder forms and code forms — is backed 
 [Lantern-Community-Services/lcs_forms_form_backup](https://github.com/Lantern-Community-Services/lcs_forms_form_backup)
 (private), `backend/src/services/formBackup.ts`:
 
-- **What's in it:** each form's draft and published definition, every published version, a code
-  form's collections (its settings and lists), and `catalog.json` (the Forms screen, including links
-  to forms on other sites). `basic/<slug>/` for form builder forms, `code/<slug>/` for code forms (the
-  folder is the project, so `app:push` works on it). **Not** in it: entries, uploaded photos, people.
-- **When:** the server checks every 10 minutes and commits only when a form changed, with the changed
-  forms in the commit message. **Back up now** on Admin → Form builder and Admin → Code forms; the same
-  bar shows the last backup or the last error.
+- **Shared by every site** (prod, Azure dev, local). Each form has one folder — `basic/<slug>/` or
+  `code/<slug>/` (the folder is the project, so `app:push` works on it) — holding the newest draft and
+  published version any site saved, plus who saved it. Site-specific things live under
+  `sites/<site>/`: the Forms catalog, each form's status and published versions, a code form's
+  collections (settings and lists), and `sync.json` (what that site last matched). **Not** in it:
+  entries, uploaded photos, people. The site's name is `FORM_BACKUP_SITE`, else its host.
+- **Never older over newer:** a site saves a form only when its copy changed since it last matched the
+  backup. When the backup moved on (another site saved a newer version) the form shows **Needs sync**
+  on Admin → Form builder / Code forms; **Sync** brings it in (replaces the draft, publishes the
+  backup's live version if it differs) and **Sync all** does every such form. A form changed on both
+  sides shows **Differs from backup**: pick **Use the backup's** or **Keep this site's**. Forms only in
+  the backup can be added here or removed from it. MCP: `form_backup` with `sync` / `keep` / `remove`.
+- **When:** the server checks every 10 minutes and commits only what changed, with the forms in the
+  commit message. **Back up now** on the same bar, which shows the last backup or the last error.
 - **Setup:** `FORM_BACKUP_REPO` (in `.env`) and `FORM_BACKUP_TOKEN` in `.env.local` — a fine-grained
   GitHub token with **Contents: read and write** on that one repository. On a server, set both as
   app settings. No git is needed on the server; it uses the GitHub API.
 - **From a computer instead** (your own git login): clone the repo, then
   `npm run forms -- backup --dir <clone> --push`.
-- **Restore:** `npm run forms -- backup:restore <clone> [slug ...] [--publish]` creates missing forms
-  and replaces the drafts of existing ones; `--publish` also publishes the backed-up live version.
-  A code form's settings come back only into a form that has none. Put restored forms back on the
-  Forms screen from their editor (`catalog.json` says where they were).
+- **Restore:** `npm run forms -- backup:restore <clone> [slug ...] [--publish] [--site <site>]` creates
+  missing forms and replaces the drafts of existing ones; `--publish` also publishes the backed-up live
+  version. A code form's settings come back (from `--site`) only into a form that has none. Put restored
+  forms back on the Forms screen from their editor (`sites/<site>/catalog.json` says where they were).
 
 ---
 

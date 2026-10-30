@@ -1,17 +1,28 @@
 import crypto from "node:crypto";
+import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import { env } from "../env.js";
-import { audit } from "./audit.js";
+import { appBaseUrl, env } from "../env.js";
+import { HttpError, badRequest } from "../http.js";
+import { audit, type Actor } from "./audit.js";
+import { createForm, publishForm, saveDraft } from "../forms/service.js";
+import { createProject, publishProject, saveProject } from "../apps/service.js";
 
 /**
  * Backup of every form built in the app — form builder forms and code forms —
- * to a git repository (FORM_BACKUP_REPO, e.g. Lantern-Community-Services/lcs_forms_form_backup).
+ * to a git repository (FORM_BACKUP_REPO, e.g. Lantern-Community-Services/lcs_forms_form_backup),
+ * shared by every copy of the site (prod, Azure dev, local).
  *
- * What's kept: each form's draft and published definition, every published
- * version, a code form's collections (its settings and lists), and the Forms
- * catalog. Not kept: entries, uploaded files, people — resident data stays in
- * the database. Nothing in the snapshot carries a timestamp that changes on its
- * own, so a commit is only made when a form actually changed.
+ * Each form has ONE folder there, holding the newest definition any site saved
+ * (draft + published). A site writes a form's folder only when its own copy
+ * changed since it last matched the backup, so it never puts an older version
+ * over a newer one from another site. What each site last matched is kept in
+ * sites/<site>/sync.json. A form whose backup moved on while this site's copy
+ * didn't "needs sync": Admin → Form builder / Code forms can pull it in (Sync,
+ * Sync all). One changed on both sides "differs": an admin picks which wins.
+ *
+ * Site-specific things live under sites/<site>/: the Forms catalog, each form's
+ * status and published versions, a code form's collections (its settings and
+ * lists). Not kept: entries, uploaded files, people.
  *
  * Two ways out:
  *   - The server, every 10 minutes, through the GitHub API (FORM_BACKUP_TOKEN, a
@@ -21,48 +32,99 @@ import { audit } from "./audit.js";
  */
 
 export type Snapshot = Record<string, string>;
+type Kind = "basic" | "code";
 
 const json = (v: unknown) => `${JSON.stringify(v, null, 2)}\n`;
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
 const README = `# Lantern Forms — form backup
 
-Written automatically by the Lantern Forms site. Don't edit files here by hand: the next
-backup replaces them with what's on the site.
+Written automatically by every Lantern Forms site (prod, Azure dev, local). Don't edit files
+here by hand.
 
     basic/<slug>/form.json         a form builder form (draft) — the lcs-form document
-    basic/<slug>/live.json         the published version, when it differs from the draft
-    basic/<slug>/versions/vN.json  every published version
-    basic/<slug>/info.json         title, status, who made it, its catalog card
+    basic/<slug>/live.json         its published version, when it has one
+    basic/<slug>/info.json         title, which site saved it and when
 
     code/<slug>/…                  a code form's files (draft): form.json, pages/, server/, …
-    code/<slug>/.backup/live/…     the published files, when they differ from the draft
-    code/<slug>/.backup/versions/  every published version
-    code/<slug>/.backup/collections/<name>.json   the form's own data (settings, lists)
+    code/<slug>/.backup/live/…     the published files, when it has been published
     code/<slug>/.backup/info.json
 
-    catalog.json                   the Forms screen: categories and cards, including links to
-                                   forms on other sites
+    sites/<site>/catalog.json                      that site's Forms screen
+    sites/<site>/forms/<kind>/<slug>/info.json     the form's status there, its catalog card
+    sites/<site>/forms/<kind>/<slug>/versions/     every version published there
+    sites/<site>/forms/code/<slug>/collections/    a code form's own data there (settings, lists)
+    sites/<site>/sync.json                         what that site last matched (don't edit)
 
-Entries (what people submitted) and uploaded photos are not here — they stay in the
+Each form folder holds the newest version any site saved. A site only writes a form when
+its own copy changed since it last matched this repository, so an older copy never
+replaces a newer one. When the backup is newer, the site's Form builder / Code forms list
+marks the form "Needs sync"; Sync brings it in.
+
+Entries (what people submitted) and uploaded photos are not here — they stay in each
 site's database and its own backups.
 
 ## Restoring
 
 From the site's backend folder, with DATABASE_URL pointing at the database to restore into:
 
-    npm run forms -- backup:restore <path to this repository> [slug ...] [--publish]
+    npm run forms -- backup:restore <path to this repository> [slug ...] [--publish] [--site <site>]
 
 It creates missing forms and replaces drafts of existing ones; --publish also publishes
-the backed-up live version. Code forms can also go back one at a time:
-
-    npm run forms -- app:push <path>/code/<slug> --publish
+the backed-up live version; --site brings back that site's code-form data.
 `;
 
-/** The whole backup as { path: text }. */
-export async function backupSnapshot(): Promise<Snapshot> {
-  // Byte for byte: no line-ending conversion, so a backup from Windows and one from the server match.
-  const files: Snapshot = { "README.md": README, ".gitattributes": "* -text\n" };
+/** Folder of a form in the backup: "basic/<slug>" or "code/<slug>". */
+export const formKey = (kind: string, slug: string) => `${kind === "code" ? "code" : "basic"}/${slug}`;
+const sharedInfoPath = (key: string) => (key.startsWith("code/") ? `${key}/.backup/info.json` : `${key}/info.json`);
+
+/** Is this path (inside a form's folder) part of the form's definition — what's compared between sites? */
+function isDefinition(kind: Kind, rel: string) {
+  if (kind === "basic") return rel === "form.json" || rel === "live.json";
+  return !rel.startsWith(".backup/") || rel.startsWith(".backup/live/");
+}
+
+/** This site's name in the backup (sites/<site>/, "saved from …"). FORM_BACKUP_SITE, else the site's host. */
+export function backupSite() {
+  let name = env.formBackup.site;
+  if (!name) {
+    try {
+      name = new URL(appBaseUrl).host;
+    } catch {
+      name = "local";
+    }
+  }
+  return name.toLowerCase().replace(/[^a-z0-9.-]+/g, "-");
+}
+
+/** Git's id for a file's content, so files can be compared without downloading them. */
+export const blobSha = (text: string) => {
+  const body = Buffer.from(text, "utf8");
+  return crypto.createHash("sha1").update(`blob ${body.length}\0`).update(body).digest("hex");
+};
+
+/** One value for a form's definition files ({ path inside its folder: blob sha }); null when it has none. */
+function fingerprint(files: Map<string, string>) {
+  if (!files.size) return null;
+  const lines = [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([p, s]) => `${p} ${s}`);
+  return crypto.createHash("sha256").update(lines.join("\n")).digest("hex");
+}
+
+// ── What this site has ───────────────────────────────────────────────────
+
+interface SiteForm {
+  key: string;
+  kind: Kind;
+  slug: string;
+  row: BuiltForm;
+  /** The definition, by path inside the form's folder. */
+  def: Snapshot;
+}
+
+/** Every form on this site, and the site's own files (under sites/<site>/, without sync.json). */
+async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapshot }> {
+  const prefix = `sites/${backupSite()}`;
+  const files: Snapshot = {};
   const [forms, versions, records, categories, cards] = await Promise.all([
     prisma.builtForm.findMany({ orderBy: { slug: "asc" } }),
     prisma.builtFormVersion.findMany({ orderBy: [{ formId: "asc" }, { version: "asc" }] }),
@@ -72,14 +134,28 @@ export async function backupSnapshot(): Promise<Snapshot> {
   ]);
   const catName = new Map(categories.map((c) => [c.id, c.name]));
   const cardOf = new Map(cards.map((c) => [c.id, c]));
+  const out = new Map<string, SiteForm>();
 
   for (const f of forms) {
+    const kind: Kind = f.kind === "code" ? "code" : "basic";
+    const key = formKey(kind, f.slug);
     const card = f.catalogLinkId ? cardOf.get(f.catalogLinkId) : null;
     const mine = versions.filter((v) => v.formId === f.id);
-    const info = {
+    const def: Snapshot = {};
+    if (kind === "code") {
+      for (const [path, src] of Object.entries((JSON.parse(f.draftSchema) as { files: Snapshot }).files)) def[path] = src;
+      if (f.liveSchema) for (const [path, src] of Object.entries((JSON.parse(f.liveSchema) as { files: Snapshot }).files)) def[`.backup/live/${path}`] = src;
+    } else {
+      def["form.json"] = json(JSON.parse(f.draftSchema));
+      if (f.liveSchema) def["live.json"] = json(JSON.parse(f.liveSchema));
+    }
+    out.set(key, { key, kind, slug: f.slug, row: f, def });
+
+    const base = `${prefix}/forms/${key}`;
+    files[`${base}/info.json`] = json({
       id: f.id,
       slug: f.slug,
-      kind: f.kind,
+      kind,
       title: f.title,
       status: f.status,
       liveVersion: f.liveVersion,
@@ -88,33 +164,18 @@ export async function backupSnapshot(): Promise<Snapshot> {
       publishedAt: iso(f.publishedAt),
       catalog: card ? { category: catName.get(card.categoryId) ?? null, title: card.title, active: card.active } : null,
       versions: mine.map((v) => ({ version: v.version, note: v.note, publishedByName: v.publishedByName, publishedAt: iso(v.createdAt) })),
-    };
-
-    if (f.kind === "code") {
-      const base = `code/${f.slug}`;
-      const draft = (JSON.parse(f.draftSchema) as { files: Record<string, string> }).files;
-      for (const [path, src] of Object.entries(draft)) files[`${base}/${path}`] = src;
-      if (f.liveSchema) {
-        const live = (JSON.parse(f.liveSchema) as { files: Record<string, string> }).files;
-        if (JSON.stringify(live) !== JSON.stringify(draft)) for (const [path, src] of Object.entries(live)) files[`${base}/.backup/live/${path}`] = src;
-      }
-      for (const v of mine) files[`${base}/.backup/versions/v${v.version}.json`] = json(JSON.parse(v.schema));
+    });
+    for (const v of mine) files[`${base}/versions/v${v.version}.json`] = json(JSON.parse(v.schema));
+    if (kind === "code") {
       const byCollection = new Map<string, { id: string; data: unknown; updatedByName: string | null }[]>();
       for (const r of records.filter((r) => r.formId === f.id)) {
         byCollection.set(r.collection, [...(byCollection.get(r.collection) ?? []), { id: r.docId, data: JSON.parse(r.data), updatedByName: r.updatedByName }]);
       }
-      for (const [name, docs] of byCollection) files[`${base}/.backup/collections/${name}.json`] = json(docs);
-      files[`${base}/.backup/info.json`] = json(info);
-    } else {
-      const base = `basic/${f.slug}`;
-      files[`${base}/form.json`] = json(JSON.parse(f.draftSchema));
-      if (f.liveSchema && f.liveSchema !== f.draftSchema) files[`${base}/live.json`] = json(JSON.parse(f.liveSchema));
-      for (const v of mine) files[`${base}/versions/v${v.version}.json`] = json(JSON.parse(v.schema));
-      files[`${base}/info.json`] = json(info);
+      for (const [name, docs] of byCollection) files[`${base}/collections/${name}.json`] = json(docs);
     }
   }
 
-  files["catalog.json"] = json(
+  files[`${prefix}/catalog.json`] = json(
     categories.map((c) => ({
       name: c.name,
       icon: c.icon,
@@ -124,27 +185,175 @@ export async function backupSnapshot(): Promise<Snapshot> {
         .map((k) => ({ title: k.title, url: k.url, description: k.description, keywords: k.keywords, badge: k.badge, icon: k.icon, roles: k.roles ? k.roles.split(",") : [], active: k.active })),
     }))
   );
-  return files;
+  return { forms: out, files };
 }
 
-export const snapshotHash = (s: Snapshot) =>
-  crypto.createHash("sha256").update(JSON.stringify(Object.keys(s).sort().map((k) => [k, s[k]]))).digest("hex");
+// ── Comparing with the backup ────────────────────────────────────────────
 
-/** Form folders whose files differ between two snapshots, for the commit message. */
-export function changedForms(before: Snapshot | null, after: Snapshot): string[] {
-  if (!before) return [];
-  const keyOf = (p: string) => (/^(basic|code)\/[^/]+/.exec(p)?.[0] ?? p);
-  const out = new Set<string>();
-  for (const p of new Set([...Object.keys(before), ...Object.keys(after)])) if (before[p] !== after[p]) out.add(keyOf(p));
-  return [...out].sort();
+/** The backup as it is now: every file's blob sha, and a way to read one. */
+export interface RepoView {
+  files: Map<string, string>;
+  read(path: string): Promise<string>;
 }
 
-export function commitMessage(before: Snapshot | null, after: Snapshot) {
-  const changed = changedForms(before, after);
-  const forms = Object.keys(after).filter((p) => /^(basic\/[^/]+\/info\.json|code\/[^/]+\/\.backup\/info\.json)$/.test(p)).length;
-  if (!changed.length) return `Backup of ${forms} forms`;
-  const names = changed.map((c) => c.replace(/^(basic|code)\//, ""));
-  return `Backup: ${names.slice(0, 6).join(", ")}${names.length > 6 ? ` and ${names.length - 6} more` : ""}\n\n${changed.join("\n")}`;
+export type SyncState = "in_sync" | "behind" | "differs" | "only_backup";
+
+/** One form, here and in the backup. */
+export interface FormSync {
+  key: string;
+  kind: Kind;
+  slug: string;
+  title: string;
+  /**
+   * in_sync — same as the backup (or just saved to it).
+   * behind — the backup has a newer version from another site: Sync brings it in.
+   * differs — changed both here and in the backup since they last matched (or they never matched): an admin picks.
+   * only_backup — in the backup, not on this site.
+   */
+  state: SyncState;
+  /** Who saved the backup's version, and when. */
+  backup: { title: string | null; savedFrom: string | null; savedAt: string | null } | null;
+  /** When this site's copy was last edited. */
+  editedHere: string | null;
+}
+
+interface BackupInfo {
+  title?: string;
+  savedFrom?: string;
+  savedAt?: string;
+  status?: string;
+  liveVersion?: number;
+  publishedAt?: string | null;
+}
+
+/** Backups from before live files were always written left them out when they matched the draft. */
+const wasPublished = (info: BackupInfo | null) => Boolean(info && (info.status === "published" || info.status === "closed" || (info.liveVersion ?? 0) > 0));
+
+/** Each form folder in the backup: its definition files' blob shas. */
+async function repoForms(view: RepoView) {
+  const out = new Map<string, Map<string, string>>();
+  for (const [path, sha] of view.files) {
+    const m = /^(basic|code)\/([^/]+)\/(.+)$/.exec(path);
+    if (!m || !isDefinition(m[1] as Kind, m[3])) continue;
+    const key = `${m[1]}/${m[2]}`;
+    if (!out.has(key)) out.set(key, new Map());
+    out.get(key)!.set(m[3], sha);
+  }
+  for (const [key, files] of out) {
+    const code = key.startsWith("code/");
+    if ([...files.keys()].some((p) => (code ? p.startsWith(".backup/live/") : p === "live.json"))) continue;
+    if (!wasPublished(await readInfo(view, key))) continue;
+    // An old-layout published form: its live version is its draft.
+    for (const [p, sha] of [...files]) if (code || p === "form.json") files.set(code ? `.backup/live/${p}` : "live.json", sha);
+  }
+  return out;
+}
+
+const infoCache = new Map<string, BackupInfo>();
+async function readInfo(view: RepoView, key: string): Promise<BackupInfo | null> {
+  const path = sharedInfoPath(key);
+  const sha = view.files.get(path);
+  if (!sha) return null;
+  if (!infoCache.has(sha)) {
+    try {
+      infoCache.set(sha, JSON.parse(await view.read(path)) as BackupInfo);
+    } catch {
+      return null;
+    }
+  }
+  return infoCache.get(sha)!;
+}
+
+async function readBase(view: RepoView): Promise<Record<string, string>> {
+  const path = `sites/${backupSite()}/sync.json`;
+  if (!view.files.has(path)) return {};
+  try {
+    return (JSON.parse(await view.read(path)) as { forms?: Record<string, string> }).forms ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What to write so the backup holds this site's changes, and each form's state.
+ * `baseOverride`: forms whose last match is set by hand (just synced, or "keep this site's").
+ */
+export async function planBackup(view: RepoView, baseOverride: Record<string, string> = {}) {
+  const site = backupSite();
+  const now = new Date().toISOString();
+  const { forms, files: siteFiles } = await readSite();
+  const inRepo = await repoForms(view);
+  const base = { ...(await readBase(view)), ...baseOverride };
+  const nextBase: Record<string, string> = {};
+  const writes = new Map<string, string | null>();
+  const saved: string[] = [];
+  const out: FormSync[] = [];
+
+  const put = (path: string, text: string) => {
+    if (view.files.get(path) !== blobSha(text)) writes.set(path, text);
+  };
+  /** Make everything under `prefix` exactly `want`. */
+  const replaceFolder = (prefix: string, want: Snapshot) => {
+    for (const path of view.files.keys()) if (path.startsWith(prefix) && !(path in want)) writes.set(path, null);
+    for (const [path, text] of Object.entries(want)) put(path, text);
+  };
+
+  for (const key of [...new Set([...forms.keys(), ...inRepo.keys()])].sort()) {
+    const here = forms.get(key);
+    const repoFiles = inRepo.get(key);
+    const S = here ? fingerprint(new Map(Object.entries(here.def).map(([p, t]) => [p, blobSha(t)]))) : null;
+    const R = repoFiles ? fingerprint(repoFiles) : null;
+    const B = base[key];
+    let state: SyncState;
+    if (!here) state = "only_backup";
+    else if (S === R) state = "in_sync";
+    else if (!R || B === R) {
+      // Changed only here (or new): save it.
+      const want: Snapshot = {};
+      for (const [rel, text] of Object.entries(here.def)) want[`${key}/${rel}`] = text;
+      want[sharedInfoPath(key)] = json({
+        slug: here.slug,
+        kind: here.kind,
+        title: here.row.title,
+        savedFrom: site,
+        savedAt: now,
+        editedAt: iso(here.row.updatedAt),
+        status: here.row.status,
+        liveVersion: here.row.liveVersion,
+        publishedAt: iso(here.row.publishedAt),
+      });
+      replaceFolder(`${key}/`, want);
+      saved.push(key);
+      state = "in_sync";
+    } else if (B === S) state = "behind";
+    else state = "differs";
+
+    if (state === "in_sync" && S) nextBase[key] = S;
+    else if ((state === "behind" || state === "differs") && B) nextBase[key] = B;
+
+    const info = state === "in_sync" ? null : await readInfo(view, key);
+    out.push({
+      key,
+      kind: here?.kind ?? (key.split("/")[0] as Kind),
+      slug: here?.slug ?? key.split("/")[1],
+      title: here?.row.title ?? info?.title ?? key.split("/")[1],
+      state,
+      backup: info ? { title: info.title ?? null, savedFrom: info.savedFrom ?? null, savedAt: info.savedAt ?? info.publishedAt ?? null } : null,
+      editedHere: here ? iso(here.row.updatedAt) : null,
+    });
+  }
+
+  const sitePrefix = `sites/${site}/`;
+  replaceFolder(sitePrefix, { ...siteFiles, [`${sitePrefix}sync.json`]: json({ site, forms: Object.fromEntries(Object.entries(nextBase).sort()) }) });
+  put("README.md", README);
+  put(".gitattributes", "* -text\n"); // byte for byte: no line-ending conversion
+  if (view.files.has("catalog.json")) writes.set("catalog.json", null); // the old shared catalog; each site has its own now
+
+  const names = saved.map((k) => k.replace(/^(basic|code)\//, ""));
+  const message = names.length
+    ? `${site}: ${names.slice(0, 6).join(", ")}${names.length > 6 ? ` and ${names.length - 6} more` : ""}\n\n${saved.join("\n")}`
+    : `${site}: site data`;
+  return { writes, forms: out, saved, message };
 }
 
 // ── GitHub ───────────────────────────────────────────────────────────────
@@ -196,16 +405,40 @@ async function head(branch: string): Promise<{ commit: string; tree: string }> {
   return { commit: ref.data.object.sha, tree: commit.data.tree.sha };
 }
 
-/** Make the repository hold exactly `files` (one commit), unless it already does. */
-export async function pushToGitHub(files: Snapshot, message: string): Promise<{ changed: boolean; commit: string; url: string }> {
-  const branch = env.formBackup.branch;
-  const parent = await head(branch);
+const blobCache = new Map<string, string>();
+
+/** The branch as it is now, read through the API (file contents only when asked for). */
+async function githubView(): Promise<RepoView & { head: { commit: string; tree: string } }> {
+  const at = await head(env.formBackup.branch);
+  const tree = await gh<{ tree: { path: string; type: string; sha: string }[]; truncated?: boolean }>("GET", `/git/trees/${at.tree}?recursive=1`);
+  if (tree.status !== 200) throw fail("listing the files", tree);
+  if (tree.data.truncated) throw new Error("The backup repository has too many files for GitHub to list at once.");
+  const files = new Map(tree.data.tree.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
+  return {
+    head: at,
+    files,
+    async read(path) {
+      const sha = files.get(path);
+      if (!sha) throw new Error(`${path} isn't in the backup.`);
+      if (!blobCache.has(sha)) {
+        const blob = await gh<{ content: string; encoding: string }>("GET", `/git/blobs/${sha}`);
+        if (blob.status !== 200) throw fail(`reading ${path}`, blob);
+        blobCache.set(sha, Buffer.from(blob.data.content, "base64").toString("utf8"));
+      }
+      return blobCache.get(sha)!;
+    },
+  };
+}
+
+/** One commit with these changes (null deletes) on top of `parent`. Refuses if someone else committed meanwhile. */
+async function commitToGitHub(parent: { commit: string; tree: string }, writes: Map<string, string | null>, message: string) {
+  const url = `https://github.com/${env.formBackup.repo}`;
+  if (!writes.size) return { changed: false, commit: parent.commit, url };
   const tree = await gh<{ sha: string }>("POST", "/git/trees", {
-    // No base_tree: the new tree is the snapshot exactly, so deleted forms disappear.
-    tree: Object.entries(files).map(([path, content]) => ({ path, mode: "100644", type: "blob", content })),
+    base_tree: parent.tree,
+    tree: [...writes].map(([path, content]) => (content === null ? { path, mode: "100644", type: "blob", sha: null } : { path, mode: "100644", type: "blob", content })),
   });
   if (tree.status !== 201) throw fail("writing the files", tree);
-  const url = `https://github.com/${env.formBackup.repo}`;
   if (tree.data.sha === parent.tree) return { changed: false, commit: parent.commit, url };
   const commit = await gh<{ sha: string }>("POST", "/git/commits", {
     message,
@@ -214,74 +447,220 @@ export async function pushToGitHub(files: Snapshot, message: string): Promise<{ 
     author: { name: "Lantern Forms", email: "forms-backup@lanterncommunity.org", date: new Date().toISOString() },
   });
   if (commit.status !== 201) throw fail("making the commit", commit);
-  const ref = await gh("PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, { sha: commit.data.sha });
+  // Not forced: if another site committed since we read the branch, this fails and the next run starts over from theirs.
+  const ref = await gh("PATCH", `/git/refs/heads/${encodeURIComponent(env.formBackup.branch)}`, { sha: commit.data.sha, force: false });
+  if (ref.status === 422) throw new Error("Another site saved to the backup at the same moment. Try again.");
   if (ref.status !== 200) throw fail("moving the branch", ref);
   return { changed: true, commit: commit.data.sha, url: `${url}/commit/${commit.data.sha}` };
+}
+
+// ── Bringing a form in from the backup ───────────────────────────────────
+
+const sameDoc = (stored: string | null | undefined, doc: unknown) => stored != null && json(JSON.parse(stored)) === json(doc);
+const sortedFiles = (files: Snapshot) => JSON.stringify(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)));
+const sameFiles = (stored: string | null | undefined, files: Snapshot) => stored != null && sortedFiles((JSON.parse(stored) as { files: Snapshot }).files) === sortedFiles(files);
+
+/** Make this site's form match the backup's: publish its live version if that differs, then its draft. */
+export async function pullForm(view: RepoView, key: string, actor: Actor) {
+  const [kind, slug] = key.split("/") as [Kind, string];
+  const prefix = `${key}/`;
+  const def: Snapshot = {};
+  const paths = [...view.files.keys()].filter((p) => p.startsWith(prefix) && isDefinition(kind, p.slice(prefix.length)));
+  if (!paths.length) throw badRequest(`${slug} isn't in the backup.`);
+  for (const p of paths) def[p.slice(prefix.length)] = await view.read(p);
+  const info = await readInfo(view, key);
+  const note = `Synced from the backup${info?.savedFrom ? ` (saved from ${info.savedFrom})` : ""}`;
+  const published = wasPublished(info);
+
+  let row = await prisma.builtForm.findUnique({ where: { slug } });
+  if (row && row.kind !== kind) throw badRequest(`On this site ${slug} is a ${row.kind} form, in the backup a ${kind} form — rename one first.`);
+
+  if (kind === "basic") {
+    const draft = JSON.parse(def["form.json"] ?? "null");
+    if (!draft) throw badRequest(`The backup of ${slug} has no form.json.`);
+    const live = def["live.json"] ? JSON.parse(def["live.json"]) : published ? draft : null;
+    if (live && !(row && sameDoc(row.liveSchema, live))) {
+      row = row ? await saveDraft(row.id, { doc: live }, actor) : await createForm({ doc: live, slug }, actor);
+      row = await publishForm(row.id, actor, note);
+    }
+    if (!row) row = await createForm({ doc: draft, slug }, actor);
+    else if (!sameDoc(row.draftSchema, draft)) row = await saveDraft(row.id, { doc: draft }, actor);
+  } else {
+    const draft: Snapshot = {};
+    const liveFiles: Snapshot = {};
+    for (const [rel, text] of Object.entries(def)) {
+      if (rel.startsWith(".backup/live/")) liveFiles[rel.slice(".backup/live/".length)] = text;
+      else draft[rel] = text;
+    }
+    const live = Object.keys(liveFiles).length ? liveFiles : published ? draft : null;
+    if (live && !(row && sameFiles(row.liveSchema, live))) {
+      row = row ? await saveProject(row.id, { files: live }, actor) : await createProject({ files: live, slug }, actor);
+      row = await publishProject(row.id, actor, note);
+    }
+    if (!row) row = await createProject({ files: draft, slug }, actor);
+    else if (!sameFiles(row.draftSchema, draft)) row = await saveProject(row.id, { files: draft }, actor);
+  }
+  return row;
 }
 
 // ── The server's schedule ────────────────────────────────────────────────
 
 const EVERY_MS = 10 * 60_000;
 
-interface Status {
+export interface BackupStatus {
   configured: boolean;
   repo: string | null;
+  site: string;
   running: boolean;
   lastCheckedAt: string | null;
   lastCommitAt: string | null;
   lastCommitUrl: string | null;
   lastError: string | null;
+  /** Every form that isn't simply in sync (from the last check), so lists can label them. */
+  forms: FormSync[];
 }
 
-const state: Status & { lastHash: string | null; lastSnapshot: Snapshot | null } = {
-  configured: false,
-  repo: null,
+const state = {
   running: false,
-  lastCheckedAt: null,
-  lastCommitAt: null,
-  lastCommitUrl: null,
-  lastError: null,
-  lastHash: null,
-  lastSnapshot: null,
+  lastCheckedAt: null as string | null,
+  lastCommitAt: null as string | null,
+  lastCommitUrl: null as string | null,
+  lastError: null as string | null,
+  forms: [] as FormSync[],
+  /** Forms whose last match was set here (synced, or "keep this site's") until sync.json records it. */
+  baseOverride: {} as Record<string, string>,
 };
 
-export function backupStatus(): Status {
-  const { lastHash: _h, lastSnapshot: _s, ...s } = state;
-  return { ...s, configured: backupConfigured(), repo: env.formBackup.repo || null };
+export function backupStatus(): BackupStatus {
+  const { baseOverride: _b, forms, ...s } = state;
+  return { ...s, forms: forms.filter((f) => f.state !== "in_sync"), configured: backupConfigured(), repo: env.formBackup.repo || null, site: backupSite() };
 }
 
-/** Back up now if anything changed since the last backup (or always, with force). */
-export async function runFormBackup(opts: { force?: boolean; by?: string } = {}) {
-  if (!backupConfigured()) throw new Error("The form backup isn't set up: set FORM_BACKUP_REPO and FORM_BACKUP_TOKEN.");
-  if (state.running) return backupStatus();
-  state.running = true;
+/** One backup job at a time: the timer, Back up now, Sync. */
+let queue: Promise<unknown> = Promise.resolve();
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(async () => {
+    state.running = true;
+    try {
+      return await fn();
+    } finally {
+      state.running = false;
+    }
+  });
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+function needConfig() {
+  if (!backupConfigured()) throw badRequest("The form backup isn't set up on this server (FORM_BACKUP_REPO and FORM_BACKUP_TOKEN).");
+}
+
+/** Compare with the backup and save what changed here. Inside exclusive(). */
+async function backupOnce(by?: string) {
   try {
-    const snap = await backupSnapshot();
-    const hash = snapshotHash(snap);
+    const view = await githubView();
+    const plan = await planBackup(view, state.baseOverride);
     state.lastCheckedAt = new Date().toISOString();
-    if (opts.force || hash !== state.lastHash) {
-      const r = await pushToGitHub(snap, commitMessage(state.lastSnapshot, snap));
-      if (r.changed) {
-        state.lastCommitAt = new Date().toISOString();
-        state.lastCommitUrl = r.url;
-        await audit({ actor: { id: null, name: opts.by ?? "Form backup" }, action: "forms.backed_up", summary: `Backed up the forms to ${env.formBackup.repo}` });
-      }
-      state.lastHash = hash;
-      state.lastSnapshot = snap;
+    const r = await commitToGitHub(view.head, plan.writes, plan.message);
+    state.forms = plan.forms;
+    state.baseOverride = {};
+    if (r.changed) {
+      state.lastCommitAt = new Date().toISOString();
+      state.lastCommitUrl = r.url;
+      if (plan.saved.length) await audit({ actor: { id: null, name: by ?? "Form backup" }, action: "forms.backed_up", summary: `Backed up ${plan.saved.length} form${plan.saved.length === 1 ? "" : "s"} to ${env.formBackup.repo}: ${plan.saved.join(", ")}` });
     }
     state.lastError = null;
   } catch (err) {
     state.lastError = err instanceof Error ? err.message : String(err);
     console.error("[backup] form backup failed:", state.lastError);
-  } finally {
-    state.running = false;
   }
   return backupStatus();
 }
 
+/** Back up now: save every form changed here, never over a newer one. */
+export async function runFormBackup(opts: { by?: string } = {}) {
+  needConfig();
+  return exclusive(() => backupOnce(opts.by));
+}
+
+/**
+ * Bring forms in from the backup. `keys`: form folders ("basic/<slug>", "code/<slug>"),
+ * or "all" for every form that needs sync and `allowed` lets through (not ones that differ, or exist only in the backup).
+ */
+export async function syncFromBackup(keys: string[] | "all", actor: Actor, allowed: (key: string) => boolean = () => true) {
+  needConfig();
+  return exclusive(async () => {
+    const view = await githubView();
+    const plan = await planBackup(view, state.baseOverride);
+    const byKey = new Map(plan.forms.map((f) => [f.key, f]));
+    const todo = keys === "all" ? plan.forms.filter((f) => f.state === "behind" && allowed(f.key)).map((f) => f.key) : keys;
+    const synced: string[] = [];
+    const failed: { key: string; error: string }[] = [];
+    const repo = await repoForms(view);
+    for (const key of todo) {
+      const f = byKey.get(key);
+      if (!f) {
+        failed.push({ key, error: "Not in the backup." });
+        continue;
+      }
+      if (f.state === "in_sync") continue;
+      try {
+        await pullForm(view, key, actor);
+        // What this site now matches; the backup run below records it (or saves the publish's tidy-ups).
+        state.baseOverride[key] = fingerprint(repo.get(key)!)!;
+        synced.push(key);
+      } catch (err) {
+        failed.push({ key, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    if (synced.length) await audit({ actor, action: "forms.synced", summary: `Synced ${synced.length} form${synced.length === 1 ? "" : "s"} from the backup: ${synced.join(", ")}` });
+    const status = await backupOnce(actor.name);
+    return { synced, failed, status };
+  });
+}
+
+/** The backup's fingerprint of one form's definition, or null when it isn't there. */
+export async function repoFingerprint(view: RepoView, key: string) {
+  const files = (await repoForms(view)).get(key);
+  return files ? fingerprint(files) : null;
+}
+
+/** For a form that differs: this site's version wins and goes to the backup. */
+export async function keepSiteVersion(key: string, actor: Actor) {
+  needConfig();
+  return exclusive(async () => {
+    const view = await githubView();
+    const R = await repoFingerprint(view, key);
+    if (R) state.baseOverride[key] = R;
+    await audit({ actor, action: "forms.backup_kept", summary: `Kept this site's version of ${key} over the backup's` });
+    return backupOnce(actor.name);
+  });
+}
+
+/** Take a form that's only in the backup (not on this site) out of it. */
+export async function removeFromBackup(key: string, actor: Actor) {
+  needConfig();
+  return exclusive(async () => {
+    const [kind, slug] = key.split("/");
+    if (await prisma.builtForm.findFirst({ where: { slug, kind: kind === "code" ? "code" : { not: "code" } } })) {
+      throw new HttpError(400, "That form is on this site, so the next backup would put it back. Delete it here first.");
+    }
+    const view = await githubView();
+    const writes = new Map<string, string | null>();
+    for (const path of view.files.keys()) if (path.startsWith(`${key}/`)) writes.set(path, null);
+    if (!writes.size) throw badRequest(`${slug} isn't in the backup.`);
+    await commitToGitHub(view.head, writes, `${backupSite()}: removed ${slug}\n\n${key}`);
+    await audit({ actor, action: "forms.backup_removed", summary: `Removed ${key} from the form backup` });
+    return backupOnce(actor.name);
+  });
+}
+
 export function startFormBackup() {
   if (!backupConfigured()) return false;
-  setTimeout(() => void runFormBackup(), 30_000).unref();
-  setInterval(() => void runFormBackup(), EVERY_MS).unref();
+  const tick = () => {
+    if (!state.running) void exclusive(() => backupOnce());
+  };
+  setTimeout(tick, 30_000).unref();
+  setInterval(tick, EVERY_MS).unref();
   return true;
 }
