@@ -1,3 +1,4 @@
+import { createContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "./api";
 import type { FieldTypeInfo, FormDoc, Values } from "./formEngine";
@@ -87,6 +88,8 @@ export interface FillData {
   /** How many entries this person sees: all, their sites' (and their own), or only their own. */
   entriesReach?: "all" | "site" | "own" | null;
   isAdmin: boolean;
+  /** Opened through someone's share link: whose, and until when. */
+  share?: { sharedBy: string; expiresAt: string | null };
 }
 
 export interface EntryRow {
@@ -95,6 +98,8 @@ export interface EntryRow {
   values: Values;
   site: { name: string; code: string } | null;
   source: string;
+  /** Filled through this employee's share link. */
+  sharedByName?: string | null;
   status: "active" | "voided";
   starred: boolean;
   createdByName: string;
@@ -177,10 +182,17 @@ export function useFormVersions(id: string, enabled: boolean) {
   });
 }
 
-export function useFillForm(slug: string | undefined) {
+/**
+ * The share link a form is being filled through (/s/<token>): the fill page
+ * provides it, so file uploads go with it (FormRenderer's FileInput).
+ */
+export const FillShareContext = createContext<string | null>(null);
+
+/** share: filling in through someone's share link (/s/<token>). */
+export function useFillForm(slug: string | undefined, share?: string | null) {
   return useQuery({
-    queryKey: builderKeys.fill(slug ?? ""),
-    queryFn: () => api.get<FillData>(`/f/${slug}`),
+    queryKey: [...builderKeys.fill(slug ?? ""), share ?? null],
+    queryFn: () => api.get<FillData>(`/f/${slug}${share ? `?share=${encodeURIComponent(share)}` : ""}`),
     enabled: Boolean(slug),
     retry: (n, err) => !(err instanceof ApiError && [401, 403, 404].includes(err.status)) && n < 1,
     refetchOnWindowFocus: false,
@@ -222,10 +234,10 @@ export const builderApi = {
 
 export const fillApi = {
   /** formVersion: the published version the page showed, so a late upload is checked against the fields the person saw. */
-  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string }) =>
+  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string; shareToken?: string }) =>
     api.post<{ id: string; duplicate: boolean; values: Values }>(`/f/${slug}/submit`, body),
-  upload: async (slug: string, fieldId: string, file: File) => {
-    const res = await fetch(`${API_BASE}/f/${slug}/files?field=${encodeURIComponent(fieldId)}`, {
+  upload: async (slug: string, fieldId: string, file: File, share?: string | null) => {
+    const res = await fetch(`${API_BASE}/f/${slug}/files?field=${encodeURIComponent(fieldId)}${share ? `&share=${encodeURIComponent(share)}` : ""}`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) },

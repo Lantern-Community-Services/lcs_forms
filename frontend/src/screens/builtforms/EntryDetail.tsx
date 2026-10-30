@@ -16,7 +16,7 @@ import type { Errors, Values } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import { deviceLabel, fillTimeText } from "@/lib/fillMeta";
 
-const SOURCES: Record<string, string> = { app: "In the app", public: "Public link", api: "API", mcp: "AI assistant (MCP)", import: "Imported" };
+const SOURCES: Record<string, string> = { app: "In the app", public: "Public link", share: "Share link", api: "API", mcp: "AI assistant (MCP)", import: "Imported" };
 
 export function BuiltFormEntryPage() {
   const { slug = "", id = "" } = useParams();
@@ -97,6 +97,7 @@ export function BuiltFormEntryPage() {
         <div className="grid gap-3 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
           <Meta label="Submitted" value={formatDateTime(entry.createdAt)} />
           <Meta label="By" value={entry.createdByName} />
+          {entry.sharedByName && <Meta label="Through the link of" value={entry.sharedByName} />}
           <Meta label="Site" value={entry.site?.name ?? "—"} />
           <Meta label="Source" value={`${SOURCES[entry.source] ?? entry.source} · form v${entry.formVersion}`} />
           <Meta label="Device" value={deviceLabel(entry.deviceKind)} />

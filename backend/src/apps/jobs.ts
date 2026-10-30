@@ -5,6 +5,7 @@ import { currentUserById, type CurrentUser } from "../auth/middleware.js";
 import { createEntry, loadApp, type LoadedApp } from "./runtime.js";
 import { fileIdsIn } from "./files.js";
 import { notifyQuietly } from "../services/notifications.js";
+import { systemEmail } from "../services/emailTemplates.js";
 
 /**
  * Entries one code form makes in another (ctx.db.form(slug).entries.create):
@@ -106,10 +107,15 @@ async function runOne(job: FormJob) {
     const source = forms.find((f) => f.id === job.formId);
     const target = forms.find((f) => f.slug === job.targetSlug);
     const label = (JSON.parse(job.input) as JobInput).label;
+    const sourceWord = source ? `“${source.title}”` : "A form";
+    const targetWord = target?.title ?? job.targetSlug;
+    const mail = await systemEmail("entry-problem", { source: sourceWord, target: targetWord }, `${sourceWord} couldn't save an entry in “${targetWord}”`);
     notifyQuietly({
       to: { users: [job.userId] },
       type: "forms.problem",
-      title: `${source ? `“${source.title}”` : "A form"} couldn't save an entry in “${target?.title ?? job.targetSlug}”`,
+      title: mail.title,
+      urgent: mail.urgent,
+      email: mail.email,
       body: `${label ? `${label}: ` : ""}${error.slice(0, 500)}`,
       link: source ? `/apps/${source.slug}` : null,
       source: source ? `form:${source.slug}` : "system",

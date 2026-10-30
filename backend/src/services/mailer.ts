@@ -39,13 +39,14 @@ export async function graphToken(): Promise<string> {
  * Lantern Forms, in the branded layout. For anyone outside Lantern, and
  * wherever nothing was chosen to show.
  */
-export function linkOnlyHtml(lead: string, url: string, opts: { kicker?: string | null; whatToDo?: string | null; urgent?: boolean } = {}) {
+export function linkOnlyHtml(lead: string, url: string, opts: { kicker?: string | null; whatToDo?: string | null; urgent?: boolean; intro?: string | null; buttonLabel?: string | null } = {}) {
   return brandedEmail({
     kicker: opts.kicker,
     heading: lead,
+    intro: opts.intro,
     whatToDo: opts.whatToDo,
     urgent: opts.urgent,
-    button: { label: "Open it in Lantern Forms", url },
+    button: { label: opts.buttonLabel || "Open it in Lantern Forms", url },
     note: "The details aren't in this email. Sign in to see them.",
   });
 }
@@ -82,9 +83,15 @@ export async function sendLogged(opts: { to: string[]; subject: string; html: st
 }
 
 /** Sent emails, newest first: for one form, or all of them. */
-export async function sentEmails(opts: { formId?: string; limit?: number; before?: string } = {}) {
+export async function sentEmails(opts: { formId?: string; limit?: number; before?: string; kind?: string; status?: string; to?: string } = {}) {
   return prisma.emailLog.findMany({
-    where: { ...(opts.formId ? { formId: opts.formId } : {}), ...(opts.before ? { createdAt: { lt: new Date(opts.before) } } : {}) },
+    where: {
+      ...(opts.formId ? { formId: opts.formId } : {}),
+      ...(opts.before ? { createdAt: { lt: new Date(opts.before) } } : {}),
+      ...(opts.kind ? { kind: opts.kind } : {}),
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.to ? { to: { contains: opts.to.trim().toLowerCase() } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
   });

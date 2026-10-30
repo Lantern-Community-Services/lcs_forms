@@ -1,6 +1,7 @@
 import { MobileBackLink } from "./AppShell";
 import { useInSectionTabs } from "./SectionTabs";
 import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/PageHelp";
 
 /**
  * The band every phone screen in the design wears: the sidebar fill, a hairline
@@ -18,6 +19,7 @@ export function PhoneHeader({
   actions,
   children,
   enter = false,
+  help,
 }: {
   title: string;
   subtitle?: string;
@@ -29,16 +31,19 @@ export function PhoneHeader({
   children?: React.ReactNode;
   /** Let the title arrive with the rest of the screen (see useCascade). */
   enter?: boolean;
+  /** A "?" beside the title (or the line under the tabs): what the screen is for, and its help article. */
+  help?: { article: string; text: string };
 }) {
   // Inside a tabbed section the tab strip above has taken the status-bar inset
   // and names the screen, so only the toolbar is left to draw.
   const inTabs = useInSectionTabs();
   if (inTabs) {
-    if (!subtitle && !actions && !children) return null;
+    if (!subtitle && !actions && !children && !help) return null;
     return (
       <div className="flex-none border-b border-hairline bg-sidebar px-4 pb-3 pt-3 md:hidden">
-        {(subtitle || actions) && (
+        {(subtitle || actions || help) && (
           <div className="flex items-center gap-2.5">
+            {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
             <p className="min-w-0 flex-1 text-[13px] text-muted">{subtitle}</p>
             {actions}
           </div>
@@ -53,7 +58,10 @@ export function PhoneHeader({
       {back && <MobileBackLink to={back.to} label={back.label} className="mb-0.5" />}
       <div className={cn("flex items-start gap-2.5", enter && "enter-up")}>
         <div className="min-w-0 flex-1">
-          <h1 className="text-[23px] font-heading font-extrabold text-ink">{title}</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-[23px] font-heading font-extrabold text-ink">{title}</h1>
+            {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
+          </div>
           {subtitle && <p className="mt-[3px] text-[13px] text-muted">{subtitle}</p>}
         </div>
         {actions}

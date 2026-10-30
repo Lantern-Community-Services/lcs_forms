@@ -1,4 +1,5 @@
 import { env } from "../env.js";
+import { currentLook, type EmailLook } from "./emailLook.js";
 
 /**
  * The one layout every email from the site uses, modelled on the Lantern
@@ -6,6 +7,9 @@ import { env } from "../env.js";
  * "Lantern Community Services" and what it's about, a thin light-blue stripe,
  * a heading, what the reader needs to do, a short table of answers, a button
  * into the site, and a footer saying it's automated.
+ *
+ * The name in the band, the colors, a logo and the footer are the organization's
+ * (services/emailLook.ts, Admin → Notifications → Look).
  *
  * Inline styles and tables only, so Outlook (desktop and phone) shows it as
  * drawn. Everything given is escaped: nothing here is HTML from a person.
@@ -33,8 +37,6 @@ export interface EmailParts {
   urgent?: boolean;
 }
 
-const NAVY = "#2c3453";
-const ACCENT = "#6baac4";
 const PAGE = "#f4f6f9";
 const LINE = "#e5e7eb";
 const INK = "#1f2937";
@@ -52,7 +54,9 @@ export function isInternalAddress(email: string): boolean {
   return Boolean(domain) && env.ssoAllowedDomains.some((d) => domain === d || domain.endsWith(`.${d}`));
 }
 
-export function brandedEmail(p: EmailParts): string {
+export function brandedEmail(p: EmailParts, look: EmailLook = currentLook()): string {
+  const NAVY = look.bandColor;
+  const ACCENT = look.accentColor;
   const out: string[] = [];
   out.push(`<div style="background:${PAGE};padding:24px 0;font-family:'Segoe UI',Arial,Helvetica,sans-serif">`);
   out.push(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">`);
@@ -61,7 +65,8 @@ export function brandedEmail(p: EmailParts): string {
   // The band and its stripe.
   out.push(
     `<tr><td style="background:${NAVY};padding:16px 24px;color:#ffffff;font-size:13px;letter-spacing:1px;text-transform:uppercase">` +
-      `Lantern Community Services${p.kicker ? `<br />${esc(p.kicker)}` : ""}</td></tr>`
+      (look.logoUrl ? `<img src="${esc(look.logoUrl)}" alt="${esc(look.orgName)}" height="28" style="display:block;height:28px;margin:0 0 8px;border:0" />` : "") +
+      `${esc(look.orgName)}${p.kicker ? `<br />${esc(p.kicker)}` : ""}</td></tr>`
   );
   out.push(`<tr><td style="height:4px;line-height:4px;font-size:0;background:${p.urgent ? RED : ACCENT}">&nbsp;</td></tr>`);
 
@@ -104,7 +109,7 @@ export function brandedEmail(p: EmailParts): string {
   if (p.button) {
     out.push(
       `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 10px"><tr>` +
-        `<td style="background:${NAVY};border-radius:6px"><a href="${esc(p.button.url)}" style="display:inline-block;padding:10px 18px;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none">${esc(p.button.label)}</a></td>` +
+        `<td style="background:${look.buttonColor};border-radius:6px"><a href="${esc(p.button.url)}" style="display:inline-block;padding:10px 18px;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none">${esc(p.button.label)}</a></td>` +
         `</tr></table>`
     );
   }
@@ -113,7 +118,7 @@ export function brandedEmail(p: EmailParts): string {
 
   out.push(
     `<tr><td style="background:${PAGE};padding:14px 28px;color:${FAINT};font-size:12px;border-top:1px solid ${LINE}">` +
-      `This is an automated notification from Lantern Forms. Please do not reply to this email.</td></tr>`
+      `${text(look.footer)}</td></tr>`
   );
   out.push(`</table></td></tr></table></div>`);
   return out.join("");

@@ -119,7 +119,7 @@ export function AdminImport() {
 
   return (
     <Page className="max-w-[860px]">
-      <PageHeader title="Import tenant list" subtitle="CSV with Property, Unit and Tenant columns — the property-management export format." />
+      <PageHeader title="Import tenant list" help={{ article: "admin-sites", text: "Bring in a property-management export: Property, Unit and Tenant columns." }} subtitle="CSV with Property, Unit and Tenant columns — the property-management export format." />
       <Card className="mb-4 p-5">
         <label className="flex cursor-pointer flex-col items-center gap-2 rounded-card border-2 border-dashed border-strongline px-4 py-8 text-center hover:bg-rowhover">
           <FileUp className="h-7 w-7 text-muted" />

@@ -238,6 +238,7 @@ export function AdminPeople() {
     <Page>
       <PageHeader
         title="People & roles"
+        help={{ article: "admin-people", text: "Who can sign in, their role and sites. Approve or decline requests to see sites." }}
         subtitle={everyone
           ? "Add someone by work email ahead of time and they sign straight in. Anyone else who signs in can request access; let them in from Requests, with their role and sites."
           : "People at your sites. New people are let in by an Admin; you can change what the people at your sites can do."}

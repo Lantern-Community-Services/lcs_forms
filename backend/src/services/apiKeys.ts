@@ -48,6 +48,8 @@ export const API_SCOPES = [
   "entries:manage",
   /** Admin → Dev log. */
   "devlog:read",
+  /** Admin → Notifications: read and preview email templates and every email sent; a Super Admin's key also makes and changes templates. */
+  "email:manage",
 ] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 

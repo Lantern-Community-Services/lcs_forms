@@ -40,6 +40,8 @@ export const recipientSchema = z.discriminatedUnion("kind", [
     field: z.string().trim().min(1).max(64),
   }).strict(),
   z.object({ kind: z.literal("submitter") }).strict(),
+  /** The employee whose share link it came through (a form shared by link). */
+  z.object({ kind: z.literal("sharer") }).strict(),
   z.object({
     kind: z.literal("group"),
     /** A staff group's id: everyone in it, from their job title or added by an admin. */
@@ -87,6 +89,12 @@ export const routeSchema = z.object({
   urgent: z.boolean().default(false),
   /** The notification's title and email subject. {form} {site} {event} {title} {date}. Default: the event's own title. */
   subject: z.string().trim().max(200).optional(),
+  /**
+   * An organization email template's key (services/emailTemplates.ts): its subject,
+   * heading, intro, What to do, details and button, instead of subject and whatToDo
+   * above. The route still chooses who, when, the answers and whether it's urgent.
+   */
+  template: z.string().trim().min(1).max(64).optional(),
 }).strict();
 
 export type Recipient = z.infer<typeof recipientSchema>;

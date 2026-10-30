@@ -6,6 +6,7 @@ import { appBaseUrl } from "../env.js";
 import { badRequest, notFound } from "../http.js";
 import { EMAIL_FIELD_TYPES, conditionPasses, formatValue, isInputField, type FormDoc, type Values } from "../forms/engine.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
+import { checkTemplateKeys, messageTags, messageWording, templateByKey, type Wording } from "./emailTemplates.js";
 import { ENTRY_CREATED, routeSchema, type Recipient, type Route, type RoutingEvent } from "../forms/routingSchema.js";
 import { readManifest, type Files, type Manifest } from "../apps/project.js";
 import { audit, type Actor } from "./audit.js";
@@ -221,7 +222,7 @@ async function nameOf(userId: string | null | undefined) {
  */
 export function routeEmail(
   form: BuiltForm,
-  route: Pick<Route, "urgent" | "whatToDo">,
+  route: { urgent?: boolean; whatToDo?: string | null; heading?: string | null; buttonLabel?: string | null },
   p: { subject: string; to: string; intro: string; url: string; fields: { label: string; value: string }[] }
 ) {
   const withAnswers = isInternalAddress(p.to) && p.fields.length > 0;
@@ -229,34 +230,69 @@ export function routeEmail(
     withAnswers,
     html: brandedEmail({
       kicker: form.title,
-      heading: p.subject,
+      heading: route.heading || p.subject,
       intro: p.intro,
       whatToDo: route.whatToDo,
       fields: withAnswers ? p.fields : undefined,
-      button: { label: "Open it in Lantern Forms", url: p.url },
+      button: { label: route.buttonLabel || "Open it in Lantern Forms", url: p.url },
       note: withAnswers ? "The rest is in Lantern Forms." : "The details aren't in this email. Sign in to see them.",
       urgent: route.urgent,
     }),
   };
 }
 
-/** A route's email for a real (or, with no entries yet, an empty) entry, both ways. */
-export async function routeEmailPreview(form: BuiltForm, route: Route, entryId?: string) {
+/**
+ * A route's email for a real (or, with no entries yet, an empty) entry, both ways.
+ * `template` previews it with a template that isn't saved yet (the Templates editor).
+ */
+export async function routeEmailPreview(form: BuiltForm, route: Route, entryId?: string, template?: TemplateLike) {
   const entry = await prisma.formEntry.findFirst({
     where: { formId: form.id, status: "active", ...(entryId ? { id: entryId } : { source: { not: "preview" } }) },
     orderBy: { createdAt: "desc" },
   });
-  const input = entry ? await entryInput(form, entry) : { event: route.event, title: `New entry: ${form.title}`, site: null, data: {} };
-  const fields = emailValues(form, route.fields, { data: input.data ?? {}, site: input.site, createdAt: entry?.createdAt, byName: entry?.createdByName });
-  const subject = route.subject?.trim() || input.title;
-  const intro = `There's something for you in “${form.title}”${input.site ? ` for ${input.site.name}` : ""}.`;
+  const input: RouteInput = entry ? await entryInput(form, entry) : { event: route.event, title: `New entry: ${form.title}`, site: null, data: {} };
+  const label = eventsOf(form).find((e) => e.id === route.event)?.label ?? route.event;
+  const w = await routeWording(form, route, input, label, template);
+  const fields = emailValues(form, w.fields, { data: input.data ?? {}, site: input.site, createdAt: entry?.createdAt, byName: entry?.createdByName });
   const url = `${appBaseUrl}${input.link ?? `/f/${form.slug}`}`;
+  const parts = { whatToDo: w.whatToDo, urgent: w.urgent, heading: w.heading, buttonLabel: w.buttonLabel };
   return {
-    subject: route.urgent ? `Urgent: ${subject}` : subject,
+    subject: w.urgent ? `Urgent: ${w.subject}` : w.subject,
     from: entry ? `The latest entry (${entry.createdAt.toISOString().slice(0, 10)})` : "No entries yet: answers are left blank",
-    inside: routeEmail(form, route, { subject, to: "someone@lanterncommunity.org", intro, url, fields }).html,
-    outside: routeEmail(form, route, { subject, to: "someone@example.org", intro, url, fields }).html,
+    template: w.template,
+    inside: routeEmail(form, parts, { subject: w.subject, to: "someone@lanterncommunity.org", intro: w.intro, url, fields }).html,
+    outside: routeEmail(form, parts, { subject: w.subject, to: "someone@example.org", intro: w.intro, url, fields }).html,
   };
+}
+
+type TemplateLike = Parameters<typeof messageWording>[0] & { key?: string; name?: string };
+
+/**
+ * What one route's email says for one event: its template's wording (falling
+ * back to the route's own when the template is gone), or the route's own.
+ * `fields` = the template's details, then the route's chosen answers.
+ */
+export async function routeWording(
+  form: BuiltForm,
+  route: Pick<Route, "subject" | "whatToDo" | "urgent" | "fields" | "template">,
+  input: RouteInput,
+  label: string,
+  override?: TemplateLike
+): Promise<Wording & { intro: string; fields: string[]; template: { key: string; name: string } | null }> {
+  const fallbackIntro = `There's something for you in “${form.title}”${input.site ? ` for ${input.site.name}` : ""}.`;
+  const t = override ?? (route.template ? await templateByKey(route.template) : null);
+  if (t) {
+    const w = messageWording(t, messageTags({ form: form.title, title: input.title, site: input.site?.name, event: label }), input.title);
+    return {
+      ...w,
+      intro: w.intro ?? fallbackIntro,
+      urgent: Boolean(route.urgent) || w.urgent,
+      fields: [...new Set([...w.details, ...(route.fields ?? [])])],
+      template: t.key && t.name ? { key: t.key, name: t.name } : null,
+    };
+  }
+  const subject = (route.subject ? render(route.subject, form, input, label) : input.title.slice(0, 200)) || input.title.slice(0, 200);
+  return { subject, heading: subject, intro: fallbackIntro, whatToDo: route.whatToDo ?? null, buttonLabel: null, urgent: Boolean(route.urgent), details: [], fields: route.fields ?? [], template: null };
 }
 
 // ── Saving ───────────────────────────────────────────────────────────────
@@ -266,7 +302,7 @@ export async function checkRoutes(form: BuiltForm, input: unknown[]): Promise<Ro
   const events = eventsOf(form);
   const siteCodes = new Set((await prisma.site.findMany({ select: { code: true } })).map((s) => s.code));
   const ids = new Set<string>();
-  return input.map((raw, i) => {
+  const routes = input.map((raw, i) => {
     const parsed = routeSchema.safeParse(raw);
     if (!parsed.success) {
       throw badRequest(`Route ${i + 1}: ${parsed.error.issues.map((x) => `${x.path.join(".") || "route"}: ${x.message}`).join("; ")}`);
@@ -292,6 +328,8 @@ export async function checkRoutes(form: BuiltForm, input: unknown[]): Promise<Ro
     checkEmailFields(form, r.fields, where);
     return r;
   });
+  for (const r of routes) await checkTemplateKeys([r.template], "message", `Route “${r.name}”`);
+  return routes;
 }
 
 export async function saveRouting(form: BuiltForm, routesIn: unknown[], actor: Actor, revision?: number): Promise<RoutingDoc> {
@@ -341,6 +379,8 @@ export interface RouteInput {
   /** People the event names, by field: an address, a user id, or a list of them. */
   people?: Record<string, unknown>;
   submitterId?: string | null;
+  /** The employee whose share link the entry came through. */
+  sharerId?: string | null;
   entryId?: string | null;
 }
 
@@ -406,6 +446,9 @@ export async function planRoutes(form: BuiltForm, routes: Route[], input: RouteI
       } else if (t.kind === "submitter") {
         if (input.submitterId) named.push(input.submitterId);
         else plan.notes.push("Nobody filed it (no signed-in person).");
+      } else if (t.kind === "sharer") {
+        if (input.sharerId) named.push(input.sharerId);
+        else plan.notes.push("It didn't come through anyone's share link.");
       } else if (t.kind === "group" || t.kind === "title") {
         // A team or a position: everyone in it by default; siteOnly keeps it to the event's site.
         const who = t.kind === "group" ? { groups: [t.group] } : { titles: [t.title] };
@@ -486,7 +529,8 @@ export async function routeEvent(
   if (opts.onlyRoute) routes = routes.filter((r) => r.id === opts.onlyRoute);
   const plans = await planRoutes(form, routes, input);
   const reach = plans.reduce((n, p) => n + p.people.length + p.emails.length, 0);
-  const subjectOf = (r: Route | undefined) => (r?.subject ? render(r.subject, form, input, ev.label) : title.slice(0, 200)) || title.slice(0, 200);
+  const titled: RouteInput = { ...input, title };
+  const wordingOf = (r: Route) => routeWording(form, r, titled, ev.label);
   const describe = plans.map((p) => `${p.routeName}: ${[...p.people.map((x) => x.name), ...p.emails].join(", ") || "nobody"}`).join("; ");
 
   if (opts.dryRun) return { event: input.event, routes: plans, told: 0, emailed: 0, reason: reach ? undefined : "No route matches, or the matching routes reach nobody." };
@@ -494,7 +538,8 @@ export async function routeEvent(
   if (opts.preview) {
     let told = 0;
     if (opts.previewUserId && plans.length) {
-      const out = await notify({ to: { users: [opts.previewUserId] }, type: "forms.message", title: `Preview: ${subjectOf(routes.find((r) => r.id === plans[0].routeId))}`, body: input.body ?? null, link, source: `form:${form.slug}`, sourceLabel: form.title, formId: form.id });
+      const first = routes.find((r) => r.id === plans[0].routeId);
+      const out = await notify({ to: { users: [opts.previewUserId] }, type: "forms.message", title: `Preview: ${first ? (await wordingOf(first)).subject : title.slice(0, 200)}`, body: input.body ?? null, link, source: `form:${form.slug}`, sourceLabel: form.title, formId: form.id });
       told = out.sent;
     }
     return { event: input.event, routes: plans, told, emailed: 0, preview: true, reason: `The draft tells only you. Published, “${ev.label}” would go to ${describe || "nobody (no route matches)"}.` };
@@ -514,11 +559,14 @@ export async function routeEvent(
   let told = 0;
   let emailed = 0;
   const failures: string[] = [];
-  const byName = routes.some((r) => r.fields?.includes("_by")) ? await nameOf(input.submitterId) : null;
+  const wordings = new Map<string, Awaited<ReturnType<typeof wordingOf>>>();
+  for (const plan of plans) wordings.set(plan.routeId, await wordingOf(routes.find((r) => r.id === plan.routeId)!));
+  const byName = [...wordings.values()].some((w) => w.fields.includes("_by")) ? await nameOf(input.submitterId) : null;
   for (const plan of plans) {
     const route = routes.find((r) => r.id === plan.routeId)!;
-    const subject = subjectOf(route);
-    const fields = emailValues(form, route.fields, { data: input.data ?? {}, site: input.site, byName }, opts.manifest);
+    const w = wordings.get(plan.routeId)!;
+    const subject = w.subject;
+    const fields = emailValues(form, w.fields, { data: input.data ?? {}, site: input.site, byName }, opts.manifest);
     if (plan.people.length) {
       try {
         const out = await notify({
@@ -531,8 +579,8 @@ export async function routeEvent(
           sourceLabel: form.title,
           formId: form.id,
           forceEmail: route.email !== "prefs",
-          urgent: route.urgent,
-          email: { whatToDo: route.whatToDo ?? null, fields },
+          urgent: w.urgent,
+          email: { whatToDo: w.whatToDo, fields, heading: w.heading, intro: w.template ? w.intro : null, buttonLabel: w.buttonLabel },
         });
         told += out.sent;
         emailed += out.emailed;
@@ -543,11 +591,10 @@ export async function routeEvent(
     if (plan.emails.length) {
       if (!mailConfigured()) plan.notes.push(`Not emailed (${plan.emails.join(", ")}): email isn't set up on this server (MAIL_FROM).`);
       else {
-        const lead = `There's something for you in “${form.title}”${input.site ? ` for ${input.site.name}` : ""}.`;
         for (const to of plan.emails) {
           // One email each, so nobody sees who else is on the list; answers only for a Lantern address.
-          const mail = routeEmail(form, route, { subject, to, intro: lead, url: `${appBaseUrl}${link}`, fields });
-          void sendLogged({ to: [to], subject: route.urgent ? `Urgent: ${subject}` : subject, html: mail.html, kind: "route", formId: form.id, withAnswers: mail.withAnswers }).catch((err) =>
+          const mail = routeEmail(form, { whatToDo: w.whatToDo, urgent: w.urgent, heading: w.heading, buttonLabel: w.buttonLabel }, { subject, to, intro: w.intro, url: `${appBaseUrl}${link}`, fields });
+          void sendLogged({ to: [to], subject: w.urgent ? `Urgent: ${subject}` : subject, html: mail.html, kind: "route", formId: form.id, withAnswers: mail.withAnswers }).catch((err) =>
             audit({ actor: opts.actor, action: "forms.routing_email_failed", summary: `“${form.title}” couldn't email ${to}: ${subject} (${err instanceof Error ? err.message : err})` }).catch(() => undefined)
           );
           emailed++;
@@ -581,7 +628,7 @@ export function outcomeNote(out: RouteOutcome | null): string | null {
 // ── Entries ──────────────────────────────────────────────────────────────
 
 /** The routing input for a saved entry (entry.created), either kind of form. */
-export async function entryInput(form: BuiltForm, entry: { id: string; data: string; siteId: string | null; createdById: string | null }): Promise<RouteInput> {
+export async function entryInput(form: BuiltForm, entry: { id: string; data: string; siteId: string | null; createdById: string | null; sharedById?: string | null }): Promise<RouteInput> {
   const site = entry.siteId ? await prisma.site.findUnique({ where: { id: entry.siteId }, select: { id: true, code: true, name: true } }) : null;
   const data = JSON.parse(entry.data) as Values;
   return {
@@ -592,6 +639,7 @@ export async function entryInput(form: BuiltForm, entry: { id: string; data: str
     data,
     people: data,
     submitterId: entry.createdById,
+    sharerId: entry.sharedById ?? null,
     entryId: entry.id,
   };
 }

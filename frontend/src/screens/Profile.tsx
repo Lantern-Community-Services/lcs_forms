@@ -125,7 +125,7 @@ export function ProfilePage() {
           back; the desktop sidebar is always on screen and needs none. */}
       <div className="page-list-item-enter">
         <MobileBackLink to="/home" label="Home" />
-        <PageHeader title="Profile &amp; settings" />
+        <PageHeader title="Profile &amp; settings" help={{ article: "your-notifications", text: "Your details, how the site looks, what you're told and how, and the tour." }} />
       </div>
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "35ms" }}>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
-import { Bell, CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler } from "lucide-react";
+import { Bell, CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler, QrCode } from "lucide-react";
 import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { useAuth } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
@@ -14,8 +15,8 @@ import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { useToast } from "@/components/ui/toast";
 import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit/FormRenderer";
-import { fillApi, submitErrors, useFillForm } from "@/lib/builder";
-import { ApiError } from "@/lib/api";
+import { FillShareContext, fillApi, submitErrors, useFillForm } from "@/lib/builder";
+import { ApiError, api } from "@/lib/api";
 import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
 import { entryDeviceKind, useDeviceKind } from "@/lib/device";
 import { errorMessage } from "@/lib/utils";
@@ -24,12 +25,14 @@ const newClientId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now
 
 /**
  * Filling in a built form: /f/<slug> inside the app, /p/<slug> for public
- * forms (no sign-in, no app chrome).
+ * forms (no sign-in, no app chrome), and /s/<token> for a form shared by
+ * link (SharedFormPage gives the slug and the link's token).
  */
-export function FillPage({ publicView = false }: { publicView?: boolean }) {
-  const { slug = "" } = useParams();
+export function FillPage({ publicView = false, slug: slugProp, shareToken }: { publicView?: boolean; slug?: string; shareToken?: string }) {
+  const params = useParams();
+  const slug = slugProp ?? params.slug ?? "";
   const location = useLocation();
-  const { data, isLoading, error } = useFillForm(slug);
+  const { data, isLoading, error } = useFillForm(slug, shareToken);
   // The builder is desktop only, so no way into it elsewhere.
   const canOpenBuilder = useDeviceKind() === "desktop";
   const toast = useToast();
@@ -92,7 +95,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
   /** No connection: keep it on the device; lib/fillQueue.ts uploads it later. */
   async function saveOnDevice(values: Values, extra: SubmitExtra) {
     try {
-      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds });
+      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, shareToken: shareToken ?? null });
     } catch {
       toast("No connection, and this device couldn't keep the entry. Try again once the internet is back.", "error");
       return;
@@ -110,7 +113,7 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
     try {
       // A file attached offline is only on the device, so the queue (which uploads it first) has to send this.
       if (canQueue && (!isOnline() || hasLocalFiles(values))) return await saveOnDevice(values, extra);
-      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, website_hp: extra.honeypot || undefined });
+      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, website_hp: extra.honeypot || undefined, ...(shareToken ? { shareToken } : {}) });
       clearDraft();
       const conf = doc.settings.confirmation;
       if (conf?.type === "redirect" && conf.url) {
@@ -156,6 +159,9 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
               <CircleHelp className="h-3.5 w-3.5" /> Show me how
             </button>
           )}
+          {doc.settings.access?.mode === "link" && data.user && !publicView && !locked && (
+            <Link to={`/f/${slug}/share`} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent dark:text-white"><QrCode className="h-3.5 w-3.5" /> Share it: my link and QR code</Link>
+          )}
           {data.canReadEntries && !publicView && !locked && (
             <Link to={`/f/${slug}/entries`} data-tour="form-entries" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> {data.entriesReach === "all" ? "Entries" : "Your entries"}</Link>
           )}
@@ -173,17 +179,20 @@ export function FillPage({ publicView = false }: { publicView?: boolean }) {
           ) : data.closed ? (
             <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-[14px] text-ink">{data.closed}</div>
           ) : (
-            <FormRenderer
-              key={round}
-              doc={doc}
-              slug={slug}
-              user={data.user}
-              draftKey={draftKey}
-              onSubmit={submit}
-              submitting={submitting}
-              serverErrors={serverErrors}
-              onValuesChange={(v) => (values.current = v)}
-            />
+            <FillShareContext.Provider value={shareToken ?? null}>
+              {data.share && <p className="mb-4 text-[12.5px] text-muted">Shared with you by {data.share.sharedBy} at Lantern Community Services.</p>}
+              <FormRenderer
+                key={round}
+                doc={doc}
+                slug={slug}
+                user={data.user}
+                draftKey={draftKey}
+                onSubmit={submit}
+                submitting={submitting}
+                serverErrors={serverErrors}
+                onValuesChange={(v) => (values.current = v)}
+              />
+            </FillShareContext.Provider>
           )}
         </div>
       </Card>
@@ -244,4 +253,31 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+/**
+ * /s/<token>: a form shared by an employee's own link. Finds the form the link
+ * opens, then shows it like a public form, with the link going along with the
+ * entry. A link that's turned off or past its date says so, and nothing else.
+ */
+export function SharedFormPage() {
+  const { token = "" } = useParams();
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["share-link", token],
+    queryFn: () => api.get<{ slug: string; title: string; sharedBy: string; expiresAt: string | null }>(`/f/share/${encodeURIComponent(token)}`),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  if (isLoading) return <PublicShell><LoadingState /></PublicShell>;
+  if (error || !data) {
+    return (
+      <PublicShell>
+        <Card className="p-8 text-center">
+          <Lock className="mx-auto h-8 w-8 text-muted" />
+          <p className="mt-3 font-heading text-[17px] font-extrabold text-ink">{errorMessage(error, "This link doesn't work any more.")}</p>
+        </Card>
+      </PublicShell>
+    );
+  }
+  return <FillPage publicView slug={data.slug} shareToken={token} />;
 }

@@ -47,6 +47,8 @@ export const SCOPE_GRANTS: Partial<Record<ApiScope, Grant>> = {
   "settings:manage": { all: ["settings.manage"], pinned: [] },
   "entries:manage": { all: ["entries.view", "entries.void", "forms.manage"], pinned: ["entries.view", "entries.void", "forms.manage"] },
   "devlog:read": { all: ["devlog.view"], pinned: [] },
+  // Admins read and preview; only a Super Admin's key has email.templates to change them.
+  "email:manage": { all: ["forms.manage", "email.templates"], pinned: [] },
 };
 
 export function isDelegatedScope(scope: ApiScope): boolean {

@@ -28,6 +28,7 @@ import { EventEditor, type EditorTarget } from "./EventEditor";
 import { CategoriesDialog } from "./CategoriesDialog";
 import { OutlookDialog } from "./OutlookDialog";
 import { useTour } from "@/lib/tour/TourProvider";
+import { PageHelp } from "@/components/PageHelp";
 
 const HIDDEN_KEY = "ln.calendar.hidden";
 /** The filter's stand-in for "no category". */
@@ -292,7 +293,9 @@ export function CalendarPage() {
       {phone ? (
         <div data-tour="calendar-header" className="flex-none border-b border-hairline bg-sidebar px-4 pb-2.5 pt-safe-top">
           <div className="flex items-center gap-2">
-            <h1 className="flex-1 text-[23px] font-heading font-extrabold text-ink">Calendar</h1>
+            <h1 className="text-[23px] font-heading font-extrabold text-ink">Calendar</h1>
+            <PageHelp article="calendar">Events for every site and for yours. Admins, and anyone they let edit the calendar, add them.</PageHelp>
+            <span className="flex-1" />
             {isFetching && <Spinner className="h-4 w-4" />}
             {outlookButton}
             <Button variant="secondary" size="sm" onClick={() => go({ date: today })} className="h-9">Today</Button>
@@ -316,6 +319,7 @@ export function CalendarPage() {
         <div data-tour="calendar-header" className="flex-none border-b border-hairline px-4 pb-3 pt-safe-top md:px-7 md:pt-6">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-[24px] font-heading font-extrabold text-ink">Calendar</h1>
+            <PageHelp article="calendar">Events for every site and for yours. Admins, and anyone they let edit the calendar, add them.</PageHelp>
             <div className="flex items-center gap-1">
               <Button variant="secondary" size="sm" onClick={() => go({ date: today })} title={device === "desktop" ? "Today (T)" : undefined}>Today</Button>
               {arrows}

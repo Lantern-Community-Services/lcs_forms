@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Settings, Home, Contact, CalendarDays, Bell, ExternalLink, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Search,
+  Settings, Home, Contact, CalendarDays, Bell, CircleHelp, ExternalLink, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, isSiteSettingsOnly, useAuth } from "@/lib/auth";
@@ -403,13 +403,18 @@ export function Sidebar() {
         )}
       </nav>
 
+      {/* Help: a guide for your role and each feature (screens/Help.tsx). */}
+      <div className="mt-2 shrink-0">
+        <NavItem to="/help" label="Help" Icon={CircleHelp} collapsed={collapsed} tour="nav-help" />
+      </div>
+
       {/* Notifications, just above you: the bell carries the unread bubble open or collapsed. */}
       <NavLink
         to="/notifications"
         data-tour="nav-notifications"
         title={collapsed ? (unread ? `Notifications (${unread} unread${urgent ? `, ${urgent} urgent` : ""})` : "Notifications") : undefined}
         aria-label={unread ? `Notifications, ${unread} unread${urgent ? `, ${urgent} urgent` : ""}` : "Notifications"}
-        className={({ isActive }) => cn(itemClass(isActive, collapsed), "mt-2")}
+        className={({ isActive }) => cn(itemClass(isActive, collapsed))}
       >
         {({ isActive }) => (
           <>

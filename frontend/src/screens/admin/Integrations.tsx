@@ -65,6 +65,7 @@ export const API_SCOPE_OPTIONS = [
   { scope: "calendar:write", label: "Add, change and remove calendar events", delegated: true },
   { scope: "settings:manage", label: "Change org settings", delegated: true },
   { scope: "entries:manage", label: "Void, restore, edit and delete form entries", delegated: true },
+  { scope: "email:manage", label: "Email templates and every email sent (Super Admins also make and change templates)", delegated: true },
   { scope: "devlog:read", label: "Read the dev log", delegated: true },
 ];
 
@@ -101,6 +102,7 @@ export function AdminApiKeys() {
     <Page className="max-w-[900px]">
       <PageHeader
         title="API keys"
+        help={{ article: "admin-integrations", text: "Keys for other systems and the AI assistant. A key does only what its scopes allow, and never more than the person who made it." }}
         subtitle="For WordPress, Power Automate and anything else that reads rosters or reports form activity."
         actions={<Button onClick={() => setCreating({ name: "", scopes: ["roster:read", "activity:write"], siteId: "" })}><Plus className="h-4 w-4" /> New key</Button>}
       />
@@ -195,6 +197,7 @@ export function AdminWebhooks() {
     <Page className="max-w-[900px]">
       <PageHeader
         title="Webhooks"
+        help={{ article: "admin-integrations", text: "Other systems told about roster changes as they happen." }}
         subtitle="Roster changes are POSTed here, signed with HMAC-SHA256 (X-Lantern-Signature). WordPress uses this to refresh form dropdowns instantly."
         actions={<Button onClick={() => setCreating({ name: "", url: "", events: ["*"] })}><Plus className="h-4 w-4" /> Add webhook</Button>}
       />

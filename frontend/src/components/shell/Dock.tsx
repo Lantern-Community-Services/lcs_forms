@@ -232,6 +232,10 @@ function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }
           {unread > 0 && <CountBadge count={unread} max={99} label={`${unread} unread`} />}
           <ChevronRight className="h-4 w-4 text-muted" />
         </NavLink>
+        <NavLink to="/help" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+          <span className="flex-1">Help</span>
+          <ChevronRight className="h-4 w-4 text-muted" />
+        </NavLink>
         {people && (
           <NavLink to="/admin/people" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
             <span className="flex-1">{isSiteSettingsOnly(can) ? "Site settings" : "People & roles"}</span>
