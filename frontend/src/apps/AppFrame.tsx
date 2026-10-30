@@ -5,7 +5,7 @@ import { isOnline, onConnectivityChange, storeAnswer, storedAnswer } from "@/lib
 import { loadTenants } from "@/lib/rosterStore";
 import { useToast } from "@/components/ui/toast";
 import type { Site, Tenant } from "@/lib/types";
-import { runtimeApi, submitAppEntry, type AppRuntime } from "./api";
+import { runtimeApi, shareApi, submitAppEntry, type AppRuntime } from "./api";
 import { entryDeviceKind, forcedDevice } from "@/lib/device";
 import { mobileBrowser, printPdf } from "@/lib/exportPipeline";
 import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
@@ -20,7 +20,18 @@ import { attachFrame, frameLoaded, fromFrame, startTutorialFromFrame, tourActive
  * network requests. The page reaches data only by asking this component
  * (postMessage), which makes each request itself — as the signed-in person,
  * through the same API and permission checks as the rest of the app.
+ *
+ * With `shareToken` (a form opened through someone's share link, signed out)
+ * only GUEST_CALLS answer, through the share link's own API (shareApi): the
+ * page can file its entry, upload photos and call the actions form.json
+ * allows, and nothing else of the app.
  */
+
+/** What a page opened through a share link may ask for. Everything else is refused. */
+const GUEST_CALLS = new Set([
+  "app.navigate", "app.setParams", "app.toast", "roster.sites", "entries.create", "files.upload", "files.read", "device.takePhoto", "device.location",
+  "local.get", "local.set", "local.remove", "actions.call", "queue.status", "tutorial.active",
+]);
 
 export interface ConsoleLine {
   level: "log" | "info" | "warn" | "error";
@@ -126,6 +137,7 @@ export function AppFrame({
   onSetParams,
   onConsole,
   className,
+  shareToken,
 }: {
   runtime: AppRuntime;
   slug: string;
@@ -136,6 +148,8 @@ export function AppFrame({
   onSetParams: (params: Record<string, string>) => void;
   onConsole?: (line: ConsoleLine) => void;
   className?: string;
+  /** Opened through this share link, not signed in: see GUEST_CALLS. */
+  shareToken?: string;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const toast = useToast();
@@ -216,11 +230,19 @@ export function AppFrame({
      * connection it's kept on the device under a "local:" id, and the queue
      * uploads it ahead of the entry that refers to it.
      */
+    // A guest's own uploads, kept here so the page can show them again: they can't read files back from the server.
+    const guestFiles = new Map<string, Blob>();
     const storeFile = async (file: Blob, name: string, label?: string, shrink = true) => {
       const blob = shrink && file.type.startsWith("image/") ? await shrinkImage(file) : file;
       if (blob.size > 10 * 1024 * 1024) throw new Error("That file is over 10 MB.");
       const mime = blob.type || file.type || "application/octet-stream";
       const fileName = blob !== file && blob.type === "image/jpeg" ? `${name.replace(/\.[^.]+$/, "") || "photo"}.jpg` : name;
+      if (shareToken) {
+        if (!isOnline()) throw new Error("You're offline. Photos need a connection on a shared link.");
+        const ref = await shareApi.upload(shareToken, { name: fileName, mime, label, data: blob });
+        guestFiles.set(ref.fileId, blob);
+        return ref;
+      }
       const keep = () => saveLocalFile({ slug, draft, userId: latest.current.runtime.user.id, name: fileName, mime, label, data: blob });
       if (!isOnline()) return keep();
       try {
@@ -231,6 +253,11 @@ export function AppFrame({
       }
     };
     const fileBlob = async (fileId: string) => {
+      if (shareToken) {
+        const own = guestFiles.get(fileId);
+        if (!own) throw new Error("That file isn't available on a shared link.");
+        return { blob: own, name: "" };
+      }
       if (fileId.startsWith("local:")) {
         const f = await localFile(fileId);
         if (!f) throw new Error("That photo is no longer on this device.");
@@ -445,6 +472,21 @@ export function AppFrame({
       "queue.discard": async (clientId: string) => discard(clientId),
     };
 
+    // Through a share link: the same page, answered by the link's own API.
+    const guest: Record<string, (...args: any[]) => Promise<unknown>> = shareToken
+      ? {
+          "roster.sites": async () => latest.current.runtime.share?.sites ?? [],
+          "entries.create": async (entry: Record<string, unknown>) => {
+            if (!isOnline()) throw new Error("You're offline. Filing through a shared link needs a connection; your answers stay on this device until you're back.");
+            const clientId = (entry.clientId as string) || crypto.randomUUID();
+            return shareApi.submit(shareToken, { ...entry, tenantId: undefined, clientId, deviceKind: entryDeviceKind() });
+          },
+          "actions.call": async (name: string, args: unknown) => (await shareApi.action(shareToken, name, args)).value,
+          "queue.status": async () => ({ pending: 0, failed: [], online: isOnline(), syncing: false }),
+          "tutorial.active": async () => false,
+        }
+      : {};
+
     const onMessage = async (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow || !e.data || e.data.__lcsApp !== 1) return;
       const d = e.data as { t: string; id?: number; method?: string; args?: unknown[]; level?: ConsoleLine["level"]; message?: string; stack?: string };
@@ -457,9 +499,9 @@ export function AppFrame({
       if (d.t === "console") return log(d.level ?? "log", (d.args as string[] | undefined)?.join(" ") ?? "");
       if (d.t === "crash") return log("error", `${d.message}${d.stack ? `\n${d.stack}` : ""}`);
       if (d.t !== "call" || !d.method) return;
-      const fn = methods[d.method];
+      const fn = shareToken ? (GUEST_CALLS.has(d.method) ? guest[d.method] ?? methods[d.method] : undefined) : methods[d.method];
       try {
-        if (!fn) throw new Error(`Unknown SDK call ${d.method}.`);
+        if (!fn) throw new Error(shareToken && methods[d.method] ? `${d.method} isn't available on a shared link.` : `Unknown SDK call ${d.method}.`);
         const value = await fn(...(Array.isArray(d.args) ? d.args : []));
         send({ t: "result", id: d.id, ok: true, value: value === undefined ? null : JSON.parse(JSON.stringify(value)) });
       } catch (err) {
@@ -470,7 +512,7 @@ export function AppFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [slug, draft, toast, navigate]);
+  }, [slug, draft, toast, navigate, shareToken]);
 
   if (baseError) return <p className="p-6 text-[13px] text-status-redText">Couldn't load the code-form runtime. Check your connection and reload.</p>;
   if (!base) return null;

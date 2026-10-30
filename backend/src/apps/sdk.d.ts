@@ -29,6 +29,14 @@ declare module "@lcs/sdk" {
     permissions: string[];
     /** Null = every site (admins); otherwise the site ids they're assigned. */
     siteIds: string[] | null;
+    /**
+     * Filling the form in through someone's share link, not signed in (form.json "shareLink"):
+     * id and email are "", name is "Guest", roleKey "guest", and siteIds are the sites of whoever
+     * shared the link. Only the shareLink page opens; entries can't be read back.
+     */
+    guest?: boolean;
+    /** With guest: whose link it is. */
+    sharedBy?: { id: string; name: string };
   }
 
   export interface AppContext {
@@ -631,6 +639,15 @@ declare module "@lcs/server" {
     roleKey: string;
     permissions: string[];
     siteIds: string[] | null;
+    /**
+     * Someone filling the form in through a share link, not signed in (form.json "shareLink"):
+     * id and email are "", name "Guest", roleKey "guest", no permissions, and siteIds are the sites
+     * of whoever shared the link. Only the actions in shareLink.actions, beforeCreate and
+     * afterCreate run for them. Never hand them entries or residents.
+     */
+    guest?: boolean;
+    /** With guest: whose share link it came through. */
+    sharedBy?: { id: string; name: string };
   }
 
   export interface ServerSite { id: string; code: string; name: string; siteType: string }

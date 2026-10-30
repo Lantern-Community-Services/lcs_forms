@@ -40,8 +40,12 @@ export interface AppRuntime {
   code: Record<string, string>;
   css: string;
   hash: string;
-  user: { id: string; name: string; email: string; roleKey: string; roleName: string; permissions: string[]; siteIds: string[] | null };
+  user: { id: string; name: string; email: string; roleKey: string; roleName: string; permissions: string[]; siteIds: string[] | null; guest?: boolean; sharedBy?: { id: string; name: string } };
   canEdit: boolean;
+  /** form.json "shareLink": employees can share it by link (/f/<slug>/share), filled in without signing in. */
+  shareable?: boolean;
+  /** Opened through a share link, not signed in (shareApi): whose link, and the sites it covers. */
+  share?: { sharedBy: string; expiresAt: string | null; sites: { id: string; code: string; name: string; siteType: string; latitude: number | null; longitude: number | null; geofenceMeters: number | null }[] };
   /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */
   offlineActions?: string[];
   /** form.json "tutorial": the guided tutorial, all of it (lib/tour/formTours.ts picks this person's steps). */
@@ -125,6 +129,52 @@ export async function submitAppEntry(slug: string, draft: boolean, entry: Record
   if (res.status === 201 || res.status === 409 || (res.status === 422 && body.status === "invalid")) return body as CreateOutcome;
   throw new ApiError(res.status, body?.error ?? res.statusText, body?.details, body?.requestId);
 }
+
+/**
+ * A code form opened through an employee's share link (/s/<token>), not signed in: the backend's
+ * routes/appShare.ts. Only its one page, a new entry, its photos and the actions form.json allows.
+ */
+export const shareApi = {
+  runtime: (token: string) => api.get<AppRuntime>(`/s/${encodeURIComponent(token)}/runtime`),
+  submit: async (token: string, entry: Record<string, unknown>): Promise<CreateOutcome> => {
+    const res = await fetch(`${API_BASE}/s/${encodeURIComponent(token)}/entries`, {
+      method: "POST",
+      credentials: "omit",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 201 || res.status === 409 || (res.status === 422 && body.status === "invalid")) return body as CreateOutcome;
+    throw new ApiError(res.status, body?.error ?? res.statusText, body?.details, body?.requestId);
+  },
+  upload: async (token: string, file: { name: string; mime: string; label?: string; data: Blob }) => {
+    const res = await fetch(`${API_BASE}/s/${encodeURIComponent(token)}/files`, {
+      method: "POST",
+      credentials: "omit",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Type": encodeURIComponent(file.mime),
+        "X-File-Label": encodeURIComponent(file.label ?? ""),
+      },
+      body: file.data,
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, out?.error ?? res.statusText, out?.details, out?.requestId);
+    return out as { fileId: string; name: string; mime: string; size: number };
+  },
+  action: async (token: string, name: string, args: unknown) => {
+    const res = await fetch(`${API_BASE}/s/${encodeURIComponent(token)}/actions/${encodeURIComponent(name)}`, {
+      method: "POST",
+      credentials: "omit",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ args }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, body?.error ?? res.statusText);
+    return body as { value: unknown };
+  },
+};
 
 export const runtimeApi = {
   entries: (slug: string, draft: boolean, query: Record<string, unknown>) => {

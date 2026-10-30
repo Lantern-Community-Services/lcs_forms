@@ -6,6 +6,7 @@ import { HttpError, badRequest, forbidden } from "../http.js";
 import { appBaseUrl } from "../env.js";
 import { currentUserById, type CurrentUser } from "../auth/middleware.js";
 import { fillBlocker, liveDoc } from "../forms/entries.js";
+import { access, loadLiveApp, type LoadedApp } from "../apps/runtime.js";
 import { audit, type Actor } from "./audit.js";
 
 /**
@@ -22,6 +23,10 @@ import { audit, type Actor } from "./audit.js";
  * The form itself has no open address: signed out, it opens only through a
  * live link. Its sharing settings (FormRecord "sharing"/"settings") are
  * Admins': on or off, the default length and the longest.
+ *
+ * A code form is shared by link when its form.json has "shareLink": then the
+ * link opens only that one page, as a guest (apps/runtime.ts guestFor) with
+ * the sites of whoever shared it, who can file one entry and read nothing back.
  */
 
 const COLLECTION = "sharing";
@@ -62,14 +67,35 @@ export async function saveSharing(form: BuiltForm, input: unknown, actor: Actor)
   return s;
 }
 
-const isLinkForm = (form: BuiltForm) => {
-  const doc = liveDoc(form);
-  return Boolean(doc && doc.settings.access?.mode === "link");
-};
+/** A code form's published version, or null when it has none (or it doesn't build). */
+const liveCode = (form: BuiltForm): Promise<LoadedApp | null> => (form.kind === "code" && form.liveSchema ? loadLiveApp(form.id).catch(() => null) : Promise.resolve(null));
+
+/** Whether a form's form.json (code) or settings (basic) share it by link, in a saved version: live or draft. */
+export function sharedByLinkIn(form: BuiltForm, schema: string | null): boolean {
+  if (!schema) return false;
+  try {
+    if (form.kind === "code") {
+      const files = (JSON.parse(schema) as { files?: Record<string, string> }).files;
+      return Boolean(JSON.parse(files?.["form.json"] ?? "{}")?.shareLink);
+    }
+    return (JSON.parse(schema) as { settings?: { access?: { mode?: string } } }).settings?.access?.mode === "link";
+  } catch {
+    return false;
+  }
+}
 
 /** Whether this person may have a link for this form: it's shared by link, sharing is on, and they can open it. */
 export async function canShare(form: BuiltForm, user: CurrentUser | null | undefined): Promise<{ ok: true; settings: SharingSettings } | { ok: false; why: string }> {
   if (!user) return { ok: false, why: "Sign in to share this form." };
+  if (form.kind === "code") {
+    const app = await liveCode(form);
+    if (!app || form.status === "draft" || form.status === "archived") return { ok: false, why: "This form isn't published yet." };
+    if (!app.manifest.shareLink) return { ok: false, why: "This form can't be filled in through a link." };
+    const settings = await loadSharing(form.id);
+    if (!settings.enabled) return { ok: false, why: "Sharing this form by link is turned off." };
+    if (!access(app, user).canOpen) return { ok: false, why: "This form is only open to some people. Ask an administrator if you need it." };
+    return { ok: true, settings };
+  }
   const doc = liveDoc(form);
   if (!doc) return { ok: false, why: "This form isn't published yet." };
   if (doc.settings.access?.mode !== "link") return { ok: false, why: "This form isn't set to be shared by link. An Admin turns that on under Settings → Who can fill it in." };
@@ -165,6 +191,10 @@ const GONE = "This link doesn't work any more. Ask the person who shared it with
 export interface ShareContext {
   link: FormShareLink;
   form: BuiltForm;
+  /** Whose link it is, as they are now. */
+  owner: CurrentUser;
+  /** A code form's published version (null for a basic form). */
+  app: LoadedApp | null;
 }
 
 /**
@@ -177,11 +207,17 @@ export async function resolveShare(token: string | null | undefined): Promise<Sh
   const link = await prisma.formShareLink.findUnique({ where: { token } });
   if (!link || !live(link)) throw new HttpError(410, GONE);
   const form = await prisma.builtForm.findUnique({ where: { id: link.formId } });
-  if (!form || form.kind !== "basic" || !isLinkForm(form) || form.status === "archived" || form.status === "draft") throw new HttpError(410, GONE);
+  if (!form || form.status === "archived" || form.status === "draft" || !sharedByLinkIn(form, form.liveSchema)) throw new HttpError(410, GONE);
   if (!(await loadSharing(form.id)).enabled) throw new HttpError(410, GONE);
   const owner = await currentUserById(link.userId);
-  if (!owner || fillBlocker(form, liveDoc(form)!, owner)) throw new HttpError(410, GONE);
-  return { link, form };
+  if (!owner) throw new HttpError(410, GONE);
+  if (form.kind === "code") {
+    const app = await liveCode(form);
+    if (!app?.manifest.shareLink || !access(app, owner).canOpen) throw new HttpError(410, GONE);
+    return { link, form, owner, app };
+  }
+  if (fillBlocker(form, liveDoc(form)!, owner)) throw new HttpError(410, GONE);
+  return { link, form, owner, app: null };
 }
 
 /** Count an entry against the link it came through. */

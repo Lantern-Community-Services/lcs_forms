@@ -93,8 +93,52 @@ export async function loadLiveApp(slugOrId: string): Promise<LoadedApp> {
 
 // ── Access ───────────────────────────────────────────────────────────────
 
+/**
+ * Someone filling a code form in through an employee's share link
+ * (services/shareLinks.ts), not signed in. They stand in for nobody: no id, no
+ * email, no permissions, and the sites of whoever shared the link, so the
+ * form's server code and the site checks below treat them as narrowly as that
+ * employee at most. access() gives them the form.json "shareLink" page, one
+ * new entry and its photos — never anything to read back.
+ */
+export function guestFor(owner: CurrentUser): CurrentUser {
+  return {
+    userId: "",
+    name: "Guest",
+    email: "",
+    roleKey: "guest",
+    roleName: "Guest",
+    permissions: [],
+    siteIds: owner.siteIds,
+    groupIds: [],
+    title: null,
+    guest: true,
+    sharedBy: { id: owner.userId, name: owner.name },
+  };
+}
+
+/** A guest never reads entries, history or collections, and never changes an entry. */
+function noGuests(user: CurrentUser) {
+  if (user.guest) throw forbidden("Sign in to see this.");
+}
+
 export function access(app: LoadedApp, user: CurrentUser) {
   const m = app.manifest;
+  if (user.guest) {
+    const page = m.shareLink ? m.pages.find((p) => p.id === m.shareLink!.page) : undefined;
+    const live = !app.draft && app.form.status !== "archived" && app.form.status !== "draft";
+    return {
+      canOpen: Boolean(page) && live,
+      pages: page ? [page] : [],
+      readAll: false,
+      create: Boolean(page) && live && app.form.status !== "closed",
+      voidAny: false,
+      undoMinutes: 0,
+      editAny: false,
+      editOwnMinutes: 0,
+      collection: (_name: string, _mode: "read" | "write") => false,
+    };
+  }
   const dev = isDeveloper(user);
   const role = user.roleKey;
   const e = m.entries ?? {};
@@ -260,6 +304,7 @@ export interface ClientEntryQuery {
 
 /** Entries as a page sees them: limited by role (everyone's, or only mine) and by the person's sites. */
 export async function listEntries(app: LoadedApp, user: CurrentUser, q: ClientEntryQuery) {
+  noGuests(user);
   const a = requireOpen(app, user);
   if (!a.readAll && !q.mine) throw forbidden("You can only see your own entries on this form (pass mine: true).");
   const and: Prisma.FormEntryWhereInput[] = [{ formId: app.form.id }];
@@ -288,6 +333,7 @@ export async function listEntries(app: LoadedApp, user: CurrentUser, q: ClientEn
 }
 
 export async function getEntry(app: LoadedApp, user: CurrentUser, id: string) {
+  noGuests(user);
   const a = requireOpen(app, user);
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
   if (!e) throw notFound("No such entry.");
@@ -310,6 +356,13 @@ export interface NewEntryInput {
   userAgent?: string | null;
 }
 
+/** The share link a guest's entry came through (services/shareLinks.ts): recorded on the entry, as a built form's are. */
+export interface ShareVia {
+  linkId: string;
+  userId: string;
+  userName: string;
+}
+
 const siteAllowed = (user: CurrentUser | null, siteId: string, machineSiteId?: string | null) =>
   user ? user.siteIds === null || user.siteIds.includes(siteId) : !machineSiteId || machineSiteId === siteId;
 
@@ -322,7 +375,10 @@ export type CreateOutcome =
  * Save an entry, after the form's own server rules (beforeCreate) have their say.
  * `user` null = an API key / the MCP server.
  */
-export async function createEntry(app: LoadedApp, user: CurrentUser | null, input: NewEntryInput, opts: { actorName?: string; machineSiteId?: string | null; source?: string; viaForm?: boolean } = {}): Promise<CreateOutcome> {
+export async function createEntry(app: LoadedApp, user: CurrentUser | null, input: NewEntryInput, opts: { actorName?: string; machineSiteId?: string | null; source?: string; viaForm?: boolean; share?: ShareVia } = {}): Promise<CreateOutcome> {
+  // A guest only through the link they came by, and never about a resident they picked (they can't see the roster).
+  if (user?.guest && (!opts.share || opts.viaForm)) throw forbidden("Sign in to fill in this form.");
+  if (user?.guest && input.tenantId) throw badRequest("Someone using a shared link can't pick a resident from the roster.");
   // viaForm: made by another form's server code that this form accepts (apps/jobs.ts) — the person needn't
   // be able to open this form, but its rules and their sites still apply.
   if (user && !opts.viaForm) {
@@ -331,7 +387,8 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
   }
   if (input.clientId) {
     const dup = await prisma.formEntry.findFirst({ where: { formId: app.form.id, clientId: input.clientId } });
-    if (dup) return { status: "saved", entry: entryOut(dup, await siteMap()), logs: [] };
+    // A guest sending the same entry twice is told it's in, not shown it.
+    if (dup) return { status: "saved", entry: user?.guest ? guestReceipt(dup) : entryOut(dup, await siteMap()), logs: [] };
   }
   if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) throw badRequest("data must be an object.");
   const dataJson = JSON.stringify(input.data);
@@ -396,17 +453,18 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
         source: app.draft ? "preview" : opts.source ?? "app",
         clientId: input.clientId ?? crypto.randomUUID(),
         overrideReason: input.override?.trim().slice(0, 500) || null,
-        createdById: user?.userId ?? null,
-        createdByName: user?.name ?? opts.actorName ?? "System",
+        createdById: user?.guest ? null : user?.userId ?? null,
+        createdByName: user?.guest && opts.share ? `Shared link (${opts.share.userName})`.slice(0, 255) : user?.name ?? opts.actorName ?? "System",
         ip: input.ip?.slice(0, 64) ?? null,
         userAgent: input.userAgent?.slice(0, 300) ?? null,
         ...fillMeta(input),
+        ...(opts.share ? { shareLinkId: opts.share.linkId, sharedById: opts.share.userId, sharedByName: opts.share.userName.slice(0, 255) } : {}),
       },
     });
   } catch (e) {
     // The same upload sent twice at once: both passed the check above, and the database let one in.
     const dup = input.clientId && isDuplicateClientId(e) ? await prisma.formEntry.findFirst({ where: { formId: app.form.id, clientId: input.clientId } }) : null;
-    if (dup) return { status: "saved", entry: entryOut(dup, await siteMap()), logs };
+    if (dup) return { status: "saved", entry: user?.guest ? guestReceipt(dup) : entryOut(dup, await siteMap()), logs };
     throw e;
   }
   await attachFiles(entry.id, attach);
@@ -422,11 +480,17 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
     });
   }
   // The form's "entry.created" routes (Admin → Notification routing). The draft routes nothing on its own.
-  if (!app.draft) void entryInput(app.form, entry).then((i) => routeQuietly(app.form, i, { id: user?.userId ?? null, name: entry.createdByName }, app.manifest));
-  return { status: "saved", entry: out, logs };
+  if (!app.draft) void entryInput(app.form, entry).then((i) => routeQuietly(app.form, i, { id: user?.guest ? null : user?.userId ?? null, name: entry.createdByName }, app.manifest));
+  return { status: "saved", entry: user?.guest ? guestReceipt(entry) : out, logs };
+}
+
+/** All a guest gets back for their entry: that it's in, and when. Nothing they wrote, nothing the server added. */
+function guestReceipt(e: FormEntry) {
+  return { id: "", data: {}, createdAt: e.createdAt.toISOString(), status: e.status } as unknown as ReturnType<typeof entryOut>;
 }
 
 export async function voidEntry(app: LoadedApp, user: CurrentUser, id: string, reason: string) {
+  noGuests(user);
   const a = requireOpen(app, user);
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
   if (!e) throw notFound("No such entry.");
@@ -439,6 +503,7 @@ export async function voidEntry(app: LoadedApp, user: CurrentUser, id: string, r
 }
 
 export async function restoreEntry(app: LoadedApp, user: CurrentUser, id: string) {
+  noGuests(user);
   const a = requireOpen(app, user);
   if (!a.voidAny || !a.readAll) throw forbidden("You can't restore entries.");
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
@@ -479,6 +544,7 @@ export type UpdateOutcome =
  * (if any) can refuse or rewrite; every change is kept in the entry's history.
  */
 export async function updateEntry(app: LoadedApp, user: CurrentUser, id: string, input: { data: unknown; reason?: string | null }): Promise<UpdateOutcome> {
+  noGuests(user);
   const a = requireOpen(app, user);
   const e = await prisma.formEntry.findFirst({ where: { id, formId: app.form.id } });
   if (!e) throw notFound("No such entry.");
@@ -514,6 +580,7 @@ export async function updateEntry(app: LoadedApp, user: CurrentUser, id: string,
 
 /** What happened to an entry after it was made: edits (with what changed), voids, restores. */
 export async function entryHistory(app: LoadedApp, user: CurrentUser, id: string) {
+  noGuests(user);
   await getEntry(app, user, id);
   const notes = await prisma.formEntryNote.findMany({ where: { entryId: id, kind: "history" }, orderBy: { createdAt: "asc" } });
   return notes.map((n) => ({ at: n.createdAt.toISOString(), byName: n.authorName, ...(JSON.parse(n.body) as HistoryBody) }));
@@ -770,6 +837,15 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
   return out.slice(0, Math.min(500, Math.max(1, Number(q.limit) || 200)));
 }
 
+/**
+ * What a guest's server code may not do (ctx.user.guest): it may still look things up (beforeCreate's
+ * duplicate check, who'll be told) and tell people, but never hands out residents or acts as a person.
+ */
+const GUEST_BLOCKED = new Set([
+  "roster.resident", "roster.residents", "roster.logActivity", "calendar.create", "calendar.form.create", "calendar.form.update",
+  "calendar.form.remove", "calendar.form.setPending", "entries.update", "entries.create", "jobs.retry", "collections.put", "collections.remove",
+]);
+
 /** Answers the server code's ctx.* calls, on behalf of `user` (null = an API key / MCP). */
 function hostFor(app: LoadedApp, user: CurrentUser | null) {
   const canSite = (siteId: string) => !user || user.siteIds === null || user.siteIds.includes(siteId);
@@ -808,6 +884,7 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
   const callKey = {};
 
   return async (name: string, args: any): Promise<unknown> => {
+    if (user?.guest && GUEST_BLOCKED.has(name)) throw new Error(`${name} isn't open to someone filling the form in through a share link (ctx.user.guest).`);
     switch (name) {
       case "entries.find":
       case "entries.count": {
@@ -936,7 +1013,10 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
 
 function baseCtx(app: LoadedApp, user: CurrentUser | null) {
   return {
-    user: user && { id: user.userId, name: user.name, email: user.email, roleKey: user.roleKey, permissions: user.permissions, siteIds: user.siteIds },
+    user: user && {
+      id: user.userId, name: user.name, email: user.email, roleKey: user.roleKey, permissions: user.permissions, siteIds: user.siteIds,
+      ...(user.guest ? { guest: true, sharedBy: user.sharedBy } : {}),
+    },
     now: new Date().toISOString(),
     today: time.today(),
     draft: app.draft,
@@ -957,6 +1037,7 @@ async function runHook(app: LoadedApp, user: CurrentUser | null, hook: "beforeCr
 /** Run a server action for a page (or the MCP server). */
 export async function runAction(app: LoadedApp, user: CurrentUser | null, name: string, args: unknown) {
   if (user) requireOpen(app, user);
+  if (user?.guest && !(app.manifest.shareLink?.actions ?? []).includes(name)) throw forbidden("Sign in to do that.");
   if (!app.build.server) throw notFound("This form has no server code.");
   if (!/^[A-Za-z_$][\w$]{0,63}$/.test(name)) throw badRequest("Bad action name.");
   const call = `__settle((async () => { const d = globalThis.__serverDef; const a = d && d.actions && d.actions[${JSON.stringify(name)}]; if (typeof a !== "function") throw new Error("No action named ${name}."); return a(${JSON.stringify(args ?? null)}, __makeCtx(${JSON.stringify(baseCtx(app, user))})); })())`;

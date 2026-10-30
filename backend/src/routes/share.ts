@@ -3,9 +3,9 @@ import { prisma } from "../prisma.js";
 import { asyncHandler, forbidden, notFound } from "../http.js";
 import { requireAuth } from "../auth/middleware.js";
 import { actorOf } from "../services/audit.js";
-import { findForm, readDoc } from "../forms/service.js";
+import { findAnyForm as findForm } from "../forms/service.js";
 import { isFormAdmin } from "../forms/entries.js";
-import { canShare, formLinks, linkView, loadSharing, makeLink, myLink, saveSharing, turnOffLink } from "../services/shareLinks.js";
+import { canShare, formLinks, linkView, loadSharing, makeLink, myLink, saveSharing, sharedByLinkIn, turnOffLink } from "../services/shareLinks.js";
 
 /**
  * Share links (services/shareLinks.ts): an employee's own link and QR code for
@@ -25,7 +25,7 @@ shareRouter.get(
     const settings = await loadSharing(form.id);
     const fromMine = await prisma.formEntry.count({ where: { formId: form.id, sharedById: req.user!.userId, status: "active" } });
     res.json({
-      form: { id: form.id, slug: form.slug, title: form.title },
+      form: { id: form.id, slug: form.slug, title: form.title, kind: form.kind },
       canShare: can.ok,
       why: can.ok ? null : can.why,
       settings,
@@ -67,17 +67,16 @@ shareRouter.get(
   "/all/forms",
   asyncHandler(async (req, res) => {
     if (!isFormAdmin(req.user)) throw forbidden("Only Admins see every form's share links.");
-    const forms = await prisma.builtForm.findMany({ where: { kind: "basic", status: { not: "archived" } }, orderBy: { title: "asc" } });
+    const forms = await prisma.builtForm.findMany({ where: { status: { not: "archived" } }, orderBy: { title: "asc" } });
     const out = [];
     for (const f of forms) {
-      const mode = (d: string | null) => (d ? readDoc(d).settings.access?.mode : undefined);
-      const live = mode(f.liveSchema) === "link";
-      const draft = mode(f.draftSchema) === "link";
+      const live = sharedByLinkIn(f, f.liveSchema);
+      const draft = sharedByLinkIn(f, f.draftSchema);
       if (!live && !draft) continue;
       const links = await formLinks(f);
       const entries = await prisma.formEntry.count({ where: { formId: f.id, status: "active", shareLinkId: { not: null } } });
       out.push({
-        form: { id: f.id, slug: f.slug, title: f.title, status: f.status },
+        form: { id: f.id, slug: f.slug, title: f.title, status: f.status, kind: f.kind },
         live,
         settings: await loadSharing(f.id),
         working: links.filter((l) => linkView(l).live).length,

@@ -30,6 +30,7 @@ import { tutorialsRouter } from "./routes/tutorials.js";
 import { routingRouter } from "./routes/routing.js";
 import { emailRouter } from "./routes/emailTemplates.js";
 import { shareRouter } from "./routes/share.js";
+import { appShareRouter } from "./routes/appShare.js";
 import { groupsRouter } from "./routes/groups.js";
 import { oauthDiscoveryRouter, oauthRouter } from "./oauth/router.js";
 
@@ -56,7 +57,7 @@ const formsLimiter = rateLimit({
 });
 
 /** File uploads carry their own raw body (routes/fill.ts); the JSON parser must leave them alone. */
-const isUpload = (path: string) => /^\/api\/f\/[^/]+\/files$/.test(path);
+const isUpload = (path: string) => /^\/api\/(f|s)\/[^/]+\/files$/.test(path);
 
 /** A database check that's slow counts as down: the health probe mustn't hang. */
 async function databaseUp(timeoutMs = 3000): Promise<boolean> {
@@ -134,6 +135,9 @@ export function createApp() {
   app.post("/api/f/:slug/files", submitLimiter);
   // Share links are unguessable; this keeps anyone from trying many.
   app.get("/api/f/share/:token", submitLimiter);
+  // A code form filled in through a share link, not signed in (routes/appShare.ts).
+  app.use("/api/s", submitLimiter);
+  app.post("/api/s/:token/entries", express.json({ limit: "5mb" }));
   app.use(["/api/builder", "/mcp", "/api/mcp", "/api/apps"], express.json({ limit: "5mb" }));
   const json = express.json({ limit: "1mb" });
   app.use((req, res, next) => (isUpload(req.path) ? next() : json(req, res, next)));
@@ -160,6 +164,7 @@ export function createApp() {
   app.use("/api/builder", builderRouter);
   app.use("/api/f", fillRouter);
   app.use("/api/apps", appsRouter);
+  app.use("/api/s", appShareRouter);
   app.use("/api/devlog", devlogRouter);
   // Connecting Claude: sign-in for the MCP server below (oauth/).
   app.use("/api/oauth", authLimiter, oauthRouter);

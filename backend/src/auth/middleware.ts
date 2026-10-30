@@ -24,6 +24,13 @@ export interface CurrentUser extends SessionPayload {
   groupIds: string[];
   /** Job title, from Microsoft at sign-in: a form can be limited to positions. */
   title: string | null;
+  /**
+   * Not a person with an account: someone filling a code form in through an
+   * employee's share link (apps/runtime.ts guestFor). Never set on req.user.
+   */
+  guest?: boolean;
+  /** With guest: whose share link it is. */
+  sharedBy?: { id: string; name: string };
 }
 
 declare global {

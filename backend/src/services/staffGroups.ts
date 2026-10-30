@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { badRequest } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
+import { ROLES, roleFor } from "./permissions.js";
 
 /**
  * Staff groups and who can see which form.
@@ -72,11 +73,14 @@ let everythingGroups = new Set<string>();
 let groupForms = new Map<string, Set<string>>();
 /** User id → form key → given (true) or hidden (false). */
 let personForms = new Map<string, Map<string, boolean>>();
+/** Role key → the only forms it sees (form keys), for roles that name them (RoleDef.forms). */
+let roleForms = new Map<string, Set<string>>();
 let loading: Promise<void> | null = null;
 let loaded = false;
 
 async function load() {
-  const [rows, aud, linked, cards, access, everything, given, personal] = await Promise.all([
+  const roleSlugs = [...new Set(ROLES.flatMap((r) => r.forms ?? []))];
+  const [rows, aud, linked, cards, access, everything, given, personal, named] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
     prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
     prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
@@ -85,7 +89,11 @@ async function load() {
     prisma.setting.findUnique({ where: { key: "seeEverythingGroups" } }),
     prisma.groupForm.findMany({ select: { groupId: true, formKey: true } }),
     prisma.personForm.findMany({ select: { userId: true, formKey: true, include: true } }),
+    roleSlugs.length ? prisma.builtForm.findMany({ where: { slug: { in: roleSlugs } }, select: { id: true, slug: true } }) : Promise.resolve([]),
   ]);
+  roleForms = new Map(
+    ROLES.filter((r) => r.forms).map((r) => [r.key, new Set(named.filter((f) => r.forms!.includes(f.slug)).map((f) => builtFormKey(f.id)))])
+  );
   const nextGroupForms = new Map<string, Set<string>>();
   for (const g of given) nextGroupForms.set(g.groupId, (nextGroupForms.get(g.groupId) ?? new Set<string>()).add(g.formKey));
   groupForms = nextGroupForms;
@@ -214,7 +222,7 @@ export function seesEverything(user: Pick<CurrentUser, "groupIds">): boolean {
 export const everythingGroupIds = () => [...everythingGroups];
 
 /** Whether this person may see and use the form. Admins, and the groups that see everything, always may. */
-export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null }, formKey: string): boolean {
+export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null; roleKey?: string }, formKey: string): boolean {
   if (user.permissions.includes("forms.manage") || seesEverything(user)) return true;
   const a = audiences.get(formKey);
   if (isEmpty(a)) return true;
@@ -261,6 +269,9 @@ type FormViewer = Parameters<typeof inAudience>[0];
  */
 export function canSeeFormKey(user: FormViewer, formKey: string, categoryId: string | null | undefined, opts: { ignoreOwn?: boolean } = {}): boolean {
   if (user.permissions.includes("forms.manage") || seesEverything(user)) return true;
+  // A role that names its forms (Arete Staff) sees those, and whatever an Admin gave this one person.
+  const only = user.roleKey ? roleForms.get(roleFor(user.roleKey).key) : undefined;
+  if (only) return (opts.ignoreOwn ? undefined : personForms.get(user.userId)?.get(formKey)) ?? only.has(formKey);
   const given = givenVerdict(user, formKey, opts.ignoreOwn);
   if (given !== null) return given;
   return inAudience(user, formKey) && (!categoryId || inAudience(user, categoryKey(categoryId)));
