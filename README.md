@@ -129,7 +129,7 @@ the engine for the meaning: duplicate ids, rules pointing at missing fields, bad
 | **Calculations** | A small expression language (`{qty} * {price}`, `if()`, `sum()`, `round()`, `age()`, `days_between()`…). Parsed, never `eval`'d, and recomputed on the server, so a submitted total can't be forged |
 | **Merge tags** | `{field_id}`, `{all_fields}`, `{user:name}`, `{entry:url}`, `{date:today}`… in defaults, content, confirmations and notifications |
 | **Custom code** | A Custom code field holds your own HTML/CSS/JS, run in a sandboxed iframe (no access to the app, cookies or network). It talks to the form through `lcs.setValue()`, `lcs.values`, `lcs.onChange()`, `lcs.setValid()`. The form's own CSS goes in Settings → Custom CSS, scoped to that form |
-| **Settings** | Who can fill it in (anyone signed in, some roles, or **public** at `/p/<slug>` with a spam trap and rate limit), who can read entries, ask-for-a-site (entries limited to that site's staff), total and per-person limits, open/close dates, confirmation message or redirect, email and webhook notifications, drafts kept on the device |
+| **Settings** | Who can fill it in (anyone signed in, some roles, **public** at `/p/<slug>` with a spam trap and rate limit, or **anyone with a share link**: see Forms shared by link), who can read entries, ask-for-a-site (entries limited to that site's staff), total and per-person limits, open/close dates, confirmation message or redirect, email and webhook notifications, drafts kept on the device |
 | **Versions** | The builder edits a draft; **Publish** makes it live as a numbered version. Each entry keeps the version it was filled against, and old versions can be viewed or restored. Two admins (or an admin and an AI) can't overwrite each other: saves carry a revision number |
 | **Entries** | `/f/<slug>/entries`: search, dates, starred, voided; CSV and Excel export; each entry has notes (notifications write their outcome there), star, print, void with a reason, and admin edit (logged) or delete |
 | **Forms screen** | Settings → Forms screen lists the form under a category (card, sidebar, favourites), following its access setting |
@@ -280,12 +280,79 @@ the chosen answers, and a button into the site. Nothing is ever attached.
   the chosen answers (Lantern addresses only), like the weekly Unit Inspection report. Set them under
   a form's Notifications; `startEmailReports` sends each once a week.
 - **Every send is logged** (`EmailLog`: who, subject, kind, sent/failed/skipped, whether it carried
-  answers; never the body), shown under a form's Notifications as "Emails sent".
+  answers; never the body), shown under a form's Notifications as "Emails sent", and every form's
+  together under **Admin → Notifications → Sent emails** (filter by kind, status and address).
+- **Email templates** (`services/emailTemplates.ts`, table `EmailTemplate`): the organization's
+  wording, in **Admin → Notifications → Templates**. A template has a subject, heading, a line under
+  it, What to do, the built-in details it always shows (site, submitted, submitted by, follow-up), a
+  button and "always urgent", with tags filled in when it's sent (`{title}` `{form}` `{site}`
+  `{at_site}` `{for_site}` `{event}` `{date}`; a report template has `{report}` `{site}` `{count}`
+  `{date}`). Anything else in braces is refused, so no answer or name can get into a subject. Each route
+  and weekly report has a **Wording** choice: a template, or its own subject and What to do; new routes
+  start on **New entry** and new reports on **Weekly report**, and existing ones keep their own wording
+  until someone picks a template. The route still chooses who, when, which answers and whether it's
+  urgent. Changing a template changes every email that uses it; each template lists where it's used.
+  - **Presets** ship with the site and are made the first time templates are read: New entry, Urgent,
+    Request to act on, Follow-up done, Reminder (the last two word the follow-up emails) and Weekly
+    report. A preset can be changed and put back (**Back to preset**) or hidden, never deleted; the two
+    that new routes and reports start on can't be hidden. A hidden template isn't offered for new routes,
+    and whatever uses it keeps working. A template nothing uses can be deleted.
+  - **Only Super Admins** make, change, copy, hide, reset or delete templates (permission
+    `email.templates`, given with Super Admin like `people.records`). Admins see them, preview them and
+    pick them on their forms.
+  - **MCP** (delegated scope `email:manage`, acting as the admin who made the key): `list_email_templates`,
+    `get_email_template`, `preview_email_template` (made-up values, or a form's latest entry),
+    `save_email_template`, `copy_email_template`, `reset_email_template`, `set_email_template_hidden`,
+    `delete_email_template`, `list_all_sent_emails`. Only a Super Admin's key can change templates.
+    `save_route` and `save_email_report` take `template` (a key); `get_email_settings` lists them.
+    `get_email_look` and `set_email_look` read and change the look.
+- **System emails** (Admin → Notifications → System emails): the emails the site sends by itself are
+  templates too (kind `system`), each with its own tags: someone asking for access on their first sign-in
+  (`{person}` `{email}` `{position}`), being let in, access changed and more sites approved
+  (`{by}` `{role}` `{a_role}` `{where}`, plus `{sites}`), an entry a form couldn't save (`{source}`
+  `{target}`), the daily summary (`{count}` `{notifications}` `{unread}`), and the follow-up "done" and
+  reminder emails (`{form}` `{site}` `{at_site}` `{for_site}` `{date}`). They're always sent: Super
+  Admins change their wording and put it back, and can't make, copy, hide or delete them. If one can't be
+  read the site falls back to its built-in wording (`systemEmail` in `services/emailTemplates.ts`). A
+  preset nobody has changed follows the site's wording for it when that changes in a release.
+- **Look** (Admin → Notifications → Look, `services/emailLook.ts`, setting `emailLook`): the name in the
+  band, an optional https logo, the band, stripe and button colors and the footer line, for every email.
+  The band and button carry white text, so a color under 4.5:1 contrast is refused. Super Admins change
+  it; it's kept in memory (a minute at most out of date on another server). The sender's name and
+  address are the `MAIL_FROM` mailbox's own in Microsoft 365, not set here.
 - **MCP** (`forms:build`): `get_email_settings`, `preview_email`, `save_email_report`,
   `remove_email_report`, `send_email_report` (with `dryRun`), `list_sent_emails`; a route's
   `whatToDo` and `fields` go through `save_route`.
 
 Code forms' `ctx.email.send` uses the same layout with a link only (below).
+
+### Forms shared by link
+
+For forms people outside Lantern fill in, like LCS Art Submissions, without another service
+(`backend/src/services/shareLinks.ts`, `routes/share.ts`, table `FormShareLink`). In the form's Settings,
+**Who can fill it in → Anyone with a share link** (access mode `link`). The form then has no open address:
+signed out, it opens only through a live share link; staff fill it in signed in as usual.
+
+- **Every employee who can open the form has their own link and QR code**: on the form, **Share it** opens
+  `/f/<slug>/share`. The QR code (the `qrcode` package, drawn in the browser) has the Lantern mark in the
+  middle, at the highest error correction (it reads with the middle 22% covered), and downloads as a PNG.
+  The link is `/s/<token>`: 24 random characters, so it can't be guessed, and the lookup is rate-limited.
+- **Refresh** makes a new link and QR code and turns the old ones off at once. **Turn it off** stops it.
+  A link expires: 90 days by default; its owner picks 7 days to a year or a date, up to the form's longest
+  (365 by default; no limit allows "no end date"). A link also stops when its owner can no longer open the
+  form (left Lantern, lost access), when sharing is switched off, or when the form stops being shared by link.
+  Anyone opening a link that doesn't work is told just that, and to ask whoever shared it.
+- **Entries through a link** record whose it is (`FormEntry.shareLinkId`, `sharedById`, `sharedByName`,
+  source `share`; signed out they're by "Visitor (shared by …)"). Their owner sees them in the form's
+  entries, whatever Who sees entries says, and a route can tell **Whoever shared the link** (recipient
+  `{ kind: "sharer" }`). Uploads (e.g. artwork, 10 MB at most) and the offline queue go through the same link.
+- **Admins** set, in the form's Settings (saved straight away): whether employees can share it, how long a
+  new link lasts and the longest, and see **Everyone's links** (who, when, until, entries, last used),
+  any of which they can turn off. **Admin → Share links** (`/admin/share-links`) has every form shared by
+  link in one place, with the same settings and links, and each form's **My link and QR code** for the
+  Admin's own; so does the form's Settings. Forms shared by link can't use Site or Resident fields, like public forms.
+- Making, refreshing and turning off links, and changing sharing, go in the audit log. Deleting a form
+  deletes its links.
 
 ### Who sees entries
 
@@ -633,8 +700,10 @@ place: a line at the top saying how many routes, follow-up, weekly reports and t
 routes, follow-up, weekly reports, emails sent and the form's webhooks. The form's and its entries'
 **Notifications** buttons open it (`/f/<slug>/notifications` sends you there; on a phone or tablet, where
 the editor isn't, it shows the same routing). Code forms have a **Notifications** tab
-(`/apps/<slug>/_notifications`), linked from their editor's Settings. **Admin → Notification routing**
-(`/admin/routing`) lists every form. The MCP has the same: `get_routing`, `save_route`, `set_routing`,
+(`/apps/<slug>/_notifications`), linked from their editor's Settings. **Admin → Notifications**
+(`/admin/notifications`; the old `/admin/routing` addresses redirect) has every form's routing under
+**Forms** (the same editor), the email **Templates**, the site's own **System emails**, the emails' **Look** and
+every email **Sent**. The MCP has the same: `get_routing`, `save_route`, `set_routing`,
 `remove_route`, `reset_routing`, `preview_routing`, `routing_log`, `reroute_entry`.
 
 - **A form's own rules move into routing.** A builder form made before routing may have email and
@@ -663,6 +732,26 @@ the editor isn't, it shows the same routing). Code forms have a **Notifications*
   the last 500), and a basic form's entry gets a note saying who was told.
 - **Storage.** FormRecord's private `__routing` (the routes) and `__routing_log` collections: no table,
   no migration.
+
+## Help
+
+**Help** (`/help`, in the sidebar, the phone's account menu and More, and site search) explains what
+people can do and where to go. The words are in `frontend/src/lib/help/content.ts`, written with the
+features: change them there when a feature changes.
+
+- **A guide for each role** (Site Staff, Site Manager, Main Office Staff, Developer, Admin, Super Admin):
+  what you can do, **Start here** buttons to the screens, and what to read first. Help opens on yours
+  (Super Admin if you are one); every role's is at `/help/role/<key>`.
+- **An article for each feature** (`/help/<id>`): getting around, notifications, filling in forms,
+  entries, follow-ups, share links, the roster, attendance, the calendar, and each Admin area. Each says
+  who it's for (`needs`, permission keys): people only see help for what they can use, and "Go there"
+  buttons only for screens they can open. Search looks through all of it; site search finds articles too.
+- **A "?" beside page titles** (`components/PageHelp.tsx`; `PageHeader` and `PhoneHeader` take
+  `help={{ article, text }}`): a line on what the page is for, **Learn more** (its article), **Show me
+  around** and All help. It's a menu, so it opens with a tap or the keyboard. Inside a tabbed section it
+  sits with the line under the tabs.
+- **Show me around** runs the welcome tour for your role and device (`/home?tour=site`). A form with a
+  tutorial still has its own **Show me how**.
 
 ## Tutorials
 

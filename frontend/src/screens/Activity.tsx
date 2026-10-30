@@ -26,6 +26,7 @@ export function ActivityPage() {
     <Page className="max-w-[860px]">
       <PageHeader
         title="Activity"
+        help={{ article: "roster", text: "Every change to the roster, newest first, with who made it." }}
         subtitle="Every roster change, with who made it."
         actions={<SitePicker codes={codes} onChange={setCodes} className="w-full md:w-[260px]" />}
       />

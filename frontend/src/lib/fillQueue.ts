@@ -34,6 +34,8 @@ export interface QueuedFill {
   /** The device it was filled on and the seconds it took (lib/device entryDeviceKind, FormRenderer). */
   deviceKind?: DeviceKind | null;
   fillSeconds?: number | null;
+  /** Filled through someone's share link (/s/<token>): it uploads through the same link. */
+  shareToken?: string | null;
   queuedAt: number;
   attempts: number;
   /** The server refused it (not a network problem); it waits for a person. */
@@ -208,14 +210,14 @@ export async function syncFills() {
           for (const id of locals) {
             const f = await getFile(id);
             if (!f) throw new ApiError(410, "A file attached to this entry is no longer on this device.");
-            map.set(id, await fillApi.upload(row.slug, f.fieldId, new File([f.blob], f.name, { type: f.mime })));
+            map.set(id, await fillApi.upload(row.slug, f.fieldId, new File([f.blob], f.name, { type: f.mime }), row.shareToken));
           }
           // Uploaded: from here on a retry sends these refs, not the files again.
           current = { ...row, values: swapIds(row.values, map) };
           await putRow(current);
           for (const id of locals) await delFile(id).catch(() => undefined);
         }
-        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion, deviceKind: row.deviceKind, fillSeconds: row.fillSeconds });
+        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion, deviceKind: row.deviceKind, fillSeconds: row.fillSeconds, ...(row.shareToken ? { shareToken: row.shareToken } : {}) });
         await delRow(row.clientId);
       } catch (e) {
         if (transient(e)) {

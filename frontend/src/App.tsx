@@ -26,7 +26,7 @@ import { AttendanceDetailPage } from "./screens/AttendanceDetail";
 import { ProfilePage } from "./screens/Profile";
 import { MorePage } from "./screens/More";
 import { NotificationOpenPage, NotificationsPage } from "./screens/Notifications";
-import { FillPage } from "./screens/builtforms/FillPage";
+import { FillPage, SharedFormPage } from "./screens/builtforms/FillPage";
 import { BuiltFormEntriesPage } from "./screens/builtforms/Entries";
 import { BuiltFormRoutingPage } from "./screens/builtforms/RoutingPage";
 import { BuiltFormEntryPage } from "./screens/builtforms/EntryDetail";
@@ -49,7 +49,18 @@ const AdminPeople = lazyScreen(() => import("./screens/admin/People"), "AdminPeo
 const PersonRecordsPage = lazyScreen(() => import("./screens/admin/PersonRecords"), "PersonRecordsPage");
 const AdminGroups = lazyScreen(() => import("./screens/admin/Groups"), "AdminGroups");
 const AdminSettings = lazyScreen(() => import("./screens/admin/Settings"), "AdminSettings");
-const AdminRouting = lazyScreen(() => import("./screens/admin/Routing"), "AdminRouting");
+const HelpPage = lazyScreen(() => import("./screens/Help"), "HelpPage");
+const HelpArticlePage = lazyScreen(() => import("./screens/Help"), "HelpArticlePage");
+const HelpRolePage = lazyScreen(() => import("./screens/Help"), "HelpRolePage");
+const AdminShareLinks = lazyScreen(() => import("./screens/admin/ShareLinks"), "AdminShareLinks");
+const SharePage = lazyScreen(() => import("./screens/builtforms/SharePage"), "SharePage");
+const NotificationsLayout = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsLayout");
+const NotificationsFormsTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsFormsTab");
+const NotificationsTemplatesTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsTemplatesTab");
+const NotificationsSentTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsSentTab");
+const NotificationsSystemTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsSystemTab");
+const NotificationsLookTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsLookTab");
+const TemplateEditorPage = lazyScreen(() => import("./screens/admin/Notifications"), "TemplateEditorPage");
 const AdminRoutingForm = lazyScreen(() => import("./screens/admin/Routing"), "AdminRoutingForm");
 const AdminSignInAccess = lazyScreen(() => import("./screens/admin/Settings"), "AdminSignInAccess");
 const AdminApiKeys = lazyScreen(() => import("./screens/admin/Integrations"), "AdminApiKeys");
@@ -80,6 +91,12 @@ function Protected({ children }: { children: React.ReactNode }) {
  * Route-level permission gate. Hiding a nav item isn't access control; the API
  * enforces the same permissions — this only avoids rendering a screen of 403s.
  */
+/** /admin/routing/:id (Notification routing's old address) → Admin → Notifications → the form. */
+function RoutingRedirect() {
+  const { id = "" } = useParams();
+  return <Navigate to={`/admin/notifications/forms/${id}`} replace />;
+}
+
 function RequirePermission({ anyOf }: { anyOf: PermissionKey[] }) {
   const { can, loading } = useAuth();
   if (loading) return <div className="grid h-full place-items-center"><LoadingState /></div>;
@@ -195,6 +212,8 @@ export function App() {
       <Route path="/welcome" element={user && !loading ? <HomeRedirect /> : <WelcomePage />} />
       {/* Public built forms: no sign-in, no app chrome. */}
       <Route path="/p/:slug" element={<FillPage publicView />} />
+      {/* A form shared by an employee's own link: anyone, no sign-in. */}
+      <Route path="/s/:token" element={<SharedFormPage />} />
       {/* Claude's connector sends people here to allow it (backend oauth/). */}
       <Route path="/connect/claude" element={<Protected><ConnectClaudePage /></Protected>} />
 
@@ -206,6 +225,7 @@ export function App() {
         <Route path="/calendar" element={<CalendarPage />} />
         {/* Built forms. Each screen checks access itself (the form's own settings decide). */}
         <Route path="/f/:slug" element={<FillPage />} />
+        <Route path="/f/:slug/share" element={<SharePage />} />
         <Route path="/f/:slug/entries" element={<BuiltFormEntriesPage />} />
         <Route path="/f/:slug/entries/:id" element={<BuiltFormEntryPage />} />
         <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
@@ -264,10 +284,22 @@ export function App() {
             <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
               <Route path="/admin/forms/card/:id" element={<CatalogCardPage />} />
+              <Route path="/admin/share-links" element={<AdminShareLinks />} />
               <Route path="/admin/builder" element={<AdminBuilderList />} />
               <Route path="/admin/ai" element={<AdminAiBuilder />} />
-              <Route path="/admin/routing" element={<AdminRouting />} />
-              <Route path="/admin/routing/:id" element={<AdminRoutingForm />} />
+              {/* Admin → Notifications: every form's routing, the email templates, every email sent. */}
+              <Route element={<NotificationsLayout />}>
+                <Route path="/admin/notifications" element={<NotificationsFormsTab />} />
+                <Route path="/admin/notifications/templates" element={<NotificationsTemplatesTab />} />
+                <Route path="/admin/notifications/system" element={<NotificationsSystemTab />} />
+                <Route path="/admin/notifications/look" element={<NotificationsLookTab />} />
+                <Route path="/admin/notifications/sent" element={<NotificationsSentTab />} />
+              </Route>
+              <Route path="/admin/notifications/forms/:id" element={<AdminRoutingForm />} />
+              <Route path="/admin/notifications/templates/:id" element={<TemplateEditorPage />} />
+              {/* Notification routing's old addresses. */}
+              <Route path="/admin/routing" element={<Navigate to="/admin/notifications" replace />} />
+              <Route path="/admin/routing/:id" element={<RoutingRedirect />} />
             </Route>
             <Route element={<RequirePermission anyOf={["apps.develop", "forms.manage"]} />}>
               <Route path="/admin/apps" element={<CodeFormsList />} />
@@ -298,6 +330,9 @@ export function App() {
         </Route>
 
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="/help/role/:key" element={<HelpRolePage />} />
+        <Route path="/help/:id" element={<HelpArticlePage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/notifications/:id" element={<NotificationOpenPage />} />
         <Route path="/more" element={<MorePage />} />

@@ -6,6 +6,7 @@ import { linkOnlyHtml, mailConfigured, sendLogged } from "./mailer.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { PERMISSIONS, isRoleKey, permissionsFor, roleFor, type PermissionKey } from "./permissions.js";
 import { partsOf, startOfDay, today } from "../apps/time.js";
+import { messageWording, templateByKey } from "./emailTemplates.js";
 
 /**
  * Notifications: one row per person (Notification), shown in the app — the
@@ -147,7 +148,14 @@ export interface NotifyInput {
    * chosen answers (services/routing.ts emailValues). The answers are kept only
    * for people with a Lantern address; never shown in the app.
    */
-  email?: { whatToDo?: string | null; fields?: { label: string; value: string }[] };
+  email?: {
+    whatToDo?: string | null;
+    fields?: { label: string; value: string }[];
+    /** From an email template (services/emailTemplates.ts): the heading, the line under it and the button. */
+    heading?: string | null;
+    intro?: string | null;
+    buttonLabel?: string | null;
+  };
 }
 
 export interface NotifyResult {
@@ -307,16 +315,20 @@ function emailDetailFor(email: NotifyInput["email"], address: string): string | 
   if (!email) return null;
   const fields = isInternalAddress(address) ? (email.fields ?? []).slice(0, 20) : [];
   const whatToDo = email.whatToDo?.trim() || null;
-  if (!whatToDo && !fields.length) return null;
-  return JSON.stringify({ whatToDo, fields });
+  const heading = email.heading?.trim() || null;
+  const intro = email.intro?.trim() || null;
+  const buttonLabel = email.buttonLabel?.trim() || null;
+  if (!whatToDo && !fields.length && !heading && !intro && !buttonLabel) return null;
+  return JSON.stringify({ whatToDo, fields, ...(heading ? { heading } : {}), ...(intro ? { intro } : {}), ...(buttonLabel ? { buttonLabel } : {}) });
 }
 
 /** The parts saved by emailDetailFor, or none. */
-function readEmailDetail(raw: string | null): { whatToDo: string | null; fields: { label: string; value: string }[] } {
+type EmailDetail = { whatToDo: string | null; fields: { label: string; value: string }[]; heading?: string | null; intro?: string | null; buttonLabel?: string | null };
+function readEmailDetail(raw: string | null): EmailDetail {
   if (!raw) return { whatToDo: null, fields: [] };
   try {
-    const d = JSON.parse(raw) as { whatToDo?: string | null; fields?: { label: string; value: string }[] };
-    return { whatToDo: d.whatToDo ?? null, fields: Array.isArray(d.fields) ? d.fields : [] };
+    const d = JSON.parse(raw) as Partial<EmailDetail>;
+    return { whatToDo: d.whatToDo ?? null, fields: Array.isArray(d.fields) ? d.fields : [], heading: d.heading ?? null, intro: d.intro ?? null, buttonLabel: d.buttonLabel ?? null };
   } catch {
     return { whatToDo: null, fields: [] };
   }
@@ -330,11 +342,11 @@ export function notificationEmail(n: { title: string; sourceLabel: string | null
     withAnswers: d.fields.length > 0,
     html: brandedEmail({
       kicker: n.sourceLabel ?? "Lantern Forms",
-      heading: n.title,
-      intro: `You have ${n.urgent ? "an urgent" : "a new"} notification${n.sourceLabel ? ` from “${n.sourceLabel}”` : ""}.`,
+      heading: d.heading || n.title,
+      intro: d.intro || `You have ${n.urgent ? "an urgent" : "a new"} notification${n.sourceLabel ? ` from “${n.sourceLabel}”` : ""}.`,
       whatToDo: d.whatToDo,
       fields: d.fields,
-      button: { label: "Open it in Lantern Forms", url },
+      button: { label: d.buttonLabel || "Open it in Lantern Forms", url },
       note: d.fields.length ? "The rest is in Lantern Forms." : "The details aren't in this email. Sign in to see them.",
       urgent: n.urgent,
     }),
@@ -550,10 +562,20 @@ async function sendDigests() {
       if (user.status !== "active") throw new Error("They no longer have access.");
       if (!mailConfigured()) throw new Error("Email isn't set up on this server (MAIL_FROM).");
       const n = unread.length;
+      // Worded by the "Daily summary" email (Admin → Notifications → System emails).
+      const s = n === 1 ? "" : "s";
+      const t = await templateByKey("daily-summary").catch(() => null);
+      const tags = { count: String(n), notifications: `${n} new notification${s}`, unread: `${n} notification${s}` };
+      const w = t ? messageWording(t, tags, `${n} new notification${s} in Lantern Forms`) : null;
       await sendLogged({
         to: [user.email],
-        subject: `${n} new notification${n === 1 ? "" : "s"} in Lantern Forms`,
-        html: linkOnlyHtml(`You have ${n} notification${n === 1 ? "" : "s"} you haven't read yet.`, `${appBaseUrl}/notifications`, { kicker: "Your daily summary" }),
+        subject: w?.subject ?? `${n} new notification${s} in Lantern Forms`,
+        html: linkOnlyHtml(w?.heading ?? `You have ${n} notification${s} you haven't read yet.`, `${appBaseUrl}/notifications`, {
+          kicker: "Your daily summary",
+          intro: w?.intro,
+          whatToDo: w?.whatToDo,
+          buttonLabel: w?.buttonLabel,
+        }),
         kind: "digest",
       });
       await prisma.notification.updateMany({ where: { id: { in: ids(unread) } }, data: { emailStatus: "sent", emailedAt: now } });

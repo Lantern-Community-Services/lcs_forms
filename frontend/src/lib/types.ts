@@ -1,5 +1,6 @@
 export type PermissionKey =
   | "roster.view"
+  | "email.templates"
   | "roster.edit"
   | "roster.archive"
   | "roster.restore"

@@ -236,6 +236,8 @@ export async function deleteForm(id: string, actor: Actor, opts: { withEntries?:
   await deleteFiles({ formId: form.id });
   await prisma.$transaction([
     ...(form.catalogLinkId ? [prisma.formLink.deleteMany({ where: { id: form.catalogLinkId } })] : []),
+    // Its share links (services/shareLinks.ts) aren't tied to it in the database.
+    prisma.formShareLink.deleteMany({ where: { formId: form.id } }),
     prisma.builtForm.delete({ where: { id: form.id } }),
   ]);
   await audit({ actor, action: "builder.deleted", summary: `Deleted form “${form.title}” (/f/${form.slug})${n > 0 ? ` and its ${entries}` : ""}` });

@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { useSearchParam } from "@/lib/useSearchParam";
 import { errorMessage, relativeTime, toggled } from "@/lib/utils";
 import type { AttendanceEvent } from "@/lib/types";
+import { PageHelp } from "@/components/PageHelp";
 
 type Tab = "record" | "past";
 
@@ -87,6 +88,7 @@ export function AttendancePage() {
     <div className="flex min-h-full flex-col">
       <PhoneHeader
         title="Attendance"
+        help={{ article: "attendance", text: "Sessions taken at your sites. People who manage the roster take new ones." }}
         subtitle={tab === "past" ? subtitle : undefined}
 
         actions={
@@ -112,7 +114,14 @@ export function AttendancePage() {
           {tab === "past" && <div className="mb-2">{backToRecord}</div>}
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              {!inTabs && <h1 className="text-[23px] font-heading font-extrabold text-ink md:text-[24px]">Attendance</h1>}
+              {!inTabs ? (
+                <div className="flex items-center gap-1">
+                  <h1 className="text-[23px] font-heading font-extrabold text-ink md:text-[24px]">Attendance</h1>
+                  <PageHelp article="attendance">Sessions taken at your sites. People who manage the roster take new ones.</PageHelp>
+                </div>
+              ) : (
+                <PageHelp article="attendance">Sessions taken at your sites. People who manage the roster take new ones.</PageHelp>
+              )}
               {tab === "past" && subtitle && <p className={`text-[13px] text-muted md:text-[13.5px] ${inTabs ? "" : "mt-1"}`}>{subtitle}</p>}
             </div>
             {tab === "past" && (

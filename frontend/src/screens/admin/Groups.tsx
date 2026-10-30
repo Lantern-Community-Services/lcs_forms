@@ -36,6 +36,7 @@ export function AdminGroups() {
     <Page className="max-w-[1000px]">
       <PageHeader
         title="Groups"
+        help={{ article: "admin-people", text: "Teams like HR and IT, made from job titles or by hand. Forms, categories and notifications can be limited to them." }}
         subtitle="Teams that forms can be limited to or given to. People join a group from their job title, or you add them by hand."
         actions={
           <Button onClick={() => setEditing("new")}>

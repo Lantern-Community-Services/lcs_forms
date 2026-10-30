@@ -26,6 +26,7 @@ export function DashboardPage() {
         <div className="hidden md:block">
           <PageHeader
             title="Dashboard"
+            help={{ article: "roster", text: "The numbers across your sites at a glance." }}
             subtitle={scope}
             actions={<SitePicker codes={codes} onChange={setCodes} className="w-[260px]" />}
           />

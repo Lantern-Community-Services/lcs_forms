@@ -99,7 +99,7 @@ ${CODE_BLOCK_API}
 
 ## settings
 submitLabel; progressBar; saveDrafts (default true); customCss; icon (catalog icon key);
-access: { mode: "signed_in" | "roles" | "public", roles: [role keys] }  (public forms can't use site/resident fields);
+access: { mode: "signed_in" | "roles" | "public" | "link", roles: [role keys] }  ("link": anyone, but only through an employee's own share link at /s/<token>; public and link forms can't use site/resident fields);
 entriesRoles: [role keys that can read entries; Admin always can];
 requireSite: true to ask which site the entry is for (entries are then limited to that site's staff);
 limits: { maxEntries, perUser: { count, period: day|week|month|ever }, opensAt, closesAt (ISO), closedMessage };

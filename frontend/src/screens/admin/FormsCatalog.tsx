@@ -130,6 +130,7 @@ export function AdminFormsCatalog() {
     <Page className="max-w-[960px]">
       <PageHeader
         title="Forms catalog"
+        help={{ article: "admin-forms", text: "What staff see on the Forms screen: categories and a card for each form, and who can see them." }}
         subtitle="What staff see on the Forms screen. Changes are live for everyone as soon as they save."
         actions={
           <>

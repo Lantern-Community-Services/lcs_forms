@@ -217,7 +217,7 @@ export function ReviewPage() {
   // overflow-clip: a card flying off the deck must not grow the page's scroll area.
   return (
     <div className="flex min-h-full flex-col overflow-clip">
-      <PhoneHeader title="Review" subtitle={subtitle}>
+      <PhoneHeader title="Review" subtitle={subtitle} help={{ article: "roster", text: "Residents nobody has recorded anything for in a while. Mark each one still here or no longer here, so the roster stays right." }}>
         <SitePicker codes={codes} onChange={setCodes} className="mt-3" />
       </PhoneHeader>
 
@@ -225,6 +225,7 @@ export function ReviewPage() {
         <div className="hidden md:block">
           <PageHeader
             title="Review"
+            help={{ article: "roster", text: "Residents nobody has recorded anything for in a while. Mark each one still here or no longer here, so the roster stays right." }}
             subtitle={`${subtitle}. Swipe or use ← ↓ → to decide.`}
             actions={<SitePicker codes={codes} onChange={setCodes} className="w-[260px]" />}
           />

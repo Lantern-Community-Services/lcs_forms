@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { Bell, CalendarDays, Contact, Home, LayoutGrid, Settings, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, BookOpen, CalendarDays, CircleHelp, Contact, Home, LayoutGrid, Settings, UserRound, type LucideIcon } from "lucide-react";
+import { ARTICLES, allowed } from "@/lib/help/content";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { useTenants } from "@/lib/queries";
 import type { Tenant } from "@/lib/types";
@@ -50,6 +51,9 @@ export function useGlobalSearch(q: string, categories: NavCategory[]): SearchHit
       { to: "/calendar", label: "Calendar", Icon: CalendarDays, words: "events schedule request" },
       { to: "/notifications", label: "Notifications", Icon: Bell, words: "alerts bell messages" },
       { to: "/profile", label: "Profile & settings", Icon: UserRound, words: "account preferences theme tour tutorial" },
+      { to: "/help", label: "Help", Icon: CircleHelp, words: "help guide how to what can i do where support question" },
+      // Each help article you can read, so "share link" or "follow-up" finds how to do it.
+      ...ARTICLES.filter((a) => allowed(a.needs, can)).map((a) => ({ to: `/help/${a.id}`, label: `Help: ${a.title}`, Icon: BookOpen, words: `${a.summary} ${a.words ?? ""}` })),
     ];
     if (rosterUser) list.splice(2, 0, { to: "/roster", label: "Roster", Icon: Contact, words: "residents tenants review attendance" });
     if (ADMIN_AREA.some(can)) list.push({ to: "/admin", label: "Admin", Icon: Settings, words: "settings people roles sites" });

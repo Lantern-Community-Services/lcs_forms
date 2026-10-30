@@ -7,6 +7,7 @@ import { DEFAULT_ROLE_KEY } from "../services/permissions.js";
 import { randomAvatarColor } from "../services/avatars.js";
 import { audit } from "../services/audit.js";
 import { notifyQuietly } from "../services/notifications.js";
+import { systemEmail } from "../services/emailTemplates.js";
 
 /**
  * A first sign-in by someone nobody made an account for (/welcome). It opens
@@ -70,10 +71,19 @@ onboardingRouter.post(
       action: "user.access_requested",
       summary: `${requester.name} (${requester.email}) asked for access to Lantern Forms`,
     });
+    // Only Admins let people in, so this reaches them.
+    // Worded by the "Someone asks for access" email (Admin → Notifications → System emails).
+    const mail = await systemEmail(
+      "access-request",
+      { person: requester.name, email: requester.email, position: requester.title ?? "" },
+      `${requester.name} is asking for access`
+    );
     notifyQuietly({
       to: { permissions: ["users.manage"] },
       type: "people.request",
-      title: `${requester.name} is asking for access`,
+      title: mail.title,
+      urgent: mail.urgent,
+      email: mail.email,
       body: `${requester.email}${requester.title ? ` · ${requester.title}` : ""} signed in for the first time and asked for access. Approve it in People & roles, with their role and sites.`,
       link: "/admin/people?tab=requests",
       sourceLabel: "People & roles",

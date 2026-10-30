@@ -72,6 +72,7 @@ export function PersonRecordsPage() {
       <DesktopBackLink to="/admin/people">People &amp; roles</DesktopBackLink>
       <PageHeader
         title={`${p.name}: records`}
+        help={{ article: "admin-records", text: "Everything this person filed, was told and did, and which forms they can open. Super Admins only; it changes nothing." }}
         subtitle={[p.title, p.role, p.email].filter(Boolean).join(" · ")}
       />
       <Card className="mb-4 grid gap-3 p-4 text-[13px] sm:grid-cols-2 lg:grid-cols-4">

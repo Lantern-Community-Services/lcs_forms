@@ -273,6 +273,7 @@ export function RosterPage() {
     <div className="flex min-h-full flex-col">
       <PhoneHeader
         title="Roster"
+        help={{ article: "roster", text: "The residents at your sites. Search by name or unit, and open someone for their details." }}
         subtitle={subtitle}
         actions={
           <div className="flex gap-2">
@@ -295,6 +296,7 @@ export function RosterPage() {
         <div className="hidden md:block">
           <PageHeader
             title="Roster"
+            help={{ article: "roster", text: "The residents at your sites. Search by name or unit, and open someone for their details." }}
             subtitle={subtitle}
             actions={
               <>

@@ -28,6 +28,8 @@ import { requestMetrics } from "./services/devlog.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { routingRouter } from "./routes/routing.js";
+import { emailRouter } from "./routes/emailTemplates.js";
+import { shareRouter } from "./routes/share.js";
 import { groupsRouter } from "./routes/groups.js";
 import { oauthDiscoveryRouter, oauthRouter } from "./oauth/router.js";
 
@@ -130,6 +132,8 @@ export function createApp() {
   // server receives whole form documents.
   app.post("/api/f/:slug/submit", submitLimiter, express.json({ limit: "5mb" }));
   app.post("/api/f/:slug/files", submitLimiter);
+  // Share links are unguessable; this keeps anyone from trying many.
+  app.get("/api/f/share/:token", submitLimiter);
   app.use(["/api/builder", "/mcp", "/api/mcp", "/api/apps"], express.json({ limit: "5mb" }));
   const json = express.json({ limit: "1mb" });
   app.use((req, res, next) => (isUpload(req.path) ? next() : json(req, res, next)));
@@ -149,6 +153,8 @@ export function createApp() {
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/tutorials", tutorialsRouter);
   app.use("/api/routing", routingRouter);
+  app.use("/api/email", emailRouter);
+  app.use("/api/share", shareRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/v1", apiLimiter, publicApiRouter);
   app.use("/api/builder", builderRouter);
