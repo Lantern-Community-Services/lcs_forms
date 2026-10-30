@@ -9,7 +9,7 @@ import { getAllSettings, setSetting } from "../services/settings.js";
 import { API_SCOPES, generateKey } from "../services/apiKeys.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
-import { backupStatus, runFormBackup } from "../services/formBackup.js";
+import { backupStatus, keepSiteVersion, removeFromBackup, runFormBackup, syncFromBackup } from "../services/formBackup.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -197,12 +197,47 @@ const formBuilders = requirePermission("forms.manage", "apps.develop");
 
 adminRouter.get("/form-backup", formBuilders, (_req, res) => res.json(backupStatus()));
 
-/** Back up now (a commit only if something changed). */
+/** Back up now: saves forms changed here, never over a newer version from another site. */
 adminRouter.post(
   "/form-backup",
   formBuilders,
   asyncHandler(async (req, res) => {
-    if (!backupStatus().configured) throw badRequest("The form backup isn't set up on this server (FORM_BACKUP_TOKEN).");
     res.json(await runFormBackup({ by: actorOf(req).name }));
+  })
+);
+
+const formKeyBody = z.object({ key: z.string().regex(/^(basic|code)\/[^/]+$/) });
+
+/** Bring forms in from the backup: { keys: ["basic/<slug>", "code/<slug>"] } or { all: true } (every form that needs sync). */
+adminRouter.post(
+  "/form-backup/sync",
+  formBuilders,
+  asyncHandler(async (req, res) => {
+    const body = z.object({ keys: z.array(formKeyBody.shape.key).max(200).optional(), all: z.boolean().optional() }).parse(req.body);
+    if (!body.all && !body.keys?.length) throw badRequest("Say which forms to sync, or all.");
+    const keys = body.all ? "all" : body.keys!;
+    // Basic forms need forms.manage, code forms apps.develop.
+    const perms = req.user?.permissions ?? [];
+    const can = (k: string) => perms.includes(k.startsWith("code/") ? "apps.develop" : "forms.manage");
+    if (keys !== "all" && !keys.every(can)) throw forbidden("You can't change one of those forms.");
+    res.json(await syncFromBackup(keys === "all" ? "all" : keys, actorOf(req), keys === "all" ? can : undefined));
+  })
+);
+
+/** For a form that differs from the backup: this site's version wins. */
+adminRouter.post(
+  "/form-backup/keep",
+  formBuilders,
+  asyncHandler(async (req, res) => {
+    res.json(await keepSiteVersion(formKeyBody.parse(req.body).key, actorOf(req)));
+  })
+);
+
+/** Take a form that's only in the backup out of it. */
+adminRouter.post(
+  "/form-backup/remove",
+  formBuilders,
+  asyncHandler(async (req, res) => {
+    res.json(await removeFromBackup(formKeyBody.parse(req.body).key, actorOf(req)));
   })
 );

@@ -19,7 +19,7 @@ import {
   DocError, createForm, deleteForm, duplicateForm, exportForms, findAnyForm, findForm, importPayload, listVersions,
   publishForm, readDoc, restoreVersion, saveDraft, setCatalog, setFormStatus,
 } from "./service.js";
-import { backupStatus, runFormBackup } from "../services/formBackup.js";
+import { backupStatus, keepSiteVersion, removeFromBackup, runFormBackup, syncFromBackup } from "../services/formBackup.js";
 import { registerCodeTools } from "../apps/mcpTools.js";
 import { registerCatalogTools } from "./catalogTools.js";
 import { registerNotificationTools } from "./notifyTools.js";
@@ -408,12 +408,30 @@ function buildServer(key: ResolvedKey): McpServer {
     }
   );
 
-  tool("form_backup", "The form backup (every form's document, committed to GitHub): its status, and with run: true a backup now (a commit only if something changed).", { run: z.boolean().optional() }, async ({ run }) => {
-    need("forms:build");
-    if (!run) return backupStatus();
-    if (!backupStatus().configured) throw new HttpError(400, "The form backup isn't set up on this server (FORM_BACKUP_TOKEN).");
-    return runFormBackup({ by: actor.name });
-  });
+  tool(
+    "form_backup",
+    "The form backup on GitHub, shared by every copy of the site (prod, dev, local). Each form there holds the newest version any site saved; a site only saves a form it changed since it last matched, so it never overwrites a newer one. Returns the status and every form that isn't in sync: behind (the backup is newer: sync brings it in), differs (changed both here and there: sync takes the backup's, keep takes this site's), only_backup (not on this site: sync adds it, remove deletes it from the backup). run: true backs up now. sync: form keys (\"basic/<slug>\", \"code/<slug>\") or \"all\" (every form that's behind) — sync replaces this site's draft and publishes the backup's live version if it differs.",
+    {
+      run: z.boolean().optional(),
+      sync: z.union([z.literal("all"), z.array(z.string())]).optional(),
+      keep: z.string().optional().describe("A form key that differs: this site's version wins"),
+      remove: z.string().optional().describe("A form key that's only in the backup: delete it there"),
+    },
+    async ({ run, sync, keep, remove }) => {
+      need("forms:build");
+      const writes = Boolean(sync || keep || remove);
+      if (!run && !writes) return backupStatus();
+      if (!backupStatus().configured) throw new HttpError(400, "The form backup isn't set up on this server (FORM_BACKUP_TOKEN).");
+      const scopeOf = (k: string) => (k.startsWith("code/") ? "apps:build" : "forms:build");
+      if (sync) {
+        if (sync !== "all") sync.forEach((k) => need(scopeOf(k)));
+        return syncFromBackup(sync, actor, (k) => can(scopeOf(k)));
+      }
+      if (keep) return keepSiteVersion(keep, actor);
+      if (remove) return removeFromBackup(remove, actor);
+      return runFormBackup({ by: actor.name });
+    }
+  );
 
   tool("list_catalog_categories", "Categories on the Forms screen, for add_to_catalog (list_catalog shows the cards too).", {}, async () => {
     need("forms:build");
