@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
@@ -15,7 +17,8 @@ import type { ShareLinkView, SharingSettings } from "@/screens/builtforms/ShareP
  * can share it, how long a new link lasts and the longest, and everyone's
  * links, any of which can be turned off. Saved straight away, not with Publish.
  */
-export function ShareSettings({ formId, live }: { formId: string; live: boolean }) {
+export function ShareSettings({ formId, live, slug }: { formId: string; live: boolean; /** Shows "My link and QR code". */ slug?: string }) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const key = ["share", formId, "links"];
@@ -72,7 +75,12 @@ export function ShareSettings({ formId, live }: { formId: string; live: boolean 
           <Input type="number" min={1} max={3650} value={draft.maxDays ?? ""} onChange={(e) => setDraft({ ...draft, maxDays: e.target.value ? Math.max(1, Number(e.target.value)) : null })} placeholder="No limit" aria-label="The longest a link lasts (days)" className="w-[120px]" />
         </Field>
       </div>
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {slug && (
+          <Button size="sm" variant="secondary" className="mr-auto" onClick={() => navigate(`/f/${slug}/share`)} disabled={!live || !data.settings.enabled} title={!live ? "Publish first" : undefined}>
+            <QrCode className="h-4 w-4" /> My link and QR code
+          </Button>
+        )}
         <Button size="sm" onClick={() => void save()} disabled={busy || !changed}>Save sharing</Button>
       </div>
 

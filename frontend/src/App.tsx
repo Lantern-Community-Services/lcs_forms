@@ -52,6 +52,7 @@ const AdminSettings = lazyScreen(() => import("./screens/admin/Settings"), "Admi
 const HelpPage = lazyScreen(() => import("./screens/Help"), "HelpPage");
 const HelpArticlePage = lazyScreen(() => import("./screens/Help"), "HelpArticlePage");
 const HelpRolePage = lazyScreen(() => import("./screens/Help"), "HelpRolePage");
+const AdminShareLinks = lazyScreen(() => import("./screens/admin/ShareLinks"), "AdminShareLinks");
 const SharePage = lazyScreen(() => import("./screens/builtforms/SharePage"), "SharePage");
 const NotificationsLayout = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsLayout");
 const NotificationsFormsTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsFormsTab");
@@ -283,6 +284,7 @@ export function App() {
             <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
               <Route path="/admin/forms/card/:id" element={<CatalogCardPage />} />
+              <Route path="/admin/share-links" element={<AdminShareLinks />} />
               <Route path="/admin/builder" element={<AdminBuilderList />} />
               <Route path="/admin/ai" element={<AdminAiBuilder />} />
               {/* Admin → Notifications: every form's routing, the email templates, every email sent. */}

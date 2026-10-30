@@ -3,7 +3,7 @@ import { prisma } from "../prisma.js";
 import { asyncHandler, forbidden, notFound } from "../http.js";
 import { requireAuth } from "../auth/middleware.js";
 import { actorOf } from "../services/audit.js";
-import { findForm } from "../forms/service.js";
+import { findForm, readDoc } from "../forms/service.js";
 import { isFormAdmin } from "../forms/entries.js";
 import { canShare, formLinks, linkView, loadSharing, makeLink, myLink, saveSharing, turnOffLink } from "../services/shareLinks.js";
 
@@ -57,6 +57,37 @@ shareRouter.delete(
 );
 
 // ── Admins ───────────────────────────────────────────────────────────────
+
+/**
+ * Admin → Share links: every form shared by link (live, or being set up in a
+ * draft), each with its settings and everyone's links. Before "/:form" so
+ * "all" isn't read as a form.
+ */
+shareRouter.get(
+  "/all/forms",
+  asyncHandler(async (req, res) => {
+    if (!isFormAdmin(req.user)) throw forbidden("Only Admins see every form's share links.");
+    const forms = await prisma.builtForm.findMany({ where: { kind: "basic", status: { not: "archived" } }, orderBy: { title: "asc" } });
+    const out = [];
+    for (const f of forms) {
+      const mode = (d: string | null) => (d ? readDoc(d).settings.access?.mode : undefined);
+      const live = mode(f.liveSchema) === "link";
+      const draft = mode(f.draftSchema) === "link";
+      if (!live && !draft) continue;
+      const links = await formLinks(f);
+      const entries = await prisma.formEntry.count({ where: { formId: f.id, status: "active", shareLinkId: { not: null } } });
+      out.push({
+        form: { id: f.id, slug: f.slug, title: f.title, status: f.status },
+        live,
+        settings: await loadSharing(f.id),
+        working: links.filter((l) => linkView(l).live).length,
+        entries,
+        mine: links.some((l) => l.userId === req.user!.userId && linkView(l).live),
+      });
+    }
+    res.json({ forms: out });
+  })
+);
 
 shareRouter.get(
   "/:form/links",

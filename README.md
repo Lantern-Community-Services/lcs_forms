@@ -348,7 +348,9 @@ signed out, it opens only through a live share link; staff fill it in signed in 
   `{ kind: "sharer" }`). Uploads (e.g. artwork, 10 MB at most) and the offline queue go through the same link.
 - **Admins** set, in the form's Settings (saved straight away): whether employees can share it, how long a
   new link lasts and the longest, and see **Everyone's links** (who, when, until, entries, last used),
-  any of which they can turn off. Forms shared by link can't use Site or Resident fields, like public forms.
+  any of which they can turn off. **Admin → Share links** (`/admin/share-links`) has every form shared by
+  link in one place, with the same settings and links, and each form's **My link and QR code** for the
+  Admin's own; so does the form's Settings. Forms shared by link can't use Site or Resident fields, like public forms.
 - Making, refreshing and turning off links, and changing sharing, go in the audit log. Deleting a form
   deletes its links.
 

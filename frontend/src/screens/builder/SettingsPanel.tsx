@@ -122,7 +122,7 @@ export function SettingsPanel({
               Anyone given an employee's link can fill it in without an account, and nobody can without one. Every entry says whose link it came through, and that person sees it.
               Forms shared by link can't use Site or Resident fields, and have the same spam protection as public forms.
             </p>
-            <ShareSettings formId={form.id} live={form.live?.settings.access?.mode === "link"} />
+            <ShareSettings formId={form.id} slug={form.slug} live={form.live?.settings.access?.mode === "link"} />
           </>
         )}
         <Toggle label="Ask which site this is for" hint="Entries are then only visible to people assigned to that site." checked={Boolean(s.requireSite)} onChange={(v) => set({ requireSite: v || undefined })} />

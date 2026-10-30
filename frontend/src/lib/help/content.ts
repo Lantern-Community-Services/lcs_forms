@@ -202,8 +202,11 @@ export const ARTICLES: HelpArticle[] = [
     area: "forms",
     title: "Sharing a form by link or QR code",
     summary: "Your own link and QR code for forms people outside Lantern fill in.",
-    where: [{ label: "Forms", to: "/forms" }],
-    words: "share link qr code external public art submissions refresh expire",
+    where: [
+      { label: "Forms", to: "/forms" },
+      { label: "Share links (Admin)", to: "/admin/share-links", needs: ["forms.manage"] },
+    ],
+    words: "share link qr code external public art submissions refresh expire admin turn off",
     sections: [
       {
         heading: "Your link",
@@ -219,6 +222,13 @@ export const ARTICLES: HelpArticle[] = [
           "Your link ends after the time you picked (90 days unless you choose otherwise).",
           "Shared it somewhere you shouldn't have? Refresh it: you get a new link and QR code, and the old ones stop working straight away.",
           "If you leave Lantern or lose access to the form, your link stops working.",
+        ],
+      },
+      {
+        heading: "For Admins",
+        points: [
+          "Admin → Share links lists every form shared by link: its settings, everyone's links (turn any off), and your own link and QR code.",
+          "A form's Settings has the same, under Who can fill it in.",
         ],
       },
     ],
