@@ -93,7 +93,7 @@ export function CodeFormsList() {
                     <p className="truncate text-[14px] font-semibold text-ink">{p.title}</p>
                     <p className="truncate text-micro text-muted">/apps/{p.slug} · {p.fileCount} files · edited {relativeTime(p.updatedAt)}{p.updatedByName ? ` by ${p.updatedByName}` : ""}</p>
                   </Link>
-                  <BackupSyncLabel kind="code" slug={p.slug} listKey={["apps"]} />
+                  <BackupSyncLabel kind="code" slug={p.slug} />
                   <div className="hidden sm:block"><StatusBadge status={p.status} unpublished={p.unpublishedChanges} /></div>
                   <span className="hidden w-24 text-right text-[13px] text-muted md:block"><span className="tabular font-semibold text-ink">{p.entryCount.toLocaleString()}</span> entries</span>
                   <RowMenu p={p} run={run} onDelete={() => setDeleting(p)} />

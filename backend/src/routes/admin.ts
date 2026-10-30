@@ -9,7 +9,7 @@ import { getAllSettings, setSetting } from "../services/settings.js";
 import { API_SCOPES, generateKey } from "../services/apiKeys.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
-import { backupStatus, keepSiteVersion, removeFromBackup, runFormBackup, syncFromBackup } from "../services/formBackup.js";
+import { backupStatus, formsBehind, queueBackupJobs } from "../services/formBackup.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -197,16 +197,22 @@ const formBuilders = requirePermission("forms.manage", "apps.develop");
 
 adminRouter.get("/form-backup", formBuilders, (_req, res) => res.json(backupStatus()));
 
+// Everything below queues a job and answers at once; the jobs run one at a time in the background
+// (GET /form-backup shows them in jobs, and how they went in results), so several can be clicked in a row.
+
 /** Back up now: saves forms changed here, never over a newer version from another site. */
 adminRouter.post(
   "/form-backup",
   formBuilders,
   asyncHandler(async (req, res) => {
-    res.json(await runFormBackup({ by: actorOf(req).name }));
+    res.json(queueBackupJobs("backup", [null], actorOf(req)));
   })
 );
 
 const formKeyBody = z.object({ key: z.string().regex(/^(basic|code)\/[^/]+$/) });
+
+/** Basic forms need forms.manage, code forms apps.develop. */
+const canChange = (req: express.Request) => (key: string) => (req.user?.permissions ?? []).includes(key.startsWith("code/") ? "apps.develop" : "forms.manage");
 
 /** Bring forms in from the backup: { keys: ["basic/<slug>", "code/<slug>"] } or { all: true } (every form that needs sync). */
 adminRouter.post(
@@ -215,12 +221,9 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const body = z.object({ keys: z.array(formKeyBody.shape.key).max(200).optional(), all: z.boolean().optional() }).parse(req.body);
     if (!body.all && !body.keys?.length) throw badRequest("Say which forms to sync, or all.");
-    const keys = body.all ? "all" : body.keys!;
-    // Basic forms need forms.manage, code forms apps.develop.
-    const perms = req.user?.permissions ?? [];
-    const can = (k: string) => perms.includes(k.startsWith("code/") ? "apps.develop" : "forms.manage");
-    if (keys !== "all" && !keys.every(can)) throw forbidden("You can't change one of those forms.");
-    res.json(await syncFromBackup(keys === "all" ? "all" : keys, actorOf(req), keys === "all" ? can : undefined));
+    const can = canChange(req);
+    if (body.keys && !body.keys.every(can)) throw forbidden("You can't change one of those forms.");
+    res.json(queueBackupJobs("sync", body.all ? formsBehind(can) : body.keys!, actorOf(req)));
   })
 );
 
@@ -229,7 +232,9 @@ adminRouter.post(
   "/form-backup/keep",
   formBuilders,
   asyncHandler(async (req, res) => {
-    res.json(await keepSiteVersion(formKeyBody.parse(req.body).key, actorOf(req)));
+    const { key } = formKeyBody.parse(req.body);
+    if (!canChange(req)(key)) throw forbidden("You can't change that form.");
+    res.json(queueBackupJobs("keep", [key], actorOf(req)));
   })
 );
 
@@ -238,6 +243,8 @@ adminRouter.post(
   "/form-backup/remove",
   formBuilders,
   asyncHandler(async (req, res) => {
-    res.json(await removeFromBackup(formKeyBody.parse(req.body).key, actorOf(req)));
+    const { key } = formKeyBody.parse(req.body);
+    if (!canChange(req)(key)) throw forbidden("You can't change that form.");
+    res.json(queueBackupJobs("remove", [key], actorOf(req)));
   })
 );
