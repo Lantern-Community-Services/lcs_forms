@@ -9,12 +9,14 @@ import { SitePicker, useSiteSelection } from "@/lib/site";
 import { api } from "@/lib/api";
 import { calendarApi, useCalendar, useCalendarCategories, useCalendarMutation, useOutlookPrefs } from "@/lib/queries";
 import { addDays, isDay } from "@/lib/recurrence";
-import { addMonths, categoryColor, fetchRange, nyNowMinutes, nyToday, shortDay, startOfWeek, step, viewTitle, type CalendarView } from "@/lib/calendar";
+import { addMonths, categoryColor, fetchRange, formatTime, longDay, nyNowMinutes, nyToday, shortDay, startOfWeek, step, timeOf, viewTitle, type CalendarView } from "@/lib/calendar";
 import { readStoredJson, writeStorage } from "@/lib/storage";
 import { cn, errorMessage } from "@/lib/utils";
 import type { CalendarOccurrence, CalendarScope, CalendarSeries } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState, LoadingState, Spinner } from "@/components/ui/misc";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { colorMap } from "./colors";
@@ -53,8 +55,10 @@ export function CalendarPage() {
   const canAdd = manage || can("calendar.edit");
   // Everyone else asks for an event through the Event Requests code form, when
   // it's published and theirs to open; the event lands here once it's approved.
+  // They get New event and drag out times all the same, and are asked to request it.
   const { categories: navCategories } = useNavCatalog();
   const requestForm = canAdd ? undefined : navCategories.flatMap((c) => c.forms).find((f) => /^\/apps\/events(\/|$)/.test(f.url));
+  const canStart = canAdd || Boolean(requestForm);
   const device = useDeviceKind();
   const phone = device === "phone";
   const qc = useQueryClient();
@@ -103,6 +107,7 @@ export function CalendarPage() {
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [scopeFor, setScopeFor] = useState<{ action: "edit" | "delete"; occ: CalendarOccurrence } | null>(null);
   const [showCategories, setShowCategories] = useState(false);
+  const [requestFor, setRequestFor] = useState<RequestSlot | null>(null);
   // "Add to my Outlook": asked once, the first time someone opens the calendar.
   const { data: outlook } = useOutlookPrefs();
   const [showOutlook, setShowOutlook] = useState(false);
@@ -172,7 +177,8 @@ export function CalendarPage() {
     }
   };
 
-  const newAt = (day: string, minutes: number | null) => setEditor({ mode: "new", day, minutes });
+  const newAt = (day: string, minutes: number | null, endMinutes?: number) =>
+    canAdd ? setEditor({ mode: "new", day, minutes, endMinutes }) : setRequestFor({ day, minutes, endMinutes });
   const newEvent = () => newAt(anchor, anchor === today ? Math.min(23 * 60, Math.ceil((nyNowMinutes() + 1) / 60) * 60) : 9 * 60);
 
   // ── Keys, on a computer: arrows move, T is today, M W D L pick the view, N adds ──
@@ -190,7 +196,7 @@ export function CalendarPage() {
       else if (k === "w") go({ view: "week" });
       else if (k === "d") go({ view: "day" });
       else if (k === "l") go({ view: "list" });
-      else if (k === "n" && canAdd) newEvent();
+      else if (k === "n" && canStart) newEvent();
       else return;
       e.preventDefault();
     };
@@ -254,12 +260,12 @@ export function CalendarPage() {
             onOpen={setOpen}
             onPick={(date) => go({ date })}
             onSwipe={(dir) => go({ date: addMonths(anchor, dir) })}
-            onNew={canAdd ? (day) => newAt(day, 9 * 60) : undefined}
+            onNew={canStart ? (day) => newAt(day, 9 * 60) : undefined}
           />
         </div>
       );
     if (view === "month")
-      return <MonthGrid anchor={anchor} today={today} items={items} colors={colors} onOpen={setOpen} onDay={(date) => go({ view: "day", date })} onNew={canAdd ? (day) => newAt(day, null) : undefined} />;
+      return <MonthGrid anchor={anchor} today={today} items={items} colors={colors} onOpen={setOpen} onDay={(date) => go({ view: "day", date })} onNew={canStart ? (day) => newAt(day, null) : undefined} />;
     if (view === "week" || view === "day") {
       const days = view === "day" ? [anchor] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i));
       return (
@@ -270,7 +276,7 @@ export function CalendarPage() {
           colors={colors}
           onOpen={setOpen}
           onDay={view === "week" ? (date) => go({ view: "day", date }) : undefined}
-          onNewAt={canAdd ? (day, minutes) => newAt(day, minutes < 0 ? null : minutes) : undefined}
+          onNewAt={canStart ? (day, minutes, end) => newAt(day, minutes < 0 ? null : minutes, end) : undefined}
         />
       );
     }
@@ -290,15 +296,10 @@ export function CalendarPage() {
             {isFetching && <Spinner className="h-4 w-4" />}
             {outlookButton}
             <Button variant="secondary" size="sm" onClick={() => go({ date: today })} className="h-9">Today</Button>
-            {canAdd && (
+            {canStart && (
               <Button data-tour="calendar-new" size="icon" onClick={newEvent} aria-label="New event" className="h-9 w-9">
                 <Plus className="h-5 w-5" />
               </Button>
-            )}
-            {requestForm && (
-              <Link to={requestForm.url} aria-label="Request an event" className={cn(buttonVariants({ size: "icon" }), "h-9 w-9")}>
-                <Plus className="h-5 w-5" />
-              </Link>
             )}
           </div>
           <div className="mt-2 flex items-center gap-1">
@@ -323,6 +324,7 @@ export function CalendarPage() {
             {isFetching && <Spinner className="h-4 w-4" />}
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <SitePicker codes={codes} onChange={setCodes} counts={false} className="w-[220px]" />
+              <CategoryFilterMenu options={filterOptions} hidden={hidden} onChange={setHidden} />
               {outlookButton}
               {viewSwitch}
               {manage && (
@@ -330,27 +332,12 @@ export function CalendarPage() {
                   <Tags className="h-4 w-4" />
                 </Button>
               )}
-              {canAdd && (
+              {canStart && (
                 <Button data-tour="calendar-new" onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined}>
                   <Plus className="h-4 w-4" /> New event
                 </Button>
               )}
-              {requestForm && (
-                <Link to={requestForm.url} className={buttonVariants()}>
-                  <Plus className="h-4 w-4" /> Request an event
-                </Link>
-              )}
             </div>
-          </div>
-          <div className="chiprow -mx-1 mt-3 flex gap-1.5 px-1">
-            {filterOptions.map((c) => (
-              <FilterChip key={c.key} on={!hidden.has(c.key)} color={c.color} label={c.name} onClick={() => toggle(c.key)} />
-            ))}
-            {hidden.size > 0 && (
-              <button type="button" onClick={() => setHidden(new Set())} className="shrink-0 px-2 text-[12.5px] font-semibold text-accent dark:text-white">
-                Show all
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -372,25 +359,160 @@ export function CalendarPage() {
       <EventEditor target={editor} onClose={() => setEditor(null)} />
       <OutlookDialog open={showOutlook} onClose={() => setShowOutlook(false)} />
       {manage && <CategoriesDialog open={showCategories} onClose={() => setShowCategories(false)} />}
+      {requestForm && <RequestPrompt slot={requestFor} formUrl={requestForm.url} onClose={() => setRequestFor(null)} />}
     </div>
   );
 }
 
-function FilterChip({ on, color, label, onClick }: { on: boolean; color: string; label: string; onClick: () => void }) {
+/** A time someone without calendar rights picked: minutes null for all day. */
+type RequestSlot = { day: string; minutes: number | null; endMinutes?: number };
+
+/**
+ * Only Admins and calendar editors put events on the calendar themselves.
+ * Anyone else who picks a time (New event, a click or a drag) is asked to
+ * request it, and the request form opens on that day and time.
+ */
+function RequestPrompt({ slot, formUrl, onClose }: { slot: RequestSlot | null; formUrl: string; onClose: () => void }) {
+  const start = slot?.minutes ?? null;
+  const end = start === null ? null : Math.min(slot?.endMinutes ?? start + 60, 23 * 60 + 59);
+  const when = slot ? `${longDay(slot.day)} · ${start === null || end === null ? "All day" : `${formatTime(timeOf(start))} – ${formatTime(timeOf(end))}`}` : "";
+  const query = slot ? new URLSearchParams(start === null || end === null ? { date: slot.day, allDay: "1" } : { date: slot.day, start: timeOf(start), end: timeOf(end) }) : null;
+  const to = `${formUrl.replace(/^(\/apps\/[^/?#]+).*$/, "$1")}/new?${query ?? ""}`;
   return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      title={on ? `Hide ${label}` : `Show ${label}`}
-      className={cn(
-        "inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border px-3 text-[12.5px] font-semibold transition-colors",
-        on ? "border-hairline bg-surface text-ink hover:bg-navsel/60" : "border-dashed border-hairline bg-transparent text-muted line-through decoration-muted/60"
-      )}
+    <ResponsiveDialog
+      open={slot !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title="Request an event"
+      dialogClassName="w-[min(440px,calc(100vw-2rem))]"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} className="min-h-[44px] flex-1 md:min-h-0 md:flex-none">Cancel</Button>
+          <Link to={to} onClick={onClose} className={cn(buttonVariants(), "min-h-[44px] flex-1 md:min-h-0 md:flex-none")}>
+            Fill out the request
+          </Link>
+        </>
+      }
     >
-      <span className="h-2.5 w-2.5 rounded-full" style={{ background: on ? color : "transparent", boxShadow: on ? undefined : `inset 0 0 0 1.5px ${color}` }} />
-      {label}
-    </button>
+      <p className="rounded-input bg-subtle px-3 py-2.5 text-[14px] font-bold text-ink">{when}</p>
+      <p className="mt-3 text-[13.5px] text-muted">
+        Events go on the calendar through Event Requests. The form opens on this day and time; once it's sent, the event shows here marked Needs approval until it's approved.
+      </p>
+    </ResponsiveDialog>
+  );
+}
+
+type FilterOption = { key: string; name: string; color: string };
+
+/**
+ * Categories named "Group: kind" (the Integrated Services ones) listed together
+ * under their group; the rest one by one, in the calendar's order.
+ */
+function groupOptions(options: FilterOption[]): { label: string | null; options: FilterOption[] }[] {
+  const out: { label: string | null; options: FilterOption[] }[] = [];
+  for (const o of options) {
+    const at = o.name.indexOf(": ");
+    const label = at > 0 ? o.name.slice(0, at) : null;
+    const group = label ? out.find((g) => g.label === label) : undefined;
+    if (group) group.options.push(o);
+    else out.push({ label, options: [o] });
+  }
+  // A group of one is just a row.
+  return out.map((g) => (g.label && g.options.length === 1 ? { label: null, options: g.options } : g));
+}
+
+/** The category's mark: filled when shown, a ring when hidden, half when some of a group are. */
+function FilterDot({ color, state }: { color: string; state: "on" | "off" | "some" }) {
+  const background = state === "on" ? color : state === "some" ? `linear-gradient(90deg, ${color} 50%, transparent 50%)` : "transparent";
+  return <span aria-hidden className="h-3 w-3 shrink-0 rounded-full" style={{ background, boxShadow: `inset 0 0 0 1.5px ${color}` }} />;
+}
+
+/**
+ * On a computer or an iPad: one Categories button, and the categories in a
+ * menu under it, each with Only to see just that one. A group's row turns all
+ * of its kinds on or off. The menu stays open while you pick.
+ */
+function CategoryFilterMenu({ options, hidden, onChange }: { options: FilterOption[]; hidden: Set<string>; onChange: (next: Set<string>) => void }) {
+  const off = options.filter((o) => hidden.has(o.key)).length;
+  const show = (keys: string[], on: boolean) => {
+    const next = new Set(hidden);
+    for (const k of keys) {
+      if (on) next.delete(k);
+      else next.add(k);
+    }
+    onChange(next);
+  };
+  const only = (keys: string[]) => onChange(new Set(options.filter((o) => !keys.includes(o.key)).map((o) => o.key)));
+  const keep = (e: Event) => e.preventDefault();
+
+  const row = (key: string, keys: string[], label: string, color: string, indent = false) => {
+    const shown = keys.filter((k) => !hidden.has(k)).length;
+    const state = shown === keys.length ? "on" : shown === 0 ? "off" : "some";
+    return (
+      <div key={key} className="group flex items-center">
+        <DropdownMenuCheckboxItem
+          checked={state === "on" ? true : state === "off" ? false : "indeterminate"}
+          onCheckedChange={() => show(keys, state !== "on")}
+          onSelect={keep}
+          className={cn("min-w-0 flex-1", indent && "pl-7")}
+        >
+          <FilterDot color={color} state={state} />
+          <span className={cn("truncate", state === "off" && "text-muted line-through decoration-muted/60")}>{label}</span>
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            keep(e);
+            only(keys);
+          }}
+          aria-label={`Show only ${label}`}
+          className="shrink-0 px-2 text-[12px] font-semibold text-accent opacity-0 focus:opacity-100 group-hover:opacity-100 dark:text-white [@media(hover:none)]:opacity-100"
+        >
+          Only
+        </DropdownMenuItem>
+      </div>
+    );
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="secondary"
+          aria-label={off ? `Categories, ${options.length - off} of ${options.length} shown` : undefined}
+          className={cn(off > 0 && "border-navy bg-navsel text-accent dark:text-white")}
+        >
+          <Filter className="h-4 w-4" /> Categories
+          {off > 0 && (
+            <span className="rounded-pill bg-navy px-1.5 text-[11.5px] font-bold tabular-nums text-white dark:bg-white dark:text-navy">
+              {options.length - off}/{options.length}
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-[min(70vh,560px)] w-[320px] overflow-auto">
+        <DropdownMenuLabel>Show categories</DropdownMenuLabel>
+        {groupOptions(options).map((g) =>
+          g.label ? (
+            <div key={`group:${g.label}`}>
+              {row(`group:${g.label}`, g.options.map((o) => o.key), g.label, g.options[0].color)}
+              {g.options.map((o) => row(o.key, [o.key], o.name.slice(g.label!.length + 2), o.color, true))}
+            </div>
+          ) : (
+            row(g.options[0].key, [g.options[0].key], g.options[0].name, g.options[0].color)
+          )
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            keep(e);
+            onChange(new Set());
+          }}
+          disabled={off === 0}
+          className="font-semibold"
+        >
+          Show all
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

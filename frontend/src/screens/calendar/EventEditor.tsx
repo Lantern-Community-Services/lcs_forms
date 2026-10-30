@@ -18,7 +18,14 @@ import { CustomRepeat, EndFields, RepeatSummary, shapeFor, type EndDraft, type R
 
 /** What the editor is open on. */
 export type EditorTarget =
-  | { mode: "new"; day: string; /** Minutes past midnight, or null for all day. */ minutes: number | null }
+  | {
+      mode: "new";
+      day: string;
+      /** Minutes past midnight, or null for all day. */
+      minutes: number | null;
+      /** When a time was dragged out on the calendar: where it ends. Otherwise it runs an hour. */
+      endMinutes?: number;
+    }
   | { mode: "edit"; series: CalendarSeries; scope: CalendarScope; occ: CalendarOccurrence | null };
 
 interface Draft {
@@ -60,7 +67,7 @@ function draftFor(target: EditorTarget, everySite: boolean, ownSiteIds: string[]
       startDate: target.day,
       startTime: timeOf(start),
       endDate: target.day,
-      endTime: timeOf(Math.min(start + 60, 23 * 60 + 59)),
+      endTime: timeOf(Math.min(target.endMinutes ?? start + 60, 23 * 60 + 59)),
       repeatKey: "none",
       custom: shapeFor("weekly", target.day),
       end: { kind: "never", count: 10, until: addDays(target.day, 90) },
@@ -128,7 +135,7 @@ function problemOf(d: Draft, rule: Recurrence | null, scope: CalendarScope | nul
  * time, place and notes; its repeat, sites and category belong to the series.
  */
 export function EventEditor({ target, onClose }: { target: EditorTarget | null; onClose: () => void }) {
-  return target ? <EditorDialog key={target.mode === "new" ? `new-${target.day}-${target.minutes}` : `${target.series.id}-${target.scope}-${target.occ?.key}`} target={target} onClose={onClose} /> : null;
+  return target ? <EditorDialog key={target.mode === "new" ? `new-${target.day}-${target.minutes}-${target.endMinutes}` : `${target.series.id}-${target.scope}-${target.occ?.key}`} target={target} onClose={onClose} /> : null;
 }
 
 function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () => void }) {

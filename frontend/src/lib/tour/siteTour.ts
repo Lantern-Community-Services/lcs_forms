@@ -160,7 +160,7 @@ export function buildSiteTour(
     body:
       `${user.allSites ? "Events across Lantern, for every site or for chosen ones" : "Events for every site, and for yours"}. Switch between ${touch && device === "phone" ? "Month, Day and List" : "Month, Week, Day and List"}` +
       `${touch ? "" : "; ← and → move through the weeks"}. **Outlook** puts them in your own Outlook calendar.` +
-      (calendarEdit ? `\n\nYou can add events${can("calendar.manage") ? "" : " for your sites"}: **New event**, or ${tap.toLowerCase()} a day.` : ""),
+      (calendarEdit ? `\n\nYou can add events${can("calendar.manage") ? "" : " for your sites"}: **New event**, or ${tap.toLowerCase()} a day${touch ? "" : " or drag across the hours"}.` : ""),
   });
 
   if (roster) {
