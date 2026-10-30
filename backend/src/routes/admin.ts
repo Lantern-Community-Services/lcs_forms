@@ -9,7 +9,7 @@ import { getAllSettings, setSetting } from "../services/settings.js";
 import { API_SCOPES, generateKey } from "../services/apiKeys.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
-import { backupStatus, formsBehind, queueBackupJobs } from "../services/formBackup.js";
+import { backupStatus, formsToSync, queueBackupJobs } from "../services/formBackup.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -209,12 +209,12 @@ adminRouter.post(
   })
 );
 
-const formKeyBody = z.object({ key: z.string().regex(/^(basic|code)\/[^/]+$/) });
+const formKeyBody = z.object({ key: z.string().regex(/^(basic|code|components)\/[^/]+$/) });
 
-/** Basic forms need forms.manage, code forms apps.develop. */
-const canChange = (req: express.Request) => (key: string) => (req.user?.permissions ?? []).includes(key.startsWith("code/") ? "apps.develop" : "forms.manage");
+/** Basic forms need forms.manage, code forms and components apps.develop. */
+const canChange = (req: express.Request) => (key: string) => (req.user?.permissions ?? []).includes(key.startsWith("basic/") ? "forms.manage" : "apps.develop");
 
-/** Bring forms in from the backup: { keys: ["basic/<slug>", "code/<slug>"] } or { all: true } (every form that needs sync). */
+/** Bring forms in from the backup: { keys: ["basic/<slug>", "code/<slug>"] } or { all: true } (everything that differs from the backup: the backup's newest wins). */
 adminRouter.post(
   "/form-backup/sync",
   formBuilders,
@@ -223,7 +223,7 @@ adminRouter.post(
     if (!body.all && !body.keys?.length) throw badRequest("Say which forms to sync, or all.");
     const can = canChange(req);
     if (body.keys && !body.keys.every(can)) throw forbidden("You can't change one of those forms.");
-    res.json(queueBackupJobs("sync", body.all ? formsBehind(can) : body.keys!, actorOf(req)));
+    res.json(queueBackupJobs("sync", body.all ? formsToSync(can) : body.keys!, actorOf(req)));
   })
 );
 

@@ -410,7 +410,7 @@ function buildServer(key: ResolvedKey): McpServer {
 
   tool(
     "form_backup",
-    "The form backup on GitHub, shared by every copy of the site (prod, dev, local). Each form there holds the newest version any site saved; a site only saves a form it changed since it last matched, so it never overwrites a newer one. Returns the status and every form that isn't in sync: behind (the backup is newer: sync brings it in), differs (changed both here and there: sync takes the backup's, keep takes this site's), only_backup (not on this site: sync adds it, remove deletes it from the backup). run: true backs up now. sync: form keys (\"basic/<slug>\", \"code/<slug>\") or \"all\" (every form that's behind) — sync replaces this site's draft and publishes the backup's live version if it differs.",
+    "The form backup on GitHub, shared by every copy of the site (prod, dev, local). Each form there holds the newest version any site saved; a site only saves a form it changed since it last matched, so it never overwrites a newer one. Returns the status and every form that isn't in sync: behind (the backup is newer: sync brings it in), differs (changed both here and there: sync takes the backup's, keep takes this site's), only_backup (not on this site: sync adds it, remove deletes it from the backup). run: true backs up now. sync: keys (\"basic/<slug>\", \"code/<slug>\", \"components/<name>\") or \"all\" (everything behind or differing: the backup's newest wins) — sync replaces this site's draft and publishes the backup's live version if it differs, bringing in the library components a code form imports first; a version that doesn't build here changes nothing.",
     {
       run: z.boolean().optional(),
       sync: z.union([z.literal("all"), z.array(z.string())]).optional(),
@@ -422,7 +422,7 @@ function buildServer(key: ResolvedKey): McpServer {
       const writes = Boolean(sync || keep || remove);
       if (!run && !writes) return backupStatus();
       if (!backupStatus().configured) throw new HttpError(400, "The form backup isn't set up on this server (FORM_BACKUP_TOKEN).");
-      const scopeOf = (k: string) => (k.startsWith("code/") ? "apps:build" : "forms:build");
+      const scopeOf = (k: string) => (k.startsWith("basic/") ? "forms:build" : "apps:build");
       if (sync) {
         if (sync !== "all") sync.forEach((k) => need(scopeOf(k)));
         return syncFromBackup(sync, actor, (k) => can(scopeOf(k)));
