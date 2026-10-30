@@ -8,6 +8,8 @@ import { colorOf, type ColorOf } from "./colors";
 
 const HOUR_PX = 48;
 const GUTTER = "52px";
+/** A click picks a half hour; a drag picks whole half hours. */
+const SLOT = 30;
 /** All-day lanes shown before the row offers "+n more". */
 const ALL_DAY_LANES = 3;
 
@@ -36,8 +38,11 @@ export function TimeGrid({
   onOpen: (o: CalendarOccurrence) => void;
   /** Open one day on its own (a tap on its heading). */
   onDay?: (day: string) => void;
-  /** Admins: start a new event on this day at this time (minutes past midnight). */
-  onNewAt?: (day: string, minutes: number) => void;
+  /**
+   * Start a new event on this day at this time (minutes past midnight; -1 for
+   * all day). `end` is set when a time was dragged out, as in Outlook.
+   */
+  onNewAt?: (day: string, minutes: number, end?: number) => void;
 }) {
   const now = useNowMinutes();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -168,24 +173,83 @@ function DayColumn({
   items: CalendarOccurrence[];
   colors: ColorOf;
   onOpen: (o: CalendarOccurrence) => void;
-  onNewAt?: (day: string, minutes: number) => void;
+  onNewAt?: (day: string, minutes: number, end?: number) => void;
   /** Set on today's column: where the now line goes. */
   nowMinutes: number | null;
 }) {
   const placed = layoutDay(day, items);
+  // Dragging out a time with a mouse or pen: the half hours covered so far.
+  // A finger scrolls instead, so a tap picks one half hour.
+  const [sel, setSel] = useState<{ from: number; to: number } | null>(null);
+  const drag = useRef<{ id: number; anchor: number; touch: boolean; y: number } | null>(null);
+  const slotAt = (e: React.PointerEvent<HTMLDivElement>) => {
+    const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+    return Math.max(0, Math.min(24 * 60 - SLOT, Math.floor(((y / HOUR_PX) * 60) / SLOT) * SLOT));
+  };
+  const span = (anchor: number, at: number) => ({ from: Math.min(anchor, at), to: Math.max(anchor, at) + SLOT });
+
+  // Escape drops a drag in progress.
+  const dragging = sel !== null;
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      drag.current = null;
+      setSel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dragging]);
+
   return (
     <div
-      className={cn("relative border-l border-hairline", onNewAt && "cursor-pointer")}
+      className={cn("relative border-l border-hairline", onNewAt && "cursor-pointer select-none")}
       style={{ backgroundImage: "linear-gradient(to bottom, rgb(var(--c-hairline)) 1px, transparent 1px)", backgroundSize: `100% ${HOUR_PX}px` }}
-      onClick={
+      onPointerDown={
         onNewAt
           ? (e) => {
-              const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-              onNewAt(day, Math.max(0, Math.min(23 * 60 + 30, Math.floor((y / HOUR_PX) * 2) * 30)));
+              if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+              const at = slotAt(e);
+              const touch = e.pointerType === "touch";
+              drag.current = { id: e.pointerId, anchor: at, touch, y: e.clientY };
+              if (touch) return;
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setSel({ from: at, to: at + SLOT });
             }
           : undefined
       }
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (d && d.id === e.pointerId && !d.touch) setSel(span(d.anchor, slotAt(e)));
+      }}
+      onPointerUp={(e) => {
+        const d = drag.current;
+        drag.current = null;
+        setSel(null);
+        if (!d || d.id !== e.pointerId || !onNewAt) return;
+        if (d.touch) {
+          // A tap, not the start of a scroll.
+          if (Math.abs(e.clientY - d.y) < 10) onNewAt(day, d.anchor);
+          return;
+        }
+        const { from, to } = span(d.anchor, slotAt(e));
+        // One half hour is a click: the editor's usual hour. More is the time dragged out.
+        onNewAt(day, from, to - from > SLOT ? to : undefined);
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+        setSel(null);
+      }}
     >
+      {sel && (
+        <div
+          className="pointer-events-none absolute inset-x-[2px] z-20 rounded-[5px] border-2 border-navy bg-navy/15 px-1.5 py-0.5 text-[11.5px] font-bold leading-[15px] text-ink dark:border-white dark:bg-white/15"
+          style={{ top: (sel.from / 60) * HOUR_PX + 1, height: ((sel.to - sel.from) / 60) * HOUR_PX - 2 }}
+        >
+          {formatTime(timeOf(sel.from))} – {formatTime(timeOf(sel.to % (24 * 60)))}
+        </div>
+      )}
       {placed.map((p) => {
         const color = colorOf(colors, p.occ.categoryId);
         const height = ((p.bottom - p.top) / 60) * HOUR_PX - 2;
