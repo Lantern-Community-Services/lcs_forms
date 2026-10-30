@@ -28,6 +28,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "collections": { "mealTypes": { "read": ["*"], "write": ["admin"] } },
   "reads": ["other-form-slug"],
   "share": { "forms": ["other-form-slug"] },                       // let that form's server code read this one's entries
+  "shareLink": { "page": "report", "actions": ["bootstrap"] },      // fill "report" in without signing in, through staff's share links (ctx.user.guest; no reading back)
   "calendar": { "ownEvents": true },                                // server code manages the form's own calendar events
   "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
@@ -37,7 +38,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
 }
 entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
 "editOwnMinutes": N (people can change their own entry for N minutes; default 0).
-Role keys: admin, developer, main_office, site_manager, site_staff. "*" = everyone with access.
+Role keys: admin, developer, main_office, site_manager, site_staff, arete_staff (Arete, the security partner: sees only the forms its role names). "*" = everyone with access.
 Admins and developers pass every role check.
 
 ## How data flows

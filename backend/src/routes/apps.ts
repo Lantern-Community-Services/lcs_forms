@@ -222,6 +222,8 @@ appsRouter.get(
       hash: app.build.hash,
       user: { id: u.userId, name: u.name, email: u.email, roleKey: u.roleKey, roleName: u.roleName, permissions: u.permissions, siteIds: u.siteIds },
       canEdit: isDeveloper(u),
+      // form.json "shareLink": staff can share it by link (/f/<slug>/share) for people without an account.
+      shareable: Boolean(app.manifest.shareLink) && !app.draft,
       // Sees everyone's entries (else only their own): from the form's "Who sees entries".
       canReadAll: a.readAll,
       offlineActions: app.manifest.offline?.actions ?? [],

@@ -50,7 +50,8 @@ export async function uploadAppFile(app: LoadedApp, user: CurrentUser, file: { n
     name: file.name.slice(0, 200) || "file",
     mime: file.mime.slice(0, 100) || "application/octet-stream",
     data: file.data,
-    createdById: user.userId,
+    // A guest (share link) has no account: their uploads are nobody's, like an API key's.
+    createdById: user.guest ? null : user.userId,
   });
   return refOut(row);
 }
