@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import { Bell, CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler, QrCode } from "lucide-react";
@@ -20,6 +20,10 @@ import { ApiError, api } from "@/lib/api";
 import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
 import { entryDeviceKind, useDeviceKind } from "@/lib/device";
 import { errorMessage } from "@/lib/utils";
+import { lazyScreen } from "@/lib/lazyScreen";
+
+/** A code form opened through a share link: its own page (the sandboxed frame), loaded only then. */
+const SharedAppPage = lazyScreen(() => import("@/apps/SharedAppPage"), "SharedAppPage");
 
 const newClientId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -243,7 +247,7 @@ function InAppShell({ children }: { children: React.ReactNode }) {
 }
 
 /** Public forms: no sidebar, no sign-in — just the Lantern logo and the form. */
-function PublicShell({ children }: { children: React.ReactNode }) {
+export function PublicShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-height overflow-y-auto bg-appbg">
       <div className="mx-auto max-w-[780px] px-4 py-6 md:py-10">
@@ -264,7 +268,7 @@ export function SharedFormPage() {
   const { token = "" } = useParams();
   const { data, error, isLoading } = useQuery({
     queryKey: ["share-link", token],
-    queryFn: () => api.get<{ slug: string; title: string; sharedBy: string; expiresAt: string | null }>(`/f/share/${encodeURIComponent(token)}`),
+    queryFn: () => api.get<{ slug: string; title: string; kind: "basic" | "code"; sharedBy: string; expiresAt: string | null }>(`/f/share/${encodeURIComponent(token)}`),
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -279,5 +283,6 @@ export function SharedFormPage() {
       </PublicShell>
     );
   }
+  if (data.kind === "code") return <Suspense fallback={<PublicShell><LoadingState /></PublicShell>}><SharedAppPage token={token} /></Suspense>;
   return <FillPage publicView slug={data.slug} shareToken={token} />;
 }

@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { setNavMode } from "@/lib/shellNav";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Bell, CircleHelp, CloudOff, Code2, RefreshCw } from "lucide-react";
+import { Bell, CircleHelp, CloudOff, Code2, QrCode, RefreshCw } from "lucide-react";
 import { codeFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { setFrameTutorialStarter } from "@/lib/tour/frameBridge";
 import { LoadingState, EmptyState } from "@/components/ui/misc";
@@ -153,6 +153,11 @@ export function AppHostPage() {
               <button type="button" data-tour="app-help" onClick={() => tutorial.start()} className="inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Show me how this form works">
                 <CircleHelp className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Show me how</span>
               </button>
+            )}
+            {runtime.shareable && !locked && (
+              <Link to={`/f/${slug}/share`} className="inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Your link and QR code: people without an account can fill this form in">
+                <QrCode className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Share link</span>
+              </Link>
             )}
             {!draft && !locked && <LockFormButton base={`/apps/${slug}`} title={runtime.form.title} />}
             {runtime.canEdit && canOpenEditor && !locked && (

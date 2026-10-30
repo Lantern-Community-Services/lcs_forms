@@ -45,7 +45,8 @@ fillRouter.get(
   "/share/:token",
   asyncHandler(async (req, res) => {
     const { link, form } = await resolveShare(req.params.token);
-    res.json({ slug: form.slug, title: form.title, sharedBy: link.userName, expiresAt: link.expiresAt });
+    // kind "code": the page is a code form's (routes/appShare.ts), not a built form to fill in here.
+    res.json({ slug: form.slug, title: form.title, kind: form.kind, sharedBy: link.userName, expiresAt: link.expiresAt });
   })
 );
 

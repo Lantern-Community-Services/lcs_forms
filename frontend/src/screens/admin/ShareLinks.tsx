@@ -19,7 +19,7 @@ import type { SharingSettings } from "@/screens/builtforms/SharePage";
  */
 
 interface LinkForm {
-  form: { id: string; slug: string; title: string; status: string };
+  form: { id: string; slug: string; title: string; status: string; kind?: "basic" | "code" };
   /** The published version is shared by link (else only the draft is, so links don't work yet). */
   live: boolean;
   settings: SharingSettings;
@@ -69,7 +69,7 @@ export function AdminShareLinks() {
                   <Button size="sm" variant="secondary" onClick={() => navigate(`/f/${f.form.slug}/share`)} disabled={!f.live || !f.settings.enabled}>
                     <QrCode className="h-4 w-4" /> {f.mine ? "My link and QR code" : "Make my link"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/builder/${f.form.id}?tab=settings`)}>
+                  <Button size="sm" variant="ghost" onClick={() => navigate(f.form.kind === "code" ? `/admin/apps/${f.form.id}` : `/admin/builder/${f.form.id}?tab=settings`)}>
                     <Settings2 className="h-4 w-4" /> Settings
                   </Button>
                 </div>

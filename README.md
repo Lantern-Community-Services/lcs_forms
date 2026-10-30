@@ -353,6 +353,14 @@ signed out, it opens only through a live share link; staff fill it in signed in 
   Admin's own; so does the form's Settings. Forms shared by link can't use Site or Resident fields, like public forms.
 - Making, refreshing and turning off links, and changing sharing, go in the audit log. Deleting a form
   deletes its links.
+- **Code forms** are shared by link from their form.json: `"shareLink": { "page": "report", "actions": ["bootstrap"] }`.
+  The form gets a **Share link** button (`/f/<slug>/share`, the same page and QR code), and `/s/<token>` opens
+  only that page, with the Lantern logo and nothing else of the app (`routes/appShare.ts`, `/api/s/<token>/…`).
+  The person filling it in is a **guest** (`ctx.user.guest`): no id or email, no permissions, and the sites of
+  whoever shared the link. They can add one entry at a time and its photos, and call only the listed actions;
+  they can't read an entry, a file, a collection or the roster back, and can't pick a resident (only type a
+  name). Their entries record whose link they came through. The incident report forms use it so security
+  guards without an account can file.
 
 ### Who sees entries
 
@@ -995,6 +1003,7 @@ pipeline and infrastructure live in `infra/` and `.github/workflows/`.
 | Main Office Staff | Same as Site Staff for now, at the sites they're approved for (it no longer sees every site); its own role so it can get main-office duties later. |
 | Site Staff | Submit and read forms, look at the roster, read the calendar, at their approved sites. Events are asked for through Event Requests. |
 | Developer | Builds code forms; reads entries and rosters at assigned sites. |
+| Arete Staff | Arete, the security partner (aretenyc.com accounts, an admitted domain). Sees **only** the forms its role names (`RoleDef.forms`: the two incident report forms), at its assigned sites: files reports and reads their sites' reports and Reports. No roster screen; the incident forms look residents up for them. An Admin can still give one person another form. |
 
 Two per-person switches add to a role: **Can manage the roster** (Site Managers or Admins turn it on)
 and **Can edit the calendar** (Admins only). The old Site Admin role was folded into Site Manager

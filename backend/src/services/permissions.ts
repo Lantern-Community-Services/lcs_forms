@@ -70,6 +70,13 @@ export interface RoleDef {
   permissions: PermissionKey[];
   /** Sees and acts on every site regardless of UserSite rows. */
   allSites: boolean;
+  /**
+   * The only forms this role sees (built forms' slugs): nothing else in the
+   * catalog, search or Home, whatever each form's own audience says. An Admin
+   * can still give one person more (People & roles → their forms). Left out =
+   * every form the person's groups and each form's limits allow.
+   */
+  forms?: string[];
 }
 
 /**
@@ -121,6 +128,17 @@ export const ROLES: RoleDef[] = [
     description: "Submits and reads forms, and looks up residents, at their sites. A Site Manager can let them manage the roster.",
     permissions: ["roster.view", "entries.view"],
     allSites: false,
+  },
+  {
+    // Arete, the security partner, signing in with their own (aretenyc.com) accounts:
+    // the incident reports at the sites they cover, and nothing else. No roster
+    // screen; the incident forms look residents up for them through their own server code.
+    key: "arete_staff",
+    name: "Arete Staff",
+    description: "Security partner staff (Arete): file and read incident reports, and see the incident reports' Reports, at the sites they're assigned. No other forms, no roster.",
+    permissions: ["entries.view"],
+    allSites: false,
+    forms: ["supportive-incidents", "shelter-incidents"],
   },
 ];
 

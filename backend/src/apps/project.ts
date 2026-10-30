@@ -143,6 +143,20 @@ export const manifestSchema = z.object({
     })
     .strict()
     .optional(),
+  /**
+   * Filled in without signing in, through an employee's share link (/s/<token>, services/shareLinks.ts).
+   * Only `page` opens that way, nothing else of the form; the person filling it can add one entry and
+   * upload its photos, and call only the server `actions` listed (each runs with ctx.user.guest true and
+   * the sites of whoever shared the link). They never read entries back. Admins turn sharing on and off
+   * and set how long links last in Admin → Share links.
+   */
+  shareLink: z
+    .object({
+      page: z.string().min(1).max(40),
+      actions: z.array(z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/)).max(20).optional(),
+    })
+    .strict()
+    .optional(),
   /** Other forms (slugs) whose entries the server code may read — still only if the person may, or if that form shares with this one. */
   reads: z.array(z.string()).optional(),
   /** Server entry file. Default server/index.ts when it exists. */
@@ -209,6 +223,7 @@ export function readManifest(files: Files): { manifest: Manifest | null; problem
       if (file && files[file] === undefined) problems.push({ file: "form.json", message: `Page "${p.id}" has a ${kind} view ${file}, which doesn't exist.` });
     }
   }
+  if (m.shareLink && !ids.has(m.shareLink.page)) problems.push({ file: "form.json", message: `shareLink.page "${m.shareLink.page}" isn't one of the pages.` });
   if (m.server && files[m.server] === undefined) problems.push({ file: "form.json", message: `server points at ${m.server}, which doesn't exist.` });
   if (m.tutorial) {
     for (const p of lintTutorial(m.tutorial, { kind: "code", pages: ids })) problems.push({ file: "form.json", message: `${p.path}: ${p.message}` });

@@ -37,7 +37,7 @@ export interface ShareLinkView {
 }
 export interface SharingSettings { enabled: boolean; defaultDays: number; maxDays: number | null }
 interface MyShare {
-  form: { id: string; slug: string; title: string };
+  form: { id: string; slug: string; title: string; kind?: "basic" | "code" };
   canShare: boolean;
   why: string | null;
   settings: SharingSettings;
@@ -192,8 +192,12 @@ export function SharePage() {
 
   return (
     <Page className="max-w-[820px]">
-      <DesktopBackLink to={`/f/${slug}`}>{data.form.title}</DesktopBackLink>
-      <PageHeader title="Share this form" help={{ article: "share-links", text: "Your own link and QR code. Anyone you give it to can fill the form in; refresh it any time and the old one stops working." }} subtitle={`Your own link and QR code for “${data.form.title}”. Anyone you give it to can fill it in, without an account. What they send comes to Lantern, and you can see it.`} />
+      <DesktopBackLink to={data.form.kind === "code" ? `/apps/${slug}` : `/f/${slug}`}>{data.form.title}</DesktopBackLink>
+      <PageHeader title="Share this form" help={{ article: "share-links", text: "Your own link and QR code. Anyone you give it to can fill the form in; refresh it any time and the old one stops working." }} subtitle={
+          data.form.kind === "code"
+            ? `Your own link and QR code for “${data.form.title}”. Anyone you give it to can fill it in for your sites, without an account. They can't see anything that was filed, theirs included.`
+            : `Your own link and QR code for “${data.form.title}”. Anyone you give it to can fill it in, without an account. What they send comes to Lantern, and you can see it.`
+        } />
 
       {!data.canShare ? (
         <Card><EmptyState title="You can't share this form by link" hint={data.why ?? undefined} /></Card>
@@ -213,7 +217,7 @@ export function SharePage() {
             </p>
             <div className="flex flex-wrap gap-2">
               {typeof navigator !== "undefined" && "share" in navigator && <Button variant="secondary" onClick={() => void share()}><Share2 className="h-4 w-4" /> Send it</Button>}
-              {data.entriesFromMyLinks > 0 && <Button variant="secondary" onClick={() => navigate(`/f/${slug}/entries`)}>See what came in ({data.entriesFromMyLinks})</Button>}
+              {data.entriesFromMyLinks > 0 && data.form.kind !== "code" && <Button variant="secondary" onClick={() => navigate(`/f/${slug}/entries`)}>See what came in ({data.entriesFromMyLinks})</Button>}
             </div>
             <div className="space-y-3 border-t border-hairline pt-4">
               <p className="text-[13px] text-muted">Shared it somewhere you shouldn't have, or want a fresh one? Refresh makes a new link and QR code; the old ones stop working.</p>
