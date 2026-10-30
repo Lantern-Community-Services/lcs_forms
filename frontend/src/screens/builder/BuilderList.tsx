@@ -1,4 +1,4 @@
-import { FormBackupBar } from "@/components/FormBackupBar";
+import { BackupSyncLabel, FormBackupBar } from "@/components/FormBackupBar";
 import { DeleteFormDialog } from "@/components/DeleteFormDialog";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -74,7 +74,7 @@ export function AdminBuilderList() {
           </>
         }
       />
-      <FormBackupBar />
+      <FormBackupBar kind="basic" listKey={builderKeys.all} />
 
       {isLoading ? <LoadingState /> : !forms?.length ? (
         <Card>
@@ -99,6 +99,7 @@ export function AdminBuilderList() {
                       {formPath(f.slug, f.access)} · {f.fieldCount} field{f.fieldCount === 1 ? "" : "s"} · {ACCESS[f.access]} · edited {relativeTime(f.updatedAt)}{f.updatedByName ? ` by ${f.updatedByName}` : ""}
                     </p>
                   </Link>
+                  <BackupSyncLabel kind="basic" slug={f.slug} listKey={builderKeys.all} />
                   <div className="hidden sm:block"><StatusBadge status={f.status} unpublished={f.unpublishedChanges} /></div>
                   <Link to={`/f/${f.slug}/entries`} className="hidden w-24 text-right text-[13px] text-muted hover:text-accent md:block">
                     <span className="tabular font-semibold text-ink">{f.entryCount.toLocaleString()}</span> entr{f.entryCount === 1 ? "y" : "ies"}

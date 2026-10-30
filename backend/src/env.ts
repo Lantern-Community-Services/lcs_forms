@@ -140,6 +140,8 @@ export const env = {
     repo: (process.env.FORM_BACKUP_REPO ?? "").trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, ""),
     token: (process.env.FORM_BACKUP_TOKEN ?? "").trim(),
     branch: (process.env.FORM_BACKUP_BRANCH ?? "main").trim() || "main",
+    /** This site's name in the backup (sites/<name>/); empty = the host of APP_BASE_URL. */
+    site: (process.env.FORM_BACKUP_SITE ?? "").trim(),
   },
 
   /**
