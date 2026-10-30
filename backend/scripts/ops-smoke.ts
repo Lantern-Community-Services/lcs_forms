@@ -211,23 +211,27 @@ async function e2e() {
     check(invited.status === 201 || invited.status === 200, `site manager's key invites site staff at their site (${invited.status})`);
     check((await api(kSite, "POST", "/sites", { name: "Nope", code: `nope-${stamp}` })).status === 403, "site manager's key can't create a site");
 
-    // A first sign-in's request, approved per site
-    const req1 = await prisma.user.create({
-      data: { name: "Rae Request", email: `rae.${stamp}@example.org`, status: "requested", sites: { create: [{ siteId: siteX.id, approved: false }, { siteId: siteY.id, approved: false }] } },
-    });
+    // A request for access: only an Admin lets them in
+    const req1 = await prisma.user.create({ data: { name: "Rae Request", email: `rae.${stamp}@example.org`, status: "requested" } });
     const seen = await api(kSite, "GET", "/people");
-    const row = seen.body.find((u: { id: string }) => u.id === req1.id);
-    check(row && row.canApproveSiteIds.join() === siteX.id && row.requestedSites.length === 2, "the manager sees the request, and may approve only their site");
+    check(!seen.body.some((u: { id: string }) => u.id === req1.id), "the manager doesn't see requests for access");
+    check((await api(kSite, "POST", `/people/${req1.id}/approve`, { siteIds: [siteX.id], confirm: true })).status === 404, "the manager can't let someone in");
+    check((await api(kSite, "PATCH", `/people/${req1.id}`, { status: "active", confirm: true })).status === 404, "nor make a request active by hand");
+    check((await api(kAdmin, "GET", "/people")).body.some((u: { id: string }) => u.id === req1.id), "an Admin sees the request");
+    const ok1 = await api(kAdmin, "POST", `/people/${req1.id}/approve`, { siteIds: [siteX.id], roleKey: "site_staff", confirm: true });
+    check(ok1.status === 200 && ok1.body.status === "active" && ok1.body.sites.length === 1 && ok1.body.requestedSites.length === 0, "an Admin lets them in, with their role and sites");
+
+    // An active person asking for more sites: each site's manager decides theirs
+    await prisma.userSite.create({ data: { userId: req1.id, siteId: siteY.id, approved: false } });
     check((await api(kSite, "POST", `/people/${req1.id}/approve`, { siteIds: [siteY.id], confirm: true })).status === 403, "the manager can't approve another site");
-    const ok1 = await api(kSite, "POST", `/people/${req1.id}/approve`, { siteIds: [siteX.id], roleKey: "site_staff", confirm: true });
-    check(ok1.status === 200 && ok1.body.status === "active" && ok1.body.sites.length === 1 && ok1.body.requestedSites.length === 1, "approving their site lets the person in; the other site still waits");
     const dec = await api(kAdmin, "POST", `/people/${req1.id}/decline`, { siteIds: [siteY.id], confirm: true });
     check(dec.status === 200 && dec.body.removed === false && dec.body.person.requestedSites.length === 0, "an Admin declines the other site; the person stays");
     check((await api(kSite, "PATCH", `/people/${req1.id}`, { rosterEditor: true, confirm: true })).status === 200, "the manager turns roster management on for their staff");
     check((await api(kSite, "DELETE", `/people/${req1.id}`, { confirm: true })).status === 403, "an active person can't be deleted, only deactivated");
-    const req2 = await prisma.user.create({ data: { name: "Lee Request", email: `lee.${stamp}@example.org`, status: "requested", sites: { create: [{ siteId: siteX.id, approved: false }] } } });
-    const gone = await api(kSite, "POST", `/people/${req2.id}/decline`, { siteIds: [siteX.id], confirm: true });
-    check(gone.status === 200 && gone.body.removed === true && !(await prisma.user.findUnique({ where: { id: req2.id } })), "declining a request's only site removes the request");
+    const req2 = await prisma.user.create({ data: { name: "Lee Request", email: `lee.${stamp}@example.org`, status: "requested" } });
+    check((await api(kSite, "POST", `/people/${req2.id}/decline`, { confirm: true })).status === 404, "the manager can't decline a request for access");
+    const gone = await api(kAdmin, "POST", `/people/${req2.id}/decline`, { confirm: true });
+    check(gone.status === 200 && gone.body.removed === true && !(await prisma.user.findUnique({ where: { id: req2.id } })), "an Admin declining a request removes it");
 
     // An Admin's key never touches Admins
     const pat = await prisma.user.findUniqueOrThrow({ where: { email: `pat.${stamp}@example.org` } });

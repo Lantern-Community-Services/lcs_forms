@@ -34,22 +34,36 @@ export function verifySession(token: string): SessionPayload | null {
 }
 
 /**
- * A new person's pass to /welcome, where they choose where they work and which
- * sites they want to see. It isn't a session: it opens only the onboarding
- * routes (routes/onboarding.ts), for someone whose account is still a request.
+ * A new person's pass to /welcome, where they ask for access. It isn't a
+ * session: it opens only the onboarding routes (routes/onboarding.ts). Before
+ * they ask it carries who Microsoft says they are (`newcomer`), since there's
+ * no account yet; once they've asked, it names their request (`userId`).
  */
 export const ONBOARDING_COOKIE = "lantern_onboarding";
 const ONBOARDING_TTL = "2h";
 
-export function signOnboarding(userId: string): string {
-  return jwt.sign({ userId, purpose: "onboarding" }, env.jwtSecret, { expiresIn: ONBOARDING_TTL });
+export interface Newcomer {
+  name: string;
+  email: string;
+  entraObjectId: string | null;
+  identityProvider: string;
+  title?: string | null;
 }
 
-export function verifyOnboarding(token: string | undefined): string | null {
+export type OnboardingPass = { userId: string } | { newcomer: Newcomer };
+
+export function signOnboarding(pass: OnboardingPass): string {
+  return jwt.sign({ ...pass, purpose: "onboarding" }, env.jwtSecret, { expiresIn: ONBOARDING_TTL });
+}
+
+export function verifyOnboarding(token: string | undefined): OnboardingPass | null {
   if (!token) return null;
   try {
-    const p = jwt.verify(token, env.jwtSecret) as { userId?: string; purpose?: string };
-    return p.purpose === "onboarding" && p.userId ? p.userId : null;
+    const p = jwt.verify(token, env.jwtSecret) as { userId?: string; newcomer?: Newcomer; purpose?: string };
+    if (p.purpose !== "onboarding") return null;
+    if (p.userId) return { userId: p.userId };
+    if (p.newcomer?.email) return { newcomer: p.newcomer };
+    return null;
   } catch {
     return null;
   }

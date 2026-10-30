@@ -127,6 +127,7 @@ export async function publishProject(id: string, actor: Actor, note?: string): P
     prisma.builtForm.update({
       where: { id: form.id },
       data: {
+        // The build has the library components it was made with baked in (and lists them).
         liveSchema: JSON.stringify({ files, build: res.build }),
         liveVersion: version,
         status: form.status === "closed" ? "closed" : "published",
@@ -135,7 +136,7 @@ export async function publishProject(id: string, actor: Actor, note?: string): P
         homeAction: Boolean(readManifest(files).manifest?.home),
       },
     }),
-    prisma.builtFormVersion.create({ data: { formId: form.id, version, schema: JSON.stringify({ files }), note: note?.slice(0, 300) ?? null, publishedByName: actor.name } }),
+    prisma.builtFormVersion.create({ data: { formId: form.id, version, schema: JSON.stringify({ files, components: res.build.components ?? {} }), note: note?.slice(0, 300) ?? null, publishedByName: actor.name } }),
   ]);
   await syncCatalogUrl(row);
   await audit({ actor, action: "apps.published", summary: `Published code form “${row.title}” version ${version}${note ? `: ${note}` : ""}` });

@@ -10,7 +10,8 @@ import { addDays, toGraphRecurrence, type Recurrence } from "../calendar/recurre
  *
  * Everyone who asked for an event's sites in the calendar's "Add to my Outlook"
  * popup (User.calendarSyncEverySite, CalendarFollow) gets it in their own
- * calendar, in the way they chose there:
+ * calendar, in the way they chose there (and a code form's event can also
+ * invite people by name, CalendarEvent.invitees: they always get the invite):
  *   - as an invite: they're an attendee of a meeting in the organizer's
  *     calendar, and Exchange emails them the invite;
  *   - or quietly: a copy is written straight into their own calendar
@@ -162,6 +163,45 @@ export async function recipientsFor(ev: { allSites: boolean; categoryId: string 
     }));
 }
 
+/** JSON list text from the database, or [] when it's empty or unreadable. */
+function jsonList(text: string | null | undefined): unknown[] {
+  if (!text) return [];
+  try {
+    const v = JSON.parse(text);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The people a code form invited by name (ctx.calendar.form invitees), as
+ * recipients. They're always sent the invite, so they never get a quiet copy.
+ * Someone without an account here is invited by address alone.
+ */
+async function namedRecipients(text: string | null | undefined): Promise<Recipient[]> {
+  const list = jsonList(text)
+    .filter((p): p is { email: string; name?: string } => Boolean(p) && typeof (p as { email?: unknown }).email === "string")
+    .map((p) => ({ email: p.email.toLowerCase(), name: p.name || p.email }));
+  if (!list.length) return [];
+  const users = await prisma.user.findMany({
+    where: { email: { in: list.map((p) => p.email) }, status: { in: ["active", "invited"] } },
+    select: { id: true, email: true, name: true, calendarReminderMinutes: true, calendarAllDayFree: true },
+  });
+  return list.map((p) => {
+    const u = users.find((x) => x.email.toLowerCase() === p.email);
+    return {
+      userId: u?.id ?? `invitee:${p.email}`,
+      name: u && !u.name.includes("@") ? u.name : p.name,
+      email: p.email,
+      emailTeams: true,
+      emailOther: true,
+      reminderMinutes: u?.calendarReminderMinutes ?? 15,
+      allDayFree: u?.calendarAllDayFree ?? true,
+    };
+  });
+}
+
 async function nameOf(userId: string | null | undefined): Promise<string> {
   if (!userId) return "Nobody";
   return (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ?? "Someone who's left";
@@ -181,6 +221,7 @@ function loadRow(id: string) {
       exceptions: { orderBy: { originalDate: "asc" } },
       category: { select: { name: true } },
       sites: { select: { siteId: true } },
+      sourceForm: { select: { slug: true } },
     },
   });
 }
@@ -190,8 +231,11 @@ function loadRow(id: string) {
  * the Teams link on a copy). Nothing else: what it's about stays in the app,
  * behind sign-in.
  */
-function bodyHtml(ev: { startDate: string }, joinUrl?: string | null) {
-  const link = `${appBaseUrl}/calendar?view=day&date=${ev.startDate}`;
+function bodyHtml(ev: { startDate: string; invitees?: string | null; sourceRef?: string | null; sourceForm?: { slug: string } | null }, joinUrl?: string | null) {
+  // An event a form invites people to by name opens in that form (they may not see it on the calendar).
+  const link = ev.invitees && ev.sourceForm && ev.sourceRef
+    ? `${appBaseUrl}/apps/${ev.sourceForm.slug}?ref=${encodeURIComponent(ev.sourceRef)}`
+    : `${appBaseUrl}/calendar?view=day&date=${ev.startDate}`;
   return [
     joinUrl ? `<p><a href="${esc(joinUrl)}"><strong>Join the Teams meeting</strong></a></p>` : "",
     `<p><a href="${esc(link)}">Open it in Lantern Forms</a> for the details.</p>`,
@@ -249,9 +293,13 @@ export async function syncEvent(id: string): Promise<void> {
   }
 
   // Waiting on approval: nobody gets it yet, which also takes back anything sent before.
-  const people = ev.pending ? [] : await recipientsFor(ev);
-  // Who could send it: the last person to change it, then whoever made it.
-  const senders = [ev.updatedById, ev.createdById].filter((x): x is string => Boolean(x));
+  // Besides those following its sites, the people its form invited by name.
+  const named = ev.pending ? [] : await namedRecipients(ev.invitees);
+  const following = ev.pending || (!ev.allSites && !ev.sites.length) ? [] : await recipientsFor(ev);
+  const namedIds = new Set(named.map((p) => p.userId));
+  const people = [...following.filter((p) => !namedIds.has(p.userId)), ...named];
+  // Who could send it: whoever its form asked for (in order), the last person to change it, then whoever made it.
+  const senders = [...new Set([...jsonList(ev.sendFromIds).filter((x): x is string => typeof x === "string"), ev.updatedById, ev.createdById].filter((x): x is string => Boolean(x)))];
   const holders = await withGraphToken([...people.map((p) => p.userId), ...senders, ...(ev.outlookOrganizerId ? [ev.outlookOrganizerId] : [])]);
 
   // The organizer: whoever's calendar already holds the meeting.
@@ -277,7 +325,7 @@ export async function syncEvent(id: string): Promise<void> {
 
   const fallback = new Set(copies.filter((c) => c.fallbackInvite).map((c) => c.userId));
   const hasCopy = new Set(copies.filter((c) => c.outlookEventId).map((c) => c.userId));
-  const prefersQuiet = (p: Recipient) => !fallback.has(p.userId) && !(ev.teamsMeeting ? p.emailTeams : p.emailOther);
+  const prefersQuiet = (p: Recipient) => !namedIds.has(p.userId) && !fallback.has(p.userId) && !(ev.teamsMeeting ? p.emailTeams : p.emailOther);
   // A quiet copy needs its owner's own sign-in. Without one they're invited,
   // unless they already have a copy: it stays, so nobody gets the event twice.
   const others = people.filter((p) => p.userId !== organizerId);

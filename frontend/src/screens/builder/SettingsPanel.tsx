@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { CatalogCardFields } from "@/components/CatalogCardFields";
 import { ShareSettings } from "@/components/ShareSettings";
 import { WhoSeesEntries } from "@/components/WhoSeesEntries";
+import { IncludeMainOffice } from "@/components/IncludeMainOffice";
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -125,6 +126,7 @@ export function SettingsPanel({
           </>
         )}
         <Toggle label="Ask which site this is for" hint="Entries are then only visible to people assigned to that site." checked={Boolean(s.requireSite)} onChange={(v) => set({ requireSite: v || undefined })} />
+        <IncludeMainOffice formId={form.id} />
       </Section>
 
       <FormsScreenAccess form={form} currentCategory={currentCategory} categories={catalog?.categories ?? []} onCatalog={onCatalog} />

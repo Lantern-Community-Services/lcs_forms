@@ -17,8 +17,9 @@ import { queueEmail } from "./email.js";
 import { routeFromApp, sendNotification } from "./notify.js";
 import { entryInput, routeQuietly } from "../services/routing.js";
 import type { Request } from "express";
-import { createEvent, deleteEvent, eventInput, formEvents, loadOccurrences, scopeSchema, setEventPending, updateEvent, type FormOwner } from "../services/calendar.js";
+import { createEvent, deleteEvent, eventInput, formEvents, inviteesSchema, loadOccurrences, scopeSchema, setEventPending, setEventPeople, updateEvent, type FormOwner } from "../services/calendar.js";
 import { noteCalendarChange } from "../services/outlookSync.js";
+import { OFFICE, formIncludesOffice, isOffice, notOffice } from "../services/officeSites.js";
 import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
 import { canUseBuiltForm, entryReach } from "../services/staffGroups.js";
@@ -341,7 +342,10 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
   if (input.site) {
     site = await prisma.site.findFirst({ where: { OR: [{ code: input.site }, { id: input.site }] } });
     if (!site || !site.active) throw badRequest("That site doesn't exist.");
-    if (!siteAllowed(user, site.id, opts.machineSiteId)) throw forbidden("You aren't assigned to that site.");
+    if (isOffice(site)) {
+      // The Main Office: only for forms that include it, and then anyone using the form may pick it.
+      if (!(await formIncludesOffice(app.form.id))) throw badRequest("This form isn't for that site.");
+    } else if (!siteAllowed(user, site.id, opts.machineSiteId)) throw forbidden("You aren't assigned to that site.");
   }
   if (input.tenantId) {
     tenant = await prisma.tenant.findUnique({ where: { id: input.tenantId } });
@@ -654,6 +658,26 @@ async function queryForServer(formId: string, q: ServerQuery, includePreview: bo
  * In the draft nothing reaches the real calendar: creates hand back a "preview:" id and the rest
  * do nothing, so a whole approval can be tried out in the preview.
  */
+/** sendFrom: user ids or emails, in order, as the user ids of people with an account. */
+async function senderIds(list: unknown): Promise<string[]> {
+  const items = (Array.isArray(list) ? list : [list]).filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()).slice(0, 20);
+  if (!items.length) return [];
+  const users = await prisma.user.findMany({
+    where: { OR: [{ id: { in: items } }, { email: { in: items.filter((x) => x.includes("@")) } }] },
+    select: { id: true, email: true },
+  });
+  const ids = items.map((x) => users.find((u) => u.id === x || u.email.toLowerCase() === x.toLowerCase())?.id).filter((x): x is string => Boolean(x));
+  return [...new Set(ids)];
+}
+
+/** The invitees / sendFrom a create or update gave (each left out when not given). */
+async function formEventPeople(o: any): Promise<Pick<FormOwner, "invitees" | "sendFrom">> {
+  const out: Pick<FormOwner, "invitees" | "sendFrom"> = {};
+  if (o?.invitees !== undefined) out.invitees = o.invitees === null ? null : inviteesSchema.parse(o.invitees);
+  if (o?.sendFrom !== undefined) out.sendFrom = o.sendFrom === null ? null : await senderIds(o.sendFrom);
+  return out;
+}
+
 async function formCalendar(app: LoadedApp, user: CurrentUser | null, op: string, args: any) {
   if (!app.manifest.calendar?.ownEvents) throw new Error(`Add "calendar": { "ownEvents": true } to form.json to use ctx.calendar.form.`);
   const req = { user: user ?? undefined } as unknown as Request;
@@ -667,19 +691,22 @@ async function formCalendar(app: LoadedApp, user: CurrentUser | null, op: string
     case "create": {
       const input = eventInput.parse(args.event ?? {});
       const ref = typeof args.opts?.ref === "string" ? args.opts.ref.slice(0, 200) : null;
+      const people = await formEventPeople(args.opts);
       if (app.draft) return { id: `preview:${crypto.randomUUID()}`, preview: true };
-      return { id: await createEvent(req, input, owner({ ref, pending: pendingOpt(args.opts?.pending) ?? false })) };
+      return { id: await createEvent(req, input, owner({ ref, pending: pendingOpt(args.opts?.pending) ?? false, ...people })) };
     }
     case "update": {
       if (preview(args.id) || app.draft) return { id: String(args.id), preview: true };
       const change = args.change ?? {};
       const pending = pendingOpt(change.pending);
+      const people = await formEventPeople(change);
       if (!change.event) {
-        if (pending === undefined) throw new Error("Give the event (and scope/date), or pending.");
-        await setEventPending(req, String(args.id), pending, owner());
+        if (pending === undefined && !Object.keys(people).length) throw new Error("Give the event (and scope/date), pending, invitees or sendFrom.");
+        if (Object.keys(people).length) await setEventPeople(req, String(args.id), owner(people));
+        if (pending !== undefined) await setEventPending(req, String(args.id), pending, owner());
         return { id: String(args.id) };
       }
-      const id = await updateEvent(req, String(args.id), scope, change.date, eventInput.parse(change.event), owner({ pending }));
+      const id = await updateEvent(req, String(args.id), scope, change.date, eventInput.parse(change.event), owner({ pending, ...people }));
       if (pending !== undefined) await noteCalendarChange([id]);
       return { id };
     }
@@ -811,7 +838,13 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
       }
       case "roster.sites": {
         // all: every active site's name and code (to choose where something happens), not just the person's own.
-        const rows = await prisma.site.findMany({ where: { active: true, ...(user?.siteIds && !args?.all ? { id: { in: user.siteIds } } : {}) }, orderBy: { name: "asc" } });
+        // Office sites (the Main Office) only when the form includes them, and then for everyone.
+        const office = await formIncludesOffice(app.form.id);
+        const mine = user?.siteIds && !args?.all ? user.siteIds : null;
+        const rows = await prisma.site.findMany({
+          where: { active: true, ...(mine ? (office ? { OR: [{ id: { in: mine } }, { siteType: OFFICE }] } : { id: { in: mine } }) : {}), ...(office ? {} : notOffice) },
+          orderBy: { name: "asc" },
+        });
         return rows.map(siteOut);
       }
       case "roster.resident": {

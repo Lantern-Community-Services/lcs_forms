@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { isOffice } from "../services/officeSites.js";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
@@ -226,6 +227,7 @@ tenantsRouter.post(
     const body = z.object({ site: z.string(), ...tenantFields }).parse(req.body);
     const site = await resolveSite(req, body.site);
     if (!site) throw badRequest("Choose a site.");
+    if (isOffice(site)) throw badRequest(`${site.name} is an office: it has no roster.`);
     const { site: _s, ...data } = body;
     const now = new Date();
     const t = await prisma.tenant.create({

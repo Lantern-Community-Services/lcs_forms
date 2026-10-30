@@ -287,7 +287,7 @@ export function AppFrame({
         }
       },
       "roster.sites": async () =>
-        (await api.get<Site[]>("/sites")).map((s) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType, latitude: s.latitude ?? null, longitude: s.longitude ?? null, geofenceMeters: s.geofenceMeters ?? null })),
+        (await api.get<Site[]>(`/sites?form=${encodeURIComponent(slug)}`)).map((s) => ({ id: s.id, code: s.code, name: s.name, siteType: s.siteType, latitude: s.latitude ?? null, longitude: s.longitude ?? null, geofenceMeters: s.geofenceMeters ?? null })),
       "roster.residents": async (code: string) => {
         // The device's own copy of the roster when it has one: instant, and offline.
         const res = await loadTenants(String(code), { userId: latest.current.runtime.user.id });

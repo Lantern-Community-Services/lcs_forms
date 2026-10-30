@@ -160,7 +160,7 @@ function samplePreview(t: TemplateInput, look?: EmailLook) {
 
 /** Made-up values for each of the site's own emails. */
 const SYSTEM_SAMPLES: Record<string, { kicker: string; tags: Record<string, string> }> = {
-  "access-request": { kicker: "People & roles", tags: { person: "Riley Case Worker", email: "riley@lanterncommunity.org", position: "Case Manager", sites: "Clover Hall", all_sites: "Clover Hall" } },
+  "access-request": { kicker: "People & roles", tags: { person: "Riley Case Worker", email: "riley@lanterncommunity.org", position: "Case Manager" } },
   "access-granted": { kicker: "People & roles", tags: { by: "Morgan Site Manager", role: "Site Staff", a_role: "a Site Staff", where: "Clover Hall" } },
   "access-changed": { kicker: "People & roles", tags: { by: "Morgan Site Manager", role: "Site Manager", a_role: "a Site Manager", where: "Clover Hall and Main Office" } },
   "sites-added": { kicker: "People & roles", tags: { by: "Morgan Site Manager", role: "Site Staff", a_role: "a Site Staff", where: "Clover Hall and Main Office", sites: "Main Office" } },

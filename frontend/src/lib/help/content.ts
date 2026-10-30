@@ -413,14 +413,14 @@ export const ARTICLES: HelpArticle[] = [
       {
         heading: "Letting people in",
         points: [
-          "Someone new signs in with their Lantern account and asks for sites. Requests show in People & roles: approve (with a role) or decline.",
-          "Site Managers approve people for their own sites (Site settings). Admins do it for every site.",
+          "Someone new signs in with their Lantern account and presses Request access. Admins are told, and the request shows in People & roles: approve it with their role and sites, or decline it.",
+          "Only Admins let new people in, choosing their role and sites. Site Managers look after the people at their own sites, and approve them for more of those sites (Site settings).",
         ],
       },
       {
         heading: "Roles",
         points: [
-          "Site Staff: fills in and reads forms, looks up residents, at their sites. Site Manager: also manages the roster and approves people for their sites.",
+          "Site Staff: fills in and reads forms, looks up residents, at their sites. Site Manager: also manages the roster and the people at their sites.",
           "Main Office Staff: like Site Staff, at the sites they're approved for. Developer: builds code forms.",
           "Admin: everything, every site. Super Admin: an Admin who also makes Admins, reads person records and owns email templates.",
           "Switches add to a role for one person: “Can manage the roster” and “Can edit the calendar”.",
@@ -535,11 +535,11 @@ export const ROLE_GUIDES: RoleGuide[] = [
   {
     key: "site_manager",
     name: "Site Manager",
-    intro: "Everything Site Staff do, plus managing the roster and approving people for your sites.",
+    intro: "Everything Site Staff do, plus managing the roster and the people at your sites.",
     can: [
       "Everything Site Staff can.",
       "Manage the roster: add and change residents, work through Review, take attendance, restore removed residents.",
-      "Approve or decline people asking to see your sites, and give them a role (Site settings).",
+      "Look after the people at your sites, and approve them for more of your sites (Site settings). Only Admins let new people in.",
     ],
     startHere: [
       { label: "Roster", to: "/roster", needs: ["roster.view"] },

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { officeSitesView, saveOfficeSites } from "../services/officeSites.js";
 import { prisma } from "../prisma.js";
 import { HttpError } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
@@ -271,6 +272,26 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       return saveEntryAccess(await builtFormRef(form), input, actor);
     },
     { destructiveHint: true }
+  );
+
+  tool(
+    "get_office_sites",
+    "Whether a form (basic or code, by id or slug) includes office sites (the Main Office: siteType office, no roster) in its site list, and which office sites there are.",
+    { form: z.string() },
+    async ({ form }) => {
+      need("forms:build");
+      return officeSitesView(await builtFormRef(form));
+    }
+  );
+
+  tool(
+    "set_office_sites",
+    "Include office sites (the Main Office) in a form's site list, or take them out. Saved at once (no publish): the form's site pickers and ctx.roster.sites() then offer them to everyone filling it, and its entries may be filed there.",
+    { form: z.string(), includeOffice: z.boolean() },
+    async ({ form, includeOffice }) => {
+      need("forms:build");
+      return saveOfficeSites(await builtFormRef(form), { includeOffice }, actor);
+    }
   );
 
   tool(

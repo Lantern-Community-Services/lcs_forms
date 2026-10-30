@@ -210,7 +210,7 @@ export function FormRenderer({
       )}
 
       {doc.settings.requireSite && mode === "fill" && page === 0 && (
-        <SitePickerRow value={siteCode} onChange={(v) => { touched(); setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
+        <SitePickerRow slug={slug} value={siteCode} onChange={(v) => { touched(); setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
       )}
 
       {current.pageField?.content && <div className="prose-form mb-4 text-[14px] text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(current.pageField.content, merge) }} />}
@@ -282,8 +282,8 @@ function widthClass(f: Field) {
   return "col-span-12";
 }
 
-function SitePickerRow({ value, onChange, error }: { value: string | null; onChange: (v: string | null) => void; error?: string }) {
-  const { data: sites } = useSites();
+function SitePickerRow({ value, onChange, error, slug }: { value: string | null; onChange: (v: string | null) => void; error?: string; slug?: string }) {
+  const { data: sites } = useSites(false, true, slug);
   useEffect(() => {
     if (!value && sites?.length === 1) onChange(sites[0].code);
   }, [sites]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -476,7 +476,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
     case "calculation":
       return <div className="tabular min-h-[40px] rounded-input border border-dashed border-hairline bg-subtle px-3 py-2 text-[15px] font-bold text-ink">{formatValue(f, value) || "—"}</div>;
     case "site":
-      return <SiteSelect inputId={inputId} value={text} onChange={onChange} disabled={disabled} />;
+      return <SiteSelect inputId={inputId} value={text} onChange={onChange} disabled={disabled} slug={props.slug} />;
     case "resident": {
       const siteCode = (f.siteField ? String(props.values[f.siteField] ?? "") : props.formSite) || null;
       return <ResidentPicker siteCode={siteCode} value={value as ResidentValue | undefined} onChange={onChange} disabled={disabled} needsSite={f.siteField ? "Pick a site above first." : "Pick the site first."} />;
@@ -789,8 +789,8 @@ function SignatureInput({ value, onChange, disabled }: { value: string; onChange
   );
 }
 
-function SiteSelect({ inputId, value, onChange, disabled }: { inputId: string; value: string; onChange: (v: unknown) => void; disabled?: boolean }) {
-  const { data: sites, isLoading } = useSites();
+function SiteSelect({ inputId, value, onChange, disabled, slug }: { inputId: string; value: string; onChange: (v: unknown) => void; disabled?: boolean; slug?: string }) {
+  const { data: sites, isLoading } = useSites(false, true, slug);
   useEffect(() => {
     if (!value && sites?.length === 1) onChange(sites[0].code);
   }, [sites]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,31 +1,40 @@
 import { Router, type Request } from "express";
-import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { asyncHandler, badRequest, unauthorized } from "../http.js";
+import { asyncHandler, unauthorized } from "../http.js";
 import { ONBOARDING_COOKIE, verifyOnboarding } from "../auth/auth.js";
+import { setOnboardingCookie } from "./auth.js";
+import { DEFAULT_ROLE_KEY } from "../services/permissions.js";
+import { randomAvatarColor } from "../services/avatars.js";
 import { audit } from "../services/audit.js";
 import { notifyQuietly } from "../services/notifications.js";
 import { systemEmail } from "../services/emailTemplates.js";
 
 /**
- * A new person's first sign-in (/welcome): where they work and which sites
- * they want to see. It opens with the onboarding cookie routes/auth.ts sets,
- * not a session, and only while their account is still a request.
- *
- * The sites they choose are saved as unapproved UserSite rows; each site's
- * Site Managers (or an Admin) approve or decline them in People & roles
- * (routes/users.ts). Choosing again replaces what's still waiting.
+ * A first sign-in by someone nobody made an account for (/welcome). It opens
+ * with the onboarding cookie routes/auth.ts sets, not a session. All they do
+ * here is ask for access: that makes their account, as a request, and an
+ * Admin approves it in People & roles → Requests, choosing their role and
+ * sites (routes/users.ts). Site Managers don't see or approve requests.
  */
 export const onboardingRouter = Router();
 
-/** The "Main Office" choice on "Where do you work?" — not a site with a roster. */
+/** The "Main Office" choice the old "Where do you work?" question offered; still read on older requests. */
 export const MAIN_OFFICE_LOCATION = "main_office";
 
-async function requester(req: Request) {
-  const id = verifyOnboarding(req.cookies?.[ONBOARDING_COOKIE]);
-  const user = id ? await prisma.user.findUnique({ where: { id }, include: { sites: { select: { siteId: true, approved: true } } } }) : null;
+/** Who's on /welcome: a newcomer who hasn't asked yet, or the request they made. */
+async function visitor(req: Request) {
+  const pass = verifyOnboarding(req.cookies?.[ONBOARDING_COOKIE]);
+  if (!pass) throw unauthorized("Sign in again to continue.");
+  if ("newcomer" in pass) {
+    // Asked already, from another tab or device: that request is theirs.
+    const existing = await prisma.user.findUnique({ where: { email: pass.newcomer.email } });
+    if (!existing) return { newcomer: pass.newcomer, user: null };
+    if (existing.status !== "requested") throw unauthorized("Sign in again to continue.");
+    return { newcomer: null, user: existing };
+  }
+  const user = await prisma.user.findUnique({ where: { id: pass.userId } });
   if (!user || user.status !== "requested") throw unauthorized("Sign in again to continue.");
-  return user;
+  return { newcomer: null, user };
 }
 
 export function parseLocations(raw: string | null | undefined): string[] {
@@ -40,65 +49,42 @@ export function parseLocations(raw: string | null | undefined): string[] {
 onboardingRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const user = await requester(req);
-    const sites = await prisma.site.findMany({ where: { active: true }, select: { id: true, name: true, siteType: true }, orderBy: { name: "asc" } });
-    res.json({
-      name: user.name,
-      email: user.email,
-      sites,
-      locations: parseLocations(user.locations),
-      siteIds: user.sites.map((s) => s.siteId),
-      submitted: user.sites.length > 0,
-    });
+    const { newcomer, user } = await visitor(req);
+    const who = user ?? newcomer!;
+    res.json({ name: who.name, email: who.email, submitted: Boolean(user) });
   })
 );
 
 onboardingRouter.post(
   "/",
   asyncHandler(async (req, res) => {
-    const user = await requester(req);
-    const body = z
-      .object({
-        locations: z.array(z.string()).min(1, "Choose where you work.").max(40),
-        siteIds: z.array(z.string()).min(1, "Choose at least one site to see.").max(40),
-      })
-      .parse(req.body);
-    const active = await prisma.site.findMany({ where: { active: true }, select: { id: true, name: true } });
-    const known = new Set(active.map((s) => s.id));
-    const locations = [...new Set(body.locations)];
-    const siteIds = [...new Set(body.siteIds)];
-    if (locations.some((l) => l !== MAIN_OFFICE_LOCATION && !known.has(l)) || siteIds.some((id) => !known.has(id))) {
-      throw badRequest("One of those sites isn't available any more. Reload and choose again.");
-    }
-    const first = user.sites.length === 0;
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { locations: JSON.stringify(locations) } }),
-      // Only what's still waiting is replaced: nothing here is approved yet,
-      // since an approval makes the account active and closes this page.
-      prisma.userSite.deleteMany({ where: { userId: user.id, approved: false } }),
-      prisma.userSite.createMany({ data: siteIds.map((siteId) => ({ userId: user.id, siteId, approved: false })) }),
-    ]);
-    const names = active.filter((s) => siteIds.includes(s.id)).map((s) => s.name);
-    await audit({
-      actor: { id: user.id, name: user.name },
-      action: "user.access_requested",
-      summary: `${user.name} (${user.email}) ${first ? "asked" : "changed their request"} to see ${names.join(", ")}`,
+    const { newcomer, user } = await visitor(req);
+    // Asking twice changes nothing.
+    if (user) return res.json({ ok: true });
+    const requester = await prisma.user.create({
+      data: { ...newcomer!, avatarColor: randomAvatarColor(), roleKey: DEFAULT_ROLE_KEY, status: "requested" },
     });
-    // Admins see every site, so this reaches them and each chosen site's managers.
-    // Worded by the "Someone asks to see sites" email (Admin → Notifications → System emails).
-    const sitesWord = names.length === 1 ? names[0] : `${names.length} sites`;
+    // From here on the cookie names the request, so signing in again finds it.
+    setOnboardingCookie(res, { userId: requester.id });
+    await audit({
+      actor: { id: requester.id, name: requester.name },
+      action: "user.access_requested",
+      summary: `${requester.name} (${requester.email}) asked for access to Lantern Forms`,
+    });
+    // Only Admins let people in, so this reaches them.
+    // Worded by the "Someone asks for access" email (Admin → Notifications → System emails).
     const mail = await systemEmail(
       "access-request",
-      { person: user.name, email: user.email, position: user.title ?? "", sites: sitesWord, all_sites: names.join(", ") },
-      `${user.name} is asking to see ${sitesWord}`
+      { person: requester.name, email: requester.email, position: requester.title ?? "" },
+      `${requester.name} is asking for access`
     );
     notifyQuietly({
-      to: { permissions: ["users.manage", "users.manageSite"], sites: siteIds },
+      to: { permissions: ["users.manage"] },
       type: "people.request",
       title: mail.title,
       urgent: mail.urgent,
       email: mail.email,
-      body: `${user.email}${user.title ? ` · ${user.title}` : ""} wants to see ${names.join(", ")}. Approve or decline it in People & roles.`,
+      body: `${requester.email}${requester.title ? ` · ${requester.title}` : ""} signed in for the first time and asked for access. Approve it in People & roles, with their role and sites.`,
       link: "/admin/people?tab=requests",
       sourceLabel: "People & roles",
     });

@@ -101,7 +101,7 @@ const BAR = "#2d4a86";
  */
 const VIZ = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 const VIZ_OTHER = "#898781";
-const SITE_TYPE: Record<string, string> = { supportive: "#4a3aa7", shelter: "#008300", other: "#898781" };
+const SITE_TYPE: Record<string, string> = { supportive: "#4a3aa7", shelter: "#008300", other: "#898781", office: "#2c3453" };
 const SEQ = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
 const slotHex = (s: number | null | undefined) => (s === null || s === undefined ? VIZ_OTHER : VIZ[s] ?? VIZ_OTHER);
 /** A row's or legend item's color: hex, then site type, then slot; the app's bar navy when none is given. */

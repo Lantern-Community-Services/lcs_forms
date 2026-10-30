@@ -3,7 +3,8 @@ import { prisma } from "../prisma.js";
 import { fileBytes } from "../services/fileStore.js";
 import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
-import type { Actor } from "../services/audit.js";
+import { audit, type Actor } from "../services/audit.js";
+import { permissionsFor, roleFor } from "../services/permissions.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
 import { McpContent, type ToolRegistrar } from "../forms/mcp.js";
 import { APP_GUIDE } from "./guide.js";
@@ -11,6 +12,7 @@ import { DESIGN_BRIEF } from "./designBrief.js";
 import { buildProject } from "./compile.js";
 import { createEntry, entryOut, findCodeForm, loadApp, runAction } from "./runtime.js";
 import { createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, patchFiles, publishProject, restoreProjectVersion, versionFiles } from "./service.js";
+import { componentVersionFiles, deleteComponent, getComponent, listComponents, saveComponent } from "./components.js";
 
 /**
  * MCP tools for code forms. An assistant works on one the way it would on a
@@ -38,6 +40,65 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     {},
     async () => DESIGN_BRIEF(),
     { readOnlyHint: true }
+  );
+
+  // ── The component library ──
+
+  tool(
+    "list_components",
+    "The shared component library: UI pieces and helpers any code form imports as @lcs/components/<name> (on top of @lcs/ui). CALL THIS BEFORE WRITING A CODE FORM'S UI, and reuse what fits instead of writing your own; get_component shows one's code and props. Each lists what it is, its exports (api), its version and which forms use it. search and category narrow it.",
+    { search: z.string().optional(), category: z.string().optional() },
+    async ({ search, category }) => {
+      need("apps:build");
+      return listComponents({ search, category });
+    },
+    { readOnlyHint: true }
+  );
+
+  tool(
+    "get_component",
+    "One library component: its description, exports and props (api), an example (usage), its files, the forms that use it and its versions. Import it in a code form with: import { … } from \"@lcs/components/<name>\". version: an older version's files instead.",
+    { name: z.string(), version: z.number().int().min(1).optional() },
+    async ({ name, version }) => {
+      need("apps:build");
+      return version ? { name, version, files: await componentVersionFiles(name, version) } : getComponent(name);
+    },
+    { readOnlyHint: true }
+  );
+
+  tool(
+    "save_component",
+    "Add a component to the library, or save a new version. Save here anything a second form could use (a picker, a card, a row, a formatting helper) rather than keeping it in one form, and generalise it first (props, not one form's types). files: { path: source } with index.tsx (or index.ts) as what the import gives; it may import react, @lcs/ui, @lcs/sdk, @lcs/charts, lucide-react, other components and its own files. It must build. A new one needs title, description (what it is, when to use it), category (Inputs, Display, Layout, Lists, Helpers…), and should have api (each export and its props) and usage (a short example). Leave out files to change only the words. Drafts of forms that use it build with the new version at once (their build results come back here); published forms keep theirs until republished.",
+    {
+      name: z.string(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      category: z.string().optional(),
+      files: z.record(z.string()).optional(),
+      api: z.string().nullable().optional(),
+      usage: z.string().nullable().optional(),
+      note: z.string().optional().describe("What changed, kept with the version"),
+    },
+    async (input) => {
+      need("apps:build");
+      const saved = await saveComponent(input, actor);
+      // The drafts that use it build with this version now: say whether they still do.
+      const users = (await getComponent(saved.name)).usedBy;
+      const forms = await Promise.all(users.map(async (u) => ({ form: u.slug, build: await buildReport(u.slug) })));
+      return { ...saved, forms };
+    }
+  );
+
+  tool(
+    "delete_component",
+    "Remove a component from the library. Refused while any code form imports it. Needs confirm: true.",
+    { name: z.string(), confirm: z.boolean().optional() },
+    async ({ name, confirm }) => {
+      need("apps:build");
+      if (confirm !== true) throw new HttpError(400, "Pass confirm: true to remove the component.");
+      return deleteComponent(name, actor);
+    },
+    { destructiveHint: true }
   );
 
   tool("list_code_forms", "Every code form with its status and entry count.", { includeArchived: z.boolean().optional() }, async ({ includeArchived }) => {
@@ -151,6 +212,78 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       return rows.map((e) => entryOut(e, sites));
     },
     { readOnlyHint: true }
+  );
+
+  tool(
+    "import_code_entries",
+    "Migrate entries from an old system (e.g. a Gravity Forms export) into a code form's live entries, saved exactly as given: the form's beforeCreate/afterCreate don't run, so nobody is notified and nothing is routed. Shape `data` the way the form's own server code saves it. Each entry needs an externalId (e.g. \"gf20:36541\"); one already imported into this form is skipped, so a batch can be sent again safely. Up to 500 a call, all or nothing: any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin. Pass confirm: true to save.",
+    {
+      form: ref,
+      entries: z
+        .array(
+          z.object({
+            externalId: z.string().min(1).max(200),
+            data: z.record(z.unknown()),
+            site: z.string().optional().describe("Site code"),
+            tenantId: z.string().optional().describe("Roster id of the resident it's about"),
+            occurredAt: z.string().optional().describe("ISO time it happened"),
+            createdByName: z.string().max(255).optional().describe("Who filed it in the old system"),
+          })
+        )
+        .min(1)
+        .max(500),
+      dryRun: z.boolean().optional(),
+      confirm: z.boolean().optional(),
+    },
+    async ({ form, entries, dryRun, confirm }) => {
+      need("entries:manage");
+      const creator = key.createdById ? await prisma.user.findUnique({ where: { id: key.createdById } }) : null;
+      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
+      if (!dryRun && confirm !== true) throw new HttpError(400, "This saves entries to the live form without running its rules. Pass confirm: true (or dryRun: true to check first).");
+      const row = await findCodeForm(form);
+
+      const problems: { externalId: string; problem: string }[] = [];
+      const seen = new Set<string>();
+      for (const e of entries) {
+        if (seen.has(e.externalId)) problems.push({ externalId: e.externalId, problem: "Sent twice in this batch." });
+        seen.add(e.externalId);
+        if (e.occurredAt && Number.isNaN(Date.parse(e.occurredAt))) problems.push({ externalId: e.externalId, problem: `occurredAt "${e.occurredAt}" isn't a date.` });
+        if (JSON.stringify(e.data).length > 200_000) problems.push({ externalId: e.externalId, problem: "data is over 200 KB." });
+      }
+      const codes = [...new Set(entries.map((e) => e.site).filter((s): s is string => Boolean(s)))];
+      const sites = new Map((await prisma.site.findMany({ where: { code: { in: codes } }, select: { id: true, code: true } })).map((s) => [s.code, s.id]));
+      const tenantIds = [...new Set(entries.map((e) => e.tenantId).filter((t): t is string => Boolean(t)))];
+      const tenants = new Map((await prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, siteId: true } })).map((t) => [t.id, t.siteId]));
+      for (const e of entries) {
+        if (e.site && !sites.has(e.site)) problems.push({ externalId: e.externalId, problem: `No site with code "${e.site}".` });
+        if (e.tenantId && !tenants.has(e.tenantId)) problems.push({ externalId: e.externalId, problem: `No resident with id "${e.tenantId}".` });
+      }
+
+      const clientIdOf = (externalId: string) => `import:${externalId}`;
+      const existing = new Set(
+        (await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: entries.map((e) => clientIdOf(e.externalId)) } }, select: { clientId: true } })).map((x) => x.clientId)
+      );
+      const fresh = entries.filter((e) => !existing.has(clientIdOf(e.externalId)));
+      const skipped = entries.filter((e) => existing.has(clientIdOf(e.externalId))).map((e) => e.externalId);
+      if (problems.length || dryRun) return { saved: 0, wouldSave: problems.length ? 0 : fresh.length, skipped, problems, dryRun: Boolean(dryRun) };
+
+      await prisma.formEntry.createMany({
+        data: fresh.map((e) => ({
+          formId: row.id,
+          formVersion: row.liveVersion,
+          data: JSON.stringify(e.data),
+          siteId: e.site ? sites.get(e.site)! : null,
+          tenantId: e.tenantId ?? null,
+          occurredAt: e.occurredAt ? new Date(e.occurredAt) : new Date(),
+          source: "import",
+          clientId: clientIdOf(e.externalId),
+          createdByName: e.createdByName?.trim() || "Imported",
+        })),
+      });
+      if (fresh.length) await audit({ actor, action: "apps.entriesImported", summary: `Imported ${fresh.length} entries into “${row.title}”`, changes: { form: row.slug, count: fresh.length, skipped: skipped.length } });
+      return { saved: fresh.length, skipped, problems: [] };
+    },
+    { destructiveHint: true }
   );
 
   tool(

@@ -307,8 +307,8 @@ the chosen answers, and a button into the site. Nothing is ever attached.
     `save_route` and `save_email_report` take `template` (a key); `get_email_settings` lists them.
     `get_email_look` and `set_email_look` read and change the look.
 - **System emails** (Admin → Notifications → System emails): the emails the site sends by itself are
-  templates too (kind `system`), each with its own tags: someone asking to see sites (`{person}`
-  `{email}` `{position}` `{sites}` `{all_sites}`), being let in, access changed and more sites approved
+  templates too (kind `system`), each with its own tags: someone asking for access on their first sign-in
+  (`{person}` `{email}` `{position}`), being let in, access changed and more sites approved
   (`{by}` `{role}` `{a_role}` `{where}`, plus `{sites}`), an entry a form couldn't save (`{source}`
   `{target}`), the daily summary (`{count}` `{notifications}` `{unread}`), and the follow-up "done" and
   reminder emails (`{form}` `{site}` `{at_site}` `{for_site}` `{date}`). They're always sent: Super
@@ -435,7 +435,9 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
 - **With AI:** the MCP server has code tools (scope `apps:build`): `get_code_reference`,
   `create_code_form`, `list_files`, `read_files`, `write_files`, `edit_file` (each returns the build
   result), `run_action`, `test_entry`, `publish_code_form`, `list_code_entries`, `get_entry_file`
-  (entries:read), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
+  (entries:read), `import_code_entries` (entries:manage, Admin keys only: migrates old-system
+  entries into a live code form as given, without its rules or notifications; idempotent by
+  `externalId`), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
   `add_to_catalog`, `save_catalog_card` (links to forms elsewhere), `delete_catalog_card`,
   `save_catalog_category`.
 - **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).

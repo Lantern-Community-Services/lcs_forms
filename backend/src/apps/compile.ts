@@ -5,6 +5,7 @@ import tailwindcss from "tailwindcss";
 import { frameTheme, framePlugin } from "./tailwindTheme.js";
 import { readManifest, serverEntry, type FileProblem, type Files } from "./project.js";
 import { tutorialAnchorWarnings } from "./tutorialAnchors.js";
+import { COMPONENT_DIR, COMPONENT_PREFIX, withLibrary, type LibraryEntry } from "./library.js";
 
 /**
  * Compile a code form: each page to a self-contained script for the sandboxed
@@ -14,6 +15,8 @@ import { tutorialAnchorWarnings } from "./tutorialAnchors.js";
  * Imports are resolved from the project's own files. The only packages are the
  * ones the runtime provides (see sdk.d.ts); they're wired to globals rather
  * than bundled, so a page is a few KB and the frame shares one cached runtime.
+ * Shared components (`@lcs/components/<name>`, library.ts) are bundled in like
+ * the project's own files, at the version current when it's built.
  */
 
 export interface Build {
@@ -22,6 +25,8 @@ export interface Build {
   server: string | null;
   css: string;
   warnings: FileProblem[];
+  /** The library components it was built with, and their versions. */
+  components?: Record<string, number>;
 }
 
 export type BuildResult = { ok: true; build: Build } | { ok: false; problems: FileProblem[]; warnings: FileProblem[] };
@@ -61,6 +66,15 @@ function projectPlugin(files: Files, allowed: Set<string>, globalExpr: string): 
     setup(b) {
       b.onResolve({ filter: /.*/ }, (args) => {
         if (args.kind === "entry-point") return { path: args.path, namespace: "proj" };
+        if (args.path.startsWith(COMPONENT_PREFIX)) {
+          const [name, ...rest] = args.path.slice(COMPONENT_PREFIX.length).split("/");
+          const base = `${COMPONENT_DIR}/${name}/${rest.length ? rest.join("/") : "index"}`;
+          for (const ext of EXTS) {
+            const p = normalize(base + ext);
+            if (files[p] !== undefined) return { path: p, namespace: "proj" };
+          }
+          return { errors: [{ text: `No component "${name}"${rest.length ? ` (or no ${rest.join("/")} in it)` : ""} in the library. list_components shows what there is.` }] };
+        }
         if (args.path.startsWith(".") || args.path.startsWith("/")) {
           const base = args.path.startsWith("/") ? args.path.slice(1) : normalize(`${dirOf(args.importer)}/${args.path}`);
           for (const ext of EXTS) {
@@ -71,7 +85,7 @@ function projectPlugin(files: Files, allowed: Set<string>, globalExpr: string): 
         }
         if (allowed.has(args.path)) return { path: args.path, namespace: "lcs-global" };
         return {
-          errors: [{ text: `"${args.path}" isn't available. Code forms can import ${[...allowed].join(", ")} and their own files.` }],
+          errors: [{ text: `"${args.path}" isn't available. Code forms can import ${[...allowed].join(", ")}, ${COMPONENT_PREFIX}<name> and their own files.` }],
         };
       });
       b.onLoad({ filter: /.*/, namespace: "lcs-global" }, (args) => ({
@@ -140,7 +154,9 @@ async function buildCss(files: Files): Promise<{ css: string; problems: FileProb
   }
 }
 
-export async function buildProject(files: Files): Promise<BuildResult> {
+export async function buildProject(ownFiles: Files): Promise<BuildResult> {
+  // The project plus the library components it imports, at their current versions.
+  const { files, used } = await withLibrary(ownFiles);
   const hash = projectHash(files);
   const hit = cache.get(hash);
   if (hit) return { ok: true, build: hit };
@@ -182,8 +198,19 @@ export async function buildProject(files: Files): Promise<BuildResult> {
   warnings.push(...tutorialAnchorWarnings(files, manifest));
   if (all.length) return { ok: false, problems: all, warnings };
 
-  const build: Build = { hash, pages, server, css: css.css, warnings };
+  const build: Build = { hash, pages, server, css: css.css, warnings, ...(Object.keys(used).length ? { components: used } : {}) };
   cache.set(hash, build);
   if (cache.size > 50) cache.delete(cache.keys().next().value!);
   return { ok: true, build };
+}
+
+/**
+ * Does this component build on its own (as a page would import it), with the library's other
+ * components as they are? Problems carry its own paths (index.tsx:12), not _components/….
+ */
+export async function checkComponent(entry: LibraryEntry): Promise<FileProblem[]> {
+  const { files } = await withLibrary({ "__entry__/component.tsx": `export * from ${JSON.stringify(COMPONENT_PREFIX + entry.name)};\n` }, [entry]);
+  const r = await bundle(files, "__entry__/component.tsx", PAGE_MODULES, "window.LCS.modules", "es2020");
+  const own = `${COMPONENT_DIR}/${entry.name}/`;
+  return r.errors.map((p) => ({ ...p, file: p.file.startsWith(own) ? p.file.slice(own.length) : p.file }));
 }

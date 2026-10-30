@@ -67,6 +67,13 @@ Admins and developers pass every role check.
 - Signatures: <SignaturePad>, then files.upload(pngBlob, { shrink: false }) and keep the FileRef in the entry; show it
   with useFileUrl(ref). Never put a data: URL (a signature or photo) inside entry data: it's 50–250 KB, and every
   list, report and limit check then reads it from the database.
+- Shared components: before writing UI, list_components (MCP). The library holds pickers, cards, rows and helpers other forms
+  use; import one as  import { SitePicker } from "@lcs/components/SitePicker"  (it builds into the page like your own files). Build
+  something a second form could use? Generalise it (props, not this form's types) and save_component it instead of keeping it in
+  lib/. Drafts get a component's latest version; a published form keeps the version it was published with until republished.
+- Days and times: <DatePicker> and <TimePicker> from @lcs/ui, never <Input type="date"|"time">: one look in every form, a sheet on phones,
+  nothing filled in until picked. DatePicker min/max (max today: Today/Yesterday shortcuts); TimePicker after (an end time, with
+  durations) and now (a Now button). Show a record with <DetailList><DetailRow label="When">…</DetailRow></DetailList>.
 - Location: device.location() — with roster.sites() latitude/longitude and distanceMeters() to pick the nearest site.
 - Editing: entries.update(id, data, { reason }) — every change is kept; show it with <EntryHistory entryId={id} />.
   Server code can check edits in beforeUpdate.
@@ -80,6 +87,11 @@ Admins and developers pass every role check.
   setPending(id, false) confirms it and sends it to Outlook. Occurrences carry pending and source { slug, ref }. Nobody
   edits these on the calendar itself; its "Open in <form>" button opens /apps/<slug>?ref=<ref>, so the form's first page
   should read params.ref and show that record. In the preview they're simulated ("preview:" ids).
+  A meeting for chosen people: create/update with { invitees: [{ email, name }], sendFrom: [hostUserId, …] } and
+  siteIds [] — the invitees get an Outlook invite (teamsMeeting: true adds a Teams link), sent from the first sendFrom
+  person who has signed in with Microsoft; nobody following a site gets it, and only Admins see it on the calendar.
+  update(id, { invitees }) alone changes who's invited. list() gives each event's invitees, teamsJoinUrl and outlook
+  status, so a page can show the join link.
 - Approvals and other server-side changes: ctx.db.entries.update(id, data, { reason, ifUpdatedAt: entry.updatedAt })
   in an action that checks who's asking (ctx.user). It skips entries.edit and beforeUpdate, keeps history, and throws
   "CONFLICT…" if someone saved the entry meanwhile — read it again and retry once.
