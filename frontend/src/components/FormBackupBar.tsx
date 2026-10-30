@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, CloudUpload, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
@@ -11,10 +11,14 @@ import { cn, errorMessage, relativeTime } from "@/lib/utils";
  * The GitHub backup of every built form (backend services/formBackup.ts), on the builder lists.
  * It's shared by prod, Azure dev and local: each form there is the newest version any site saved,
  * so a form here can need sync (the backup is newer) or differ (changed on both sides).
+ *
+ * Sync, Keep, Remove and Back up now queue a job on the server and come straight back, so several
+ * can be clicked in a row; the jobs run one at a time in the background while this polls.
  */
 
 type Kind = "basic" | "code";
 type SyncState = "in_sync" | "behind" | "differs" | "only_backup";
+type JobAction = "sync" | "keep" | "remove" | "backup";
 
 export interface FormSync {
   key: string;
@@ -36,95 +40,112 @@ interface BackupStatus {
   lastCommitUrl: string | null;
   lastError: string | null;
   forms: FormSync[];
-}
-
-interface SyncResult {
-  synced: string[];
-  failed: { key: string; error: string }[];
-  status: BackupStatus;
+  jobs: { id: number; action: JobAction; key: string | null; running: boolean; by: string }[];
+  results: { id: number; action: JobAction; key: string | null; ok: boolean; error: string | null; at: string }[];
 }
 
 const KEY = ["form-backup"];
-const useBackupStatus = () => useQuery({ queryKey: KEY, queryFn: () => api.get<BackupStatus>("/admin/form-backup"), refetchInterval: 60_000 });
+const useBackupStatus = () =>
+  useQuery({
+    queryKey: KEY,
+    queryFn: () => api.get<BackupStatus>("/admin/form-backup"),
+    // Quick while jobs are queued, so each form's label changes as its job finishes.
+    refetchInterval: (q) => (q.state.data?.jobs.length ? 2_000 : 60_000),
+  });
 
 const savedLine = (f: FormSync) =>
   f.backup?.savedAt ? `saved ${relativeTime(f.backup.savedAt)}${f.backup.savedFrom ? ` from ${f.backup.savedFrom}` : ""}` : f.backup?.savedFrom ? `from ${f.backup.savedFrom}` : "";
 
-/** Sync / keep / remove, shared by the bar and the row labels. */
-function useBackupActions(listKey: readonly unknown[]) {
+const DONE: Record<JobAction, string> = { sync: "Synced", keep: "Saved this site's version of", remove: "Removed from the backup:", backup: "Backed up" };
+const FAILED: Record<JobAction, string> = { sync: "Couldn't sync", keep: "Couldn't save", remove: "Couldn't remove", backup: "The backup failed" };
+const RUNNING: Record<JobAction, string> = { sync: "Syncing…", keep: "Saving…", remove: "Removing…", backup: "Backing up…" };
+
+/** Sync / keep / remove, shared by the bar and the row labels: each queues a job. */
+function useBackupActions(data: BackupStatus | undefined) {
   const qc = useQueryClient();
   const toast = useToast();
-  const done = (s: BackupStatus) => {
-    qc.setQueryData(KEY, s);
-    void qc.invalidateQueries({ queryKey: listKey });
-  };
-  const sync = useMutation({
-    mutationFn: (body: { keys: string[] } | { all: true }) => api.post<SyncResult>("/admin/form-backup/sync", body),
-    onSuccess: (r) => {
-      done(r.status);
-      if (r.failed.length) toast(`Couldn't sync ${r.failed.map((f) => `${f.key.split("/")[1]} (${f.error})`).join("; ")}`, "error");
-      else toast(r.synced.length ? `Synced ${r.synced.length} form${r.synced.length === 1 ? "" : "s"} from the backup.` : "Nothing needed syncing.", "success");
-    },
-    onError: (e) => toast(errorMessage(e, "The sync didn't run."), "error"),
+  const queue = useMutation({
+    mutationFn: ({ path, body }: { path: string; body?: unknown }) => api.post<BackupStatus>(`/admin/form-backup${path}`, body),
+    onSuccess: (s) => qc.setQueryData(KEY, s),
+    onError: (e) => toast(errorMessage(e, "That didn't get queued."), "error"),
   });
-  const keep = useMutation({
-    mutationFn: (key: string) => api.post<BackupStatus>("/admin/form-backup/keep", { key }),
-    onSuccess: (s) => { done(s); toast(s.lastError ? `Backup failed: ${s.lastError}` : "Saved this site's version to the backup.", s.lastError ? "error" : "success"); },
-    onError: (e) => toast(errorMessage(e, "That didn't work."), "error"),
-  });
-  const remove = useMutation({
-    mutationFn: (key: string) => api.post<BackupStatus>("/admin/form-backup/remove", { key }),
-    onSuccess: (s) => { done(s); toast("Removed from the backup."); },
-    onError: (e) => toast(errorMessage(e, "That didn't work."), "error"),
-  });
-  const busy = sync.isPending || keep.isPending || remove.isPending;
+  /** The queued or running job for a form, if any. */
+  const jobOf = (key: string | null) => data?.jobs.find((j) => j.key === key);
   return {
-    busy,
+    jobOf,
     syncOne(f: FormSync) {
       if (f.state === "differs" && !confirm(`“${f.title}” was changed here too. Replace this site's draft with the backup's version${savedLine(f) ? ` (${savedLine(f)})` : ""}? Published versions stay in its history.`)) return;
-      sync.mutate({ keys: [f.key] });
+      queue.mutate({ path: "/sync", body: { keys: [f.key] } });
     },
-    syncAll: () => sync.mutate({ all: true }),
+    syncAll: () => queue.mutate({ path: "/sync", body: { all: true } }),
     keep: (f: FormSync) => {
-      if (confirm(`Save this site's “${f.title}” over the backup's version${savedLine(f) ? ` (${savedLine(f)})` : ""}? Other sites will then see theirs as needing sync.`)) keep.mutate(f.key);
+      if (confirm(`Save this site's “${f.title}” over the backup's version${savedLine(f) ? ` (${savedLine(f)})` : ""}? Other sites will then see theirs as needing sync.`)) queue.mutate({ path: "/keep", body: { key: f.key } });
     },
     remove: (f: FormSync) => {
-      if (confirm(`Remove “${f.title}” from the backup? No site will be able to sync it in afterwards.`)) remove.mutate(f.key);
+      if (confirm(`Remove “${f.title}” from the backup? No site will be able to sync it in afterwards.`)) queue.mutate({ path: "/remove", body: { key: f.key } });
     },
+    backupNow: () => queue.mutate({ path: "" }),
   };
 }
 
+/** A form's button, or what's happening to it when it has a job queued. */
+function JobButton({ job, onClick, children, variant = "secondary" }: { job: BackupStatus["jobs"][number] | undefined; onClick: () => void; children: React.ReactNode; variant?: "secondary" | "ghost" }) {
+  if (job) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-muted">
+        {job.running ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {RUNNING[job.action]}</> : "Queued"}
+      </span>
+    );
+  }
+  return <Button size="sm" variant={variant} onClick={onClick}>{children}</Button>;
+}
+
 /** The label on a form's row when it isn't in sync with the backup, with its Sync button. */
-export function BackupSyncLabel({ kind, slug, listKey }: { kind: Kind; slug: string; listKey: readonly unknown[] }) {
+export function BackupSyncLabel({ kind, slug }: { kind: Kind; slug: string }) {
   const { data } = useBackupStatus();
-  const actions = useBackupActions(listKey);
+  const actions = useBackupActions(data);
   const f = data?.forms.find((x) => x.kind === kind && x.slug === slug);
   if (!f || (f.state !== "behind" && f.state !== "differs")) return null;
   const behind = f.state === "behind";
   return (
     <span className="inline-flex items-center gap-1.5" title={`The backup's version: ${savedLine(f) || "unknown"}`}>
       <ToneBadge tone={behind ? "amber" : "red"}>{behind ? "Needs sync" : "Differs from backup"}</ToneBadge>
-      <Button size="sm" variant="secondary" disabled={actions.busy} onClick={() => actions.syncOne(f)}>
+      <JobButton job={actions.jobOf(f.key)} onClick={() => actions.syncOne(f)}>
         <RefreshCw className="h-3.5 w-3.5" /> Sync
-      </Button>
+      </JobButton>
     </span>
   );
 }
 
-export function FormBackupBar({ className, kind, listKey }: { className?: string; kind: Kind; listKey: readonly unknown[] }) {
+/** Toasts as queued jobs finish, and a refresh of the form list when one changed a form. */
+function useJobResults(data: BackupStatus | undefined, listKey: readonly unknown[]) {
   const qc = useQueryClient();
   const toast = useToast();
+  const seen = useRef<number | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const last = data.results.at(-1)?.id ?? 0;
+    if (seen.current === null) {
+      seen.current = last; // results from before this page opened aren't news
+      return;
+    }
+    const fresh = data.results.filter((r) => r.id > seen.current!);
+    seen.current = Math.max(seen.current, last);
+    if (!fresh.length) return;
+    void qc.invalidateQueries({ queryKey: listKey });
+    const name = (key: string | null) => (key ? data.forms.find((f) => f.key === key)?.title ?? key.split("/")[1] : "");
+    for (const r of fresh.filter((r) => !r.ok)) toast(`${FAILED[r.action]} ${name(r.key)}: ${r.error}`, "error");
+    const ok = fresh.filter((r) => r.ok);
+    if (ok.length === 1) toast(`${DONE[ok[0].action]} ${name(ok[0].key)}`.trim() + ".", "success");
+    else if (ok.length > 1) toast(`${ok.length} backup jobs done.`, "success");
+  }, [data, listKey, qc, toast]);
+}
+
+export function FormBackupBar({ className, kind, listKey }: { className?: string; kind: Kind; listKey: readonly unknown[] }) {
   const [open, setOpen] = useState(false);
   const { data } = useBackupStatus();
-  const actions = useBackupActions(listKey);
-  const run = useMutation({
-    mutationFn: () => api.post<BackupStatus>("/admin/form-backup"),
-    onSuccess: (s) => {
-      qc.setQueryData(KEY, s);
-      toast(s.lastError ? `Backup failed: ${s.lastError}` : "Forms backed up.", s.lastError ? "error" : "success");
-    },
-    onError: (e) => toast(errorMessage(e, "The backup didn't run."), "error"),
-  });
+  const actions = useBackupActions(data);
+  useJobResults(data, listKey);
   if (!data) return null;
   const repoName = data.repo?.split("/").pop();
   const repoUrl = data.repo ? `https://github.com/${data.repo}` : null;
@@ -132,7 +153,9 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
   const behind = mine.filter((f) => f.state === "behind");
   const differs = mine.filter((f) => f.state === "differs");
   const onlyBackup = mine.filter((f) => f.state === "only_backup");
-  const busy = actions.busy || run.isPending || data.running;
+  const unqueued = behind.filter((f) => !actions.jobOf(f.key));
+  const backupJob = actions.jobOf(null);
+  const waiting = data.jobs.length;
 
   return (
     <div className={cn("mb-4 rounded-card border border-hairline bg-surface text-[13px]", className)}>
@@ -159,17 +182,16 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
               .
             </>
           )}
+          {waiting > 0 && <span className="text-ink"> {waiting} job{waiting === 1 ? "" : "s"} running in the background.</span>}
         </p>
         {data.configured && (
           <>
-            {behind.length > 0 && (
-              <Button size="sm" onClick={actions.syncAll} disabled={busy} title="Bring in every form whose backup is newer">
-                <RefreshCw className="h-3.5 w-3.5" /> Sync all ({behind.length})
+            {unqueued.length > 0 && (
+              <Button size="sm" onClick={actions.syncAll} title="Bring in every form whose backup is newer">
+                <RefreshCw className="h-3.5 w-3.5" /> Sync all ({unqueued.length})
               </Button>
             )}
-            <Button size="sm" variant="secondary" onClick={() => run.mutate()} disabled={busy}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Back up now
-            </Button>
+            <JobButton job={backupJob} onClick={actions.backupNow}>Back up now</JobButton>
           </>
         )}
       </div>
@@ -186,31 +208,40 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
           </button>
           {open && (
             <ul className="border-t border-hairline">
-              {mine.map((f) => (
-                <li key={f.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-hairline px-4 py-2 last:border-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-ink">{f.title}</p>
-                    <p className="truncate text-micro text-muted">
-                      {f.state === "behind" && <>A newer version is in the backup{savedLine(f) && <> ({savedLine(f)})</>}.</>}
-                      {f.state === "differs" && <>Changed here{f.editedHere && <> ({relativeTime(f.editedHere)})</>} and in the backup{savedLine(f) && <> ({savedLine(f)})</>}. Pick which to keep.</>}
-                      {f.state === "only_backup" && <>Not on this site{savedLine(f) && <> · {savedLine(f)}</>}.</>}
-                    </p>
-                  </div>
-                  {f.state === "behind" && <Button size="sm" variant="secondary" disabled={busy} onClick={() => actions.syncOne(f)}>Sync</Button>}
-                  {f.state === "differs" && (
-                    <>
-                      <Button size="sm" variant="secondary" disabled={busy} onClick={() => actions.syncOne(f)}>Use the backup's</Button>
-                      <Button size="sm" variant="secondary" disabled={busy} onClick={() => actions.keep(f)}>Keep this site's</Button>
-                    </>
-                  )}
-                  {f.state === "only_backup" && (
-                    <>
-                      <Button size="sm" variant="secondary" disabled={busy} onClick={() => actions.syncOne(f)}>Add to this site</Button>
-                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => actions.remove(f)}>Remove from backup</Button>
-                    </>
-                  )}
-                </li>
-              ))}
+              {mine.map((f) => {
+                const job = actions.jobOf(f.key);
+                return (
+                  <li key={f.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-hairline px-4 py-2 last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-ink">{f.title}</p>
+                      <p className="truncate text-micro text-muted">
+                        {f.state === "behind" && <>A newer version is in the backup{savedLine(f) && <> ({savedLine(f)})</>}.</>}
+                        {f.state === "differs" && <>Changed here{f.editedHere && <> ({relativeTime(f.editedHere)})</>} and in the backup{savedLine(f) && <> ({savedLine(f)})</>}. Pick which to keep.</>}
+                        {f.state === "only_backup" && <>Not on this site{savedLine(f) && <> · {savedLine(f)}</>}.</>}
+                      </p>
+                    </div>
+                    {job ? (
+                      <JobButton job={job} onClick={() => undefined}>{null}</JobButton>
+                    ) : (
+                      <>
+                        {f.state === "behind" && <Button size="sm" variant="secondary" onClick={() => actions.syncOne(f)}>Sync</Button>}
+                        {f.state === "differs" && (
+                          <>
+                            <Button size="sm" variant="secondary" onClick={() => actions.syncOne(f)}>Use the backup's</Button>
+                            <Button size="sm" variant="secondary" onClick={() => actions.keep(f)}>Keep this site's</Button>
+                          </>
+                        )}
+                        {f.state === "only_backup" && (
+                          <>
+                            <Button size="sm" variant="secondary" onClick={() => actions.syncOne(f)}>Add to this site</Button>
+                            <Button size="sm" variant="ghost" onClick={() => actions.remove(f)}>Remove from backup</Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </>

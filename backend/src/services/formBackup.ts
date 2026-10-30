@@ -507,6 +507,28 @@ export async function pullForm(view: RepoView, key: string, actor: Actor) {
 
 const EVERY_MS = 10 * 60_000;
 
+export type JobAction = "sync" | "keep" | "remove" | "backup";
+
+/** Work an admin asked for, waiting its turn (one backup job runs at a time). */
+interface Job {
+  id: number;
+  action: JobAction;
+  /** The form ("basic/<slug>"), or null for a backup. */
+  key: string | null;
+  actor: Actor;
+  running: boolean;
+}
+
+/** How a finished job went, for the admin who's watching. */
+export interface JobResult {
+  id: number;
+  action: JobAction;
+  key: string | null;
+  ok: boolean;
+  error: string | null;
+  at: string;
+}
+
 export interface BackupStatus {
   configured: boolean;
   repo: string | null;
@@ -518,6 +540,10 @@ export interface BackupStatus {
   lastError: string | null;
   /** Every form that isn't simply in sync (from the last check), so lists can label them. */
   forms: FormSync[];
+  /** Waiting and running jobs, oldest first. */
+  jobs: { id: number; action: JobAction; key: string | null; running: boolean; by: string }[];
+  /** The last finished jobs, newest last. */
+  results: JobResult[];
 }
 
 const state = {
@@ -529,11 +555,21 @@ const state = {
   forms: [] as FormSync[],
   /** Forms whose last match was set here (synced, or "keep this site's") until sync.json records it. */
   baseOverride: {} as Record<string, string>,
+  jobs: [] as Job[],
+  results: [] as JobResult[],
+  nextJob: 1,
 };
 
 export function backupStatus(): BackupStatus {
-  const { baseOverride: _b, forms, ...s } = state;
-  return { ...s, forms: forms.filter((f) => f.state !== "in_sync"), configured: backupConfigured(), repo: env.formBackup.repo || null, site: backupSite() };
+  const { baseOverride: _b, forms, jobs, nextJob: _n, ...s } = state;
+  return {
+    ...s,
+    forms: forms.filter((f) => f.state !== "in_sync"),
+    jobs: jobs.map((j) => ({ id: j.id, action: j.action, key: j.key, running: j.running, by: j.actor.name })),
+    configured: backupConfigured(),
+    repo: env.formBackup.repo || null,
+    site: backupSite(),
+  };
 }
 
 /** One backup job at a time: the timer, Back up now, Sync. */
@@ -577,45 +613,122 @@ async function backupOnce(by?: string) {
   return backupStatus();
 }
 
-/** Back up now: save every form changed here, never over a newer one. */
+/** Until the next check, show these forms as settled (synced, kept or removed). */
+function settle(keys: string[], removed = false) {
+  state.forms = removed ? state.forms.filter((f) => !keys.includes(f.key)) : state.forms.map((f) => (keys.includes(f.key) ? { ...f, state: "in_sync" as const } : f));
+}
+
+/** Pull these forms in from the backup. Inside exclusive(); the caller backs up afterwards. */
+async function syncKeys(keys: string[], actor: Actor) {
+  const view = await githubView();
+  const plan = await planBackup(view, state.baseOverride);
+  const byKey = new Map(plan.forms.map((f) => [f.key, f]));
+  const synced: string[] = [];
+  const failed: { key: string; error: string }[] = [];
+  const repo = await repoForms(view);
+  for (const key of keys) {
+    const f = byKey.get(key);
+    if (!f) {
+      failed.push({ key, error: "Not in the backup." });
+      continue;
+    }
+    if (f.state === "in_sync") continue;
+    try {
+      await pullForm(view, key, actor);
+      // What this site now matches; the next backup run records it (or saves the publish's tidy-ups).
+      state.baseOverride[key] = fingerprint(repo.get(key)!)!;
+      synced.push(key);
+    } catch (err) {
+      failed.push({ key, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  if (synced.length) await audit({ actor, action: "forms.synced", summary: `Synced ${synced.length} form${synced.length === 1 ? "" : "s"} from the backup: ${synced.join(", ")}` });
+  settle(synced);
+  return { synced, failed };
+}
+
+/** This site's version of a form wins over the backup's. Inside exclusive(); the caller backs up afterwards. */
+async function keepKey(key: string, actor: Actor) {
+  const view = await githubView();
+  const R = await repoFingerprint(view, key);
+  if (R) state.baseOverride[key] = R;
+  await audit({ actor, action: "forms.backup_kept", summary: `Kept this site's version of ${key} over the backup's` });
+  settle([key]);
+}
+
+/** Take a form that's only in the backup out of it. Inside exclusive(). */
+async function removeKey(key: string, actor: Actor) {
+  const [kind, slug] = key.split("/");
+  if (await prisma.builtForm.findFirst({ where: { slug, kind: kind === "code" ? "code" : { not: "code" } } })) {
+    throw new HttpError(400, "That form is on this site, so the next backup would put it back. Delete it here first.");
+  }
+  const view = await githubView();
+  const writes = new Map<string, string | null>();
+  for (const path of view.files.keys()) if (path.startsWith(`${key}/`)) writes.set(path, null);
+  if (!writes.size) throw badRequest(`${slug} isn't in the backup.`);
+  await commitToGitHub(view.head, writes, `${backupSite()}: removed ${slug}\n\n${key}`);
+  await audit({ actor, action: "forms.backup_removed", summary: `Removed ${key} from the form backup` });
+  settle([key], true);
+}
+
+/**
+ * Queue work and return at once: each job runs in turn in the background, so an admin
+ * can click Sync on several forms in a row. The backup itself runs once the queue is empty.
+ * A form already waiting for the same action isn't queued twice.
+ */
+export function queueBackupJobs(action: JobAction, keys: (string | null)[], actor: Actor) {
+  needConfig();
+  for (const key of keys) {
+    if (state.jobs.some((j) => j.action === action && j.key === key && !j.running)) continue;
+    const job: Job = { id: state.nextJob++, action, key, actor, running: false };
+    state.jobs.push(job);
+    void exclusive(async () => {
+      job.running = true;
+      let error: string | null = null;
+      try {
+        if (action === "sync") {
+          const r = await syncKeys([key!], actor);
+          if (r.failed.length) error = r.failed[0].error;
+        } else if (action === "keep") await keepKey(key!, actor);
+        else if (action === "remove") await removeKey(key!, actor);
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+      state.jobs = state.jobs.filter((j) => j !== job);
+      // One backup after a run of jobs, not after each.
+      if (action === "backup" || !state.jobs.length) {
+        await backupOnce(actor.name);
+        if (action === "backup" && state.lastError) error = state.lastError;
+      }
+      state.results = [...state.results, { id: job.id, action, key, ok: !error, error, at: new Date().toISOString() }].slice(-20);
+    });
+  }
+  return backupStatus();
+}
+
+/** Every form that needs sync (not ones that differ, or exist only in the backup) that `allowed` lets through. */
+export const formsBehind = (allowed: (key: string) => boolean = () => true) => state.forms.filter((f) => f.state === "behind" && allowed(f.key)).map((f) => f.key);
+
+/** Back up now: save every form changed here, never over a newer one. Waits for it. */
 export async function runFormBackup(opts: { by?: string } = {}) {
   needConfig();
   return exclusive(() => backupOnce(opts.by));
 }
 
 /**
- * Bring forms in from the backup. `keys`: form folders ("basic/<slug>", "code/<slug>"),
- * or "all" for every form that needs sync and `allowed` lets through (not ones that differ, or exist only in the backup).
+ * Bring forms in from the backup and wait for it (the MCP tool). `keys`: form folders
+ * ("basic/<slug>", "code/<slug>"), or "all" for every form that needs sync and `allowed` lets through.
  */
 export async function syncFromBackup(keys: string[] | "all", actor: Actor, allowed: (key: string) => boolean = () => true) {
   needConfig();
   return exclusive(async () => {
-    const view = await githubView();
-    const plan = await planBackup(view, state.baseOverride);
-    const byKey = new Map(plan.forms.map((f) => [f.key, f]));
-    const todo = keys === "all" ? plan.forms.filter((f) => f.state === "behind" && allowed(f.key)).map((f) => f.key) : keys;
-    const synced: string[] = [];
-    const failed: { key: string; error: string }[] = [];
-    const repo = await repoForms(view);
-    for (const key of todo) {
-      const f = byKey.get(key);
-      if (!f) {
-        failed.push({ key, error: "Not in the backup." });
-        continue;
-      }
-      if (f.state === "in_sync") continue;
-      try {
-        await pullForm(view, key, actor);
-        // What this site now matches; the backup run below records it (or saves the publish's tidy-ups).
-        state.baseOverride[key] = fingerprint(repo.get(key)!)!;
-        synced.push(key);
-      } catch (err) {
-        failed.push({ key, error: err instanceof Error ? err.message : String(err) });
-      }
+    let todo = keys;
+    if (todo === "all") {
+      await backupOnce(actor.name);
+      todo = formsBehind(allowed);
     }
-    if (synced.length) await audit({ actor, action: "forms.synced", summary: `Synced ${synced.length} form${synced.length === 1 ? "" : "s"} from the backup: ${synced.join(", ")}` });
-    const status = await backupOnce(actor.name);
-    return { synced, failed, status };
+    const r = await syncKeys(todo, actor);
+    return { ...r, status: await backupOnce(actor.name) };
   });
 }
 
@@ -625,32 +738,20 @@ export async function repoFingerprint(view: RepoView, key: string) {
   return files ? fingerprint(files) : null;
 }
 
-/** For a form that differs: this site's version wins and goes to the backup. */
+/** For a form that differs: this site's version wins and goes to the backup. Waits for it. */
 export async function keepSiteVersion(key: string, actor: Actor) {
   needConfig();
   return exclusive(async () => {
-    const view = await githubView();
-    const R = await repoFingerprint(view, key);
-    if (R) state.baseOverride[key] = R;
-    await audit({ actor, action: "forms.backup_kept", summary: `Kept this site's version of ${key} over the backup's` });
+    await keepKey(key, actor);
     return backupOnce(actor.name);
   });
 }
 
-/** Take a form that's only in the backup (not on this site) out of it. */
+/** Take a form that's only in the backup (not on this site) out of it. Waits for it. */
 export async function removeFromBackup(key: string, actor: Actor) {
   needConfig();
   return exclusive(async () => {
-    const [kind, slug] = key.split("/");
-    if (await prisma.builtForm.findFirst({ where: { slug, kind: kind === "code" ? "code" : { not: "code" } } })) {
-      throw new HttpError(400, "That form is on this site, so the next backup would put it back. Delete it here first.");
-    }
-    const view = await githubView();
-    const writes = new Map<string, string | null>();
-    for (const path of view.files.keys()) if (path.startsWith(`${key}/`)) writes.set(path, null);
-    if (!writes.size) throw badRequest(`${slug} isn't in the backup.`);
-    await commitToGitHub(view.head, writes, `${backupSite()}: removed ${slug}\n\n${key}`);
-    await audit({ actor, action: "forms.backup_removed", summary: `Removed ${key} from the form backup` });
+    await removeKey(key, actor);
     return backupOnce(actor.name);
   });
 }
