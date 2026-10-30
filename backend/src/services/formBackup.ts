@@ -1,11 +1,12 @@
 import crypto from "node:crypto";
-import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { appBaseUrl, env } from "../env.js";
 import { HttpError, badRequest } from "../http.js";
 import { audit, type Actor } from "./audit.js";
 import { createForm, publishForm, saveDraft } from "../forms/service.js";
-import { createProject, publishProject, saveProject } from "../apps/service.js";
+import { ProjectError, createProject, publishProject, saveProject } from "../apps/service.js";
+import { buildProject } from "../apps/compile.js";
+import { saveComponent } from "../apps/components.js";
 
 /**
  * Backup of every form built in the app — form builder forms and code forms —
@@ -32,7 +33,7 @@ import { createProject, publishProject, saveProject } from "../apps/service.js";
  */
 
 export type Snapshot = Record<string, string>;
-type Kind = "basic" | "code";
+type Kind = "basic" | "code" | "component";
 
 const json = (v: unknown) => `${JSON.stringify(v, null, 2)}\n`;
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -78,9 +79,13 @@ the backed-up live version; --site brings back that site's code-form data.
 export const formKey = (kind: string, slug: string) => `${kind === "code" ? "code" : "basic"}/${slug}`;
 const sharedInfoPath = (key: string) => (key.startsWith("code/") ? `${key}/.backup/info.json` : `${key}/info.json`);
 
+/** What a backup folder holds, from its key: "basic/<slug>", "code/<slug>" or "components/<name>". */
+const kindOf = (key: string): Kind => (key.startsWith("code/") ? "code" : key.startsWith("components/") ? "component" : "basic");
+
 /** Is this path (inside a form's folder) part of the form's definition — what's compared between sites? */
 function isDefinition(kind: Kind, rel: string) {
   if (kind === "basic") return rel === "form.json" || rel === "live.json";
+  if (kind === "component") return rel !== "info.json";
   return !rel.startsWith(".backup/") || rel.startsWith(".backup/live/");
 }
 
@@ -116,7 +121,10 @@ interface SiteForm {
   key: string;
   kind: Kind;
   slug: string;
-  row: BuiltForm;
+  title: string;
+  updatedAt: Date;
+  /** More for the shared info.json (a form's status, live version). */
+  info: Record<string, unknown>;
   /** The definition, by path inside the form's folder. */
   def: Snapshot;
 }
@@ -125,12 +133,13 @@ interface SiteForm {
 async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapshot }> {
   const prefix = `sites/${backupSite()}`;
   const files: Snapshot = {};
-  const [forms, versions, records, categories, cards] = await Promise.all([
+  const [forms, versions, records, categories, cards, components] = await Promise.all([
     prisma.builtForm.findMany({ orderBy: { slug: "asc" } }),
     prisma.builtFormVersion.findMany({ orderBy: [{ formId: "asc" }, { version: "asc" }] }),
     prisma.formRecord.findMany({ orderBy: [{ formId: "asc" }, { collection: "asc" }, { docId: "asc" }] }),
     prisma.formCategory.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.formLink.findMany({ orderBy: [{ categoryId: "asc" }, { sortOrder: "asc" }] }),
+    prisma.uiComponent.findMany({ orderBy: { name: "asc" } }),
   ]);
   const catName = new Map(categories.map((c) => [c.id, c.name]));
   const cardOf = new Map(cards.map((c) => [c.id, c]));
@@ -149,7 +158,7 @@ async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapsh
       def["form.json"] = json(JSON.parse(f.draftSchema));
       if (f.liveSchema) def["live.json"] = json(JSON.parse(f.liveSchema));
     }
-    out.set(key, { key, kind, slug: f.slug, row: f, def });
+    out.set(key, { key, kind, slug: f.slug, title: f.title, updatedAt: f.updatedAt, info: { status: f.status, liveVersion: f.liveVersion, publishedAt: iso(f.publishedAt) }, def });
 
     const base = `${prefix}/forms/${key}`;
     files[`${base}/info.json`] = json({
@@ -173,6 +182,14 @@ async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapsh
       }
       for (const [name, docs] of byCollection) files[`${base}/collections/${name}.json`] = json(docs);
     }
+  }
+
+  // The shared component library (@lcs/components/<name>): code forms build against it, so it travels with them.
+  for (const c of components) {
+    const key = `components/${c.name}`;
+    const def: Snapshot = { ...(JSON.parse(c.files) as Snapshot) };
+    def["component.json"] = json({ title: c.title, description: c.description, category: c.category, api: c.api, usage: c.usage });
+    out.set(key, { key, kind: "component", slug: c.name, title: c.title, updatedAt: c.updatedAt, info: { version: c.version }, def });
   }
 
   files[`${prefix}/catalog.json`] = json(
@@ -233,13 +250,14 @@ const wasPublished = (info: BackupInfo | null) => Boolean(info && (info.status =
 async function repoForms(view: RepoView) {
   const out = new Map<string, Map<string, string>>();
   for (const [path, sha] of view.files) {
-    const m = /^(basic|code)\/([^/]+)\/(.+)$/.exec(path);
-    if (!m || !isDefinition(m[1] as Kind, m[3])) continue;
+    const m = /^(basic|code|components)\/([^/]+)\/(.+)$/.exec(path);
+    if (!m || !isDefinition(kindOf(`${m[1]}/`), m[3])) continue;
     const key = `${m[1]}/${m[2]}`;
     if (!out.has(key)) out.set(key, new Map());
     out.get(key)!.set(m[3], sha);
   }
   for (const [key, files] of out) {
+    if (kindOf(key) === "component") continue;
     const code = key.startsWith("code/");
     if ([...files.keys()].some((p) => (code ? p.startsWith(".backup/live/") : p === "live.json"))) continue;
     if (!wasPublished(await readInfo(view, key))) continue;
@@ -314,13 +332,11 @@ export async function planBackup(view: RepoView, baseOverride: Record<string, st
       want[sharedInfoPath(key)] = json({
         slug: here.slug,
         kind: here.kind,
-        title: here.row.title,
+        title: here.title,
         savedFrom: site,
         savedAt: now,
-        editedAt: iso(here.row.updatedAt),
-        status: here.row.status,
-        liveVersion: here.row.liveVersion,
-        publishedAt: iso(here.row.publishedAt),
+        editedAt: iso(here.updatedAt),
+        ...here.info,
       });
       replaceFolder(`${key}/`, want);
       saved.push(key);
@@ -334,12 +350,12 @@ export async function planBackup(view: RepoView, baseOverride: Record<string, st
     const info = state === "in_sync" ? null : await readInfo(view, key);
     out.push({
       key,
-      kind: here?.kind ?? (key.split("/")[0] as Kind),
+      kind: kindOf(key),
       slug: here?.slug ?? key.split("/")[1],
-      title: here?.row.title ?? info?.title ?? key.split("/")[1],
+      title: here?.title ?? info?.title ?? key.split("/")[1],
       state,
       backup: info ? { title: info.title ?? null, savedFrom: info.savedFrom ?? null, savedAt: info.savedAt ?? info.publishedAt ?? null } : null,
-      editedHere: here ? iso(here.row.updatedAt) : null,
+      editedHere: here ? iso(here.updatedAt) : null,
     });
   }
 
@@ -349,7 +365,7 @@ export async function planBackup(view: RepoView, baseOverride: Record<string, st
   put(".gitattributes", "* -text\n"); // byte for byte: no line-ending conversion
   if (view.files.has("catalog.json")) writes.set("catalog.json", null); // the old shared catalog; each site has its own now
 
-  const names = saved.map((k) => k.replace(/^(basic|code)\//, ""));
+  const names = saved.map((k) => k.replace(/^(basic|code|components)\//, ""));
   const message = names.length
     ? `${site}: ${names.slice(0, 6).join(", ")}${names.length > 6 ? ` and ${names.length - 6} more` : ""}\n\n${saved.join("\n")}`
     : `${site}: site data`;
@@ -460,9 +476,32 @@ const sameDoc = (stored: string | null | undefined, doc: unknown) => stored != n
 const sortedFiles = (files: Snapshot) => JSON.stringify(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)));
 const sameFiles = (stored: string | null | undefined, files: Snapshot) => stored != null && sortedFiles((JSON.parse(stored) as { files: Snapshot }).files) === sortedFiles(files);
 
-/** Make this site's form match the backup's: publish its live version if that differs, then its draft. */
-export async function pullForm(view: RepoView, key: string, actor: Actor) {
-  const [kind, slug] = key.split("/") as [Kind, string];
+/** While syncing: which backup items still need bringing in, and which were brought in already. */
+export interface PullContext {
+  needs: (key: string) => boolean;
+  /** Started (so never twice). */
+  done: Set<string>;
+  /** Brought in. */
+  pulled: Set<string>;
+}
+
+/** Components a set of files imports (@lcs/components/<name>). */
+const importedComponents = (files: Snapshot) => {
+  const out = new Set<string>();
+  for (const text of Object.values(files)) for (const m of text.matchAll(/@lcs\/components\/([A-Za-z][A-Za-z0-9_]*)/g)) out.add(m[1]);
+  return [...out];
+};
+
+/**
+ * Make this site's copy match the backup's. A code form (or component) first gets the library components
+ * it imports that aren't in sync here, and its published version is built before anything is saved, so a
+ * sync that can't work leaves the form as it was. A form then gets the backup's live version published (if
+ * it differs), then its draft.
+ */
+export async function pullForm(view: RepoView, key: string, actor: Actor, ctx: PullContext = { needs: () => true, done: new Set(), pulled: new Set() }) {
+  const kind = kindOf(key);
+  const slug = key.split("/")[1];
+  ctx.done.add(key);
   const prefix = `${key}/`;
   const def: Snapshot = {};
   const paths = [...view.files.keys()].filter((p) => p.startsWith(prefix) && isDefinition(kind, p.slice(prefix.length)));
@@ -470,8 +509,29 @@ export async function pullForm(view: RepoView, key: string, actor: Actor) {
   for (const p of paths) def[p.slice(prefix.length)] = await view.read(p);
   const info = await readInfo(view, key);
   const note = `Synced from the backup${info?.savedFrom ? ` (saved from ${info.savedFrom})` : ""}`;
-  const published = wasPublished(info);
 
+  if (kind !== "basic") {
+    for (const name of importedComponents(def)) {
+      const dep = `components/${name}`;
+      if (dep === key || ctx.done.has(dep) || !view.files.has(`${dep}/component.json`) || !ctx.needs(dep)) continue;
+      await pullForm(view, dep, actor, ctx);
+    }
+  }
+
+  if (kind === "component") {
+    const { "component.json": meta, ...files } = def;
+    const m = JSON.parse(meta ?? "{}") as { title?: string; description?: string; category?: string; api?: string | null; usage?: string | null };
+    const row = await prisma.uiComponent.findUnique({ where: { name: slug } });
+    if (row && sortedFiles(JSON.parse(row.files) as Snapshot) === sortedFiles(files)) {
+      await saveComponent({ name: slug, title: m.title, description: m.description, category: m.category, api: m.api, usage: m.usage }, actor);
+    } else {
+      await saveComponent({ name: slug, title: m.title ?? slug, description: m.description ?? slug, category: m.category ?? "Helpers", api: m.api, usage: m.usage, files, note }, actor);
+    }
+    ctx.pulled.add(key);
+    return;
+  }
+
+  const published = wasPublished(info);
   let row = await prisma.builtForm.findUnique({ where: { slug } });
   if (row && row.kind !== kind) throw badRequest(`On this site ${slug} is a ${row.kind} form, in the backup a ${kind} form — rename one first.`);
 
@@ -493,14 +553,21 @@ export async function pullForm(view: RepoView, key: string, actor: Actor) {
       else draft[rel] = text;
     }
     const live = Object.keys(liveFiles).length ? liveFiles : published ? draft : null;
-    if (live && !(row && sameFiles(row.liveSchema, live))) {
+    const publish = live && !(row && sameFiles(row.liveSchema, live));
+    if (publish) {
+      // Build first: if the backup's version can't build here, nothing is changed.
+      const res = await buildProject(live);
+      if (!res.ok) {
+        const first = res.problems[0];
+        throw new ProjectError(res.problems, `The backup's version doesn't build here${first ? ` (${first.file ? `${first.file}: ` : ""}${first.message})` : ""}. Nothing was changed.`);
+      }
       row = row ? await saveProject(row.id, { files: live }, actor) : await createProject({ files: live, slug }, actor);
       row = await publishProject(row.id, actor, note);
     }
     if (!row) row = await createProject({ files: draft, slug }, actor);
     else if (!sameFiles(row.draftSchema, draft)) row = await saveProject(row.id, { files: draft }, actor);
   }
-  return row;
+  ctx.pulled.add(key);
 }
 
 // ── The server's schedule ────────────────────────────────────────────────
@@ -626,21 +693,25 @@ async function syncKeys(keys: string[], actor: Actor) {
   const synced: string[] = [];
   const failed: { key: string; error: string }[] = [];
   const repo = await repoForms(view);
+  // Components a form needs come along when they aren't in sync here; each is brought in once.
+  const ctx: PullContext = { needs: (k) => byKey.has(k) && byKey.get(k)!.state !== "in_sync", done: new Set(), pulled: new Set() };
   for (const key of keys) {
     const f = byKey.get(key);
     if (!f) {
       failed.push({ key, error: "Not in the backup." });
       continue;
     }
-    if (f.state === "in_sync") continue;
+    if (f.state === "in_sync" || ctx.done.has(key)) continue;
     try {
-      await pullForm(view, key, actor);
-      // What this site now matches; the next backup run records it (or saves the publish's tidy-ups).
-      state.baseOverride[key] = fingerprint(repo.get(key)!)!;
-      synced.push(key);
+      await pullForm(view, key, actor, ctx);
     } catch (err) {
       failed.push({ key, error: err instanceof Error ? err.message : String(err) });
     }
+  }
+  // What this site now matches (the form, and components that came with it); the next backup run records it.
+  for (const k of ctx.pulled) {
+    state.baseOverride[k] = fingerprint(repo.get(k)!)!;
+    synced.push(k);
   }
   if (synced.length) await audit({ actor, action: "forms.synced", summary: `Synced ${synced.length} form${synced.length === 1 ? "" : "s"} from the backup: ${synced.join(", ")}` });
   settle(synced);
@@ -659,9 +730,11 @@ async function keepKey(key: string, actor: Actor) {
 /** Take a form that's only in the backup out of it. Inside exclusive(). */
 async function removeKey(key: string, actor: Actor) {
   const [kind, slug] = key.split("/");
-  if (await prisma.builtForm.findFirst({ where: { slug, kind: kind === "code" ? "code" : { not: "code" } } })) {
-    throw new HttpError(400, "That form is on this site, so the next backup would put it back. Delete it here first.");
-  }
+  const here =
+    kind === "components"
+      ? await prisma.uiComponent.findUnique({ where: { name: slug } })
+      : await prisma.builtForm.findFirst({ where: { slug, kind: kind === "code" ? "code" : { not: "code" } } });
+  if (here) throw new HttpError(400, "That's on this site, so the next backup would put it back. Delete it here first.");
   const view = await githubView();
   const writes = new Map<string, string | null>();
   for (const path of view.files.keys()) if (path.startsWith(`${key}/`)) writes.set(path, null);
@@ -706,8 +779,16 @@ export function queueBackupJobs(action: JobAction, keys: (string | null)[], acto
   return backupStatus();
 }
 
-/** Every form that needs sync (not ones that differ, or exist only in the backup) that `allowed` lets through. */
-export const formsBehind = (allowed: (key: string) => boolean = () => true) => state.forms.filter((f) => f.state === "behind" && allowed(f.key)).map((f) => f.key);
+/**
+ * What Sync all brings in: every form and component on this site whose backup differs (needs sync, or
+ * changed on both sides — the backup's version wins), that `allowed` lets through. Components first, so
+ * the forms build against them. Not ones that exist only in the backup.
+ */
+export const formsToSync = (allowed: (key: string) => boolean = () => true) =>
+  state.forms
+    .filter((f) => (f.state === "behind" || f.state === "differs") && allowed(f.key))
+    .sort((a, b) => Number(b.kind === "component") - Number(a.kind === "component"))
+    .map((f) => f.key);
 
 /** Back up now: save every form changed here, never over a newer one. Waits for it. */
 export async function runFormBackup(opts: { by?: string } = {}) {
@@ -717,7 +798,7 @@ export async function runFormBackup(opts: { by?: string } = {}) {
 
 /**
  * Bring forms in from the backup and wait for it (the MCP tool). `keys`: form folders
- * ("basic/<slug>", "code/<slug>"), or "all" for every form that needs sync and `allowed` lets through.
+ * ("basic/<slug>", "code/<slug>", "components/<name>"), or "all" (formsToSync).
  */
 export async function syncFromBackup(keys: string[] | "all", actor: Actor, allowed: (key: string) => boolean = () => true) {
   needConfig();
@@ -725,7 +806,7 @@ export async function syncFromBackup(keys: string[] | "all", actor: Actor, allow
     let todo = keys;
     if (todo === "all") {
       await backupOnce(actor.name);
-      todo = formsBehind(allowed);
+      todo = formsToSync(allowed);
     }
     const r = await syncKeys(todo, actor);
     return { ...r, status: await backupOnce(actor.name) };

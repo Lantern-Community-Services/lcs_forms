@@ -69,7 +69,9 @@ Every form built in the app — form builder forms and code forms — is backed 
   on Admin → Form builder / Code forms; **Sync** brings it in (replaces the draft, publishes the
   backup's live version if it differs) and **Sync all** does every such form. A form changed on both
   sides shows **Differs from backup**: pick **Use the backup's** or **Keep this site's**. Forms only in
-  the backup can be added here or removed from it. These buttons queue a job and come straight back
+  the backup can be added here or removed from it. **Sync all** brings in everything that differs (the backup's newest wins).
+  The shared component library travels too (`components/<name>/`): syncing a code form first brings in
+  the components it imports, and a version that doesn't build here changes nothing. These buttons queue a job and come straight back
   (the jobs run one at a time in the background), so several can be clicked in a row. MCP: `form_backup` with `sync` / `keep` / `remove`.
 - **When:** the server checks every 10 minutes and commits only what changed, with the forms in the
   commit message. **Back up now** on the same bar, which shows the last backup or the last error.

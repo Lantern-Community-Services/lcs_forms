@@ -16,7 +16,7 @@ import { cn, errorMessage, relativeTime } from "@/lib/utils";
  * can be clicked in a row; the jobs run one at a time in the background while this polls.
  */
 
-type Kind = "basic" | "code";
+type Kind = "basic" | "code" | "component";
 type SyncState = "in_sync" | "behind" | "differs" | "only_backup";
 type JobAction = "sync" | "keep" | "remove" | "backup";
 
@@ -77,7 +77,11 @@ function useBackupActions(data: BackupStatus | undefined) {
       if (f.state === "differs" && !confirm(`“${f.title}” was changed here too. Replace this site's draft with the backup's version${savedLine(f) ? ` (${savedLine(f)})` : ""}? Published versions stay in its history.`)) return;
       queue.mutate({ path: "/sync", body: { keys: [f.key] } });
     },
-    syncAll: () => queue.mutate({ path: "/sync", body: { all: true } }),
+    syncAll(forms: FormSync[]) {
+      const changedHere = forms.filter((f) => f.state === "differs");
+      if (changedHere.length && !confirm(`Sync ${forms.length} from the backup? ${changedHere.length} of them (${changedHere.map((f) => f.title).join(", ")}) were changed here too: the backup's version replaces this site's. Published versions stay in their history.`)) return;
+      queue.mutate({ path: "/sync", body: { all: true } });
+    },
     keep: (f: FormSync) => {
       if (confirm(`Save this site's “${f.title}” over the backup's version${savedLine(f) ? ` (${savedLine(f)})` : ""}? Other sites will then see theirs as needing sync.`)) queue.mutate({ path: "/keep", body: { key: f.key } });
     },
@@ -141,7 +145,7 @@ function useJobResults(data: BackupStatus | undefined, listKey: readonly unknown
   }, [data, listKey, qc, toast]);
 }
 
-export function FormBackupBar({ className, kind, listKey }: { className?: string; kind: Kind; listKey: readonly unknown[] }) {
+export function FormBackupBar({ className, kind, listKey }: { className?: string; kind: "basic" | "code"; listKey: readonly unknown[] }) {
   const [open, setOpen] = useState(false);
   const { data } = useBackupStatus();
   const actions = useBackupActions(data);
@@ -149,11 +153,13 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
   if (!data) return null;
   const repoName = data.repo?.split("/").pop();
   const repoUrl = data.repo ? `https://github.com/${data.repo}` : null;
-  const mine = data.forms.filter((f) => f.kind === kind);
+  // The Code forms page also lists the shared components code forms build against.
+  const mine = data.forms.filter((f) => f.kind === kind || (kind === "code" && f.kind === "component"));
   const behind = mine.filter((f) => f.state === "behind");
   const differs = mine.filter((f) => f.state === "differs");
   const onlyBackup = mine.filter((f) => f.state === "only_backup");
-  const unqueued = behind.filter((f) => !actions.jobOf(f.key));
+  // Sync all brings in everything that differs, on every kind of form (the backup's newest wins).
+  const unqueued = data.forms.filter((f) => (f.state === "behind" || f.state === "differs") && !actions.jobOf(f.key));
   const backupJob = actions.jobOf(null);
   const waiting = data.jobs.length;
 
@@ -187,7 +193,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
         {data.configured && (
           <>
             {unqueued.length > 0 && (
-              <Button size="sm" onClick={actions.syncAll} title="Bring in every form whose backup is newer">
+              <Button size="sm" onClick={() => actions.syncAll(unqueued)} title="Bring in the backup's version of every form that differs from it">
                 <RefreshCw className="h-3.5 w-3.5" /> Sync all ({unqueued.length})
               </Button>
             )}
@@ -213,7 +219,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
                 return (
                   <li key={f.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-hairline px-4 py-2 last:border-0">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-ink">{f.title}</p>
+                      <p className="truncate font-semibold text-ink">{f.kind === "component" && <span className="font-normal text-muted">Component · </span>}{f.title}</p>
                       <p className="truncate text-micro text-muted">
                         {f.state === "behind" && <>A newer version is in the backup{savedLine(f) && <> ({savedLine(f)})</>}.</>}
                         {f.state === "differs" && <>Changed here{f.editedHere && <> ({relativeTime(f.editedHere)})</>} and in the backup{savedLine(f) && <> ({savedLine(f)})</>}. Pick which to keep.</>}
