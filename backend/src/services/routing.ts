@@ -100,7 +100,7 @@ export function eventsOf(form: BuiltForm, manifest?: Known): RoutingEvent[] {
       description: "Someone filled in the form.",
       fields: inputs
         .filter((f) => !["file", "signature", "repeater", "code"].includes(f.type))
-        .slice(0, 40)
+        .slice(0, 250)
         .map((f) => ({ id: f.id, label: (f.label || f.id).slice(0, 80), ...(f.choices?.length ? { choices: f.choices.slice(0, 100).map((c) => c.value.slice(0, 120)) } : {}) })),
       people: inputs.filter((f) => f.type === "email").slice(0, 20).map((f) => ({ id: f.id, label: (f.label || f.id).slice(0, 80) })),
     },
