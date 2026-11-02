@@ -5,7 +5,7 @@ import { asyncHandler, forbidden, notFound, unauthorized } from "../http.js";
 import { AUTH_COOKIE, ONBOARDING_COOKIE, signOnboarding, signSession, type OnboardingPass } from "../auth/auth.js";
 import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, safeReturnTo } from "../auth/entra.js";
 import { requireAuth } from "../auth/middleware.js";
-import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured } from "../env.js";
+import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured, testSite } from "../env.js";
 import { guestDomains } from "../services/settings.js";
 import { audit } from "../services/audit.js";
 import { notifyQuietly } from "../services/notifications.js";
@@ -49,9 +49,9 @@ function toWelcome(res: Response, pass: OnboardingPass) {
   res.redirect(`${appBaseUrl}/welcome`);
 }
 
-/** What the sign-in screen should offer. Public. */
+/** What the sign-in screen should offer, and whether this is a test site (made-up residents only). Public. */
 authRouter.get("/config", (_req, res) => {
-  res.json({ microsoft: ssoConfigured, dev: devAuthEnabled });
+  res.json({ microsoft: ssoConfigured, dev: devAuthEnabled, testSite });
 });
 
 authRouter.get(

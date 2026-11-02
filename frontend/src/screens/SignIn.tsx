@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { useIsPhone } from "@/lib/useMediaQuery";
 import { readStorage, writeStorage } from "@/lib/storage";
 import { reachable } from "@/lib/offline";
+import { useAuthConfig } from "@/lib/queries";
 
 /**
  * Sign-in is Microsoft Entra ID only — one button, no form. The backend owns
@@ -34,10 +35,7 @@ const STAY_SIGNED_IN_KEY = "ln.staySignedIn";
 
 export function SignInPage() {
   const { signInWithMicrosoft, devSignIn } = useAuth();
-  const { data: config } = useQuery({
-    queryKey: ["auth-config"],
-    queryFn: () => api.get<{ microsoft: boolean; dev: boolean }>("/auth/config"),
-  });
+  const { data: config } = useAuthConfig();
   const { data: devUsers } = useQuery({
     queryKey: ["dev-users"],
     queryFn: () => api.get<{ id: string; name: string; email: string; roleName: string; avatarColor: string | null }[]>("/auth/dev-users"),
@@ -158,6 +156,12 @@ export function SignInPage() {
               {message.text}
             </div>
           ) : null}
+
+          {config?.testSite && (
+            <div role="note" className="mt-6 rounded-card border border-status-amberDot/40 bg-status-amberBg px-3.5 py-3 text-[13px] text-status-amberText">
+              <strong className="font-semibold">This is a test site.</strong> The residents on it are made up. Use the live site for real work.
+            </div>
+          )}
 
           <button
             type="button"

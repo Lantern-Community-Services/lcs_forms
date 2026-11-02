@@ -8,8 +8,9 @@ dist/
 backend/prisma/*.db
 backend/prisma/*.db-journal
 
-# Resident data never goes in git — this repo is public. Put the tenant list
-# CSV here locally; `npm run seed` imports it if present.
+# Resident data never goes in git — this repo is public — and not on a
+# computer either: `npm run seed` makes up residents (services/testData.ts).
+# Real tenant lists are imported on the live site only (Admin → Import).
 data/
 *.csv
 *.xlsx

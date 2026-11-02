@@ -10,9 +10,27 @@ import { API_SCOPES, generateKey } from "../services/apiKeys.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
 import { backupStatus, formsToSync, queueBackupJobs } from "../services/formBackup.js";
+import { replaceWithMadeUpData } from "../services/testData.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
+
+// ── Test site data ───────────────────────────────────────────────────────
+
+/**
+ * A test site (env.ts testSite) only: wipe residents, entries and everything
+ * made from them, and start over with made-up residents (services/testData.ts).
+ * Super Admins, typing REPLACE to confirm.
+ */
+adminRouter.post(
+  "/test-data/replace",
+  requirePermission("admins.manage"),
+  asyncHandler(async (req, res) => {
+    const { confirm } = z.object({ confirm: z.string() }).parse(req.body);
+    if (confirm !== "REPLACE") throw badRequest("Type REPLACE to confirm.");
+    res.json(await replaceWithMadeUpData(actorOf(req)));
+  })
+);
 
 // ── Settings ─────────────────────────────────────────────────────────────
 

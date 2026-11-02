@@ -9,6 +9,10 @@ import { decodeCsv, importTenants, readRows } from "../src/services/tenantImport
  *   npm run import:tenants -- ../data/tenant_list.csv --commit   # write
  *
  * Re-runnable: people already on the roster at that unit are skipped.
+ *
+ * A real tenant list goes only into the live site's database: on a computer
+ * this counts as a test site (env.ts testSite) and refuses, unless
+ * DATA_MODE=real says DATABASE_URL is the live one.
  */
 async function main() {
   const file = process.argv.slice(2).find((a) => !a.startsWith("--"));

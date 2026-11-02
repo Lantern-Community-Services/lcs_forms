@@ -3,6 +3,8 @@ import { prisma } from "../prisma.js";
 import { NEW_FORM_ENTRY_ACCESS, entryAccessOf, setEntryAccess } from "../services/staffGroups.js";
 import { HttpError, badRequest, notFound } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
+import { refuseRosterNames } from "../services/rosterNames.js";
+import { assertRealDataAllowed } from "../services/testData.js";
 import { checkSlug, syncCatalogUrl, uniqueSlug } from "../forms/service.js";
 import { buildProject } from "./compile.js";
 import { APP_FORMAT, checkFiles, readManifest, starterProject, titleOf, type FileProblem, type Files } from "./project.js";
@@ -26,6 +28,11 @@ function validFiles(files: unknown): Files {
   const r = checkFiles(files);
   if (!r.files) throw new ProjectError(r.problems);
   return r.files;
+}
+
+/** No file may hold residents' names (services/rosterNames.ts); the message names the file. */
+export async function refuseNamesInFiles(files: Files) {
+  for (const [path, src] of Object.entries(files)) await refuseRosterNames(path, src);
 }
 
 export function projectDetail(row: BuiltForm) {
@@ -73,6 +80,7 @@ export async function listProjects(opts: { includeArchived?: boolean } = {}) {
 /** A new code form: "Who sees entries" starts at only their own, unless it's a copy or an import (`keepOldReaders`). */
 export async function createProject(input: { title?: string; files?: unknown; slug?: string }, actor: Actor, opts: { keepOldReaders?: boolean } = {}): Promise<BuiltForm> {
   const files = input.files === undefined ? starterProject(input.title?.trim() || "Untitled code form") : validFiles(input.files);
+  await refuseNamesInFiles(files);
   const title = titleOf(files);
   if (input.slug) await checkSlug(input.slug);
   const slug = input.slug ?? (await uniqueSlug(title));
@@ -91,6 +99,7 @@ export async function saveProject(id: string, input: { files: unknown; revision?
     throw new HttpError(409, `${before.updatedByName ?? "Someone"} saved this form after you opened it. Reload to get their changes.`, { revision: before.revision });
   }
   const files = validFiles(input.files);
+  await refuseNamesInFiles(files);
   if (input.slug && input.slug !== before.slug) await checkSlug(input.slug, before.id);
   const row = await prisma.builtForm.update({
     where: { id: before.id },
@@ -120,6 +129,7 @@ export async function patchFiles(id: string, changes: Record<string, string | nu
 export async function publishProject(id: string, actor: Actor, note?: string): Promise<BuiltForm> {
   const form = await findCodeForm(id);
   const files = draftFiles(form);
+  await refuseNamesInFiles(files);
   const res = await buildProject(files);
   if (!res.ok) throw new ProjectError(res.problems, "Fix the build errors before publishing.");
   const version = form.liveVersion + 1;
@@ -205,6 +215,7 @@ export async function importProject(payload: unknown, actor: Actor, opts: { with
   }
   let entries = 0;
   if (opts.withEntries && p.entries?.length) {
+    assertRealDataAllowed("importing a code form's entries");
     const sites = new Map((await prisma.site.findMany({ select: { id: true, code: true } })).map((s) => [s.code, s.id]));
     const rows = p.entries.map((e) => ({
       formId: row.id, formVersion: 0, data: JSON.stringify(e.data ?? {}), siteId: typeof e.site === "string" ? sites.get(e.site) ?? null : null,

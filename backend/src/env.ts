@@ -223,3 +223,28 @@ export function assertDemoDataAllowed(what: string) {
 }
 
 export const appBaseUrl = env.appBaseUrl || env.corsOrigins[0] || "http://localhost:5200";
+
+/** The live site's address: never a test site, whatever else says so. */
+export const LIVE_HOST = "lcsforms.lanterncommunity.org";
+
+/**
+ * A test site holds made-up residents and entries only (services/testData.ts):
+ * it shows a banner saying so, refuses real data coming in (tenant lists,
+ * imported entries), and a Super Admin can replace what it holds with fresh
+ * made-up data. DATA_MODE=test or DATA_MODE=real says which this is. Left out:
+ * the Azure dev app (WEBSITE_SITE_NAME ending in -dev) and a copy running on
+ * a computer are test sites; any other App Service app — production — isn't.
+ */
+export const testSite = (() => {
+  const mode = (process.env.DATA_MODE ?? "").trim().toLowerCase();
+  if (mode && mode !== "test" && mode !== "real") throw new Error(`DATA_MODE is "${mode}": use test or real.`);
+  let host = "";
+  try {
+    host = new URL(appBaseUrl).host.toLowerCase();
+  } catch {
+    /* no address: decided below */
+  }
+  if (host === LIVE_HOST) return false;
+  if (mode) return mode === "test";
+  return onAppService ? /-dev$/i.test(process.env.WEBSITE_SITE_NAME ?? "") : true;
+})();
