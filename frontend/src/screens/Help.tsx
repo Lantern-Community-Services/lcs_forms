@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/misc";
 import { useAuth } from "@/lib/auth";
-import { AREAS, ARTICLES, ROLE_GUIDES, allowed, articleById, guideFor, type HelpArticle, type HelpLinkTo, type RoleGuide } from "@/lib/help/content";
+import { AREAS, ARTICLES, ROLE_GUIDES, SUPER_ADMIN_EXTRA, accessFor, allowed, articleById, guideFor, type HelpArticle, type HelpLinkTo, type RoleGuide } from "@/lib/help/content";
+import { useRoles } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 /**
@@ -90,6 +91,7 @@ export function HelpPage() {
       ) : (
         <div className="space-y-6">
           <GuideCard guide={guide} mine={mine} />
+          <AccessCard guideKey={guide.key} yours />
           {AREAS.map((area) => {
             const list = mine.filter((a) => a.area === area.id);
             if (!list.length) return null;
@@ -104,6 +106,61 @@ export function HelpPage() {
         </div>
       )}
     </Page>
+  );
+}
+
+/**
+ * What a role (or you) can see and change, part by part, from the permissions
+ * the server gives it: yours include the switches turned on for you alone.
+ */
+function AccessCard({ guideKey, yours }: { guideKey: string; yours: boolean }) {
+  const { user, can } = useAuth();
+  const { data: roles } = useRoles();
+  const access = useMemo(() => {
+    if (yours && user) {
+      const role = roles?.find((r) => r.key === user.roleKey) as { forms?: string[] } | undefined;
+      return accessFor(user.permissions, { everySite: user.allSites, forms: role?.forms, switched: { roster: user.rosterEditor, calendar: user.calendarEditor } });
+    }
+    const role = roles?.find((r) => r.key === (guideKey === "super_admin" ? "admin" : guideKey)) as ({ permissions: string[]; allSites: boolean; forms?: string[] } | undefined);
+    if (!role) return null;
+    const perms = guideKey === "super_admin" ? [...role.permissions, ...SUPER_ADMIN_EXTRA] : role.permissions;
+    return accessFor(perms, { everySite: role.allSites, forms: role.forms });
+  }, [yours, user, roles, guideKey]);
+  if (!access) return null;
+  return (
+    <Card className="p-0">
+      <div className="px-5 pb-2 pt-5">
+        <h2 className="font-heading text-[16px] font-extrabold text-ink">{yours ? "What you can see and change" : "What this role can see and change"}</h2>
+        <p className="mt-1 text-[13px] text-muted">{yours ? "Worked out from your role and anything turned on for you, so it's exactly what the site lets you do." : "Worked out from the role itself. An Admin can turn on more for one person."}</p>
+      </div>
+      <ul className="divide-y divide-hairline border-t border-hairline">
+        {access.rows.map((r) => (
+          <li key={r.id} className="grid gap-1.5 px-5 py-3 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[14px] font-bold text-ink">{r.title}</span>
+              {r.switched && <span className="rounded-pill bg-status-greenBg px-2 py-0.5 text-[11px] font-extrabold text-status-greenText">Turned on for you</span>}
+            </div>
+            <div className="space-y-1 text-[13.5px] text-ink">
+              <p><span className="font-semibold text-muted">See: </span>{r.see}</p>
+              {r.change.length > 0 && (
+                <div className="flex gap-1">
+                  <span className="shrink-0 font-semibold text-muted">Change:</span>
+                  {r.change.length > 1 ? <ul className="list-disc space-y-0.5 pl-4">{r.change.map((c) => <li key={c}>{c}</li>)}</ul> : <span>{r.change[0]}</span>}
+                </div>
+              )}
+              {yours && r.to && allowed(r.needs, can) && (
+                <Link to={r.to} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent dark:text-white">Go there <ArrowRight className="h-3.5 w-3.5" /></Link>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {access.not.length > 0 && (
+        <p className="border-t border-hairline px-5 py-3 text-[13px] text-muted">
+          <span className="font-semibold">Not with {yours ? "your" : "this"} role: </span>{access.not.join(", ")}. {yours ? "Ask an Admin if you need one." : ""}
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -172,7 +229,10 @@ export function HelpRolePage() {
     <Page className="max-w-[880px]">
       <DesktopBackLink to="/help">Help</DesktopBackLink>
       <PageHeader title={guide.name} subtitle={guide.key === yours.key ? "Your role." : "What this role can do. Ask an Admin if you need it."} />
-      <GuideCard guide={guide} mine={mine} yours={guide.key === yours.key} />
+      <div className="space-y-5">
+        <GuideCard guide={guide} mine={mine} yours={guide.key === yours.key} />
+        <AccessCard guideKey={guide.key} yours={guide.key === yours.key} />
+      </div>
     </Page>
   );
 }
