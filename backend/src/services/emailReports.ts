@@ -54,6 +54,12 @@ export const reportSchema = z
     template: z.string().trim().min(1).max(64).optional(),
     /** Set by the server when the scheduled report goes. */
     lastSentAt: z.string().nullable().optional(),
+    /**
+     * Set by the server: when this schedule began (the report was made, turned
+     * on, or moved to another day or hour). Slots before it never send, so a
+     * report saved just after its time waits for next week instead of catching up.
+     */
+    scheduledFrom: z.string().nullable().optional(),
   })
   .strict();
 export type Report = z.infer<typeof reportSchema>;
@@ -145,9 +151,17 @@ export async function saveReports(form: BuiltForm, input: unknown[], actor: Acto
   const reports = await checkReports(form, input);
   const now = await loadReports(form);
   if (revision !== undefined && revision !== now.revision) throw badRequest("Someone else changed this form's reports while you were editing. Reload and try again.");
-  // When each last went is the server's to keep.
-  const sent = new Map(now.reports.map((r) => [r.id, r.lastSentAt ?? null]));
-  const next = { reports: reports.map((r) => ({ ...r, lastSentAt: sent.get(r.id) ?? null })), revision: now.revision + 1 };
+  // When each last went, and when its schedule began, are the server's to keep.
+  const before = new Map(now.reports.map((r) => [r.id, r]));
+  const at = new Date().toISOString();
+  const next = {
+    reports: reports.map((r) => {
+      const was = before.get(r.id);
+      const restarted = !was || (r.enabled && !was.enabled) || was.day !== r.day || was.hour !== r.hour;
+      return { ...r, lastSentAt: was?.lastSentAt ?? null, scheduledFrom: restarted ? at : (was.scheduledFrom ?? null) };
+    }),
+    revision: now.revision + 1,
+  };
   await writeDoc(form.id, next, actor.name);
   await audit({ actor, action: "forms.reports_changed", summary: `Changed “${form.title}”'s summary reports (${reports.length})` }).catch(() => undefined);
   return loadReports(form);
@@ -289,6 +303,8 @@ export async function runDueReports(now = new Date()): Promise<number> {
       const due = slot(r, now, "last");
       if (now.getTime() - due.getTime() > CATCH_UP_MS) continue;
       if (r.lastSentAt && new Date(r.lastSentAt) >= due) continue;
+      // A slot from before this schedule began isn't missed, it was never this report's.
+      if (r.scheduledFrom && new Date(r.scheduledFrom) > due) continue;
       // Claim it first, so a restart mid-send doesn't send it twice.
       const fresh = await loadReports(form);
       const next = fresh.reports.map(({ nextRun: _n, ...x }) => (x.id === r.id ? { ...x, lastSentAt: now.toISOString() } : x));
