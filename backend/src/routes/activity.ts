@@ -21,9 +21,13 @@ activityRouter.get(
     // Admins with no selection also see org-level events (people, keys) that
     // belong to no site; everyone else sees only their sites' events.
     if (asked || req.user!.siteIds) where.siteId = { in: (await sitesInScope(req, req.query.site)).map((s) => s.id) };
-    // Non-roster events (people, keys, settings) are admin business.
-    if (!req.user!.permissions.includes("audit.view")) where.action = { startsWith: "tenant." };
-    if (typeof req.query.action === "string" && req.query.action) where.action = req.query.action;
+    // Non-roster events (people, keys, settings) are admin business: asking
+    // for one by name (?action=) narrows the tenant events, never widens them.
+    const action = typeof req.query.action === "string" && req.query.action ? req.query.action : null;
+    where.AND = [
+      ...(req.user!.permissions.includes("audit.view") ? [] : [{ action: { startsWith: "tenant." } }]),
+      ...(action ? [{ action }] : []),
+    ];
     if (typeof req.query.before === "string") where.createdAt = { lt: new Date(req.query.before) };
 
     const rows = await prisma.auditEvent.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });

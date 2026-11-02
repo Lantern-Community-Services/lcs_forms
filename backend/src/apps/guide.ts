@@ -44,7 +44,9 @@ Admins and developers pass every role check.
 ## How data flows
 - entries: the form's records. Each has free-form JSON "data", plus site, tenantId (a resident's roster id),
   occurredAt and who made it. People without entries.read can still list their own (mine: true).
-- collections: the form's other data (lists admins edit, settings) — JSON documents by id.
+- collections: the form's other data (lists admins edit, settings) — JSON documents by id. Only collections marked
+  "backup": true in form.json (e.g. "mealTypes": { "read": ["*"], "write": ["admin"], "backup": true }) go to the
+  form backup; mark settings and lists, never anything holding residents' details.
 - Server code decides: beforeCreate can refuse (errors), demand a reason (needsOverride), or rewrite data.
   The page gets { status: "needs_override", problems } and re-sends with override: "<reason>".
 - actions: server functions pages call (actions.call("today", { site })) — for anything that needs data the

@@ -6,6 +6,8 @@ import { HttpError } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
 import { permissionsFor, roleFor } from "../services/permissions.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
+import type { CurrentUser } from "../auth/middleware.js";
+import { assertRealDataAllowed } from "../services/testData.js";
 import { McpContent, type ToolRegistrar } from "../forms/mcp.js";
 import { APP_GUIDE } from "./guide.js";
 import { DESIGN_BRIEF } from "./designBrief.js";
@@ -19,8 +21,13 @@ import { componentVersionFiles, deleteComponent, getComponent, listComponents, s
  * repository: list, read, write and edit files, build (with file:line errors),
  * try server actions and test entries against the draft, then publish.
  * Needs the apps:build scope; reading entries needs entries:read.
+ *
+ * Server code and test entries run as `principal` — the admin who made the key,
+ * held to its site (forms/mcp.ts keyPrincipal) — so they see only the sites,
+ * residents and entries that person can, never every site.
  */
-export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor, key: ResolvedKey) {
+export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor, key: ResolvedKey, principal: CurrentUser) {
+  const siteOk = (siteId: string | null | undefined) => principal.siteIds === null || (siteId != null && principal.siteIds.includes(siteId));
   const ref = z.string().describe("The code form's id or slug.");
   const where = (row: { id: string; slug: string }) => ({ url: `${appBaseUrl}/apps/${row.slug}`, editorUrl: `${appBaseUrl}/admin/apps/${row.id}` });
 
@@ -169,24 +176,24 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
 
   tool(
     "run_action",
-    "Run one of the draft's server actions (server/index.ts actions) as this API key — to test server code. Returns the value and anything it logged.",
+    "Run one of the draft's server actions (server/index.ts actions) as the admin who made this API key, at their sites (the key's site, if it has one) — to test server code. Returns the value and anything it logged.",
     { form: ref, name: z.string(), args: z.unknown().optional() },
     async ({ form, name, args }) => {
       need("apps:build");
       const app = await loadApp(await findCodeForm(form), true);
-      const r = await runAction(app, null, name, args);
+      const r = await runAction(app, principal, name, args);
       return r.ok ? { value: r.value, logs: r.logs } : { error: r.error, stack: r.stack, logs: r.logs };
     }
   );
 
   tool(
     "test_entry",
-    "Submit a test entry to the DRAFT, through its beforeCreate rules, as this API key. Saved as a 'preview' entry (hidden from the live form). Shows whether it saves, is refused, or needs an override.",
+    "Submit a test entry to the DRAFT, through its beforeCreate rules, as the admin who made this API key (at their sites, or the key's site). Saved as a 'preview' entry (hidden from the live form). Shows whether it saves, is refused, or needs an override.",
     { form: ref, data: z.record(z.unknown()), site: z.string().optional(), tenantId: z.string().optional(), override: z.string().optional() },
     async ({ form, data, site, tenantId, override }) => {
       need("apps:build");
       const app = await loadApp(await findCodeForm(form), true);
-      return createEntry(app, null, { data, site, tenantId, override }, { actorName: actor.name, machineSiteId: key.siteId });
+      return createEntry(app, principal, { data, site, tenantId, override }, { actorName: principal.name });
     }
   );
 
@@ -204,7 +211,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       need("entries:read");
       const row = await findCodeForm(form);
       const rows = await prisma.formEntry.findMany({
-        where: { formId: row.id, ...(includePreview ? {} : { source: { not: "preview" } }), ...(from ? { occurredAt: { gte: new Date(from) } } : {}), ...(key.siteId ? { siteId: key.siteId } : {}) },
+        where: { formId: row.id, ...(includePreview ? {} : { source: { not: "preview" } }), ...(from ? { occurredAt: { gte: new Date(from) } } : {}), ...(principal.siteIds ? { siteId: { in: principal.siteIds } } : {}) },
         orderBy: { occurredAt: "desc" },
         take: limit ?? 50,
       });
@@ -237,6 +244,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     },
     async ({ form, entries, dryRun, confirm }) => {
       need("entries:manage");
+      assertRealDataAllowed("migrating entries from an old system");
       const creator = key.createdById ? await prisma.user.findUnique({ where: { id: key.createdById } }) : null;
       if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
       if (!dryRun && confirm !== true) throw new HttpError(400, "This saves entries to the live form without running its rules. Pass confirm: true (or dryRun: true to check first).");
@@ -295,7 +303,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       const row = await findCodeForm(form);
       const file = await prisma.formFile.findFirst({ where: { id: fileId, formId: row.id }, include: { entry: { select: { siteId: true } } } });
       if (!file || !file.entryId) throw new HttpError(404, "No such file on a saved entry of this form.");
-      if (key.siteId && file.entry?.siteId !== key.siteId) throw new HttpError(403, "That entry is for another site.");
+      if (!siteOk(file.entry?.siteId)) throw new HttpError(403, "That entry is for a site this key's admin can't see.");
       const info = { fileId: file.id, name: file.name, mime: file.mime, size: file.size, entryId: file.entryId };
       if (/^image\/(png|jpe?g|gif|webp)$/.test(file.mime) && file.size <= 5 * 1024 * 1024) {
         return new McpContent([
@@ -362,7 +370,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     async ({ form, data }) => {
       need("apps:build");
       if (data) need("entries:read");
-      if (data && key.siteId) throw new HttpError(403, "An export with data holds every site's entries, so a key limited to one site can't make one.");
+      if (data && principal.siteIds) throw new HttpError(403, "An export with data holds every site's entries, so a key limited to one site (or made by someone who isn't at every site) can't make one.");
       return exportProject((await findCodeForm(form)).id, { data });
     },
     { readOnlyHint: true }

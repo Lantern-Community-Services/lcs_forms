@@ -5,6 +5,8 @@ import { NEW_FORM_ENTRY_ACCESS, entryAccessOf, setEntryAccess } from "../service
 import { deleteFiles } from "../services/fileStore.js";
 import { HttpError, badRequest, notFound } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
+import { refuseRosterNames } from "../services/rosterNames.js";
+import { assertRealDataAllowed } from "../services/testData.js";
 import { FORM_ICONS } from "../routes/forms.js";
 import { FORMAT, FORMAT_VERSION, emptyForm, type FormDoc } from "./engine.js";
 import { parseFormDoc, type DocProblem } from "./schema.js";
@@ -134,6 +136,7 @@ export function formDetail(r: BuiltForm) {
  */
 export async function createForm(input: { doc?: unknown; title?: string; slug?: string }, actor: Actor, opts: { keepOldReaders?: boolean } = {}): Promise<BuiltForm> {
   const doc = input.doc === undefined ? emptyForm(input.title?.trim() || "Untitled form") : validDoc(input.doc);
+  await refuseRosterNames("This form", JSON.stringify(doc));
   if (input.slug) await checkSlug(input.slug);
   const slug = input.slug ?? (await uniqueSlug(doc.title));
   const row = await prisma.builtForm.create({
@@ -162,6 +165,7 @@ export async function saveDraft(id: string, input: { doc: unknown; revision?: nu
     throw new HttpError(409, `${before.updatedByName ?? "Someone"} saved this form after you opened it. Reload to see their changes.`, { revision: before.revision });
   }
   const doc = validDoc(input.doc);
+  await refuseRosterNames("This form", JSON.stringify(doc));
   if (input.slug && input.slug !== before.slug) await checkSlug(input.slug, before.id);
   const row = await prisma.builtForm.update({
     where: { id: before.id },
@@ -183,6 +187,8 @@ export async function publishForm(id: string, actor: Actor, note?: string): Prom
   const doc = validDoc(readDoc(before.draftSchema));
   const version = before.liveVersion + 1;
   const json = JSON.stringify(doc);
+  // A draft saved before names were checked (or on a site with a different roster) is checked again here.
+  await refuseRosterNames("This form", json);
   const [row] = await prisma.$transaction([
     prisma.builtForm.update({
       where: { id: before.id },
@@ -424,6 +430,7 @@ export async function importPayload(payload: unknown, actor: Actor, opts: { with
     if (opts.publish) row = await publishForm(row.id, actor, "Imported");
     let entryCount = 0;
     if (opts.withEntries && item.entries?.length) {
+      assertRealDataAllowed("importing a form's entries");
       const sites = await prisma.site.findMany({ select: { id: true, code: true } });
       const byCode = new Map(sites.map((s) => [s.code, s.id]));
       const data: Prisma.FormEntryCreateManyInput[] = item.entries.map((e) => ({

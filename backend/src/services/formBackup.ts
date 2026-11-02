@@ -7,6 +7,7 @@ import { createForm, publishForm, saveDraft } from "../forms/service.js";
 import { ProjectError, createProject, publishProject, saveProject } from "../apps/service.js";
 import { buildProject } from "../apps/compile.js";
 import { saveComponent } from "../apps/components.js";
+import { namesIn, rosterNames } from "./rosterNames.js";
 
 /**
  * Backup of every form built in the app — form builder forms and code forms —
@@ -22,8 +23,15 @@ import { saveComponent } from "../apps/components.js";
  * Sync all). One changed on both sides "differs": an admin picks which wins.
  *
  * Site-specific things live under sites/<site>/: the Forms catalog, each form's
- * status and published versions, a code form's collections (its settings and
- * lists). Not kept: entries, uploaded files, people.
+ * status and published versions, a code form's settings collections (see
+ * backedUpCollections). Not kept: entries, uploaded files, people, and any
+ * other collection (form code can store anything there).
+ *
+ * Nothing with a resident's name in it goes out (services/rosterNames.ts). A
+ * form whose definition has one is "held": left out, and its copy in the
+ * backup removed if that has names too, until someone replaces the names with
+ * a Resident field. A published version or a collection with names is left out
+ * on its own.
  *
  * Two ways out:
  *   - The server, every 10 minutes, through the GitHub API (FORM_BACKUP_TOKEN, a
@@ -54,7 +62,7 @@ here by hand.
     sites/<site>/catalog.json                      that site's Forms screen
     sites/<site>/forms/<kind>/<slug>/info.json     the form's status there, its catalog card
     sites/<site>/forms/<kind>/<slug>/versions/     every version published there
-    sites/<site>/forms/code/<slug>/collections/    a code form's own data there (settings, lists)
+    sites/<site>/forms/code/<slug>/collections/    a code form's settings there (routing, and lists its form.json marks "backup": true)
     sites/<site>/sync.json                         what that site last matched (don't edit)
 
 Each form folder holds the newest version any site saved. A site only writes a form when
@@ -62,8 +70,10 @@ its own copy changed since it last matched this repository, so an older copy nev
 replaces a newer one. When the backup is newer, the site's Form builder / Code forms list
 marks the form "Needs sync"; Sync brings it in.
 
-Entries (what people submitted) and uploaded photos are not here — they stay in each
-site's database and its own backups.
+Entries (what people submitted), uploaded photos and code forms' other data are not here —
+they stay in each site's database and its own backups. Neither is anything with a resident's
+name in it: a form whose fields or choices name residents isn't backed up until the names are
+replaced with a Resident field.
 
 ## Restoring
 
@@ -129,10 +139,41 @@ interface SiteForm {
   def: Snapshot;
 }
 
+/**
+ * Code-form collections the backup keeps: the platform's own settings for the
+ * form (routing, schedule, who sees entries, sharing) and the ones its
+ * form.json marks "backup": true (lists and settings an admin edits). The
+ * rest hold whatever the form's code stores there, residents' details
+ * included, so they stay in the site's database.
+ */
+const PLATFORM_COLLECTIONS = ["__routing", "__schedule", "access", "sharing"];
+
+function backedUpCollections(files: Snapshot): Set<string> {
+  const out = new Set(PLATFORM_COLLECTIONS);
+  try {
+    const m = JSON.parse(files["form.json"] ?? "{}") as { collections?: Record<string, { backup?: boolean } | undefined> };
+    for (const [name, rule] of Object.entries(m.collections ?? {})) if (rule?.backup === true) out.add(name);
+  } catch {
+    /* an unparseable manifest: only the platform's own */
+  }
+  return out;
+}
+
+/** A form left out of the backup because its definition names residents. */
+interface HeldForm {
+  key: string;
+  kind: Kind;
+  slug: string;
+  title: string;
+  updatedAt: Date;
+}
+
 /** Every form on this site, and the site's own files (under sites/<site>/, without sync.json). */
-async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapshot }> {
+async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapshot; held: Map<string, HeldForm>; names: Set<string> }> {
   const prefix = `sites/${backupSite()}`;
   const files: Snapshot = {};
+  const held = new Map<string, HeldForm>();
+  const names = await rosterNames();
   const [forms, versions, records, categories, cards, components] = await Promise.all([
     prisma.builtForm.findMany({ orderBy: { slug: "asc" } }),
     prisma.builtFormVersion.findMany({ orderBy: [{ formId: "asc" }, { version: "asc" }] }),
@@ -158,6 +199,10 @@ async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapsh
       def["form.json"] = json(JSON.parse(f.draftSchema));
       if (f.liveSchema) def["live.json"] = json(JSON.parse(f.liveSchema));
     }
+    if (namesIn(Object.values(def), names, 1).length) {
+      held.set(key, { key, kind, slug: f.slug, title: f.title, updatedAt: f.updatedAt });
+      continue;
+    }
     out.set(key, { key, kind, slug: f.slug, title: f.title, updatedAt: f.updatedAt, info: { status: f.status, liveVersion: f.liveVersion, publishedAt: iso(f.publishedAt) }, def });
 
     const base = `${prefix}/forms/${key}`;
@@ -174,13 +219,18 @@ async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapsh
       catalog: card ? { category: catName.get(card.categoryId) ?? null, title: card.title, active: card.active } : null,
       versions: mine.map((v) => ({ version: v.version, note: v.note, publishedByName: v.publishedByName, publishedAt: iso(v.createdAt) })),
     });
-    for (const v of mine) files[`${base}/versions/v${v.version}.json`] = json(JSON.parse(v.schema));
+    // An old version that named residents stays out; the form's newer ones go in.
+    for (const v of mine) if (!namesIn(v.schema, names, 1).length) files[`${base}/versions/v${v.version}.json`] = json(JSON.parse(v.schema));
     if (kind === "code") {
+      const keep = backedUpCollections((JSON.parse(f.liveSchema ?? f.draftSchema) as { files: Snapshot }).files);
       const byCollection = new Map<string, { id: string; data: unknown; updatedByName: string | null }[]>();
-      for (const r of records.filter((r) => r.formId === f.id)) {
+      for (const r of records.filter((r) => r.formId === f.id && keep.has(r.collection))) {
         byCollection.set(r.collection, [...(byCollection.get(r.collection) ?? []), { id: r.docId, data: JSON.parse(r.data), updatedByName: r.updatedByName }]);
       }
-      for (const [name, docs] of byCollection) files[`${base}/collections/${name}.json`] = json(docs);
+      for (const [name, docs] of byCollection) {
+        const text = json(docs);
+        if (!namesIn(text, names, 1).length) files[`${base}/collections/${name}.json`] = text;
+      }
     }
   }
 
@@ -189,6 +239,10 @@ async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapsh
     const key = `components/${c.name}`;
     const def: Snapshot = { ...(JSON.parse(c.files) as Snapshot) };
     def["component.json"] = json({ title: c.title, description: c.description, category: c.category, api: c.api, usage: c.usage });
+    if (namesIn(Object.values(def), names, 1).length) {
+      held.set(key, { key, kind: "component", slug: c.name, title: c.title, updatedAt: c.updatedAt });
+      continue;
+    }
     out.set(key, { key, kind: "component", slug: c.name, title: c.title, updatedAt: c.updatedAt, info: { version: c.version }, def });
   }
 
@@ -202,7 +256,7 @@ async function readSite(): Promise<{ forms: Map<string, SiteForm>; files: Snapsh
         .map((k) => ({ title: k.title, url: k.url, description: k.description, keywords: k.keywords, badge: k.badge, icon: k.icon, roles: k.roles ? k.roles.split(",") : [], active: k.active })),
     }))
   );
-  return { forms: out, files };
+  return { forms: out, files, held, names };
 }
 
 // ── Comparing with the backup ────────────────────────────────────────────
@@ -213,7 +267,7 @@ export interface RepoView {
   read(path: string): Promise<string>;
 }
 
-export type SyncState = "in_sync" | "behind" | "differs" | "only_backup";
+export type SyncState = "in_sync" | "behind" | "differs" | "only_backup" | "held";
 
 /** One form, here and in the backup. */
 export interface FormSync {
@@ -226,6 +280,7 @@ export interface FormSync {
    * behind — the backup has a newer version from another site: Sync brings it in.
    * differs — changed both here and in the backup since they last matched (or they never matched): an admin picks.
    * only_backup — in the backup, not on this site.
+   * held — not backed up: its fields, choices or code name residents (services/rosterNames.ts).
    */
   state: SyncState;
   /** Who saved the backup's version, and when. */
@@ -299,7 +354,7 @@ async function readBase(view: RepoView): Promise<Record<string, string>> {
 export async function planBackup(view: RepoView, baseOverride: Record<string, string> = {}) {
   const site = backupSite();
   const now = new Date().toISOString();
-  const { forms, files: siteFiles } = await readSite();
+  const { forms, files: siteFiles, held, names: residentNames } = await readSite();
   const inRepo = await repoForms(view);
   const base = { ...(await readBase(view)), ...baseOverride };
   const nextBase: Record<string, string> = {};
@@ -316,7 +371,18 @@ export async function planBackup(view: RepoView, baseOverride: Record<string, st
     for (const [path, text] of Object.entries(want)) put(path, text);
   };
 
-  for (const key of [...new Set([...forms.keys(), ...inRepo.keys()])].sort()) {
+  for (const key of [...new Set([...forms.keys(), ...inRepo.keys(), ...held.keys()])].sort()) {
+    const hold = held.get(key);
+    if (hold) {
+      // Nothing of it goes out. A copy in the backup that names residents too
+      // (an older save of the same form, from here or another site) comes out.
+      const folder = [...view.files.keys()].filter((p) => p.startsWith(`${key}/`));
+      const texts = await Promise.all(folder.map((p) => view.read(p)));
+      if (namesIn(texts, residentNames, 1).length) for (const p of folder) writes.set(p, null);
+      else if (base[key]) nextBase[key] = base[key];
+      out.push({ key, kind: hold.kind, slug: hold.slug, title: hold.title, state: "held", backup: null, editedHere: iso(hold.updatedAt) });
+      continue;
+    }
     const here = forms.get(key);
     const repoFiles = inRepo.get(key);
     const S = here ? fingerprint(new Map(Object.entries(here.def).map(([p, t]) => [p, blobSha(t)]))) : null;

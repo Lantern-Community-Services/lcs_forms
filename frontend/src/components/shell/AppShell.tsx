@@ -19,6 +19,7 @@ import { useNewNotificationToast } from "@/lib/notifications";
 import { SiteTourStarter } from "@/lib/tour/SiteTourStarter";
 import { inLock } from "@/lib/formLock";
 import { LockedBar, useLocked } from "./FormLock";
+import { TestSiteBar, useTestSite } from "./TestSiteBar";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/PageHelp";
 
@@ -87,6 +88,8 @@ export function AppShell() {
   const offlineBar = useOfflineBarVisible();
   // Locked to one form for a resident (lib/formLock.ts): no way to anywhere else.
   const lock = useLocked();
+  // Made-up residents only (backend env.ts testSite): a strip above every screen says so.
+  const testSite = useTestSite();
   // A toast when a notification arrives while the app is open — not over a resident's form.
   useNewNotificationToast(!lock);
 
@@ -161,13 +164,14 @@ export function AppShell() {
       {!touch && nav && <Sidebar />}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {lock && <LockedBar lock={lock} />}
+        <TestSiteBar top={!lock} />
         {/* Floats over the top of the screen; it takes no room. */}
         <OfflineBar state={offlineBar} />
         {/* scrollbar-gutter keeps the scrollbar's space reserved even when the
             page is short, so content doesn't jump sideways when a list grows or
             shrinks past the fold (collapsing roster sites, filtering). */}
-        {/* Locked, the bar above already clears the status bar, so screens' own headers needn't. */}
-        <main ref={mainRef} style={lock ? ({ "--safe-top": "0px" } as React.CSSProperties) : undefined} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
+        {/* Locked, or on a test site, a bar above already clears the status bar, so screens' own headers needn't. */}
+        <main ref={mainRef} style={lock || testSite ? ({ "--safe-top": "0px" } as React.CSSProperties) : undefined} className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-surface [scrollbar-gutter:stable]">
           <Outlet />
         </main>
         {/* Installed to the home screen there's no reload button: pull down from the top instead. */}

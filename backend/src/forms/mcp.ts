@@ -288,7 +288,22 @@ function buildPersonServer(user: CurrentUser, grant: ResolvedGrant): McpServer {
   return server;
 }
 
-function buildServer(key: ResolvedKey): McpServer {
+/**
+ * Who an API key's MCP session acts as: the admin who made the key, as they are
+ * now, held to the key's site when it has one. Claude gets nothing through a
+ * key that its maker couldn't see on the site, and a key whose maker left or
+ * is no longer an admin (integrations.manage) opens nothing here. Delegated
+ * scopes narrow it further (ops/principal.ts).
+ */
+async function keyPrincipal(key: ResolvedKey): Promise<CurrentUser | null> {
+  if (!key.createdById) return null;
+  const creator = await currentUserById(key.createdById);
+  if (!creator || !creator.permissions.includes("integrations.manage")) return null;
+  const siteIds = key.siteId ? (creator.siteIds === null || creator.siteIds.includes(key.siteId) ? [key.siteId] : []) : creator.siteIds;
+  return { ...creator, name: `${creator.name} (API key: ${key.name})`, siteIds };
+}
+
+function buildServer(key: ResolvedKey, principal: CurrentUser): McpServer {
   const actor: Actor = { id: null, name: `API key: ${key.name} (MCP)` };
   const can = (scope: string) => key.scopes.includes(scope as never);
   const need = (scope: string) => {
@@ -445,7 +460,7 @@ function buildServer(key: ResolvedKey): McpServer {
     return summarize(await findAnyForm(row.id));
   });
 
-  registerCodeTools(tool, need, actor, key);
+  registerCodeTools(tool, need, actor, key, principal);
   registerCatalogTools(tool, need, actor);
   registerTutorialTools(tool, need, actor);
   registerNotificationTools(tool, need, key);
@@ -466,11 +481,20 @@ export async function handleMcp(req: Request, res: Response) {
       .json({ jsonrpc: "2.0", error: { code: -32001, message: "Sign in to connect Lantern Forms, or send an API key: Authorization: Bearer lrk_… (Admin → API keys, scope forms:build)." }, id: null });
     return;
   }
+  const principal = req.apiKey ? await keyPrincipal(req.apiKey) : null;
+  if (req.apiKey && !principal) {
+    res.status(403).json({
+      jsonrpc: "2.0",
+      error: { code: -32001, message: "This API key acts as the admin who made it, and that person no longer has an active admin account. An admin can make a new key in Admin → API keys." },
+      id: null,
+    });
+    return;
+  }
   if (req.method !== "POST") {
     res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "This MCP server is stateless; use POST." }, id: null });
     return;
   }
-  const server = req.apiKey ? buildServer(req.apiKey) : buildPersonServer(person!, req.oauthGrant!);
+  const server = req.apiKey ? buildServer(req.apiKey, principal!) : buildPersonServer(person!, req.oauthGrant!);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => {
     void transport.close();

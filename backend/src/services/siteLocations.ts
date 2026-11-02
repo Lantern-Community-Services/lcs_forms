@@ -42,6 +42,23 @@ const SITE_MAP: { codes: string[]; name: string; address: string; lat: number; l
  */
 export const DEFAULT_GEOFENCE_METERS = 200;
 
+/**
+ * Add the site map's sites that aren't there yet. A test site's made-up roster
+ * (services/testData.ts) needs sites, and there's no tenant list to make them
+ * from. Returns how many were added.
+ */
+export async function ensureMapSites(): Promise<number> {
+  let n = 0;
+  for (const m of SITE_MAP) {
+    if (await prisma.site.findFirst({ where: { code: { in: m.codes } }, select: { id: true } })) continue;
+    await prisma.site.create({
+      data: { code: m.codes[m.codes.length - 1], name: m.name, entityName: m.name, address: m.address, latitude: m.lat, longitude: m.lng, siteType: m.shelter ? "shelter" : "supportive" },
+    });
+    n++;
+  }
+  return n;
+}
+
 /** Fill in location, address and shelter type for sites that have none, once. Returns how many were filled. */
 export async function ensureSiteLocations(): Promise<number> {
   if (await getSetting("siteLocationsSeeded")) return 0;
