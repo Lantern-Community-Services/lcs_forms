@@ -17,7 +17,7 @@ import { cn, errorMessage, relativeTime } from "@/lib/utils";
  */
 
 type Kind = "basic" | "code" | "component";
-type SyncState = "in_sync" | "behind" | "differs" | "only_backup";
+type SyncState = "in_sync" | "behind" | "differs" | "only_backup" | "held";
 type JobAction = "sync" | "keep" | "remove" | "backup";
 
 export interface FormSync {
@@ -158,6 +158,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
   const behind = mine.filter((f) => f.state === "behind");
   const differs = mine.filter((f) => f.state === "differs");
   const onlyBackup = mine.filter((f) => f.state === "only_backup");
+  const held = mine.filter((f) => f.state === "held");
   // Sync all brings in everything that differs, on every kind of form (the backup's newest wins).
   const unqueued = data.forms.filter((f) => (f.state === "behind" || f.state === "differs") && !actions.jobOf(f.key));
   const backupJob = actions.jobOf(null);
@@ -210,6 +211,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
               behind.length && `${behind.length} need${behind.length === 1 ? "s" : ""} sync`,
               differs.length && `${differs.length} differ${differs.length === 1 ? "s" : ""} from the backup`,
               onlyBackup.length && `${onlyBackup.length} only in the backup`,
+              held.length && `${held.length} not backed up (residents' names)`,
             ].filter(Boolean).join(" · ")}
           </button>
           {open && (
@@ -224,6 +226,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
                         {f.state === "behind" && <>A newer version is in the backup{savedLine(f) && <> ({savedLine(f)})</>}.</>}
                         {f.state === "differs" && <>Changed here{f.editedHere && <> ({relativeTime(f.editedHere)})</>} and in the backup{savedLine(f) && <> ({savedLine(f)})</>}. Pick which to keep.</>}
                         {f.state === "only_backup" && <>Not on this site{savedLine(f) && <> · {savedLine(f)}</>}.</>}
+                        {f.state === "held" && <>Not backed up: its fields, choices or code name residents. Replace them with a Resident field.</>}
                       </p>
                     </div>
                     {job ? (

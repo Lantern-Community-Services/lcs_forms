@@ -92,8 +92,12 @@ export const manifestSchema = z.object({
     })
     .strict()
     .optional(),
-  /** The form's own data. Default for a collection not listed: everyone reads, admins write. */
-  collections: z.record(z.object({ read: roleList, write: roleList }).strict()).optional(),
+  /**
+   * The form's own data. Default for a collection not listed: everyone reads, admins write.
+   * backup: true copies it to the form backup (services/formBackup.ts) — for settings and lists
+   * an admin edits, never residents' details. Left out, it stays in the site's database only.
+   */
+  collections: z.record(z.object({ read: roleList, write: roleList, backup: z.boolean().optional() }).strict()).optional(),
   /**
    * Cards on the Forms home: the server action run as each person when the home screen loads.
    * It returns { attention?: [...], tiles?: [...] } (see the guide). `roles`: who gets them (default: everyone who can open the form).

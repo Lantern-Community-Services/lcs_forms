@@ -267,6 +267,10 @@ export function useCalendarMutation<TVars, TResult>(fn: (vars: TVars) => Promise
 
 // ── Admin ────────────────────────────────────────────────────────────────
 
+/** What sign-in offers, and whether this is a test site (made-up residents only). Public; it doesn't change while the app runs. */
+export function useAuthConfig() {
+  return useQuery({ queryKey: ["auth-config"], queryFn: () => api.get<{ microsoft: boolean; dev: boolean; testSite?: boolean }>("/auth/config"), staleTime: Infinity });
+}
 export function useUsers(enabled = true) {
   return useQuery({ queryKey: ["admin", "users"], queryFn: () => api.get<ManagedUser[]>("/users"), enabled });
 }

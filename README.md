@@ -62,8 +62,17 @@ Every form built in the app — form builder forms and code forms — is backed 
   `code/<slug>/` (the folder is the project, so `app:push` works on it) — holding the newest draft and
   published version any site saved, plus who saved it. Site-specific things live under
   `sites/<site>/`: the Forms catalog, each form's status and published versions, a code form's
-  collections (settings and lists), and `sync.json` (what that site last matched). **Not** in it:
-  entries, uploaded photos, people. The site's name is `FORM_BACKUP_SITE`, else its host.
+  settings collections, and `sync.json` (what that site last matched). **Not** in it:
+  entries, uploaded photos, people, or any code-form collection other than the platform's own
+  (`__routing`, `__schedule`, `access`, `sharing`) and those its `form.json` marks `"backup": true`
+  (`"mealTypes": { "read": ["*"], "write": ["admin"], "backup": true }`). The site's name is
+  `FORM_BACKUP_SITE`, else its host.
+- **No residents' names, ever** (`services/rosterNames.ts`). A form whose fields, choices or code name
+  someone on the roster can't be saved or published ("Use a Resident field instead"). One saved
+  before that check shows **not backed up (residents' names)** on the bar, stays out of the backup,
+  and its copy there is deleted if that names residents too. Old published versions and collections
+  that name residents are left out on their own. Git history still holds anything pushed before
+  this, so purge it from the repository's history when you find some.
 - **Never older over newer:** a site saves a form only when its copy changed since it last matched the
   backup. When the backup moved on (another site saved a newer version) the form shows **Needs sync**
   on Admin → Form builder / Code forms; **Sync** brings it in (replaces the draft, publishes the
@@ -223,7 +232,10 @@ Every operation in `backend/src/ops/` is both an MCP tool and a REST route under
 same name, input and checks (`whoami` / `GET /api/v1/me` lists what a key can do right now). GET
 takes its input from the query string, the others from a JSON body.
 
-The original scopes act as the key itself. The **delegated** scopes act on behalf of the admin who
+The original scopes act as the key itself on `/api/v1`. Over **MCP** (Claude) a key always stands for
+the admin who made it: if they're deactivated or no longer an admin (`integrations.manage`) the key opens
+nothing there, and code forms' server actions and test entries (`run_action`, `test_entry`) run as them,
+at their sites (the key's site, if it has one) — never every site. The **delegated** scopes act on behalf of the admin who
 made the key, and never with more than that person can do in the site *now*: permissions are the
 creator's current permissions ∩ what the scope grants, sites are the creator's sites ∩ the key's
 site. Deactivate or demote the creator and their keys lose it on the next call. Each operation runs
@@ -947,13 +959,36 @@ To bring it over: `npx prisma migrate deploy` against an empty database, then
 marks every calendar event to be sent to Outlook afresh (see "Calendar in Outlook").
 
 **The seed** (`npm run seed`) writes demo accounts, so it refuses to run in production
-(`NODE_ENV=production` or App Service) unless `ALLOW_DEMO_DATA=true`. It imports the tenant list
-from `data/tenant_list.csv` if it's there, or from the path in `TENANT_CSV`. **That file is not in
-the repository** and must never be committed: it's real resident data, and `data/` is git-ignored.
-Without it, the seed still creates the demo accounts, and you can import later from Admin → Import
-tenant list. With `SEED_DEMO_QUEUE=true` it also backdates the review clock on ~7% of residents so
+(`NODE_ENV=production` or App Service) unless `ALLOW_DEMO_DATA=true`. It adds the sites from the
+site map and, when the roster is empty, a **made-up** roster for them (`services/testData.ts`). It
+never imports a real tenant list: real residents live only on the live site (see "Test sites").
+With `SEED_DEMO_QUEUE=true` it also backdates the review clock on ~7% of residents so
 the 48-hour queue has people in it. `npm run db:reset` starts over (drops the database, re-applies
 the migrations, runs the seed).
+
+### Test sites
+
+The Azure dev app and any copy running on a computer are **test sites** (`backend/src/env.ts`
+`testSite`): their residents and entries are made up. Production is the only place real resident
+data goes.
+
+- **Which is which.** `DATA_MODE=test` or `DATA_MODE=real` says so. Left out, the App Service app whose
+  name ends in `-dev` and anything not on App Service are test sites; any other App Service app is
+  real. `lcsforms.lanterncommunity.org` is never a test site, whatever `DATA_MODE` says.
+- **What a test site does.**
+  - Every screen and the sign-in page carry a "Test site" banner.
+  - Real data coming in is refused: tenant-list imports (Admin → Import, `import_residents`,
+    `npm run import:tenants`), importing a form's entries, and `import_code_entries`.
+  - A Super Admin can **Replace with made-up data** (Admin → Roster rules; type REPLACE).
+- **What Replace does.**
+  - It removes every resident, entry, photo, attendance record, notification, email-log and
+    audit-log row, the dev log, form jobs and the routing log.
+  - It swaps the old residents' names for "Resident N" in forms, versions, components,
+    collections and the calendar.
+  - It adds a made-up roster at every site.
+  - Forms, sites, people, groups and settings stay.
+- **To run a CLI import against the live database** from a computer, set `DATA_MODE=real` for that
+  one command.
 
 ---
 
@@ -1153,15 +1188,19 @@ To enable it, register an app in Entra (single tenant, Web redirect
 
 ### Importing a tenant list
 
-From the app: **Admin → Import tenant list** (preview first, then commit). From the CLI:
+On the live site: **Admin → Import tenant list** (preview first, then commit). Test sites refuse it
+(see "Test sites"). From the CLI, against the live database only (`DATA_MODE=real`):
 
 ```bash
-npm run import:tenants -- ../data/            (git-ignored) local tenant list CSV — resident data, never committed
+DATA_MODE=real npm run import:tenants -- <tenant list.csv>            # dry run
 ```
 
 ```bash
-npm run import:tenants -- ../data/tenant_list.csv --commit
+DATA_MODE=real npm run import:tenants -- <tenant list.csv> --commit
 ```
+
+Keep the CSV off shared drives and delete it once it's imported: it's real resident data, and it is
+never committed (`*.csv` and `data/` are git-ignored).
 
 Expects `Property, Unit, Tenant` columns and handles Excel's Windows-1252 encoding. It parses
 `"Last, First"`, nicknames in quotes or parentheses (`Sample, Robert "Bobby"` becomes Robert Sample,
@@ -1185,7 +1224,7 @@ frontend/   Next.js-hosted React SPA (port 5200, proxies /api → backend)
   src/screens/    Forms (home), calendar/*, builder/*, Dashboard, Roster, Review, TenantDetail, Attendance, Activity, Profile, More, admin/*
   src/components/ shell (from lcs_invoices), ui (from lcs_invoices), roster/*
 integrations/wordpress/lantern-roster-connector.php
-data/            (git-ignored) local tenant list CSV — resident data, never committed
+data/            (git-ignored) never resident data: the seed makes up residents
 ```
 
 ## Known gaps (prototype)

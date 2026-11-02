@@ -3,6 +3,7 @@ import { prisma } from "../prisma.js";
 import type { Actor } from "./audit.js";
 import { audit } from "./audit.js";
 import { HttpError } from "../http.js";
+import { assertRealDataAllowed } from "./testData.js";
 
 /**
  * Import a property-management tenant list (Property, Unit, Tenant columns).
@@ -132,6 +133,7 @@ export async function importTenants(
   rows: ImportRow[],
   opts: { commit: boolean; actor: Actor; part?: { index: number; total: number } }
 ): Promise<ImportSummary> {
+  assertRealDataAllowed("a tenant list");
   if (rows.length > MAX_IMPORT_ROWS) {
     throw new HttpError(413, `That's ${rows.length} rows; send at most ${MAX_IMPORT_ROWS} at a time (split the file into parts — re-sending a part is safe).`);
   }

@@ -1,15 +1,15 @@
-import fs from "node:fs";
-import path from "node:path";
 import { prisma } from "../src/prisma.js";
-import { decodeCsv, importTenants, readRows } from "../src/services/tenantImport.js";
-import { ensureSiteLocations } from "../src/services/siteLocations.js";
+import { ensureMapSites, ensureSiteLocations } from "../src/services/siteLocations.js";
+import { addMadeUpResidents } from "../src/services/testData.js";
 import { assertDemoDataAllowed } from "../src/env.js";
 
 /**
  * Seed for the local prototype:
  *   1. demo staff accounts for the dev sign-in screen (at least one per role)
  *   2. (the forms catalog starts empty: forms are added as they're built)
- *   3. the real tenant list from data/tenant_list.csv
+ *   3. the sites from the site map, and a made-up roster for them when there's
+ *      none yet (services/testData.ts). Never a real tenant list: real residents
+ *      live only on the live site.
  *   4. DEMO ONLY, with SEED_DEMO_QUEUE=true — backdates the attention clock on a
  *      slice of residents so the 48-hour review queue has something in it on day
  *      one. Nothing is written to the activity log; these people simply look
@@ -33,18 +33,9 @@ async function main() {
   for (const u of DEMO_USERS) {
     await prisma.user.upsert({ where: { email: u.email }, create: { ...u, status: "active" }, update: {} });
   }
-  const admin = await prisma.user.findUniqueOrThrow({ where: { email: DEMO_USERS[0].email } });
-
-  const csvPath = path.resolve(process.cwd(), process.env.TENANT_CSV ?? "../data/tenant_list.csv");
-  if (fs.existsSync(csvPath)) {
-    const summary = await importTenants(readRows(decodeCsv(fs.readFileSync(csvPath))), {
-      commit: true,
-      actor: { id: admin.id, name: `${admin.name} (seed import)` },
-    });
-    console.log(`Imported ${summary.added} residents (${summary.alreadyPresent} already present) across ${summary.bySite.length} sites.`);
-  } else {
-    console.warn(`No tenant list at ${csvPath} — skipping import.`);
-  }
+  const sitesAdded = await ensureMapSites();
+  if (sitesAdded) console.log(`Added ${sitesAdded} sites from the site map.`);
+  if ((await prisma.tenant.count()) === 0) console.log(`Added ${await addMadeUpResidents()} made-up residents.`);
 
   const located = await ensureSiteLocations();
   if (located) console.log(`Filled in the location of ${located} sites from the site map.`);

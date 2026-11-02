@@ -1,6 +1,7 @@
 import { prisma } from "../prisma.js";
 import { HttpError, badRequest, notFound } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
+import { refuseRosterNames } from "../services/rosterNames.js";
 import { checkComponent } from "./compile.js";
 import { COMPONENT_NAME_RE, COMPONENT_PREFIX, forgetLibrary, importedComponents } from "./library.js";
 import type { FileProblem, Files } from "./project.js";
@@ -117,6 +118,7 @@ export async function saveComponent(input: ComponentInput, actor: Actor) {
   if (!existing && !input.files) throw badRequest("A new component needs files.");
   if (!existing && (!input.title?.trim() || !input.description?.trim() || !input.category?.trim())) throw badRequest("A new component needs a title, a description (what it is and when to use it) and a category.");
   const files = input.files ? checkFilesOf(input.files) : (JSON.parse(existing!.files) as Files);
+  if (input.files) for (const [path, src] of Object.entries(files)) await refuseRosterNames(`${name}/${path}`, src);
   const version = existing ? existing.version + (input.files ? 1 : 0) : 1;
 
   if (input.files) {

@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useSettings, useSites } from "@/lib/queries";
+import { useTestSite } from "@/components/shell/TestSiteBar";
 import type { Site } from "@/lib/types";
 import { errorMessage } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ import { errorMessage } from "@/lib/utils";
 export function AdminSettings() {
   const { can } = useAuth();
   const orgWide = can("settings.manage");
+  const testSite = useTestSite();
   const { data, isLoading } = useSettings();
   const [hours, setHours] = useState("48");
   const qc = useQueryClient();
@@ -62,7 +64,69 @@ export function AdminSettings() {
         </div>
       </Card>
       {can("sites.manageRules") && <SiteRules orgHours={data?.attentionHours ?? "48"} />}
+      {testSite && can("admins.manage") && <ReplaceWithMadeUpData />}
     </Page>
+  );
+}
+
+interface ReplaceSummary {
+  residents: { removed: number; added: number };
+  entries: number;
+  files: number;
+  attendance: number;
+  redacted: string[];
+  stillNamed: string[];
+}
+
+/**
+ * Test sites only, Super Admins: wipe residents, entries and everything made
+ * from them, and start over with made-up residents (backend services/testData.ts).
+ */
+function ReplaceWithMadeUpData() {
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<ReplaceSummary | null>(null);
+  const qc = useQueryClient();
+  const toast = useToast();
+
+  async function replace() {
+    setBusy(true);
+    try {
+      const r = await api.post<ReplaceSummary>("/admin/test-data/replace", { confirm });
+      setDone(r);
+      setConfirm("");
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast(errorMessage(e, "Could not replace the data."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-4 p-5">
+      <p className="text-[14px] font-semibold text-ink">Test site data</p>
+      <p className="mt-1 text-[13px] text-muted">
+        This is a test site, so its residents should be made up. Replace removes every resident, entry, photo, attendance record, notification and
+        audit event here, takes the old residents' names out of forms and the calendar, and adds a made-up roster at every site. Forms, sites, people
+        and settings stay. It can't be undone.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type REPLACE" aria-label="Type REPLACE to confirm" className="w-40" />
+        <Button variant="danger" onClick={() => void replace()} disabled={busy || confirm !== "REPLACE"}>
+          {busy ? "Replacing…" : "Replace with made-up data"}
+        </Button>
+      </div>
+      {done && (
+        <div className="mt-3 text-[13px] text-muted">
+          <p>
+            Removed {done.residents.removed} residents, {done.entries} entries, {done.files} files and {done.attendance} attendance records. Added {done.residents.added} made-up
+            residents.{done.redacted.length > 0 && <> Took names out of {done.redacted.length} forms and records.</>}
+          </p>
+          {done.stillNamed.length > 0 && <p className="mt-1 text-status-amberText">Still naming someone, fix by hand: {done.stillNamed.join(", ")}.</p>}
+        </div>
+      )}
+    </Card>
   );
 }
 
