@@ -511,7 +511,7 @@ export const ARTICLES: HelpArticle[] = [
   },
 ];
 
-export type RoleGuideKey = "site_staff" | "site_manager" | "main_office" | "developer" | "admin" | "super_admin";
+export type RoleGuideKey = "site_staff" | "site_manager" | "main_office" | "developer" | "arete_staff" | "admin" | "super_admin";
 
 export interface RoleGuide {
   key: RoleGuideKey;
@@ -578,6 +578,21 @@ export const ROLE_GUIDES: RoleGuide[] = [
     read: ["admin-code-forms", "entries", "getting-around"],
   },
   {
+    key: "arete_staff",
+    name: "Arete Staff",
+    intro: "You file and read incident reports at the sites you cover. No other forms, and no roster.",
+    can: [
+      "File incident reports at the sites you're assigned.",
+      "Read those incident reports, and their Reports.",
+      "Mark follow-ups done when they're for you.",
+    ],
+    startHere: [
+      { label: "Forms", to: "/forms" },
+      { label: "Notifications", to: "/notifications" },
+    ],
+    read: ["getting-around", "filling-forms", "entries", "your-notifications"],
+  },
+  {
     key: "admin",
     name: "Admin",
     intro: "You run the site: forms, notifications, people, sites and settings, on every site.",
@@ -620,6 +635,215 @@ export const ROLE_GUIDES: RoleGuide[] = [
 export function guideFor(user: { roleKey: string; globalAdmin?: boolean } | null | undefined): RoleGuide {
   const key: RoleGuideKey = user?.globalAdmin ? "super_admin" : ((ROLE_GUIDES.find((g) => g.key === user?.roleKey)?.key ?? "site_staff") as RoleGuideKey);
   return ROLE_GUIDES.find((g) => g.key === key)!;
+}
+
+/** What a Super Admin has on top of an Admin (permissionsFor on the server). */
+export const SUPER_ADMIN_EXTRA: PermissionKey[] = ["admins.manage", "people.records", "email.templates"];
+
+/** One part of the site, and what a role can see and change there. */
+export interface AccessRow {
+  id: string;
+  title: string;
+  /** The screen, for a "Go there" link (shown only to people who can open it). */
+  to?: string;
+  needs?: PermissionKey[];
+  see: string;
+  change: string[];
+  /** Given to this person by a per-person switch, not their role. */
+  switched?: boolean;
+}
+
+/**
+ * "What you can see and change" for a role or a person, worked out from the
+ * permissions the server gives them (permissions.ts), so it can't drift from
+ * what the site lets them do. `switched` names the per-person switches that
+ * are on (People & roles), so the page can say where a power came from.
+ * `forms` is a role limited to some forms (Arete Staff's incident reports).
+ */
+export function accessFor(
+  perms: readonly string[],
+  o: { everySite: boolean; forms?: string[] | null; switched?: { roster?: boolean; calendar?: boolean } }
+): { rows: AccessRow[]; not: string[] } {
+  const has = (p: PermissionKey) => perms.includes(p);
+  const at = o.everySite ? "every site" : "your sites";
+  const rows: AccessRow[] = [];
+  const not: string[] = [];
+  const add = (show: boolean, row: AccessRow, missing?: string) => (show ? rows.push(row) : missing && not.push(missing));
+
+  add(true, {
+    id: "forms",
+    title: "Forms",
+    to: "/forms",
+    see: o.forms?.length ? "Only the forms your role is for (the incident reports)." : "Every form open to you, by category.",
+    change: ["Fill them in, even offline; drafts are kept as you go."],
+  });
+  add(has("entries.view"), {
+    id: "entries",
+    title: "Entries",
+    see: o.everySite || has("forms.manage") ? "Every entry, on every form." : "Your own entries, the ones you're told about, ones that came through your share link, and any more a form opens to you.",
+    change: [
+      "Star entries and export them to a spreadsheet.",
+      "Mark a follow-up done when it's for you.",
+      ...(has("entries.void") ? ["Void an entry filed by mistake, with a reason (it's kept, marked void)."] : []),
+    ],
+  });
+  add(!o.forms?.length, {
+    id: "share",
+    title: "Share links and QR codes",
+    to: has("forms.manage") ? "/admin/share-links" : undefined,
+    needs: has("forms.manage") ? ["forms.manage"] : undefined,
+    see: has("forms.manage") ? "Every form shared by link, and everyone's links." : "Your own link and QR code on forms shared by link, and what came through it.",
+    change: ["Get your own link, choose when it ends, and refresh it to stop the old one.", ...(has("forms.manage") ? ["Turn anyone's link off, and change a form's share settings."] : [])],
+  });
+  add(true, {
+    id: "notifications",
+    title: "Your notifications",
+    to: "/notifications",
+    see: "What forms tell you, follow-ups waiting on you, and changes to your access.",
+    change: ["Choose what's emailed to you, and when (Profile → Notifications)."],
+  });
+  add(true, {
+    id: "calendar",
+    title: "Calendar",
+    to: "/calendar",
+    see: "Events for every site and for yours.",
+    change: has("calendar.manage")
+      ? ["Add, change and remove any event, at any site, and the categories."]
+      : has("calendar.edit")
+        ? ["Add, change and remove events at your own sites (not every-site events or categories)."]
+        : ["Add events to your own Outlook. To add one to the calendar, ask an Admin."],
+    switched: !has("calendar.manage") && has("calendar.edit") && o.switched?.calendar,
+  });
+  add(
+    has("roster.view"),
+    {
+      id: "roster",
+      title: "Roster",
+      to: "/roster",
+      needs: ["roster.view"],
+      see: `Residents at ${at}, Review, Overview and attendance.`,
+      change: has("roster.edit")
+        ? ["Add and change residents, take attendance, Keep or Remove in Review, and restore removed residents."]
+        : ["Nothing: looking up only. A Site Manager or Admin can turn on “Can manage the roster” for you."],
+      switched: has("roster.edit") && o.switched?.roster,
+    },
+    "The roster"
+  );
+  add(has("roster.view"), {
+    id: "activity",
+    title: "Activity",
+    to: "/roster/activity",
+    needs: ["roster.view"],
+    see: has("audit.view") ? "Everything that happened on the site, by anyone (the audit log)." : `What was recorded for residents at ${at}.`,
+    change: [],
+  });
+  add(
+    has("users.manage") || has("users.manageSite"),
+    {
+      id: "people",
+      title: has("users.manage") ? "People & roles" : "Site settings (people)",
+      to: "/admin/people",
+      needs: ["users.manage", "users.manageSite"],
+      see: has("users.manage") ? "Everyone, their roles, sites and switches, and access requests." : "The people at your sites, and requests for your sites.",
+      change: has("users.manage")
+        ? [
+            "Let people in or decline them, give roles and sites, turn switches on and off, and remove people.",
+            has("admins.manage") ? "Make someone an Admin, and change or remove an Admin." : "Admins are a Super Admin's to make or change.",
+          ]
+        : ["Approve or decline requests and remove people at your sites, and give the site roles (Site Staff, Site Manager, Main Office Staff). Only Admins let new people in."],
+    },
+    "People & roles"
+  );
+  add(has("people.records"), {
+    id: "records",
+    title: "A person's records",
+    to: "/admin/people",
+    needs: ["people.records"],
+    see: "Everything one person filed, was told and did, and which forms they can open.",
+    change: ["Nothing: it's for looking."],
+  });
+  add(has("users.manage"), { id: "groups", title: "Groups", to: "/admin/groups", needs: ["users.manage"], see: "Every group and who's in it.", change: ["Make groups, by job title or by hand, and change who's in them."] });
+  add(
+    has("forms.manage"),
+    {
+      id: "builder",
+      title: "Form builder and Forms catalog",
+      to: "/admin/builder",
+      needs: ["forms.manage"],
+      see: "Every form, its drafts and versions, and the catalog staff see.",
+      change: [
+        "Build, change, publish and go back to a version of any form, with the builder or the AI form builder.",
+        "Choose who fills each form in and who sees its entries.",
+        "Arrange the Forms catalog, and limit a category or form to groups, positions or people.",
+      ],
+    },
+    "Building forms"
+  );
+  add(
+    has("apps.develop"),
+    {
+      id: "code",
+      title: "Code forms",
+      to: "/admin/apps",
+      needs: ["apps.develop", "forms.manage"],
+      see: "Every code form: its pages, server code and data.",
+      change: ["Build, test and publish code forms."],
+    },
+    "Code forms"
+  );
+  add(
+    has("forms.manage"),
+    {
+      id: "routing",
+      title: "Notifications and email",
+      to: "/admin/notifications",
+      needs: ["forms.manage"],
+      see: "Who each form tells, the email templates, the site's own emails, and every email sent.",
+      change: [
+        "Set who each form tells and when, follow-ups and weekly reports.",
+        has("email.templates") ? "Make and change email templates, the site's own emails and how emails look." : "Pick from the email templates (a Super Admin makes and changes them).",
+      ],
+    },
+    "Form notifications"
+  );
+  add(
+    has("sites.manage") || has("sites.manageRules"),
+    {
+      id: "sites",
+      title: "Sites",
+      to: has("sites.manage") ? "/admin/sites" : "/admin/settings",
+      needs: ["sites.manage", "sites.manageRules"],
+      see: has("sites.manage") ? "Every site." : "Your sites' roster rules.",
+      change: has("sites.manage") ? ["Add, change and turn off sites, and import a tenant list."] : ["Change how long before a resident at your sites shows in Review."],
+    },
+    "Sites"
+  );
+  add(
+    has("settings.manage"),
+    {
+      id: "settings",
+      title: "Settings and sign-in access",
+      to: "/admin/settings",
+      needs: ["settings.manage"],
+      see: "The site's settings.",
+      change: ["Roster rules for everyone or per site, which other email domains may sign in, and whether the welcome tour starts by itself."],
+    },
+    "Settings"
+  );
+  add(
+    has("integrations.manage"),
+    {
+      id: "integrations",
+      title: "Integrations",
+      to: "/admin/api-keys",
+      needs: ["integrations.manage"],
+      see: "API keys, webhooks and WordPress.",
+      change: ["Make and revoke API keys (for other systems and Claude), and set up webhooks and WordPress."],
+    },
+    "Integrations"
+  );
+  add(has("devlog.view"), { id: "devlog", title: "Dev log", to: "/admin/devlog", needs: ["devlog.view"], see: "Response times, errors, memory and the server log.", change: [] }, "The dev log");
+  return { rows, not };
 }
 
 export const articleById = (id: string) => ARTICLES.find((a) => a.id === id);
