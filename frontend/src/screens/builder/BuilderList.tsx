@@ -1,9 +1,9 @@
 import { BackupSyncLabel, FormBackupBar } from "@/components/FormBackupBar";
 import { DeleteFormDialog } from "@/components/DeleteFormDialog";
-import { useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Code2, Download, FileUp, MoreHorizontal, Plus, Sparkles } from "lucide-react";
+import { Code2, Download, FileUp, MoreHorizontal, Plus, QrCode, Sparkles, Users } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useToast } from "@/components/ui/toast";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { builderApi, builderKeys, docProblems, formPath, useBuiltForms, type BuiltFormSummary, type ImportResult } from "@/lib/builder";
-import { FORM_TEMPLATES } from "@/lib/formTemplates";
+import { FORM_TEMPLATES, usesStaffOnlyFields } from "@/lib/formTemplates";
 import { formIcon } from "@/lib/formIcons";
 import { cn, errorMessage, relativeTime } from "@/lib/utils";
 
@@ -31,14 +31,20 @@ export function StatusBadge({ status, unpublished }: { status: string; unpublish
   );
 }
 
-const ACCESS: Record<string, string> = { signed_in: "Staff", roles: "Some roles", public: "Public" };
+const ACCESS: Record<string, string> = { signed_in: "Staff", roles: "Some roles", public: "Public", link: "External (share link)" };
 
 /** Admin → Form builder: every built form, plus new / import / export. */
 export function AdminBuilderList() {
   const [archived, setArchived] = useState(false);
   const { data: forms, isLoading } = useBuiltForms(archived);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [creating, setCreating] = useState(false);
+  // ?new=external (Admin → External forms) opens New form set for people outside Lantern.
+  const [params, setParams] = useSearchParams();
+  const startOutside = params.get("new") === "external";
+  const [creating, setCreating] = useState(() => params.has("new"));
+  useEffect(() => {
+    if (params.has("new")) setCreating(true);
+  }, [params]);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState<BuiltFormSummary | null>(null);
   const qc = useQueryClient();
@@ -115,7 +121,12 @@ export function AdminBuilderList() {
         <button onClick={() => setArchived(!archived)} className="text-[13px] font-semibold text-accent">{archived ? "Hide archived forms" : "Show archived forms"}</button>
       </div>
 
-      <NewFormDialog open={creating} onClose={() => setCreating(false)} onCreated={(id) => { void refresh(); navigate(`/admin/builder/${id}`); }} />
+      <NewFormDialog
+        open={creating}
+        startOutside={startOutside}
+        onClose={() => { setCreating(false); if (params.has("new")) setParams({}, { replace: true }); }}
+        onCreated={(id) => { void refresh(); navigate(`/admin/builder/${id}`); }}
+      />
       <ImportDialog open={importing} onClose={() => setImporting(false)} onDone={refresh} />
       <DeleteFormDialog
         form={deleting}
@@ -160,10 +171,22 @@ function RowMenu({ form: f, run, onOpen, onDelete }: { form: BuiltFormSummary; r
   );
 }
 
-function NewFormDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
+/**
+ * Who a new form is for, asked first: staff, or people outside Lantern (each
+ * employee shares it with their own link and QR code). Outside forms start as
+ * shared by link and only offer templates without Site or Resident questions.
+ */
+type Audience = "staff" | "outside";
+
+function NewFormDialog({ open, onClose, onCreated, startOutside }: { open: boolean; onClose: () => void; onCreated: (id: string) => void; startOutside?: boolean }) {
   const [mode, setMode] = useState<"template" | "code">("template");
   const [title, setTitle] = useState("");
   const [template, setTemplate] = useState("blank");
+  const [audience, setAudience] = useState<Audience>(startOutside ? "outside" : "staff");
+  useEffect(() => {
+    if (open) { setAudience(startOutside ? "outside" : "staff"); setTemplate(startOutside ? "submission" : "blank"); }
+  }, [open, startOutside]);
+  const templates = audience === "outside" ? FORM_TEMPLATES.filter((t) => !usesStaffOnlyFields(t.build())) : FORM_TEMPLATES.filter((t) => t.key !== "submission");
   const [code, setCode] = useState(() => JSON.stringify(FORM_TEMPLATES[0].build(), null, 2));
   const [problems, setProblems] = useState<{ path: string; message: string }[]>([]);
   const [busy, setBusy] = useState(false);
@@ -182,8 +205,9 @@ function NewFormDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
           return;
         }
       } else {
-        doc = FORM_TEMPLATES.find((t) => t.key === template)!.build();
+        doc = (templates.find((t) => t.key === template) ?? templates[0]).build();
         if (title.trim()) doc.title = title.trim();
+        doc.settings.access = audience === "outside" ? { mode: "link" } : doc.settings.access?.mode === "link" ? { mode: "signed_in" } : doc.settings.access;
       }
       const row = await builderApi.create({ doc });
       onClose();
@@ -211,9 +235,35 @@ function NewFormDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
           </div>
           {mode === "template" ? (
             <>
-              <Field label="Title" hint="You can change it later."><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={FORM_TEMPLATES.find((t) => t.key === template)?.build().title} /></Field>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {FORM_TEMPLATES.map((t) => (
+              <p className="mb-1.5 text-[13px] font-semibold text-ink">Who fills it in?</p>
+              <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                {([
+                  ["staff", Users, "Lantern staff", "People signed in to Lantern Forms. You can narrow it to some roles later."],
+                  ["outside", QrCode, "People outside Lantern", "Residents, partners, the public: each employee hands it out with their own link and QR code."],
+                ] as const).map(([k, Icon, label, hint]) => (
+                  <button
+                    key={k}
+                    onClick={() => { setAudience(k); setTemplate(k === "outside" ? "submission" : "blank"); }}
+                    aria-pressed={audience === k}
+                    className={cn("flex gap-2.5 rounded-card border p-3 text-left", audience === k ? "border-navy bg-navsel" : "border-hairline hover:border-strongline")}
+                  >
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-accent dark:text-white" aria-hidden />
+                    <span>
+                      <span className="block text-[14px] font-semibold text-ink">{label}</span>
+                      <span className="mt-0.5 block text-[12.5px] text-muted">{hint}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {audience === "outside" && (
+                <p className="mb-4 rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">
+                  It's set to <b className="text-ink">Anyone with a share link</b>. Once you publish it, you and every employee who can open it get a link and QR code to hand out; entries come back here. Site and Resident questions don't work on these forms.
+                </p>
+              )}
+              <Field label="Title" hint="You can change it later."><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={templates.find((t) => t.key === template)?.build().title} /></Field>
+              <p className="mb-1.5 mt-4 text-[13px] font-semibold text-ink">Start from</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {templates.map((t) => (
                   <button key={t.key} onClick={() => setTemplate(t.key)} className={cn("rounded-card border p-3 text-left", template === t.key ? "border-navy bg-navsel" : "border-hairline hover:border-strongline")}>
                     <p className="text-[14px] font-semibold text-ink">{t.name}</p>
                     <p className="mt-0.5 text-[12.5px] text-muted">{t.blurb}</p>

@@ -351,7 +351,7 @@ export function Sidebar() {
               <>
                 <SectionLabel label="Screens" collapsed={false} />
                 {hits.pages.map((p) => (
-                  <NavItem key={p.to} to={p.to} label={p.label} Icon={p.Icon} collapsed={false} />
+                  <NavItem key={`${p.to} ${p.label}`} to={p.to} label={p.label} Icon={p.Icon} collapsed={false} />
                 ))}
               </>
             )}

@@ -11,7 +11,7 @@ import type { PermissionKey } from "@/lib/types";
  * Admin's in-page rail, grouped so the main sidebar stays at five entries.
  * Phone: the rail becomes a band of pills that scrolls sideways.
  */
-const GROUPS: { group: string; items: { to: string; label: string; key: string; needs: PermissionKey[] }[] }[] = [
+export const ADMIN_GROUPS: { group: string; items: { to: string; label: string; key: string; needs: PermissionKey[] }[] }[] = [
   {
     group: "Forms",
     items: [
@@ -19,7 +19,7 @@ const GROUPS: { group: string; items: { to: string; label: string; key: string; 
       { to: "/admin/builder", label: "Form builder", key: "builder", needs: ["forms.manage"] },
       { to: "/admin/apps", label: "Code forms", key: "apps", needs: ["apps.develop", "forms.manage"] },
       { to: "/admin/notifications", label: "Notifications", key: "routing", needs: ["forms.manage"] },
-      { to: "/admin/share-links", label: "Share links", key: "shareLinks", needs: ["forms.manage"] },
+      { to: "/admin/external-forms", label: "External forms", key: "shareLinks", needs: ["forms.manage"] },
       { to: "/admin/ai", label: "AI form builder", key: "ai", needs: ["forms.manage"] },
     ],
   },
@@ -78,7 +78,7 @@ export function ConfigLayout() {
       <nav className="w-full shrink-0 border-b border-hairline bg-surface px-3 pb-2 pt-safe-top md:h-full md:w-[222px] md:overflow-y-auto md:scroll-thin md:flex md:flex-col md:border-b-0 md:border-r md:py-5">
         <p className="mb-2 px-2 text-micro font-bold uppercase tracking-[0.04em] text-muted">{isSiteSettingsOnly(can) ? "Site settings" : "Admin"}</p>
         <div className="chiprow -mx-1 flex gap-1.5 px-1 md:mx-0 md:block md:overflow-visible md:px-0">
-          {GROUPS.map((g) => {
+          {ADMIN_GROUPS.map((g) => {
             const items = g.items.filter((it) => it.needs.some(can));
             if (!items.length) return null;
             return (
