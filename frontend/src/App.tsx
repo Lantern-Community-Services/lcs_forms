@@ -284,7 +284,8 @@ export function App() {
             <Route element={<RequirePermission anyOf={["forms.manage"]} />}>
               <Route path="/admin/forms" element={<AdminFormsCatalog />} />
               <Route path="/admin/forms/card/:id" element={<CatalogCardPage />} />
-              <Route path="/admin/share-links" element={<AdminShareLinks />} />
+              <Route path="/admin/external-forms" element={<AdminShareLinks />} />
+              <Route path="/admin/share-links" element={<Navigate to="/admin/external-forms" replace />} />
               <Route path="/admin/builder" element={<AdminBuilderList />} />
               <Route path="/admin/ai" element={<AdminAiBuilder />} />
               {/* Admin → Notifications: every form's routing, the email templates, every email sent. */}

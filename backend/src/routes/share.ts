@@ -88,6 +88,25 @@ shareRouter.get(
   })
 );
 
+/**
+ * The forms this person can share by link right now (published, sharing on,
+ * open to them), each with whether they already have a working link: the
+ * Forms screen lists them so nobody has to find "Share it" on each form.
+ */
+shareRouter.get(
+  "/mine/forms",
+  asyncHandler(async (req, res) => {
+    const forms = await prisma.builtForm.findMany({ where: { status: { not: "archived" } }, orderBy: { title: "asc" } });
+    const out = [];
+    for (const f of forms) {
+      if (!sharedByLinkIn(f, f.liveSchema)) continue;
+      if (!(await canShare(f, req.user)).ok) continue;
+      out.push({ id: f.id, slug: f.slug, title: f.title, hasLink: Boolean(await myLink(f, req.user!.userId)) });
+    }
+    res.json({ forms: out });
+  })
+);
+
 shareRouter.get(
   "/:form/links",
   asyncHandler(async (req, res) => {

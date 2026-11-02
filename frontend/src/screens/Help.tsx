@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/misc";
 import { useAuth } from "@/lib/auth";
-import { AREAS, ARTICLES, ROLE_GUIDES, SUPER_ADMIN_EXTRA, accessFor, allowed, articleById, guideFor, type HelpArticle, type HelpLinkTo, type RoleGuide } from "@/lib/help/content";
+import { AREAS, ARTICLES, ROLE_GUIDES, SUPER_ADMIN_EXTRA, TASKS, accessFor, allowed, articleById, guideFor, type HelpArticle, type HelpLinkTo, type RoleGuide } from "@/lib/help/content";
 import { useRoles } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +90,7 @@ export function HelpPage() {
         </Card>
       ) : (
         <div className="space-y-6">
+          <TasksCard />
           <GuideCard guide={guide} mine={mine} />
           <AccessCard guideKey={guide.key} yours />
           {AREAS.map((area) => {
@@ -106,6 +107,30 @@ export function HelpPage() {
         </div>
       )}
     </Page>
+  );
+}
+
+/** "I want to…": the common jobs you can do, each straight to its screen (TASKS; search finds them too). */
+function TasksCard() {
+  const { can } = useAuth();
+  const mine = TASKS.filter((t) => allowed(t.needs, can));
+  return (
+    <Card className="p-0">
+      <div className="px-5 pb-2 pt-5">
+        <h2 className="font-heading text-[16px] font-extrabold text-ink">I want to…</h2>
+        <p className="mt-1 text-[13px] text-muted">Pick one to go straight there. Search (Ctrl K) finds these too: try “QR code”.</p>
+      </div>
+      <ul className="grid border-t border-hairline sm:grid-cols-2">
+        {mine.map((t) => (
+          <li key={t.label} className="border-b border-hairline sm:odd:border-r">
+            <Link to={t.to} className="flex items-center gap-2 px-5 py-2.5 text-[13.5px] font-semibold text-ink hover:bg-rowhover">
+              <span className="min-w-0 flex-1">{t.label}</span>
+              <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

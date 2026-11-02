@@ -82,4 +82,25 @@ export const FORM_TEMPLATES: { key: string; name: string; blurb: string; build: 
       settings: { ...emptyForm().settings, notifications: [{ id: "urgent", name: "Urgent requests", enabled: false, kind: "email", to: "", subject: "URGENT supply request: {site:name}", body: "{all_fields}", conditional: { action: "show", match: "all", rules: [{ field: "priority", op: "is", value: "urgent" }] } }] },
     }),
   },
+  {
+    key: "submission",
+    name: "Submission from outside",
+    blurb: "Name, contact, what they're sending, files and permission to use it — like art submissions.",
+    build: () => ({
+      ...base("Submission", "<p>Send us your work. We'll be in touch.</p>"),
+      fields: [
+        { id: "name", type: "name", label: "Your name", required: true, nameParts: ["first", "last"] },
+        { id: "email", type: "email", label: "Email", width: "half" },
+        { id: "phone", type: "phone", label: "Phone", width: "half" },
+        { id: "title", type: "text", label: "What are you sending?", required: true },
+        { id: "about", type: "textarea", label: "Tell us about it", rows: 4 },
+        { id: "files", type: "file", label: "Files", accept: "image/*,.pdf", maxFiles: 5, required: true },
+        { id: "permission", type: "consent", label: "Permission", required: true, consentText: "Lantern may share what I've sent, with my name." },
+      ],
+      settings: { ...emptyForm().settings, access: { mode: "link" }, submitLabel: "Send it", confirmation: { type: "message", message: "<p>Thank you, {name.first}! We've got it.</p>", showSummary: false } },
+    }),
+  },
 ];
+
+/** Starting points that only staff can fill in (Site and Resident questions don't work on forms shared outside Lantern). */
+export const usesStaffOnlyFields = (doc: FormDoc) => doc.fields.some((f) => f.type === "site" || f.type === "resident" || f.fields?.some((x) => x.type === "site" || x.type === "resident"));

@@ -200,18 +200,18 @@ export const ARTICLES: HelpArticle[] = [
   {
     id: "share-links",
     area: "forms",
-    title: "Sharing a form by link or QR code",
-    summary: "Your own link and QR code for forms people outside Lantern fill in.",
+    title: "External forms: sharing by link or QR code",
+    summary: "Forms people outside Lantern fill in, your own link and QR code, and making one.",
     where: [
       { label: "Forms", to: "/forms" },
-      { label: "Share links (Admin)", to: "/admin/share-links", needs: ["forms.manage"] },
+      { label: "External forms (Admin)", to: "/admin/external-forms", needs: ["forms.manage"] },
     ],
-    words: "share link qr code external public art submissions refresh expire admin turn off",
+    words: "share link qr code external outside public art submissions refresh expire admin turn off make create new",
     sections: [
       {
         heading: "Your link",
         points: [
-          "Some forms (like art submissions) are filled in by people outside Lantern. On those, “Share it” gives you your own link and QR code.",
+          "Some forms (like art submissions) are filled in by people outside Lantern. They're listed at the top of Forms under “Share with people outside Lantern”, and each one's page has “Share it”: both give you your own link and QR code.",
           "Send the link, or show the QR code on your phone or print it. Anyone with it can fill the form in without an account.",
           "What they send comes to Lantern, and you can see every entry that came through your link.",
         ],
@@ -225,10 +225,18 @@ export const ARTICLES: HelpArticle[] = [
         ],
       },
       {
-        heading: "For Admins",
+        heading: "Making one (Admins)",
         points: [
-          "Admin → Share links lists every form shared by link: its settings, everyone's links (turn any off), and your own link and QR code.",
-          "A form's Settings has the same, under Who can fill it in.",
+          "Admin → External forms → New external form, or Form builder → New form → People outside Lantern. It starts set to Anyone with a share link, with templates that fit (Site and Resident questions don't work on these).",
+          "A form you already have: its Settings → Who can fill it in → Anyone with a share link.",
+          "Publish it. The builder then has “Link & QR code”, and every employee who can open it gets their own.",
+        ],
+      },
+      {
+        heading: "Looking after them (Admins)",
+        points: [
+          "Admin → External forms lists every one: your link and QR code, its entries, who's told, its sharing settings and everyone's links (turn any off).",
+          "To tell the employee when someone uses their link, add “Whoever shared the link” to the form's Who's told.",
         ],
       },
     ],
@@ -637,6 +645,37 @@ export function guideFor(user: { roleKey: string; globalAdmin?: boolean } | null
   return ROLE_GUIDES.find((g) => g.key === key)!;
 }
 
+/**
+ * "I want to…": the things people come to do, each straight to the screen
+ * that does it. Help lists the ones you can do, and search (Ctrl K) finds them
+ * by what you'd type, so a feature can be found by what it's for.
+ */
+export interface HelpTask {
+  label: string;
+  to: string;
+  needs?: PermissionKey[];
+  words: string;
+}
+
+export const TASKS: HelpTask[] = [
+  { label: "Fill in a form", to: "/forms", words: "submit report start new entry" },
+  { label: "Get my link and QR code to share a form outside Lantern", to: "/forms", words: "share qr code link external outside public residents partners art submission" },
+  { label: "Choose what I'm emailed about", to: "/profile#notifications", words: "notifications email bell digest daily turn off" },
+  { label: "Look up a resident", to: "/roster", needs: ["roster.view"], words: "resident tenant roster find unit" },
+  { label: "Add or change a resident", to: "/roster", needs: ["roster.edit"], words: "resident tenant roster new move in edit" },
+  { label: "Take attendance", to: "/roster/attendance", needs: ["roster.edit"], words: "attendance roll call group event sign in" },
+  { label: "Add a calendar event", to: "/calendar", needs: ["calendar.manage", "calendar.edit"], words: "calendar event schedule new" },
+  { label: "Approve someone who asked for access", to: "/admin/people", needs: ["users.manage", "users.manageSite"], words: "approve request access new person staff join" },
+  { label: "Give someone a role or sites", to: "/admin/people", needs: ["users.manage"], words: "role sites permission access change person admin" },
+  { label: "Make a form for people outside Lantern, with a QR code", to: "/admin/external-forms", needs: ["forms.manage"], words: "external outside public share link qr code create new form art submission" },
+  { label: "Build a new form for staff", to: "/admin/builder?new=staff", needs: ["forms.manage"], words: "create new form builder template" },
+  { label: "Choose who's told about a form's entries", to: "/admin/notifications", needs: ["forms.manage"], words: "notifications routing email alert who is told weekly report follow-up" },
+  { label: "Put a form on the Forms screen", to: "/admin/forms", needs: ["forms.manage"], words: "catalog category card list show hide" },
+  { label: "Turn off someone's share link", to: "/admin/external-forms", needs: ["forms.manage"], words: "share link revoke stop qr code external" },
+  { label: "Add a site", to: "/admin/sites", needs: ["sites.manage"], words: "site building new location" },
+  { label: "Make an API key (for Claude or another system)", to: "/admin/api-keys", needs: ["integrations.manage"], words: "api key mcp claude integration token" },
+];
+
 /** What a Super Admin has on top of an Admin (permissionsFor on the server). */
 export const SUPER_ADMIN_EXTRA: PermissionKey[] = ["admins.manage", "people.records", "email.templates"];
 
@@ -690,7 +729,7 @@ export function accessFor(
   add(!o.forms?.length, {
     id: "share",
     title: "Share links and QR codes",
-    to: has("forms.manage") ? "/admin/share-links" : undefined,
+    to: has("forms.manage") ? "/admin/external-forms" : undefined,
     needs: has("forms.manage") ? ["forms.manage"] : undefined,
     see: has("forms.manage") ? "Every form shared by link, and everyone's links." : "Your own link and QR code on forms shared by link, and what came through it.",
     change: ["Get your own link, choose when it ends, and refresh it to stop the old one.", ...(has("forms.manage") ? ["Turn anyone's link off, and change a form's share settings."] : [])],

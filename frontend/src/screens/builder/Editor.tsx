@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, Copy, Download, ExternalLink, Eye, GripVertical, History, Loader2, Monitor,
-  Plus, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock, GraduationCap, Bell,
+  Plus, QrCode, Redo2, RotateCcw, Rocket, Save, Search, Settings2, Smartphone, Tablet, Trash2, Undo2, Wrench, Braces, EyeOff, GitBranch, Lock, GraduationCap, Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +77,8 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
   const [saving, setSaving] = useState(false);
   const [serverProblems, setServerProblems] = useState<DocProblem[]>([]);
   const [publishing, setPublishing] = useState(false);
+  /** Just published a form shared by link: offer the link and QR code. */
+  const [sharedReady, setSharedReady] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const wide = useMediaQuery("(min-width: 1024px)");
   const split = wide && showPreview;
@@ -247,6 +249,7 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
     });
 
   const access = doc.settings.access?.mode;
+  const sharedLive = form.live?.settings.access?.mode === "link";
   const h = history.current;
 
   return (
@@ -289,6 +292,13 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
         <Button variant="secondary" size="sm" onClick={() => setShowPreview((v) => !v)} className="hidden lg:inline-flex">
           {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {showPreview ? "Hide preview" : "Preview"}
         </Button>
+        {access === "link" && (
+          sharedLive ? (
+            <Link to={`/f/${form.slug}/share`}><Button variant="secondary" size="sm"><QrCode className="h-3.5 w-3.5" /> <span className="hidden md:inline">Link & QR code</span></Button></Link>
+          ) : (
+            <Button variant="secondary" size="sm" disabled title="Publish it first: links and QR codes work on the published version."><QrCode className="h-3.5 w-3.5" /> <span className="hidden md:inline">Link & QR code</span></Button>
+          )
+        )}
         <a href={formPath(form.slug, access)} target="_blank" rel="noreferrer"><Button variant="secondary" size="sm"><ExternalLink className="h-3.5 w-3.5" /> <span className="hidden md:inline">Open</span></Button></a>
         <Button variant="secondary" size="sm" onClick={() => void save().then((r) => r && toast("Saved."))} disabled={!dirty || saving}>
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} {dirty ? "Save" : "Saved"}
@@ -376,8 +386,25 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
         form={form}
         dirty={dirty}
         save={save}
-        onDone={(row) => { adopt(row); toast(`Published version ${row.liveVersion}.`); }}
+        onDone={(row) => {
+          adopt(row);
+          toast(`Published version ${row.liveVersion}.`);
+          if (row.live?.settings.access?.mode === "link") setSharedReady(true);
+        }}
       />
+      <Dialog open={sharedReady} onOpenChange={(o) => !o && setSharedReady(false)}>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader title="It's live: hand it out" subtitle="People outside Lantern fill this form in through an employee's own link or QR code." />
+          <DialogBody className="space-y-2 text-[13.5px] text-ink">
+            <p>Get your link and QR code to send, print or show on your phone. Every employee who can open the form gets their own, from Forms or the form's page.</p>
+            <p className="text-muted">All your external forms, their links and entries are in Admin → External forms.</p>
+          </DialogBody>
+          <DialogFooter>
+            <Link to="/admin/external-forms"><Button variant="secondary">External forms</Button></Link>
+            <Link to={`/f/${form.slug}/share`}><Button><QrCode className="h-4 w-4" /> My link and QR code</Button></Link>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
