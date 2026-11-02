@@ -245,6 +245,30 @@ async function resolveLookups(doc: FormDoc, form: BuiltForm, values: Values, who
   }
 }
 
+/**
+ * A resident must be at the site the form picked them from: their Resident
+ * field's site question (siteField), else the entry's own site. The fill page
+ * only offers that roster, but an API or MCP caller, an old draft, or a site
+ * changed after picking could still send someone from another building.
+ * Values hold the roster's siteId (resolveLookups puts it there).
+ */
+async function checkResidentSites(doc: FormDoc, values: Values, entrySiteId: string | null, errors: Record<string, string>, only?: (f: Field) => boolean) {
+  for (const f of doc.fields) {
+    if (f.type !== "resident" || errors[f.id] || (only && !only(f))) continue;
+    const r = values[f.id] as { siteId?: string } | undefined;
+    if (!r?.siteId) continue;
+    let siteId = entrySiteId;
+    if (f.siteField) {
+      const code = values[f.siteField];
+      if (isEmptyValue(code)) continue;
+      siteId = (await prisma.site.findUnique({ where: { code: String(code) }, select: { id: true } }))?.id ?? null;
+    }
+    if (!siteId || r.siteId === siteId) continue;
+    const site = await prisma.site.findUnique({ where: { id: siteId }, select: { name: true } });
+    errors[f.id] = `That resident isn't at ${site?.name ?? "that site"}. Pick someone from its roster.`;
+  }
+}
+
 export async function submitEntry(input: SubmitInput) {
   const { form, user } = input;
   const doc = liveDoc(form);
@@ -287,6 +311,7 @@ export async function submitEntry(input: SubmitInput) {
     const siteField = filled.doc.fields.find((f) => f.type === "site" && values[f.id]);
     if (siteField) siteId = (await prisma.site.findUnique({ where: { code: String(values[siteField.id]) }, select: { id: true } }))?.id ?? null;
   }
+  await checkResidentSites(filled.doc, values, siteId, errors);
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
 
   const actorName = user?.name ?? input.actorName ?? (input.share ? `Visitor (shared by ${input.share.userName})` : "Public visitor");
@@ -536,6 +561,17 @@ export async function updateEntry(form: BuiltForm, entry: FormEntry, incoming: V
   for (const f of doc.fields) if ((f.type === "file" || f.type === "resident" || f.type === "signature") && !(f.id in incoming) && before[f.id] !== undefined) values[f.id] = before[f.id];
   const errors = validateValues(doc, values, { includeAdminOnly: true });
   for (const f of doc.fields) if (f.type === "file" || f.type === "signature") delete errors[f.id];
+  // A resident picked in the edit comes from the roster (never the request), like a submission's.
+  for (const f of doc.fields) {
+    if (f.type !== "resident" || !(f.id in incoming) || isEmptyValue(values[f.id])) continue;
+    const id = (values[f.id] as { id?: string }).id;
+    const t = id ? await prisma.tenant.findUnique({ where: { id } }) : null;
+    if (!t) errors[f.id] = "That resident isn't on the roster.";
+    else values[f.id] = { id: t.id, name: displayName(t), unit: t.unit ?? undefined, siteId: t.siteId };
+  }
+  // Only where the edit touched the resident or their site, so an old entry can still have other answers fixed.
+  const touched = (f: Field) => f.id in incoming || Boolean(f.siteField && f.siteField in incoming);
+  await checkResidentSites(doc, values, entry.siteId, errors, touched);
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
   const changed = doc.fields.filter((f) => isInputField(f) && JSON.stringify(before[f.id] ?? null) !== JSON.stringify(values[f.id] ?? null));
   if (!changed.length) return entry;

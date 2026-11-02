@@ -1145,6 +1145,8 @@ interface Report {
   /** A report template's key: its subject, heading and What to do instead of whatToDo. */
   template?: string;
   lastSentAt?: string | null;
+  /** Server-kept: when its schedule began; earlier slots never send. */
+  scheduledFrom?: string | null;
   nextRun?: string | null;
 }
 
@@ -1161,7 +1163,7 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12}:00 ${h < 12 ? "AM" : "PM"}`;
 /** For a recipient row: reports have no event of their own. */
 const REPORT_EVENT: RoutingEvent = { id: "entry.created", label: "Summary report" };
-const strip = ({ nextRun: _n, lastSentAt: _l, ...r }: Report) => r;
+const strip = ({ nextRun: _n, lastSentAt: _l, scheduledFrom: _s, ...r }: Report) => r;
 
 /**
  * The form's weekly summary reports: the past week's entries, emailed on a day
