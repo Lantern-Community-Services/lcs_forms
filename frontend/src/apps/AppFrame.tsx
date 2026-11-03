@@ -117,12 +117,15 @@ function srcDoc(runtime: AppRuntime, key: string, base: { js: string; css: strin
   const code = noClose(runtime.code[key] ?? "", "script");
   const theme = themeSnapshot();
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  // A scrolling page keeps the scrollbar's space, so content that grows or shrinks doesn't shift the width.
+  const fullHeight = runtime.pages.find((p) => p.id === key.split("@")[0])?.fullHeight;
+  const gutter = fullHeight ? "" : "html{scrollbar-gutter:stable}";
   return `<!doctype html><html class="${esc(theme.className)}" data-theme="${esc(theme.dataTheme)}" data-device="${device.kind}" data-orientation="${device.orientation}" data-bp="${device.breakpoints.join(" ")}" style="${esc(theme.style)}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data: blob:; media-src data: blob:">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap">
 <style>${noClose(base.css, "style")}</style>
-<style>html,body{height:100%;margin:0;background:transparent}body{color:rgb(var(--c-ink));font-family:Archivo,system-ui,sans-serif}#root{min-height:100%}${noClose(runtime.css, "style")}</style>
+<style>html,body{height:100%;margin:0;background:transparent}body{color:rgb(var(--c-ink));font-family:Archivo,system-ui,sans-serif}#root{min-height:100%}${gutter}${noClose(runtime.css, "style")}</style>
 <script>${noClose(base.js, "script")}</script>
 </head><body><div id="root"></div><script>${code}</script></body></html>`;
 }
