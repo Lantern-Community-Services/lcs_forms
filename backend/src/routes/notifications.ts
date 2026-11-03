@@ -2,8 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, badRequest, notFound } from "../http.js";
-import { requireAuth } from "../auth/middleware.js";
-import { EMAIL_MODES, notify, prefsFor, savePrefs, shapeNotification, unreadCount, urgentUnreadCount } from "../services/notifications.js";
+import { requireAuth, requirePermission } from "../auth/middleware.js";
+import { EMAIL_MODES, EMAIL_WHEN, TYPE_CHOICES, notify, shapeNotification, unreadCount, urgentUnreadCount } from "../services/notifications.js";
+import { prefsFor, savePrefs, saveSystemRules, typesOverview } from "../services/notificationTypes.js";
+import { actorOf } from "../services/audit.js";
 
 /**
  * The signed-in person's notifications (the bell, /notifications) and their
@@ -65,7 +67,8 @@ notificationsRouter.put(
     const body = z
       .object({
         emailMode: z.enum(EMAIL_MODES).optional(),
-        prefs: z.array(z.object({ key: z.string().max(255), inApp: z.boolean(), email: z.boolean() }).strict()).max(500).optional(),
+        digestHour: z.number().int().min(0).max(23).nullable().optional(),
+        prefs: z.array(z.object({ key: z.string().max(255), inApp: z.boolean(), email: z.boolean(), emailWhen: z.enum(EMAIL_WHEN).nullable().optional() }).strict()).max(500).optional(),
         reset: z.array(z.string().max(255)).max(500).optional(),
       })
       .strict()
@@ -76,6 +79,29 @@ notificationsRouter.put(
       throw badRequest(err instanceof Error ? err.message : String(err));
     }
     res.json(await prefsFor(req.user!));
+  })
+);
+
+/** Admin → Notifications → Types: every notification type, the site's and each form's. */
+notificationsRouter.get(
+  "/types",
+  requirePermission("forms.manage"),
+  asyncHandler(async (_req, res) => {
+    res.json(await typesOverview());
+  })
+);
+
+/** Change the site's own types: their defaults, and how much people may change them. Null puts one back. */
+notificationsRouter.put(
+  "/types",
+  requirePermission("forms.manage"),
+  asyncHandler(async (req, res) => {
+    const rule = z
+      .object({ inApp: z.boolean(), email: z.boolean(), emailWhen: z.enum(EMAIL_WHEN).nullable(), choice: z.enum(TYPE_CHOICES) })
+      .partial()
+      .strict();
+    const body = z.object({ types: z.record(z.string(), rule.nullable()) }).strict().parse(req.body);
+    res.json(await saveSystemRules(body.types, actorOf(req)));
   })
 );
 

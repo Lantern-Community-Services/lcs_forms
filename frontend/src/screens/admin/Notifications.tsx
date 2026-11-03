@@ -6,7 +6,7 @@ import { lookApi, whiteContrast, type EmailLook } from "@/lib/emailTemplates";
 import { DesktopBackLink, Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input, SearchInput, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -25,7 +25,8 @@ import { RoutingFormsList } from "./Routing";
 /**
  * Admin → Notifications: everything about who's told and what the emails say,
  * in one place. Forms (each form's routes, follow-up and weekly reports: the
- * same editor as the form's own Notifications tab), the organization's email
+ * same editor as the form's own Notifications tab), Types (every notification
+ * people can set on their Profile, and the site's own types' defaults), the organization's email
  * Templates (Super Admins make and change them; Admins pick them on routes
  * and reports), and every email Sent.
  */
@@ -33,6 +34,7 @@ import { RoutingFormsList } from "./Routing";
 export function NotificationsLayout() {
   const tabs = [
     { to: "/admin/notifications", label: "Forms", end: true },
+    { to: "/admin/notifications/types", label: "Types", end: false },
     { to: "/admin/notifications/templates", label: "Templates", end: false },
     { to: "/admin/notifications/system", label: "System emails", end: false },
     { to: "/admin/notifications/look", label: "Look", end: false },
@@ -65,6 +67,173 @@ export function NotificationsLayout() {
 
 export function NotificationsFormsTab() {
   return <RoutingFormsList />;
+}
+
+// ── Types ────────────────────────────────────────────────────────────────
+
+type TypeChoice = "optional" | "required" | "locked";
+interface TypeRule { inApp: boolean; email: boolean; emailWhen: "instant" | "daily" | null; choice: TypeChoice }
+interface TypesOverview {
+  system: { key: string; label: string; description: string; rule: TypeRule; base: TypeRule; changed: boolean; customised: number }[];
+  forms: {
+    id: string;
+    slug: string;
+    title: string;
+    kind: string;
+    types: { key: string; label: string; routeName: string | null; description: string | null; enabled: boolean; urgent: boolean; choice: TypeChoice; emailDefault: "own" | "daily" | "off"; customised: number }[];
+  }[];
+}
+
+const CHOICE_WORDS: Record<TypeChoice, string> = { optional: "Optional", required: "Required", locked: "Locked" };
+const CHOICE_HINT: Record<TypeChoice, string> = {
+  optional: "Each person chooses how they get it, and can turn it off.",
+  required: "Always in the app; each person chooses whether and when it's emailed.",
+  locked: "Everyone gets it as set here; nobody can change it.",
+};
+const changedBy = (n: number) => `${n} ${n === 1 ? "person has" : "people have"} changed it`;
+
+/**
+ * Every notification type: the site's own (their defaults and how much people
+ * may change them, set here) and each form's routes and follow-ups (set on the
+ * route). Each person sees the ones that could reach them on Profile →
+ * Notifications. Backend: services/notificationTypes.ts.
+ */
+export function NotificationsTypesTab() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [q, setQ] = useState("");
+  const { data, isLoading, isError } = useQuery({ queryKey: ["notifications", "types"], queryFn: () => api.get<TypesOverview>("/notifications/types") });
+
+  async function save(key: string, rule: Partial<TypeRule> | null) {
+    try {
+      qc.setQueryData(["notifications", "types"], await api.put<TypesOverview>("/notifications/types", { types: { [key]: rule } }));
+      toast("Saved");
+    } catch (error) {
+      toast(errorMessage(error, "Couldn't save that."), "error");
+    }
+  }
+
+  if (isLoading) return <LoadingState />;
+  if (isError || !data) return <EmptyState title="Notification types didn't load" hint="Check your connection and try again." />;
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const forms = data.forms.filter((f) => words.every((w) => `${f.title} ${f.types.map((t) => `${t.label} ${t.routeName ?? ""}`).join(" ")}`.toLowerCase().includes(w)));
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4 text-[13px] text-muted">
+        Every notification people can get. Each person sees the ones that could reach them on <span className="font-semibold text-ink">Profile → Notifications</span> and
+        chooses how they get each one (in the app, by email as it arrives, in their daily summary, or not at all), within what's set here.
+        <span className="mt-2 block">
+          <span className="font-semibold text-ink">Optional</span>: they choose anything. <span className="font-semibold text-ink">Required</span>: always in the app; they choose the email.{" "}
+          <span className="font-semibold text-ink">Locked</span>: nobody can change it.
+        </span>
+      </Card>
+
+      <Card className="p-0">
+        <div className="border-b border-hairline px-5 py-3">
+          <p className="font-heading text-[15px] font-extrabold text-ink">From the site</p>
+          <p className="text-[12.5px] text-muted">What people get before they choose, and how much they may change.</p>
+        </div>
+        <ul className="divide-y divide-hairline">
+          {data.system.map((t) => (
+            <li key={t.key} className="px-5 py-4">
+              <div className="min-w-0">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-[14px] font-semibold text-ink">{t.label}</span>
+                  {t.changed && <Tag tone="accent">Changed</Tag>}
+                </span>
+                <span className="mt-0.5 block text-[12.5px] text-muted">{t.description}</span>
+                <span className="mt-1 block text-[12px] text-muted">
+                  {CHOICE_HINT[t.rule.choice]}
+                  {t.customised ? ` ${changedBy(t.customised)}.` : ""}
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Select
+                  value={t.rule.choice}
+                  onChange={(e) => void save(t.key, { choice: e.target.value as TypeChoice, ...(e.target.value !== "optional" ? { inApp: true } : {}) })}
+                  aria-label={`${t.label}: what people can change`}
+                  className="w-[130px]"
+                  options={(Object.keys(CHOICE_WORDS) as TypeChoice[]).map((c) => ({ value: c, label: CHOICE_WORDS[c] }))}
+                />
+                <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                  <Switch
+                    checked={t.rule.inApp}
+                    disabled={t.rule.choice !== "optional"}
+                    onCheckedChange={(v) => void save(t.key, { inApp: v })}
+                    aria-label={`${t.label}: in the app by default`}
+                    className="disabled:cursor-not-allowed disabled:opacity-45"
+                  />
+                  In app
+                </label>
+                <Select
+                  value={!t.rule.email ? "off" : t.rule.emailWhen === "daily" ? "daily" : "own"}
+                  onChange={(e) => void save(t.key, e.target.value === "off" ? { email: false, emailWhen: null } : { email: true, emailWhen: e.target.value === "daily" ? "daily" : null })}
+                  aria-label={`${t.label}: email by default`}
+                  className="w-[220px]"
+                  options={[
+                    { value: "own", label: t.rule.choice === "locked" ? "Emailed as it arrives" : "Email: each person's default" },
+                    { value: "daily", label: "In the daily summary" },
+                    { value: "off", label: "Not emailed" },
+                  ]}
+                />
+                {t.changed && (
+                  <Button variant="ghost" size="sm" onClick={() => void save(t.key, null)} title="Back to the site's default">
+                    <RotateCcw className="h-3.5 w-3.5" /> Default
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card className="p-0">
+        <div className="border-b border-hairline px-5 py-3">
+          <p className="font-heading text-[15px] font-extrabold text-ink">From forms</p>
+          <p className="text-[12.5px] text-muted">
+            Each route of each form is a notification of its own, and so are a form's follow-up reminders. Set what people can change on the route, under the form's notifications.
+          </p>
+          {data.forms.length > 6 && <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form or notification" aria-label="Find a form or notification" className="mt-3" />}
+        </div>
+        {forms.length ? (
+          <ul className="divide-y divide-hairline">
+            {forms.map((f) => (
+              <li key={f.id} className="px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{f.title}</span>
+                  <Link to={`/admin/notifications/forms/${f.id}`} className="text-[13px] font-semibold text-accent dark:text-white">Edit routes</Link>
+                </div>
+                <ul className="mt-1.5 space-y-1">
+                  {f.types.map((t) => (
+                    <li key={t.key} className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px]", !t.enabled && "opacity-60")}>
+                      <span className="font-semibold text-ink">{t.label}</span>
+                      {t.routeName && t.routeName !== t.label && <span className="text-muted">(route “{t.routeName}”)</span>}
+                      <Tag tone={t.choice === "locked" ? "neutral" : "accent"}>{CHOICE_WORDS[t.choice]}</Tag>
+                      {t.urgent && <Tag tone="red">Urgent</Tag>}
+                      {!t.enabled && <Tag tone="neutral">Off</Tag>}
+                      <span className="text-muted">
+                        {t.choice === "locked"
+                          ? "In the app and emailed at once"
+                          : t.emailDefault === "daily"
+                            ? "Daily summary until they choose"
+                            : t.emailDefault === "off"
+                              ? "Not emailed until they choose"
+                              : "Emailed as each person's default says"}
+                        {t.customised ? ` · ${changedBy(t.customised)}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-5 py-4 text-[13px] text-muted">{data.forms.length ? "No forms match. Try a shorter word." : "No form tells anyone yet. Add routes under a form's notifications."}</p>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 // ── Templates ────────────────────────────────────────────────────────────

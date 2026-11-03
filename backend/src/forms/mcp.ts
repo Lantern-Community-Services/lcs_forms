@@ -463,7 +463,7 @@ function buildServer(key: ResolvedKey, principal: CurrentUser): McpServer {
   registerCodeTools(tool, need, actor, key, principal);
   registerCatalogTools(tool, need, actor);
   registerTutorialTools(tool, need, actor);
-  registerNotificationTools(tool, need, key);
+  registerNotificationTools(tool, need, key, actor);
   registerRoutingTools(tool, need, actor);
   registerOps(tool, key);
   return server;
