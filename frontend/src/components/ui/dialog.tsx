@@ -17,6 +17,8 @@ export const DialogContent = forwardRef<
       ref={ref}
       className={cn(
         "fixed left-1/2 top-1/2 z-50 w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2",
+        // Never taller than the screen: the body scrolls, the header and footer stay put.
+        "flex max-h-[calc(100dvh-2rem)] flex-col",
         "rounded-card bg-surface p-0 shadow-modal focus:outline-none",
         className
       )}
@@ -35,7 +37,7 @@ DialogContent.displayName = "DialogContent";
 
 export function DialogHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="border-b border-hairline px-6 py-4">
+    <div className="shrink-0 border-b border-hairline px-6 py-4">
       <DialogPrimitive.Title className="text-[19px] font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
       {subtitle && <DialogPrimitive.Description className="mt-0.5 text-[13px] text-muted">{subtitle}</DialogPrimitive.Description>}
     </div>
@@ -43,9 +45,9 @@ export function DialogHeader({ title, subtitle }: { title: string; subtitle?: st
 }
 
 export function DialogBody({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("px-6 py-5", className)}>{children}</div>;
+  return <div className={cn("min-h-0 flex-1 overflow-y-auto px-6 py-5", className)}>{children}</div>;
 }
 
 export function DialogFooter({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center justify-end gap-2 border-t border-hairline px-6 py-4">{children}</div>;
+  return <div className="flex shrink-0 items-center justify-end gap-2 border-t border-hairline px-6 py-4">{children}</div>;
 }
