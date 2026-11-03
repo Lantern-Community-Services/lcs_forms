@@ -28,20 +28,47 @@ export interface AppNotification {
 }
 
 export type EmailMode = "instant" | "daily" | "off";
+/** When one type's email comes: as it arrives, or in the daily summary. */
+export type EmailWhen = "instant" | "daily";
+/** How much someone may change a type: anything; how it's emailed (it's always in the app); nothing. */
+export type TypeChoice = "optional" | "required" | "locked";
+
+export interface TypePref { inApp: boolean; email: boolean; emailWhen: EmailWhen | null }
+
+/** One notification type on Profile → Notifications (backend services/notificationTypes.ts TypeRow). */
+export interface NotificationTypeRow {
+  key: string;
+  label: string;
+  description: string | null;
+  inApp: boolean;
+  /** How it's emailed now; null: not at all. */
+  email: EmailWhen | null;
+  /** What they'd get without a choice of their own. */
+  defaults: { inApp: boolean; email: EmailWhen | null };
+  custom: boolean;
+  /** Their own choice for it, and what they follow without one. emailWhen null: their default timing. */
+  own: TypePref | null;
+  base: TypePref;
+  choice: TypeChoice;
+  urgent: boolean;
+  sent: number;
+}
 
 export interface NotificationPrefs {
   emailMode: EmailMode;
   mailConfigured: boolean;
+  /** Their summary's hour (New York), and the site's. */
   digestHour: number;
-  types: { key: string; label: string; description: string; inApp: boolean; email: boolean; defaults: { inApp: boolean; email: boolean } }[];
-  /** Forms they can open or that have notified them; each kind follows `types` until set here (custom). */
+  siteDigestHour: number;
+  types: NotificationTypeRow[];
+  /** Forms with a type that could reach them: its routes, follow-ups and own messages. */
   forms: {
     id: string;
     title: string;
     kind: string;
     category: string | null;
     sent: number;
-    kinds: { key: string; label: string; inApp: boolean; email: boolean; custom: boolean }[];
+    rows: NotificationTypeRow[];
   }[];
 }
 

@@ -76,11 +76,25 @@ export const routeSchema = z.object({
   sites: z.array(z.string().trim().min(1).max(64)).max(100).optional(),
   to: z.array(recipientSchema).min(1, "Add at least one person to tell.").max(200),
   /**
-   * "always" (default): everyone on the route is emailed (link-only), whatever their own
-   * notification settings, and account holders see it in the app too. "prefs": account
-   * holders get it as each has chosen on their Profile.
+   * How much the people on it may change, on Profile → Notifications, where each
+   * route is its own notification type (services/notificationTypes.ts):
+   * "always" (default; "Locked"): everyone is emailed (link-only) at once and sees it in
+   * the app, whatever their settings. "required": always in the app; each chooses
+   * whether and when it's emailed (now or in their daily summary). "prefs"
+   * ("Optional"): each chooses everything, turning it off included.
+   * Addresses without an account are always emailed.
    */
-  email: z.enum(["always", "prefs"]).default("always"),
+  email: z.enum(["always", "required", "prefs"]).default("always"),
+  /**
+   * For "required" and "prefs", what people who haven't chosen get by email: omitted, as
+   * their own default says (each one as it comes, or their summary); "daily", in their
+   * daily summary; "off", nothing until they turn it on.
+   */
+  emailDefault: z.enum(["daily", "off"]).optional(),
+  /** What people see in their settings for this route. Default: the route's name. */
+  label: z.string().trim().max(120).optional(),
+  /** A line under it in their settings: what it's for. */
+  description: z.string().trim().max(300).optional(),
   /** What the people on this route have to do, shown in the email (plain text, no answers). */
   whatToDo: z.string().trim().max(500).optional(),
   /** Answers shown in the email (to Lantern addresses only): ids from emailableFields. */

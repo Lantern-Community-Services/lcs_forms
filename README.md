@@ -707,12 +707,29 @@ the app is in view. Notifications are kept 120 days.
 Recipients are people with an active account: by address or id, by role or permission, narrowed to sites
 (people at every site always count), or everyone (API keys only).
 
-**Each person chooses** on **Profile → Notifications**: per kind, in the app and/or by email; then
-**form by form** (every form on their Forms screen, and any that has notified them), the same switches
-for each kind that form sends (messages, new entries, problems), which follow their choice for the kind
-until they change them, with "Turn this form off" and "Use my choices above"; and email as each one
-arrives, one summary each morning (7 AM New York), or never. "New form entries" and "Announcements" aren't emailed unless someone turns them on.
-"Send me a test" checks it end to end.
+**Notification types.** Everything is sent as a type (`services/notificationTypes.ts`): the site's own
+(the kinds above), **each route of each form** (`route:<formId>:<routeId>`), and each form's follow-up
+reminders and "it's done" (`followup:<formId>:…`). A type has a rule: what someone who hasn't chosen
+gets (in the app; email or not; "daily" holds it for their summary) and how much they may change:
+**Optional** (anything, off included), **Required** (always in the app; they choose the email) or
+**Locked** (nobody). A route sets it under **Their settings** (`email`: `prefs` / `required` /
+`always`, `emailDefault`, plus `label` and `description`, what people see); existing routes stay
+Locked (`always`) and new ones start Required. The site's own types are set in **Admin →
+Notifications → Types** (Setting `notificationTypes`; MCP `get_notification_types`,
+`set_notification_type`), which also lists every form's types and how many people changed each.
+
+**Each person chooses** on **Profile → Notifications**, which lists every type that could reach them:
+the site's own, then form by form each route whose people could include them (their address, their role
+at their sites, a group or position they're in, or "whoever filed it" / a person the form names on a
+form they can use), its follow-ups, a code form's own messages, and anything that has reached them or
+that they've set. Per type: in the app or not, and email **as it arrives**, **in my daily summary** or
+**not at all**; "Back to how it's set up" and "Turn this form off" per form. Their own default timing
+(as each arrives, one daily summary, or never) and the summary's hour (`User.notifyDigestHour`, else
+7 AM New York) sit above. What applies: their choice for the type, else for the form's kind, else for
+the kind, else the type's rule; a type's own timing beats their default, "never" stops only types they
+haven't set. Urgent ones are always in the app and emailed at once unless that type's email (or all
+email) is off. "Send me a test" checks it end to end. The daily summary lists each unread one's form
+and title (up to 25), with a link to the list.
 
 **Email** follows the link-only rule (see Email): the subject is the notification's title, then one
 line and a link to `/notifications/<id>`, which marks it read and opens its page. The message never
@@ -755,8 +772,9 @@ every email **Sent**. The MCP has the same: `get_routing`, `save_route`, `set_ro
   sites"), everyone with a role (at the event's site or everywhere), a person the event names (e.g. the
   supervisor chosen on the form), or whoever filed it. A form starts with form.json `routing.defaults`
   until someone saves its routing; "Back to the form's defaults" forgets the saved copy.
-- **Delivery.** Account holders get a `forms.message` notification and, unless the route says to follow
-  their own settings, an email whatever they've chosen. Addresses without an account get a link-only
+- **Delivery.** Account holders get a `forms.message` notification as the route's type
+  (`Notification.topic`), in the app and by email as the route allows and they've chosen (see
+  Notification types above). Addresses without an account get a link-only
   email, one each. Nobody is told twice about one event. In a code form's draft only the person
   previewing is told ("Preview: …"). Every send goes to the routing log (the page's *Recently sent*,
   the last 500), and a basic form's entry gets a note saying who was told.

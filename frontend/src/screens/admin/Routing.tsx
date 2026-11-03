@@ -55,7 +55,17 @@ interface Route {
   when?: { match: "all" | "any"; rules: Rule[] };
   sites?: string[];
   to: Recipient[];
-  email: "always" | "prefs";
+  /**
+   * How much the people on it may change on their Profile, where each route is a
+   * notification of its own: "always" (locked), "required" (always in the app;
+   * they choose the email) or "prefs" (optional: they choose everything).
+   */
+  email: "always" | "required" | "prefs";
+  /** For required and optional routes: the email for people who haven't chosen. Omitted: their own default. */
+  emailDefault?: "daily" | "off";
+  /** What people see for it in their settings (default: the name), and a line under it. */
+  label?: string;
+  description?: string;
   /** Needs attention now: red in the bell, pinned on their list, emailed at once. */
   urgent?: boolean;
   subject?: string;
@@ -184,7 +194,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
   const change = (rid: string, next: Route | null) => setRoutes(next ? routes.map((r) => (r.id === rid ? next : r)) : routes.filter((r) => r.id !== rid));
   const add = (event: RoutingEvent) => {
     const rid = uniqueId(routes.map((r) => r.id), event.id === "entry.created" ? "new-entry" : event.id);
-    setRoutes([...routes, { id: rid, name: "New route", event: event.id, enabled: true, to: [], email: "always", ...(templates ? { template: templates.defaults.message } : {}) }]);
+    setRoutes([...routes, { id: rid, name: "New route", event: event.id, enabled: true, to: [], email: "required", ...(templates ? { template: templates.defaults.message } : {}) }]);
   };
 
   async function save() {
@@ -442,11 +452,34 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
           </div>
         </Row>
 
-        <Row label="Email">
-          <Select value={route.email} onChange={(e) => set({ email: e.target.value as Route["email"] })} className="max-w-[420px]" aria-label="Email">
-            <option value="always">Email everyone on this route</option>
-            <option value="prefs">Follow each person's own notification settings</option>
-          </Select>
+        <Row label="Their settings">
+          <div className="space-y-2">
+            <Select value={route.email} onChange={(e) => set({ email: e.target.value as Route["email"], ...(e.target.value === "always" ? { emailDefault: undefined } : {}) })} className="max-w-[460px]" aria-label="What people can change">
+              <option value="required">Required: they choose the email</option>
+              <option value="prefs">Optional: they choose everything</option>
+              <option value="always">Locked: nobody can change it</option>
+            </Select>
+            {route.email !== "always" && (
+              <Select value={route.emailDefault ?? ""} onChange={(e) => set({ emailDefault: (e.target.value || undefined) as Route["emailDefault"] })} className="max-w-[460px]" aria-label="Email for people who haven't chosen">
+                <option value="">Email: as each person's default says</option>
+                <option value="daily">Email: in their daily summary</option>
+                <option value="off">Email: not until they turn it on</option>
+              </Select>
+            )}
+            <div className="grid max-w-[460px] gap-2">
+              <Input value={route.label ?? ""} onChange={(e) => set({ label: e.target.value || undefined })} placeholder={`Called in their settings: ${route.name || "the route's name"}`} aria-label="What people see it called" maxLength={120} />
+              <Input value={route.description ?? ""} onChange={(e) => set({ description: e.target.value || undefined })} placeholder="A line on what it's for (optional)" aria-label="What it's for" maxLength={300} />
+            </div>
+            <p className="text-[12px] text-muted">
+              Everyone on this route sees it on their Profile → Notifications{route.label || route.name ? ` as “${route.label || route.name}”` : ""}, and{" "}
+              {route.email === "always"
+                ? "gets it in the app and by email at once, and can't change it. Keep Locked for what everyone must see straight away."
+                : route.email === "required"
+                  ? "always gets it in the app, and picks whether it's emailed as it arrives, in their daily summary, or not at all. The email choice above is what they get until they pick."
+                  : "picks how they get it (in the app, by email as it arrives or in their summary) or turns it off. The email choice above is what they get until they pick."}{" "}
+              Addresses without an account are always emailed.
+            </p>
+          </div>
         </Row>
 
         <Row label="Priority">

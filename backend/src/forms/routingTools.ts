@@ -38,7 +38,16 @@ const routeShape = {
     .describe('Only when the event\'s values match, e.g. { match: "any", rules: [{ field: "status", op: "is", value: "Immediate intervention" }] }. Ops: is, is_not, contains, not_contains, gt, lt, gte, lte, starts_with, ends_with, empty, not_empty. "site" holds the site code.'),
   sites: z.array(z.string()).optional().describe("Only events at these sites (codes, see list_sites). Omit for every site."),
   to: z.array(recipient).describe("Who's told"),
-  email: z.enum(["always", "prefs"]).optional().describe('"always" (default): everyone on it is emailed (link-only) whatever their settings. "prefs": account holders get it as they chose on their Profile.'),
+  email: z
+    .enum(["always", "required", "prefs"])
+    .optional()
+    .describe('Each route is a notification type in people\'s Profile → Notifications. "always" (default, "Locked"): everyone on it sees it in the app and is emailed (link-only) at once; they can\'t change it. "required": always in the app; each person chooses whether it\'s emailed and when (as it comes, or in their daily summary). "prefs" ("Optional"): each person chooses everything, turning it off included.'),
+  emailDefault: z
+    .enum(["daily", "off"])
+    .optional()
+    .describe('For "required" and "prefs": what people who haven\'t chosen get by email. Omit: as their own default says. "daily": in their daily summary. "off": no email until they turn it on.'),
+  label: z.string().optional().describe('What people see for this route in their notification settings, e.g. "Urgent incidents at your site". Default: the route\'s name.'),
+  description: z.string().optional().describe("A line under it in their settings: what it's for."),
   template: z
     .string()
     .optional()

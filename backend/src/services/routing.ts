@@ -11,7 +11,7 @@ import { ENTRY_CREATED, routeSchema, type Recipient, type Route, type RoutingEve
 import { readManifest, type Files, type Manifest } from "../apps/project.js";
 import { audit, type Actor } from "./audit.js";
 import { mailConfigured, sendLogged } from "./mailer.js";
-import { notify, resolveAudience, sitePath } from "./notifications.js";
+import { notify, resolveAudience, sitePath, type TypeRule } from "./notifications.js";
 import { isRoleKey, ROLES } from "./permissions.js";
 
 /**
@@ -26,9 +26,10 @@ import { isRoleKey, ROLES } from "./permissions.js";
  * only when the event's values match, and tells a list of people (see
  * forms/routingSchema.ts for the kinds).
  *
- * Delivery follows the site's rules. Account holders get a notification in the
- * app (services/notifications.ts), emailed too: always, unless the route says to
- * follow their own settings. Anyone else gets a link-only email (subject, a
+ * Delivery follows the site's rules. Each route is a notification type of its
+ * own (routeTopicKey, routeRule): account holders get it in the app and by
+ * email as the route allows and they've chosen on Profile → Notifications
+ * (services/notifications.ts). Anyone else gets a link-only email (subject, a
  * line, a link; never answers or resident details). Nobody is told twice about
  * one event, however many routes name them.
  *
@@ -365,6 +366,15 @@ export function newRouteId(taken: string[], name: string): string {
 
 // ── Sending ──────────────────────────────────────────────────────────────
 
+/** A route as a notification type: its key in people's settings (NotificationPref, Notification.topic). */
+export const routeTopicKey = (formId: string, routeId: string) => `route:${formId}:${routeId}`;
+
+/** What a route gives someone who hasn't chosen, and how much they may change it. */
+export function routeRule(r: Pick<Route, "email" | "emailDefault">): TypeRule {
+  if (r.email === "always") return { inApp: true, email: true, emailWhen: "instant", choice: "locked" };
+  return { inApp: true, email: r.emailDefault !== "off", emailWhen: r.emailDefault === "daily" ? "daily" : null, choice: r.email === "required" ? "required" : "optional" };
+}
+
 export interface RouteInput {
   event: string;
   /** The default title and email subject. One line, no resident details. */
@@ -578,7 +588,7 @@ export async function routeEvent(
           source: `form:${form.slug}`,
           sourceLabel: form.title,
           formId: form.id,
-          forceEmail: route.email !== "prefs",
+          topic: { key: routeTopicKey(form.id, route.id), rule: routeRule(route) },
           urgent: w.urgent,
           email: { whatToDo: w.whatToDo, fields, heading: w.heading, intro: w.template ? w.intro : null, buttonLabel: w.buttonLabel },
         });
