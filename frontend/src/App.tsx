@@ -59,6 +59,7 @@ const NotificationsFormsTab = lazyScreen(() => import("./screens/admin/Notificat
 const NotificationsTemplatesTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsTemplatesTab");
 const NotificationsSentTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsSentTab");
 const NotificationsSystemTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsSystemTab");
+const NotificationsTypesTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsTypesTab");
 const NotificationsLookTab = lazyScreen(() => import("./screens/admin/Notifications"), "NotificationsLookTab");
 const TemplateEditorPage = lazyScreen(() => import("./screens/admin/Notifications"), "TemplateEditorPage");
 const AdminRoutingForm = lazyScreen(() => import("./screens/admin/Routing"), "AdminRoutingForm");
@@ -291,6 +292,7 @@ export function App() {
               {/* Admin → Notifications: every form's routing, the email templates, every email sent. */}
               <Route element={<NotificationsLayout />}>
                 <Route path="/admin/notifications" element={<NotificationsFormsTab />} />
+                <Route path="/admin/notifications/types" element={<NotificationsTypesTab />} />
                 <Route path="/admin/notifications/templates" element={<NotificationsTemplatesTab />} />
                 <Route path="/admin/notifications/system" element={<NotificationsSystemTab />} />
                 <Route path="/admin/notifications/look" element={<NotificationsLookTab />} />

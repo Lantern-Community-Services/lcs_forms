@@ -1,8 +1,8 @@
 import type { Notification } from "@prisma/client";
-import { canUseBuiltForm, peopleInGroupsOrPositions } from "./staffGroups.js";
+import { peopleInGroupsOrPositions } from "./staffGroups.js";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
-import { linkOnlyHtml, mailConfigured, sendLogged } from "./mailer.js";
+import { mailConfigured, sendLogged } from "./mailer.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { LEGACY_ROLES, PERMISSIONS, isRoleKey, permissionsFor, roleFor, type PermissionKey } from "./permissions.js";
 import { partsOf, startOfDay, today } from "../apps/time.js";
@@ -20,10 +20,15 @@ import { messageWording, templateByKey } from "./emailTemplates.js";
  *   - code forms' ctx.notify.send (apps/notify.ts);
  *   - the MCP server's send_notification and POST /api/v1/notifications.
  *
- * What each person gets is theirs to choose on Profile → Notifications: per
- * kind (NOTIFICATION_TYPES), in the app and by email, plus a per-form switch
- * that can turn one form's off. Email comes as each one arrives, as one summary
- * a morning, or not at all (User.notifyEmailMode).
+ * Every notification is sent as a notification type: one of the site's own
+ * (NOTIFICATION_TYPES, whose defaults Admins can change), a form's route
+ * (services/routing.ts) or a form's follow-up. Each type has a rule (TypeRule):
+ * what someone who hasn't chosen gets, and whether they may change it
+ * (optional), only how (required: always in the app), or not at all (locked).
+ * What each person chooses is on Profile → Notifications, type by type
+ * (services/notificationTypes.ts): in the app or not, and email right away,
+ * in their daily summary, or not at all. Their own default timing is
+ * User.notifyEmailMode, the summary's hour User.notifyDigestHour.
  *
  * Emails follow the site's link-only rule (services/mailer.ts): the subject is
  * the notification's title, then one line and a link. The body never leaves the
@@ -89,8 +94,33 @@ export const isNotificationType = (k: unknown): k is NotificationTypeKey => type
 
 export const EMAIL_MODES = ["instant", "daily", "off"] as const;
 export type EmailMode = (typeof EMAIL_MODES)[number];
+export const EMAIL_WHEN = ["instant", "daily"] as const;
+export type EmailWhen = (typeof EMAIL_WHEN)[number];
+export const TYPE_CHOICES = ["optional", "required", "locked"] as const;
+/**
+ * How much a person may change a type: "optional" anything, turning it off
+ * included; "required" how it reaches them, but it always shows in the app;
+ * "locked" nothing (in the app and emailed as the rule says).
+ */
+export type TypeChoice = (typeof TYPE_CHOICES)[number];
 
-/** The New York hour the daily summary goes out at. */
+/** What someone who hasn't chosen gets from a type, and how much they may change. */
+export interface TypeRule {
+  inApp: boolean;
+  email: boolean;
+  /** "daily": in their summary even when they get email as it comes. Null: their own default. */
+  emailWhen: EmailWhen | null;
+  choice: TypeChoice;
+}
+
+/** One person's choice for one type (NotificationPref). emailWhen null: their own default. */
+export interface Pref {
+  inApp: boolean;
+  email: boolean;
+  emailWhen: EmailWhen | null;
+}
+
+/** The New York hour the daily summary goes out at, unless someone picks another. */
 export const DIGEST_HOUR = 7;
 /** Notifications are kept this long, read or not. */
 const KEEP_DAYS = 120;
@@ -132,15 +162,15 @@ export interface NotifyInput {
   /** Only people at this site (or at every site): a site-pinned API key. */
   onlySiteId?: string | null;
   /**
-   * Email everyone at once, whatever they chose for this kind (a notification
-   * routing list someone was deliberately put on). The app copy still follows
-   * their choice.
+   * The notification type it's sent as, when it's more particular than `type`:
+   * a form's route or follow-up ("route:<formId>:<routeId>"), with its rule.
+   * The person's choice for it comes first, then for the form, then for `type`.
    */
-  forceEmail?: boolean;
+  topic?: { key: string; rule: TypeRule };
   /**
    * Needs attention now: always shown in the app (whatever they chose for this
    * kind), emailed at once even to people on a daily summary (unless they
-   * turned email off), and marked urgent in the bell, the list and the email.
+   * turned its email off, or all email), and marked urgent in the bell, the list and the email.
    */
   urgent?: boolean;
   /**
@@ -233,19 +263,82 @@ export async function resolveAudience(to: Audience) {
   return { people: [...found.values()], unknown };
 }
 
-type Choice = { inApp: boolean; email: boolean };
-
 /** The preference key for one kind of notification from one form. */
 export const formPrefKey = (formId: string, type: string) => `form:${formId}:${type}`;
 
+// ── Type rules ───────────────────────────────────────────────────────────
+
+/** An Admin's changes to the site's own types (Admin → Notifications → Types), kept in Setting "notificationTypes". */
+export type SystemRuleChanges = Partial<Record<NotificationTypeKey, Partial<TypeRule>>>;
+
+const baseRule = (k: NotificationTypeKey): TypeRule => ({ inApp: NOTIFICATION_TYPES[k].inApp, email: NOTIFICATION_TYPES[k].email, emailWhen: null, choice: "optional" });
+
+/** Read leniently: anything that doesn't fit is ignored, so a bad row never stops a notification. */
+export function readRuleChanges(raw: string): SystemRuleChanges {
+  const out: SystemRuleChanges = {};
+  let parsed: unknown;
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch {
+    return out;
+  }
+  if (!parsed || typeof parsed !== "object") return out;
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!isNotificationType(k) || !v || typeof v !== "object") continue;
+    const c = v as Record<string, unknown>;
+    const r: Partial<TypeRule> = {};
+    if (typeof c.inApp === "boolean") r.inApp = c.inApp;
+    if (typeof c.email === "boolean") r.email = c.email;
+    if (c.emailWhen === null || (EMAIL_WHEN as readonly unknown[]).includes(c.emailWhen)) r.emailWhen = c.emailWhen as EmailWhen | null;
+    if ((TYPE_CHOICES as readonly unknown[]).includes(c.choice)) r.choice = c.choice as TypeChoice;
+    out[k] = r;
+  }
+  return out;
+}
+
+let rulesCache: { at: number; rules: Record<NotificationTypeKey, TypeRule> } | null = null;
+
+/** Every site type's rule: its own defaults with an Admin's changes. Cached briefly. */
+export async function systemRules(): Promise<Record<NotificationTypeKey, TypeRule>> {
+  if (rulesCache && Date.now() - rulesCache.at < 30_000) return rulesCache.rules;
+  const changes = readRuleChanges((await prisma.setting.findUnique({ where: { key: "notificationTypes" } }))?.value ?? "");
+  const rules = {} as Record<NotificationTypeKey, TypeRule>;
+  for (const k of Object.keys(NOTIFICATION_TYPES) as NotificationTypeKey[]) rules[k] = { ...baseRule(k), ...changes[k] };
+  rulesCache = { at: Date.now(), rules };
+  return rules;
+}
+
+export function forgetSystemRules() {
+  rulesCache = null;
+}
+
+export const defaultRule = baseRule;
+
 /**
- * What a person gets: their choice for this kind from this form if they made
- * one, else their choice for the kind, else the kind's default.
+ * How one notification reaches one person: in the app or not, and its email
+ * now, in the summary or not at all.
+ *
+ * `own` is their choice for this very type; `inherited` their choices it falls
+ * back to (the form's, then the kind's), first found wins; else the rule's
+ * defaults. A required type always shows in the app; a locked one goes as the
+ * rule says. Email timing is theirs when they set one for the type; otherwise
+ * their default (`mode`), which "off" stops, and a rule's "daily" holds back.
+ * Urgent: always in the app, and emailed now unless they turned this type's
+ * email off or never get email.
  */
-function choose(type: NotificationTypeKey, prefs: Map<string, Choice>, formId: string | null | undefined): Choice {
-  const def = NOTIFICATION_TYPES[type];
-  const own = prefs.get(type) ?? { inApp: def.inApp, email: def.email };
-  return (formId ? prefs.get(formPrefKey(formId, type)) : undefined) ?? own;
+export function resolveDelivery(o: { rule: TypeRule; own?: Pref; inherited?: (Pref | undefined)[]; mode: EmailMode; urgent?: boolean }): { inApp: boolean; email: EmailWhen | null } {
+  const { rule, own, mode } = o;
+  const urgent = Boolean(o.urgent);
+  if (rule.choice === "locked") {
+    return { inApp: rule.inApp || urgent, email: rule.email || urgent ? (urgent ? "instant" : rule.emailWhen ?? "instant") : null };
+  }
+  const chosen = own ?? o.inherited?.find(Boolean);
+  const pick: Pref = chosen ?? { inApp: rule.inApp, email: rule.email, emailWhen: null };
+  const inApp = pick.inApp || rule.choice === "required" || urgent;
+  const emailOn = urgent ? (own ? own.email : true) : pick.email;
+  if (!emailOn) return { inApp, email: null };
+  const when: EmailWhen | null = chosen?.emailWhen ?? (mode === "off" ? null : rule.emailWhen === "daily" ? "daily" : mode);
+  return { inApp, email: when && urgent ? "instant" : when };
 }
 
 /** Tell people something. Returns once the rows are written; emails go after. */
@@ -265,12 +358,15 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
   }
   if (!people.length) return { sent: 0, recipients: 0, emailed: 0, muted: 0, ...(unknown.length ? { unknown } : {}) };
 
-  const keys = [input.type, ...(input.formId ? [formPrefKey(input.formId, input.type)] : [])];
-  const prefRows = await prisma.notificationPref.findMany({ where: { userId: { in: people.map((p) => p.id) }, key: { in: keys } } });
-  const prefsBy = new Map<string, Map<string, Choice>>();
+  // Their choice for this type, then for this form's kind, then for the kind.
+  const formKey = input.formId ? formPrefKey(input.formId, input.type) : null;
+  const chain = [input.topic?.key, formKey, input.type].filter((k): k is string => Boolean(k));
+  const rule = input.topic?.rule ?? (await systemRules())[input.type];
+  const prefRows = await prisma.notificationPref.findMany({ where: { userId: { in: people.map((p) => p.id) }, key: { in: chain } } });
+  const prefsBy = new Map<string, Map<string, Pref>>();
   for (const r of prefRows) {
     if (!prefsBy.has(r.userId)) prefsBy.set(r.userId, new Map());
-    prefsBy.get(r.userId)!.set(r.key, { inApp: r.inApp, email: r.email });
+    prefsBy.get(r.userId)!.set(r.key, readPref(r));
   }
 
   const mail = mailConfigured();
@@ -278,16 +374,17 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
   let emailed = 0;
   const rows = [];
   for (const p of people) {
-    const c = choose(input.type, prefsBy.get(p.id) ?? new Map(), input.formId);
+    const mine = prefsBy.get(p.id) ?? new Map<string, Pref>();
+    const [own, ...inherited] = chain.map((k) => mine.get(k));
     const mode = (EMAIL_MODES as readonly string[]).includes(p.notifyEmailMode) ? (p.notifyEmailMode as EmailMode) : "instant";
     const urgent = Boolean(input.urgent);
-    const inApp = c.inApp || urgent;
-    const wantsEmail = input.forceEmail || ((c.email || urgent) && mode !== "off");
-    if (!inApp && !wantsEmail) {
+    const d = resolveDelivery({ rule, own, inherited, mode, urgent });
+    const inApp = d.inApp;
+    if (!inApp && !d.email) {
       muted++;
       continue;
     }
-    const emailStatus = !wantsEmail ? "none" : !mail ? "skipped" : mode === "daily" && !input.forceEmail && !urgent ? "digest" : "pending";
+    const emailStatus = !d.email ? "none" : !mail ? "skipped" : d.email === "daily" ? "digest" : "pending";
     if (emailStatus === "pending" || emailStatus === "digest") emailed++;
     rows.push({
       userId: p.id,
@@ -298,6 +395,7 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
       source: clean(input.source ?? "system", 255) || "system",
       sourceLabel: input.sourceLabel ? clean(input.sourceLabel, 255) : null,
       formId: input.formId ?? null,
+      topic: input.topic?.key ?? null,
       inApp,
       urgent,
       emailStatus,
@@ -305,8 +403,8 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
       emailDetail: emailDetailFor(input.email, p.email),
     });
   }
-  // SQL Server takes at most 2,100 parameters a statement: ~14 columns, so 140 rows a go.
-  for (let i = 0; i < rows.length; i += 140) await prisma.notification.createMany({ data: rows.slice(i, i + 140) });
+  // SQL Server takes at most 2,100 parameters a statement: ~15 columns, so 130 rows a go.
+  for (let i = 0; i < rows.length; i += 130) await prisma.notification.createMany({ data: rows.slice(i, i + 130) });
   if (emailed) kick();
   return { sent: rows.length, recipients: people.length, emailed, muted, ...(unknown.length ? { unknown } : {}) };
 }
@@ -359,128 +457,9 @@ export function notifyQuietly(input: NotifyInput) {
   void notify(input).catch((err) => console.error(`[notifications] ${input.type} “${input.title}” failed:`, err));
 }
 
-// ── Preferences ──────────────────────────────────────────────────────────
-
-/** The kinds a form can send, and what they're called on a form's own settings. */
-export const FORM_KINDS = { "forms.message": "Messages", "forms.entry": "New entries", "forms.problem": "Problems with your entries" } as const;
-type FormKind = keyof typeof FORM_KINDS;
-const FORM_PREF_RE = /^form:[\w-]{1,64}:(forms\.message|forms\.entry|forms\.problem)$/;
-
-export interface PrefsView {
-  emailMode: EmailMode;
-  mailConfigured: boolean;
-  digestHour: number;
-  types: { key: NotificationTypeKey; label: string; description: string; inApp: boolean; email: boolean; defaults: Choice }[];
-  /**
-   * Forms this person can open, or that have notified them, each with the kinds
-   * it sends. A kind follows the person's choice for it (custom: false) until
-   * they set it for this form.
-   */
-  forms: {
-    id: string;
-    title: string;
-    kind: string;
-    category: string | null;
-    /** Notifications it has sent them that are still kept. */
-    sent: number;
-    kinds: { key: FormKind; label: string; inApp: boolean; email: boolean; custom: boolean }[];
-  }[];
-}
-
-export async function prefsFor(
-  person: { userId: string; roleKey: string; permissions: PermissionKey[]; groupIds: string[]; title?: string | null }
-): Promise<PrefsView> {
-  const { userId, permissions } = person;
-  const [user, rows, sentBy, forms] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { notifyEmailMode: true } }),
-    prisma.notificationPref.findMany({ where: { userId } }),
-    prisma.notification.groupBy({ by: ["formId", "type"], where: { userId, formId: { not: null } }, _count: { _all: true } }),
-    prisma.builtForm.findMany({ where: { status: { not: "archived" }, liveSchema: { not: null } }, select: { id: true, title: true, kind: true, catalogLinkId: true } }),
-  ]);
-  const by = new Map(rows.map((r) => [r.key, r]));
-  const cards = await prisma.formLink.findMany({
-    where: { id: { in: forms.map((f) => f.catalogLinkId).filter((x): x is string => Boolean(x)) } },
-    select: { id: true, active: true, roles: true, category: { select: { name: true } } },
-  });
-  const cardBy = new Map(cards.map((c) => [c.id, c]));
-  const seesEverything = permissions.includes("forms.manage");
-
-  const allTypes = (Object.entries(NOTIFICATION_TYPES) as [NotificationTypeKey, NotificationType][]).map(([key, t]) => {
-    const r = by.get(key);
-    return { key, shownTo: t.shownTo, label: t.label, description: t.description, inApp: r?.inApp ?? t.inApp, email: r?.email ?? t.email, defaults: { inApp: t.inApp, email: t.email } };
-  });
-  const typeChoice = new Map(allTypes.map((t) => [t.key, { inApp: t.inApp, email: t.email }]));
-
-  const out: PrefsView["forms"] = [];
-  for (const f of forms) {
-    const card = f.catalogLinkId ? cardBy.get(f.catalogLinkId) : undefined;
-    const sentKinds = sentBy.filter((x) => x.formId === f.id);
-    const sent = sentKinds.reduce((n, x) => n + x._count._all, 0);
-    const customised = rows.some((r) => r.key.startsWith(`form:${f.id}:`));
-    // The forms on their own Forms screen, plus any that have reached them or that they've set.
-    const onTheirScreen = Boolean(card?.active && (!card.roles || card.roles.split(",").includes(person.roleKey)) && canUseBuiltForm(person, f.id));
-    if (!seesEverything && !onTheirScreen && !sent && !customised) continue;
-    // A basic form sends new entries; a code form, messages and new entries.
-    // Anything else it has actually sent them, or they've set, is listed too.
-    const natural: FormKind[] = f.kind === "code" ? ["forms.message", "forms.entry"] : ["forms.entry"];
-    const kinds = (Object.keys(FORM_KINDS) as FormKind[]).filter(
-      (k) => natural.includes(k) || sentKinds.some((x) => x.type === k) || by.has(formPrefKey(f.id, k))
-    );
-    out.push({
-      id: f.id,
-      title: f.title,
-      kind: f.kind,
-      category: card?.category.name ?? null,
-      sent,
-      kinds: kinds.map((k) => {
-        const r = by.get(formPrefKey(f.id, k));
-        const base = typeChoice.get(k)!;
-        return { key: k, label: FORM_KINDS[k], inApp: r?.inApp ?? base.inApp, email: r?.email ?? base.email, custom: Boolean(r) };
-      }),
-    });
-  }
-  // The ones that have notified them first, then by name.
-  out.sort((a, b) => Number(b.sent > 0) - Number(a.sent > 0) || a.title.localeCompare(b.title));
-
-  return {
-    emailMode: (EMAIL_MODES as readonly string[]).includes(user.notifyEmailMode) ? (user.notifyEmailMode as EmailMode) : "instant",
-    mailConfigured: mailConfigured(),
-    digestHour: DIGEST_HOUR,
-    types: allTypes.filter((t) => !t.shownTo || t.shownTo(permissions)).map(({ shownTo: _s, ...t }) => t),
-    forms: out,
-  };
-}
-
-/**
- * Change preferences. `prefs` sets a kind ("forms.entry") or one kind from one
- * form ("form:<id>:forms.entry"); `reset` takes keys back to following the kind
- * (a form's) or the kind's default (a kind's).
- */
-export async function savePrefs(userId: string, change: { emailMode?: EmailMode; prefs?: { key: string; inApp: boolean; email: boolean }[]; reset?: string[] }) {
-  for (const key of [...(change.prefs ?? []).map((p) => p.key), ...(change.reset ?? [])]) {
-    if (!isNotificationType(key) && !FORM_PREF_RE.test(key)) throw new Error(`Unknown notification setting "${key}".`);
-  }
-  await prisma.$transaction(async (tx) => {
-    if (change.emailMode) {
-      const before = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { notifyEmailMode: true } });
-      await tx.user.update({ where: { id: userId }, data: { notifyEmailMode: change.emailMode } });
-      // Leaving the daily summary: what was waiting for it isn't emailed after all,
-      // and going to it, what's waiting to go now waits for the morning.
-      if (before.notifyEmailMode === "daily" && change.emailMode !== "daily") {
-        await tx.notification.updateMany({ where: { userId, emailStatus: "digest" }, data: { emailStatus: "skipped", emailError: "They stopped the daily summary." } });
-      }
-      if (change.emailMode === "daily") await tx.notification.updateMany({ where: { userId, emailStatus: "pending" }, data: { emailStatus: "digest" } });
-      if (change.emailMode === "off") await tx.notification.updateMany({ where: { userId, emailStatus: "pending" }, data: { emailStatus: "skipped", emailError: "They turned email off." } });
-    }
-    if (change.reset?.length) await tx.notificationPref.deleteMany({ where: { userId, key: { in: change.reset } } });
-    for (const p of change.prefs ?? []) {
-      await tx.notificationPref.upsert({
-        where: { userId_key: { userId, key: p.key } },
-        create: { userId, key: p.key, inApp: p.inApp, email: p.email },
-        update: { inApp: p.inApp, email: p.email },
-      });
-    }
-  });
+/** A NotificationPref row as a Pref. */
+export function readPref(r: { inApp: boolean; email: boolean; emailWhen: string | null }): Pref {
+  return { inApp: r.inApp, email: r.email, emailWhen: (EMAIL_WHEN as readonly string[]).includes(r.emailWhen ?? "") ? (r.emailWhen as EmailWhen) : null };
 }
 
 // ── The inbox ────────────────────────────────────────────────────────────
@@ -495,6 +474,8 @@ export function shapeNotification(n: Notification) {
     source: n.source,
     sourceLabel: n.sourceLabel,
     urgent: n.urgent,
+    /** The notification type it was sent as (its settings), or its kind. */
+    topic: n.topic ?? n.type,
     read: Boolean(n.readAt),
     createdAt: n.createdAt.toISOString(),
   };
@@ -535,15 +516,26 @@ async function sendOne(n: Notification & { user: { email: string; status: string
   }
 }
 
-/** The morning summary for everyone on "daily" whose summary is due. */
+/** Most notifications listed in one summary; the rest are counted. */
+const DIGEST_LIST = 25;
+
+/**
+ * The daily summary, for everyone with notifications waiting for it, at the
+ * hour each chose (User.notifyDigestHour, else DIGEST_HOUR). It lists what
+ * they haven't read: each one's form and title (titles never carry answers or
+ * resident details, so they may go in an email), with a link to the list.
+ */
 async function sendDigests() {
   const now = new Date();
-  if (partsOf(now.toISOString()).hour < DIGEST_HOUR) return;
-  const dueAfter = new Date(startOfDay(today()).getTime() + DIGEST_HOUR * 3_600_000);
+  const hour = partsOf(now.toISOString()).hour;
+  const midnight = startOfDay(today()).getTime();
   const waiting = await prisma.notification.groupBy({ by: ["userId"], where: { emailStatus: "digest", createdAt: { lt: now } } });
   for (const { userId } of waiting) {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, status: true, notifyDigestAt: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, status: true, notifyDigestAt: true, notifyDigestHour: true } });
     if (!user) continue;
+    const at = user.notifyDigestHour ?? DIGEST_HOUR;
+    if (hour < at) continue;
+    const dueAfter = new Date(midnight + at * 3_600_000);
     if (user.notifyDigestAt && user.notifyDigestAt >= dueAfter) continue;
     // Claim the day's summary for this person; a second server finds it taken.
     const claimed = await prisma.user.updateMany({
@@ -551,7 +543,11 @@ async function sendDigests() {
       data: { notifyDigestAt: now },
     });
     if (!claimed.count) continue;
-    const rows = await prisma.notification.findMany({ where: { userId, emailStatus: "digest", createdAt: { lt: now } }, select: { id: true, readAt: true } });
+    const rows = await prisma.notification.findMany({
+      where: { userId, emailStatus: "digest", createdAt: { lt: now } },
+      select: { id: true, readAt: true, title: true, sourceLabel: true, urgent: true },
+      orderBy: { createdAt: "desc" },
+    });
     const unread = rows.filter((r) => !r.readAt);
     const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
     // Already read in the app: nothing to tell them.
@@ -568,14 +564,23 @@ async function sendDigests() {
       const t = await templateByKey("daily-summary").catch(() => null);
       const tags = { count: String(n), notifications: `${n} new notification${s}`, unread: `${n} notification${s}` };
       const w = t ? messageWording(t, tags, `${n} new notification${s} in Lantern Forms`) : null;
+      const shown = [...unread].sort((a, b) => Number(b.urgent) - Number(a.urgent)).slice(0, DIGEST_LIST);
       await sendLogged({
         to: [user.email],
         subject: w?.subject ?? `${n} new notification${s} in Lantern Forms`,
-        html: linkOnlyHtml(w?.heading ?? `You have ${n} notification${s} you haven't read yet.`, `${appBaseUrl}/notifications`, {
+        html: brandedEmail({
           kicker: "Your daily summary",
+          heading: w?.heading ?? `You have ${n} notification${s} you haven't read yet.`,
           intro: w?.intro,
           whatToDo: w?.whatToDo,
-          buttonLabel: w?.buttonLabel,
+          table: {
+            columns: ["From", "Notification"],
+            rows: shown.map((r) => [r.sourceLabel ?? "Lantern Forms", r.urgent ? `Urgent: ${r.title}` : r.title]),
+            more: n - shown.length,
+          },
+          button: { label: w?.buttonLabel || "Open them in Lantern Forms", url: `${appBaseUrl}/notifications` },
+          note: "The details aren't in this email. Sign in to see them. Change what comes in this summary on your Profile.",
+          urgent: shown.some((r) => r.urgent),
         }),
         kind: "digest",
       });

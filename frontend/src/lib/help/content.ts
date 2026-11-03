@@ -90,7 +90,7 @@ export const ARTICLES: HelpArticle[] = [
       { label: "Notifications", to: "/notifications" },
       { label: "Choose what you're told", to: "/profile#notifications" },
     ],
-    words: "bell alerts email urgent daily summary digest",
+    words: "bell alerts email urgent daily summary digest required as it arrives",
     sections: [
       {
         heading: "The bell",
@@ -103,8 +103,9 @@ export const ARTICLES: HelpArticle[] = [
       {
         heading: "Choosing what reaches you",
         points: [
-          "Profile → Notifications: for each kind, in the app and/or by email, and email as it happens, once each morning, or never.",
-          "You can also choose form by form, or turn a form off.",
+          "Profile → Notifications lists everything that could be sent to you: the site's own, and each form's, one by one.",
+          "For each: in the app or not, and email as it arrives, in your daily summary, or not at all. Pick the hour your summary comes.",
+          "Some are Required (always in the app; you choose the email) or set by an Admin for everyone. You can turn a whole form off.",
           "“Send me a test” checks it reaches you.",
         ],
       },
@@ -386,10 +387,11 @@ export const ARTICLES: HelpArticle[] = [
     needs: ["forms.manage"],
     where: [
       { label: "Notifications", to: "/admin/notifications", needs: ["forms.manage"] },
+      { label: "Types", to: "/admin/notifications/types", needs: ["forms.manage"] },
       { label: "Templates", to: "/admin/notifications/templates", needs: ["forms.manage"] },
       { label: "Sent emails", to: "/admin/notifications/sent", needs: ["forms.manage"] },
     ],
-    words: "routing routes notify email template system emails look sent follow-up weekly report",
+    words: "routing routes notify email template system emails look sent follow-up weekly report types required locked optional daily summary",
     sections: [
       {
         heading: "Who a form tells",
@@ -397,6 +399,14 @@ export const ARTICLES: HelpArticle[] = [
           "Each form's routes say who's told about what: named people, a role, a group, a position, whoever filed it, or whoever shared the link. Optionally only at some sites or when answers match.",
           "It's in Admin → Notifications → Forms, and on the form's own Notifications tab: the same thing.",
           "A route can be urgent, and chooses which answers go in the email (Lantern addresses only).",
+        ],
+      },
+      {
+        heading: "What people can change",
+        points: [
+          "Each route is a notification of its own on the Profile of everyone it could reach, under the name you give it.",
+          "Required: always in the app; each person chooses whether it's emailed as it arrives, in their daily summary, or not at all. Optional: they choose everything. Locked: nobody can change it.",
+          "Set what people get before they choose (as their default, the daily summary, or no email) on the route. The site's own notifications are set in Admin → Notifications → Types, which also lists every form's.",
         ],
       },
       {

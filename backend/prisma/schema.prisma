@@ -729,6 +729,8 @@ model User {
   notifyEmailMode           String                 @default("instant") @db.NVarChar(255)
   /// When their last daily summary went out.
   notifyDigestAt            DateTime?
+  /// The New York hour (0-23) their daily summary goes out at. Null: the site's (services/notifications.ts DIGEST_HOUR).
+  notifyDigestHour          Int?
 
   /// Sites this person may act on. Empty = all sites (admins always all).
   sites             UserSite[]
@@ -1146,11 +1148,16 @@ model Notification {
   /// The email's own parts (services/emailTemplate.ts): what to do, and the
   /// chosen answers, JSON. Answers only for a Lantern address; never shown in the app.
   emailDetail String?   @db.NVarChar(Max)
+  /// The notification type it was sent as, for the person's settings: a site
+  /// type ("account"), a form's route ("route:<formId>:<routeId>") or a
+  /// follow-up ("followup:<formId>:reminder"). Null for older ones: `type` applies.
+  topic       String?   @db.NVarChar(255)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([userId, inApp, readAt])
   @@index([userId, createdAt])
+  @@index([userId, topic])
   @@index([emailStatus, createdAt])
   @@index([createdAt])
 }
@@ -1165,6 +1172,8 @@ model NotificationPref {
   key       String   @db.NVarChar(255)
   inApp     Boolean  @default(true)
   email     Boolean  @default(false)
+  /// When it's emailed: "instant" or "daily" (in the summary). Null: their own default (User.notifyEmailMode).
+  emailWhen String?  @db.NVarChar(16)
   updatedAt DateTime @updatedAt
 
   @@id([userId, key])

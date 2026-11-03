@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronDown } from "lucide-react";
+import { Bell, ChevronDown, Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -12,33 +12,44 @@ import { Tag } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { notificationKeys, useNotificationPrefs, type EmailMode, type NotificationPrefs } from "@/lib/notifications";
+import {
+  notificationKeys, useNotificationPrefs,
+  type EmailMode, type EmailWhen, type NotificationPrefs, type NotificationTypeRow, type TypePref,
+} from "@/lib/notifications";
 import { cn, errorMessage } from "@/lib/utils";
 
 const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
-const formKey = (formId: string, kind: string) => `form:${formId}:${kind}`;
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
-type Choice = { inApp: boolean; email: boolean };
 type FormPrefs = NotificationPrefs["forms"][number];
-type Change = { emailMode?: EmailMode; prefs?: ({ key: string } & Choice)[]; reset?: string[] };
+type Change = { emailMode?: EmailMode; digestHour?: number | null; prefs?: ({ key: string } & TypePref)[]; reset?: string[] };
+type EmailValue = "default" | EmailWhen | "off";
 
-/** Every kind a form hasn't been given its own setting for takes the person's choice for that kind. */
-function follow(p: NotificationPrefs): NotificationPrefs {
-  const byType = new Map(p.types.map((t) => [t.key, t]));
-  return {
-    ...p,
-    forms: p.forms.map((f) => ({
-      ...f,
-      kinds: f.kinds.map((k) => (k.custom || !byType.has(k.key) ? k : { ...k, inApp: byType.get(k.key)!.inApp, email: byType.get(k.key)!.email })),
-    })),
-  };
+const whenWords = (w: EmailWhen | null) => (w === "instant" ? "As it arrives" : w === "daily" ? "Daily summary" : "Not emailed");
+const same = (a: TypePref, b: TypePref) => a.inApp === b.inApp && a.email === b.email && (a.emailWhen ?? null) === (b.emailWhen ?? null);
+
+/** The email choice a row shows: theirs if they've made one, else "default". */
+function emailValue(r: NotificationTypeRow): EmailValue {
+  if (!r.own) return "default";
+  if (!r.own.email) return "off";
+  return r.own.emailWhen ?? (r.base.email ? "default" : r.email ?? "off");
+}
+
+/** A row as it would look with this choice, until the server says. */
+function applied(r: NotificationTypeRow, next: TypePref | null, mode: EmailMode): NotificationTypeRow {
+  if (!next) return { ...r, own: null, custom: false, inApp: r.defaults.inApp, email: r.defaults.email };
+  const inApp = next.inApp || r.choice === "required";
+  const email = !next.email ? null : next.emailWhen ?? (r.defaults.email ?? (mode === "off" ? null : mode));
+  return { ...r, own: next, custom: true, inApp, email };
 }
 
 /**
- * Profile → Notifications: how email reaches this person; per kind, whether it
- * shows in the app and is emailed; and the same per form, where each form
- * follows the kinds until they set it. Every change saves at once.
- * Backend: services/notifications.ts.
+ * Profile → Notifications. Every notification type that could reach this
+ * person: the site's own, and each form's (its routes, follow-ups and own
+ * messages). For each: in the app or not, and email as it arrives, in the
+ * daily summary, or not at all. Some an Admin has made required (always in the
+ * app) or set for everyone. Every change saves at once.
+ * Backend: services/notificationTypes.ts.
  */
 export function NotificationSettings({ delay }: { delay?: string }) {
   const { data, isLoading, isError } = useNotificationPrefs();
@@ -69,45 +80,51 @@ export function NotificationSettings({ delay }: { delay?: string }) {
     }
   }
 
-  const setType = (key: string, next: Choice) =>
-    save({ prefs: [{ key, ...next }] }, (p) => follow({ ...p, types: p.types.map((t) => (t.key === key ? { ...t, ...next } : t)) }));
-  const setFormKind = (formId: string, kind: string, next: Choice) =>
-    save({ prefs: [{ key: formKey(formId, kind), ...next }] }, (p) => ({
-      ...p,
-      forms: p.forms.map((f) => (f.id === formId ? { ...f, kinds: f.kinds.map((k) => (k.key === kind ? { ...k, ...next, custom: true } : k)) } : f)),
-    }));
-  const formAllOff = (f: FormPrefs) =>
-    save({ prefs: f.kinds.map((k) => ({ key: formKey(f.id, k.key), inApp: false, email: false })) }, (p) => ({
-      ...p,
-      forms: p.forms.map((x) => (x.id === f.id ? { ...x, kinds: x.kinds.map((k) => ({ ...k, inApp: false, email: false, custom: true })) } : x)),
-    }));
-  const formFollow = (f: FormPrefs) =>
-    save({ reset: f.kinds.filter((k) => k.custom).map((k) => formKey(f.id, k.key)) }, (p) =>
-      follow({ ...p, forms: p.forms.map((x) => (x.id === f.id ? { ...x, kinds: x.kinds.map((k) => ({ ...k, custom: false })) } : x)) })
+  /** Set (or, null, clear) several types at once. */
+  const setRows = (changes: { row: NotificationTypeRow; next: TypePref | null }[]) => {
+    const prefs = changes.filter((c) => c.next).map((c) => ({ key: c.row.key, ...c.next! }));
+    const reset = changes.filter((c) => !c.next).map((c) => c.row.key);
+    const by = new Map(changes.map((c) => [c.row.key, c.next]));
+    const patch = (p: NotificationPrefs) => {
+      const fix = (r: NotificationTypeRow) => (by.has(r.key) ? applied(r, by.get(r.key)!, p.emailMode) : r);
+      return { ...p, types: p.types.map(fix), forms: p.forms.map((f) => ({ ...f, rows: f.rows.map(fix) })) };
+    };
+    return save({ ...(prefs.length ? { prefs } : {}), ...(reset.length ? { reset } : {}) }, patch);
+  };
+  /** A choice for one type; back to following its default when it matches. */
+  const choose = (row: NotificationTypeRow, next: TypePref) => setRows([{ row, next: same(next, row.base) ? null : next }]);
+
+  const setApp = (row: NotificationTypeRow, inApp: boolean) => choose(row, { ...(row.own ?? row.base), inApp });
+  const setEmail = (row: NotificationTypeRow, v: EmailValue) => {
+    const now = row.own ?? row.base;
+    choose(
+      row,
+      v === "default"
+        ? { ...now, email: row.base.email, emailWhen: row.base.emailWhen }
+        : v === "off"
+          ? { ...now, email: false, emailWhen: null }
+          : { ...now, email: true, emailWhen: v }
     );
+  };
+  const formOff = (f: FormPrefs) =>
+    setRows(f.rows.filter((r) => r.choice !== "locked").map((row) => ({ row, next: { inApp: row.choice === "required", email: false, emailWhen: null } })));
+  const formDefaults = (f: FormPrefs) => setRows(f.rows.filter((r) => r.custom).map((row) => ({ row, next: null })));
   const setMode = (emailMode: EmailMode) => save({ emailMode }, (p) => ({ ...p, emailMode }));
+  const setHour = (h: number) => save({ digestHour: h === data?.siteDigestHour ? null : h }, (p) => ({ ...p, digestHour: h }));
   const restore = () =>
-    data &&
-    save(
-      { reset: [...data.types.map((t) => t.key), ...data.forms.flatMap((f) => f.kinds.filter((k) => k.custom).map((k) => formKey(f.id, k.key)))] },
-      (p) =>
-        follow({
-          ...p,
-          types: p.types.map((t) => ({ ...t, ...t.defaults })),
-          forms: p.forms.map((f) => ({ ...f, kinds: f.kinds.map((k) => ({ ...k, custom: false })) })),
-        })
-    );
+    data && setRows([...data.types, ...data.forms.flatMap((f) => f.rows)].filter((r) => r.custom).map((row) => ({ row, next: null })));
 
   async function sendTest() {
     setTesting(true);
     try {
       const r = await api.post<{ sent: number; emailed: number }>("/notifications/test", {});
       await qc.invalidateQueries({ queryKey: notificationKeys.all });
+      const account = data?.types.find((t) => t.key === "account");
       toast(
         !r.sent
           ? "Nothing was sent: you've turned off both the app and email for “Your account”."
           : r.emailed
-            ? data?.emailMode === "daily" ? "Sent. It's under the bell now, and in tomorrow morning's email." : "Sent. It's under the bell now, and an email is on its way."
+            ? account?.email === "daily" ? "Sent. It's under the bell now, and in your next daily summary." : "Sent. It's under the bell now, and an email is on its way."
             : "Sent. It's under the bell now."
       );
     } catch (error) {
@@ -117,9 +134,9 @@ export function NotificationSettings({ delay }: { delay?: string }) {
     }
   }
 
-  const emailOff = data?.emailMode === "off";
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const forms = (data?.forms ?? []).filter((f) => words.every((w) => `${f.title} ${f.category ?? ""}`.toLowerCase().includes(w)));
+  const forms = (data?.forms ?? []).filter((f) => words.every((w) => `${f.title} ${f.category ?? ""} ${f.rows.map((r) => r.label).join(" ")}`.toLowerCase().includes(w)));
+  const usesSummary = Boolean(data && (data.emailMode === "daily" || [...data.types, ...data.forms.flatMap((f) => f.rows)].some((r) => r.email === "daily")));
 
   return (
     <div id="notifications" ref={ref} className="scroll-mt-4">
@@ -130,7 +147,9 @@ export function NotificationSettings({ delay }: { delay?: string }) {
             {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Save failed" : "Changes save automatically"}
           </p>
         </div>
-        <p className="text-[13px] text-muted">What shows under the bell, and what's emailed to you as well.</p>
+        <p className="text-[13px] text-muted">
+          Everything that could be sent to you, and how you get each one: under the bell, by email as it arrives, or in one summary a day.
+        </p>
 
         {isLoading ? (
           <div className="flex justify-center py-8"><Spinner /></div>
@@ -138,61 +157,65 @@ export function NotificationSettings({ delay }: { delay?: string }) {
           <p className="mt-4 text-[13px] text-status-redText">Your notification settings didn't load. Check your connection and try again.</p>
         ) : (
           <>
-            <Field label="Email" className="mt-4">
-              <Select
-                value={data.emailMode}
-                onChange={(e) => void setMode(e.target.value as EmailMode)}
-                options={[
-                  { value: "instant", label: "As each one arrives" },
-                  { value: "daily", label: `One summary each morning (${hourLabel(data.digestHour)})` },
-                  { value: "off", label: "Never email me" },
-                ]}
-              />
-            </Field>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Field label="Email me">
+                <Select
+                  value={data.emailMode}
+                  onChange={(e) => void setMode(e.target.value as EmailMode)}
+                  options={[
+                    { value: "instant", label: "As each one arrives" },
+                    { value: "daily", label: "In one daily summary" },
+                    { value: "off", label: "Never" },
+                  ]}
+                />
+              </Field>
+              <Field label="Daily summary at">
+                <Select
+                  value={String(data.digestHour)}
+                  onChange={(e) => void setHour(Number(e.target.value))}
+                  options={HOURS.map((h) => ({ value: String(h), label: `${hourLabel(h)}${h === data.siteDigestHour ? " (usual)" : ""}` }))}
+                />
+              </Field>
+            </div>
             <p className="mt-1.5 text-micro text-muted">
-              {data.emailMode === "daily"
-                ? "One email a morning listing how many you haven't read yet. Nothing is sent on a day with none."
-                : "Emails are a title and a link back here. The details stay in Lantern Forms, behind sign-in."}
+              {data.emailMode === "off"
+                ? "Nothing is emailed unless you choose email for a notification below."
+                : `That's your default. Change any notification below to come as it arrives or in the summary instead.${usesSummary ? ` The summary lists what you haven't read yet, at ${hourLabel(data.digestHour)} New York time; none is sent on a day with nothing new.` : ""}`}{" "}
+              Emails are a title and a link; the details stay in Lantern Forms, behind sign-in.
             </p>
-            {!data.mailConfigured && !emailOff && (
+            {!data.mailConfigured && data.emailMode !== "off" && (
               <p className="mt-2 rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
                 Email isn't set up on this server yet, so for now notifications show in the app only.
               </p>
             )}
 
-            <div className="mt-4 border-t border-hairline pt-1" role="table" aria-label="Notification types">
-              <ColumnHeads first="Kind" />
-              {data.types.map((t) => (
-                <PrefRow
-                  key={t.key}
-                  label={t.label}
-                  hint={t.description}
-                  inApp={t.inApp}
-                  email={t.email}
-                  emailOff={emailOff}
-                  onChange={(next) => void setType(t.key, next)}
-                />
-              ))}
+            <div className="mt-4 border-t border-hairline pt-3">
+              <p className="text-[13.5px] font-semibold text-ink">From the site</p>
+              <ul className="mt-1" aria-label="Notifications from the site">
+                {data.types.map((t) => (
+                  <TypeRow key={t.key} row={t} onApp={(v) => void setApp(t, v)} onEmail={(v) => void setEmail(t, v)} />
+                ))}
+              </ul>
             </div>
 
             {data.forms.length > 0 && (
               <div className="mt-4 border-t border-hairline pt-4">
-                <p className="text-[13.5px] font-semibold text-ink">Form by form</p>
+                <p className="text-[13.5px] font-semibold text-ink">From forms</p>
                 <p className="mt-0.5 text-micro text-muted">
-                  Each form follows your choices above until you change it here. Set one to tell you everything by email, or turn one off altogether.
+                  Each notification a form could send you, as its Admin set it up. Change any one, or turn a whole form off.
                 </p>
                 {data.forms.length > 6 && (
-                  <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form" aria-label="Find a form" className="mt-3" />
+                  <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form or notification" aria-label="Find a form or notification" className="mt-3" />
                 )}
                 <ul className="mt-3 space-y-2">
                   {forms.map((f) => (
                     <FormRow
                       key={f.id}
                       form={f}
-                      emailOff={emailOff}
-                      onKind={(kind, next) => void setFormKind(f.id, kind, next)}
-                      onAllOff={() => void formAllOff(f)}
-                      onFollow={() => void formFollow(f)}
+                      onApp={(r, v) => void setApp(r, v)}
+                      onEmail={(r, v) => void setEmail(r, v)}
+                      onAllOff={() => void formOff(f)}
+                      onDefaults={() => void formDefaults(f)}
                     />
                   ))}
                   {forms.length === 0 && <li className="py-2 text-[13px] text-muted">No forms match. Try a shorter word.</li>}
@@ -213,64 +236,46 @@ export function NotificationSettings({ delay }: { delay?: string }) {
   );
 }
 
-function ColumnHeads({ first }: { first: string }) {
-  return (
-    <div role="row" className="grid grid-cols-[1fr_56px_56px] items-end gap-2 py-2 text-micro font-bold uppercase tracking-[0.04em] text-muted">
-      <span role="columnheader">{first}</span>
-      <span role="columnheader" className="text-center">In app</span>
-      <span role="columnheader" className="text-center">Email</span>
-    </div>
-  );
-}
-
-/** One form, folded to its name and where it stands; open, its kinds with their own switches. */
-function FormRow({ form, emailOff, onKind, onAllOff, onFollow }: {
+/** One form, folded to its name and where it stands; open, each of its notifications. */
+function FormRow({ form, onApp, onEmail, onAllOff, onDefaults }: {
   form: FormPrefs;
-  emailOff: boolean;
-  onKind: (kind: string, next: Choice) => void;
+  onApp: (r: NotificationTypeRow, v: boolean) => void;
+  onEmail: (r: NotificationTypeRow, v: EmailValue) => void;
   onAllOff: () => void;
-  onFollow: () => void;
+  onDefaults: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const custom = form.kinds.some((k) => k.custom);
-  const off = form.kinds.every((k) => !k.inApp && (!k.email || emailOff));
-  const emailed = !emailOff && form.kinds.some((k) => k.email);
-  const state = off ? "Off" : !custom ? "Your defaults" : emailed ? "Custom · emails you" : "Custom · in the app only";
-  const meta = [form.category, form.sent ? `${form.sent} sent to you` : null].filter(Boolean).join(" · ");
+  const custom = form.rows.some((r) => r.custom);
+  const changeable = form.rows.filter((r) => r.choice !== "locked");
+  const off = form.rows.every((r) => !r.inApp && !r.email);
+  const allOffAlready = changeable.every((r) => !r.email && (r.choice === "required" || !r.inApp));
+  const emailed = form.rows.filter((r) => r.email).length;
+  const state = off ? "Off" : !custom ? "As set up" : emailed ? "Your choices · emails you" : "Your choices · in the app";
+  const n = form.rows.length;
+  const meta = [form.category, `${n} notification${n === 1 ? "" : "s"}`, form.sent ? `${form.sent} sent to you` : null].filter(Boolean).join(" · ");
 
   return (
     <li className={cn("overflow-hidden rounded-card border transition-colors", open ? "border-strongline" : "border-hairline")}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-rowhover"
-      >
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-rowhover">
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13.5px] font-semibold text-ink">{form.title}</span>
-          {meta && <span className="block truncate text-micro text-muted">{meta}</span>}
+          <span className="block truncate text-micro text-muted">{meta}</span>
         </span>
         <Tag tone={off ? "red" : custom ? "accent" : "neutral"} className="shrink-0">{state}</Tag>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <div className="border-t border-hairline px-3 pb-2" role="table" aria-label={`${form.title} notifications`}>
-          <ColumnHeads first="From this form" />
-          {form.kinds.map((k) => (
-            <PrefRow
-              key={k.key}
-              label={k.label}
-              ariaLabel={`${form.title}, ${k.label}`}
-              hint={k.custom ? undefined : "Same as your choice above"}
-              inApp={k.inApp}
-              email={k.email}
-              emailOff={emailOff}
-              onChange={(next) => onKind(k.key, next)}
-            />
-          ))}
+        <div className="border-t border-hairline px-3 pb-2">
+          <ul aria-label={`${form.title} notifications`}>
+            {form.rows.map((r) => (
+              <TypeRow key={r.key} row={r} context={form.title} onApp={(v) => onApp(r, v)} onEmail={(v) => onEmail(r, v)} />
+            ))}
+          </ul>
           <div className="flex flex-wrap justify-end gap-1 border-t border-hairline pt-2">
-            {custom && <Button variant="ghost" size="sm" onClick={onFollow}>Use my choices above</Button>}
-            {!off && <Button variant="ghost" size="sm" className="text-status-redText" onClick={onAllOff}>Turn this form off</Button>}
+            {custom && <Button variant="ghost" size="sm" onClick={onDefaults}>Back to how it's set up</Button>}
+            {changeable.length > 0 && !allOffAlready && (
+              <Button variant="ghost" size="sm" className="text-status-redText" onClick={onAllOff}>Turn this form off</Button>
+            )}
           </div>
         </div>
       )}
@@ -278,29 +283,65 @@ function FormRow({ form, emailOff, onKind, onAllOff, onFollow }: {
   );
 }
 
-function PrefRow({ label, ariaLabel, hint, inApp, email, emailOff, onChange }: {
-  label: string;
-  /** Spoken name, when the label alone is ambiguous (a form's "Messages"). */
-  ariaLabel?: string;
-  hint?: string;
-  inApp: boolean;
-  email: boolean;
-  emailOff: boolean;
-  onChange: (next: Choice) => void;
+/** One notification type: what it is, in the app or not, and how it's emailed. */
+function TypeRow({ row, context, onApp, onEmail }: {
+  row: NotificationTypeRow;
+  /** The form, for screen readers: a route's label alone may be ambiguous. */
+  context?: string;
+  onApp: (v: boolean) => void;
+  onEmail: (v: EmailValue) => void;
 }) {
-  const name = ariaLabel ?? label;
+  const name = context ? `${context}, ${row.label}` : row.label;
+  const locked = row.choice === "locked";
+  const required = row.choice === "required";
   return (
-    <div role="row" className="grid grid-cols-[1fr_56px_56px] items-center gap-2 border-t border-hairline py-2.5 first:border-t-0">
-      <span role="cell" className="min-w-0">
-        <span className="block text-[13.5px] font-semibold text-ink">{label}</span>
-        {hint && <span className="mt-0.5 block text-micro text-muted">{hint}</span>}
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-hairline py-3 first:border-t-0">
+      <span className="min-w-[200px] flex-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[13.5px] font-semibold text-ink">{row.label}</span>
+          {row.urgent && <Tag tone="red">Urgent</Tag>}
+          {locked && <Tag tone="neutral"><Lock className="mr-1 inline h-3 w-3" />Set by an Admin</Tag>}
+          {row.custom && !locked && <Tag tone="accent">Changed</Tag>}
+        </span>
+        {row.description && <span className="mt-0.5 block text-micro text-muted">{row.description}</span>}
+        {locked && (
+          <span className="mt-0.5 block text-micro text-muted">
+            Everyone it's for gets it {row.inApp ? "in the app" : ""}{row.inApp && row.email ? " and " : ""}{row.email ? `by email ${row.email === "daily" ? "in the daily summary" : "as it arrives"}` : ""}.
+          </span>
+        )}
+        {required && <span className="mt-0.5 block text-micro text-muted">Always shown in the app. You choose the email.</span>}
       </span>
-      <span role="cell" className="flex justify-center">
-        <Switch checked={inApp} onCheckedChange={(v) => onChange({ inApp: v, email })} aria-label={`${name}: in the app`} />
+      <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+        <label className="flex items-center gap-2 text-[12.5px] text-muted" title={required ? "This one is always in the app" : undefined}>
+          <Switch
+            checked={row.inApp}
+            disabled={locked || required}
+            onCheckedChange={onApp}
+            aria-label={`${name}: in the app`}
+            className="disabled:cursor-not-allowed disabled:opacity-45"
+          />
+          In app
+        </label>
+        <span className="min-w-0 flex-1 sm:w-[210px] sm:flex-none">
+        <Select
+          value={locked ? (row.email ?? "off") : emailValue(row)}
+          disabled={locked}
+          onChange={(e) => onEmail(e.target.value as EmailValue)}
+          aria-label={`${name}: email`}
+          className="w-full"
+          options={
+            locked
+              ? [{ value: row.email ?? "off", label: whenWords(row.email) }]
+              : [
+                  { value: "default", label: `Default · ${whenWords(row.defaults.email)}` },
+                  { value: "instant", label: "As it arrives" },
+                  { value: "daily", label: "Daily summary" },
+                  { value: "off", label: "Don't email" },
+                ]
+          }
+        />
+        </span>
       </span>
-      <span role="cell" className="flex justify-center" title={emailOff ? "Email is off for everything (above)" : undefined}>
-        <Switch checked={email && !emailOff} disabled={emailOff} onCheckedChange={(v) => onChange({ inApp, email: v })} aria-label={`${name}: by email`} className="disabled:cursor-not-allowed disabled:opacity-45" />
-      </span>
-    </div>
+    </li>
   );
 }

@@ -5,7 +5,7 @@ import { badRequest, forbidden } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { ENTRY_CREATED, recipientSchema, type Route } from "../forms/routingSchema.js";
 import { checkRoutes, planRoutes } from "./routing.js";
-import { notify } from "./notifications.js";
+import { notify, type TypeRule } from "./notifications.js";
 import { FOLLOW_UP_DONE_TEMPLATE, REMINDER_TEMPLATE, messageTags, messageWording, templateByKey } from "./emailTemplates.js";
 import { audit, type Actor } from "./audit.js";
 
@@ -22,7 +22,7 @@ import { audit, type Actor } from "./audit.js";
  * Admins can always mark an entry done or reopen it.
  */
 
-const COLLECTION = "followup";
+export const COLLECTION = "followup";
 const DOC = "settings";
 const DAY = 86_400_000;
 /** Most entries reminded about per form per run. */
@@ -44,6 +44,14 @@ export const followUpSchema = z
   })
   .strict();
 export type FollowUpSettings = z.infer<typeof followUpSchema>;
+
+/**
+ * A follow-up's two notification types, in people's settings: the reminders to
+ * the people it's for, and "it's done" to whoever filed it. Both always show in
+ * the app; each person chooses whether and when they're emailed.
+ */
+export const followUpTopicKey = (formId: string, which: "reminder" | "done") => `followup:${formId}:${which}`;
+export const FOLLOW_UP_RULE: TypeRule = { inApp: true, email: true, emailWhen: null, choice: "required" };
 
 const DEFAULTS: FollowUpSettings = { enabled: false, doers: [], remindAfterDays: 3, maxReminders: 3, tellSubmitter: true };
 
@@ -159,7 +167,7 @@ export async function setFollowUp(form: BuiltForm, entry: FormEntry, actor: { us
       source: `form:${form.slug}`,
       sourceLabel: form.title,
       formId: form.id,
-      forceEmail: true,
+      topic: { key: followUpTopicKey(form.id, "done"), rule: FOLLOW_UP_RULE },
       urgent: w?.urgent,
       email: {
         whatToDo: w?.whatToDo ?? null,
@@ -226,7 +234,7 @@ export async function runFollowUpReminders(now = new Date()): Promise<number> {
         source: `form:${form.slug}`,
         sourceLabel: form.title,
         formId: form.id,
-        forceEmail: true,
+        topic: { key: followUpTopicKey(form.id, "reminder"), rule: FOLLOW_UP_RULE },
         urgent: w?.urgent,
         email: {
           heading: w?.heading,
