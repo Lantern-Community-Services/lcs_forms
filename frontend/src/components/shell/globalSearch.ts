@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { Bell, BookOpen, CalendarDays, CircleHelp, Contact, Home, LayoutGrid, Settings, UserRound, type LucideIcon } from "lucide-react";
-import { ARTICLES, allowed } from "@/lib/help/content";
+import { Bell, BookOpen, CalendarDays, CircleHelp, Contact, Home, LayoutGrid, Settings, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { ARTICLES, TASKS, allowed } from "@/lib/help/content";
+import { ADMIN_GROUPS } from "./ConfigLayout";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
 import { useTenants } from "@/lib/queries";
 import type { Tenant } from "@/lib/types";
@@ -52,11 +53,17 @@ export function useGlobalSearch(q: string, categories: NavCategory[]): SearchHit
       { to: "/notifications", label: "Notifications", Icon: Bell, words: "alerts bell messages" },
       { to: "/profile", label: "Profile & settings", Icon: UserRound, words: "account preferences theme tour tutorial" },
       { to: "/help", label: "Help", Icon: CircleHelp, words: "help guide how to what can i do where support question" },
+      // What people come to do ("make an external form", "qr code"), straight to the screen that does it.
+      ...TASKS.filter((t) => allowed(t.needs, can)).map((t) => ({ to: t.to, label: t.label, Icon: Sparkles, words: t.words })),
       // Each help article you can read, so "share link" or "follow-up" finds how to do it.
       ...ARTICLES.filter((a) => allowed(a.needs, can)).map((a) => ({ to: `/help/${a.id}`, label: `Help: ${a.title}`, Icon: BookOpen, words: `${a.summary} ${a.words ?? ""}` })),
     ];
     if (rosterUser) list.splice(2, 0, { to: "/roster", label: "Roster", Icon: Contact, words: "residents tenants review attendance" });
-    if (ADMIN_AREA.some(can)) list.push({ to: "/admin", label: "Admin", Icon: Settings, words: "settings people roles sites" });
+    if (ADMIN_AREA.some(can)) {
+      list.push({ to: "/admin", label: "Admin", Icon: Settings, words: "settings people roles sites" });
+      // Every Admin screen this person can open, so "form builder" or "external forms" finds it.
+      for (const g of ADMIN_GROUPS) for (const i of g.items) if (i.needs.some(can)) list.push({ to: i.to, label: `Admin: ${i.label}`, Icon: Settings, words: `${g.group} admin` });
+    }
     return list;
   }, [can, rosterUser]);
 

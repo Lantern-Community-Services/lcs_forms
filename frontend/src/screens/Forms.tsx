@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, Lock, Pin } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, Lock, Pin, QrCode } from "lucide-react";
+import { api } from "@/lib/api";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { usePinToggle } from "@/components/shell/navData";
@@ -122,6 +124,7 @@ export function FormsPage() {
         </div>
       </PhoneHeader>
       <div className="flex flex-col gap-4 px-4 py-4 md:hidden">
+        {!searching && <ShareStrip />}
         <PhoneForms c={c} />
       </div>
 
@@ -144,12 +147,40 @@ export function FormsPage() {
               </div>
             </div>
           </div>
+          {!searching && <ShareStrip className="mb-4 mt-3" />}
           <div data-tour="forms-browser">
             {c.empty ?? <CategorySections c={c} />}
           </div>
         </section>
       </Page>
     </div>
+  );
+}
+
+/**
+ * "Share with people outside Lantern": the forms this person can hand out with
+ * their own link and QR code (GET /share/mine/forms), each a button to it, so
+ * nobody has to find "Share it" on each form. Hidden when there are none.
+ */
+function ShareStrip({ className }: { className?: string }) {
+  const { data } = useQuery({ queryKey: ["share", "mine"], queryFn: () => api.get<{ forms: { id: string; slug: string; title: string; hasLink: boolean }[] }>("/share/mine/forms") });
+  if (!data?.forms.length) return null;
+  return (
+    <section aria-labelledby="share-strip" className={cn("rounded-card border border-hairline bg-surface p-4", className)}>
+      <div className="flex items-center gap-2">
+        <QrCode className="h-4 w-4 text-accent dark:text-white" aria-hidden />
+        <h2 id="share-strip" className="font-heading text-[15px] font-extrabold text-ink">Share with people outside Lantern</h2>
+      </div>
+      <p className="mt-0.5 text-[12.5px] text-muted">Your own link and QR code for each. Anyone you give it to can fill it in without an account, and you see what they send.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {data.forms.map((f) => (
+          <Link key={f.id} to={`/f/${f.slug}/share`} className="inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border border-hairline px-3 text-[13px] font-semibold text-ink hover:bg-navsel/60">
+            {f.title}
+            <span className="text-[12px] font-medium text-muted">· {f.hasLink ? "my QR code" : "get my link"}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

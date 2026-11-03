@@ -200,18 +200,18 @@ export const ARTICLES: HelpArticle[] = [
   {
     id: "share-links",
     area: "forms",
-    title: "Sharing a form by link or QR code",
-    summary: "Your own link and QR code for forms people outside Lantern fill in.",
+    title: "External forms: sharing by link or QR code",
+    summary: "Forms people outside Lantern fill in, your own link and QR code, and making one.",
     where: [
       { label: "Forms", to: "/forms" },
-      { label: "Share links (Admin)", to: "/admin/share-links", needs: ["forms.manage"] },
+      { label: "External forms (Admin)", to: "/admin/external-forms", needs: ["forms.manage"] },
     ],
-    words: "share link qr code external public art submissions refresh expire admin turn off",
+    words: "share link qr code external outside public art submissions refresh expire admin turn off make create new",
     sections: [
       {
         heading: "Your link",
         points: [
-          "Some forms (like art submissions) are filled in by people outside Lantern. On those, “Share it” gives you your own link and QR code.",
+          "Some forms (like art submissions) are filled in by people outside Lantern. They're listed at the top of Forms under “Share with people outside Lantern”, and each one's page has “Share it”: both give you your own link and QR code.",
           "Send the link, or show the QR code on your phone or print it. Anyone with it can fill the form in without an account.",
           "What they send comes to Lantern, and you can see every entry that came through your link.",
         ],
@@ -225,10 +225,18 @@ export const ARTICLES: HelpArticle[] = [
         ],
       },
       {
-        heading: "For Admins",
+        heading: "Making one (Admins)",
         points: [
-          "Admin → Share links lists every form shared by link: its settings, everyone's links (turn any off), and your own link and QR code.",
-          "A form's Settings has the same, under Who can fill it in.",
+          "Admin → External forms → New external form, or Form builder → New form → People outside Lantern. It starts set to Anyone with a share link, with templates that fit (Site and Resident questions don't work on these).",
+          "A form you already have: its Settings → Who can fill it in → Anyone with a share link.",
+          "Publish it. The builder then has “Link & QR code”, and every employee who can open it gets their own.",
+        ],
+      },
+      {
+        heading: "Looking after them (Admins)",
+        points: [
+          "Admin → External forms lists every one: your link and QR code, its entries, who's told, its sharing settings and everyone's links (turn any off).",
+          "To tell the employee when someone uses their link, add “Whoever shared the link” to the form's Who's told.",
         ],
       },
     ],
@@ -511,7 +519,7 @@ export const ARTICLES: HelpArticle[] = [
   },
 ];
 
-export type RoleGuideKey = "site_staff" | "site_manager" | "main_office" | "developer" | "admin" | "super_admin";
+export type RoleGuideKey = "site_staff" | "site_manager" | "main_office" | "developer" | "arete_staff" | "admin" | "super_admin";
 
 export interface RoleGuide {
   key: RoleGuideKey;
@@ -578,6 +586,21 @@ export const ROLE_GUIDES: RoleGuide[] = [
     read: ["admin-code-forms", "entries", "getting-around"],
   },
   {
+    key: "arete_staff",
+    name: "Arete Staff",
+    intro: "You file and read incident reports at the sites you cover. No other forms, and no roster.",
+    can: [
+      "File incident reports at the sites you're assigned.",
+      "Read those incident reports, and their Reports.",
+      "Mark follow-ups done when they're for you.",
+    ],
+    startHere: [
+      { label: "Forms", to: "/forms" },
+      { label: "Notifications", to: "/notifications" },
+    ],
+    read: ["getting-around", "filling-forms", "entries", "your-notifications"],
+  },
+  {
     key: "admin",
     name: "Admin",
     intro: "You run the site: forms, notifications, people, sites and settings, on every site.",
@@ -620,6 +643,246 @@ export const ROLE_GUIDES: RoleGuide[] = [
 export function guideFor(user: { roleKey: string; globalAdmin?: boolean } | null | undefined): RoleGuide {
   const key: RoleGuideKey = user?.globalAdmin ? "super_admin" : ((ROLE_GUIDES.find((g) => g.key === user?.roleKey)?.key ?? "site_staff") as RoleGuideKey);
   return ROLE_GUIDES.find((g) => g.key === key)!;
+}
+
+/**
+ * "I want to…": the things people come to do, each straight to the screen
+ * that does it. Help lists the ones you can do, and search (Ctrl K) finds them
+ * by what you'd type, so a feature can be found by what it's for.
+ */
+export interface HelpTask {
+  label: string;
+  to: string;
+  needs?: PermissionKey[];
+  words: string;
+}
+
+export const TASKS: HelpTask[] = [
+  { label: "Fill in a form", to: "/forms", words: "submit report start new entry" },
+  { label: "Get my link and QR code to share a form outside Lantern", to: "/forms", words: "share qr code link external outside public residents partners art submission" },
+  { label: "Choose what I'm emailed about", to: "/profile#notifications", words: "notifications email bell digest daily turn off" },
+  { label: "Look up a resident", to: "/roster", needs: ["roster.view"], words: "resident tenant roster find unit" },
+  { label: "Add or change a resident", to: "/roster", needs: ["roster.edit"], words: "resident tenant roster new move in edit" },
+  { label: "Take attendance", to: "/roster/attendance", needs: ["roster.edit"], words: "attendance roll call group event sign in" },
+  { label: "Add a calendar event", to: "/calendar", needs: ["calendar.manage", "calendar.edit"], words: "calendar event schedule new" },
+  { label: "Approve someone who asked for access", to: "/admin/people", needs: ["users.manage", "users.manageSite"], words: "approve request access new person staff join" },
+  { label: "Give someone a role or sites", to: "/admin/people", needs: ["users.manage"], words: "role sites permission access change person admin" },
+  { label: "Make a form for people outside Lantern, with a QR code", to: "/admin/external-forms", needs: ["forms.manage"], words: "external outside public share link qr code create new form art submission" },
+  { label: "Build a new form for staff", to: "/admin/builder?new=staff", needs: ["forms.manage"], words: "create new form builder template" },
+  { label: "Choose who's told about a form's entries", to: "/admin/notifications", needs: ["forms.manage"], words: "notifications routing email alert who is told weekly report follow-up" },
+  { label: "Put a form on the Forms screen", to: "/admin/forms", needs: ["forms.manage"], words: "catalog category card list show hide" },
+  { label: "Turn off someone's share link", to: "/admin/external-forms", needs: ["forms.manage"], words: "share link revoke stop qr code external" },
+  { label: "Add a site", to: "/admin/sites", needs: ["sites.manage"], words: "site building new location" },
+  { label: "Make an API key (for Claude or another system)", to: "/admin/api-keys", needs: ["integrations.manage"], words: "api key mcp claude integration token" },
+];
+
+/** What a Super Admin has on top of an Admin (permissionsFor on the server). */
+export const SUPER_ADMIN_EXTRA: PermissionKey[] = ["admins.manage", "people.records", "email.templates"];
+
+/** One part of the site, and what a role can see and change there. */
+export interface AccessRow {
+  id: string;
+  title: string;
+  /** The screen, for a "Go there" link (shown only to people who can open it). */
+  to?: string;
+  needs?: PermissionKey[];
+  see: string;
+  change: string[];
+  /** Given to this person by a per-person switch, not their role. */
+  switched?: boolean;
+}
+
+/**
+ * "What you can see and change" for a role or a person, worked out from the
+ * permissions the server gives them (permissions.ts), so it can't drift from
+ * what the site lets them do. `switched` names the per-person switches that
+ * are on (People & roles), so the page can say where a power came from.
+ * `forms` is a role limited to some forms (Arete Staff's incident reports).
+ */
+export function accessFor(
+  perms: readonly string[],
+  o: { everySite: boolean; forms?: string[] | null; switched?: { roster?: boolean; calendar?: boolean } }
+): { rows: AccessRow[]; not: string[] } {
+  const has = (p: PermissionKey) => perms.includes(p);
+  const at = o.everySite ? "every site" : "your sites";
+  const rows: AccessRow[] = [];
+  const not: string[] = [];
+  const add = (show: boolean, row: AccessRow, missing?: string) => (show ? rows.push(row) : missing && not.push(missing));
+
+  add(true, {
+    id: "forms",
+    title: "Forms",
+    to: "/forms",
+    see: o.forms?.length ? "Only the forms your role is for (the incident reports)." : "Every form open to you, by category.",
+    change: ["Fill them in, even offline; drafts are kept as you go."],
+  });
+  add(has("entries.view"), {
+    id: "entries",
+    title: "Entries",
+    see: o.everySite || has("forms.manage") ? "Every entry, on every form." : "Your own entries, the ones you're told about, ones that came through your share link, and any more a form opens to you.",
+    change: [
+      "Star entries and export them to a spreadsheet.",
+      "Mark a follow-up done when it's for you.",
+      ...(has("entries.void") ? ["Void an entry filed by mistake, with a reason (it's kept, marked void)."] : []),
+    ],
+  });
+  add(!o.forms?.length, {
+    id: "share",
+    title: "Share links and QR codes",
+    to: has("forms.manage") ? "/admin/external-forms" : undefined,
+    needs: has("forms.manage") ? ["forms.manage"] : undefined,
+    see: has("forms.manage") ? "Every form shared by link, and everyone's links." : "Your own link and QR code on forms shared by link, and what came through it.",
+    change: ["Get your own link, choose when it ends, and refresh it to stop the old one.", ...(has("forms.manage") ? ["Turn anyone's link off, and change a form's share settings."] : [])],
+  });
+  add(true, {
+    id: "notifications",
+    title: "Your notifications",
+    to: "/notifications",
+    see: "What forms tell you, follow-ups waiting on you, and changes to your access.",
+    change: ["Choose what's emailed to you, and when (Profile → Notifications)."],
+  });
+  add(true, {
+    id: "calendar",
+    title: "Calendar",
+    to: "/calendar",
+    see: "Events for every site and for yours.",
+    change: has("calendar.manage")
+      ? ["Add, change and remove any event, at any site, and the categories."]
+      : has("calendar.edit")
+        ? ["Add, change and remove events at your own sites (not every-site events or categories)."]
+        : ["Add events to your own Outlook. To add one to the calendar, ask an Admin."],
+    switched: !has("calendar.manage") && has("calendar.edit") && o.switched?.calendar,
+  });
+  add(
+    has("roster.view"),
+    {
+      id: "roster",
+      title: "Roster",
+      to: "/roster",
+      needs: ["roster.view"],
+      see: `Residents at ${at}, Review, Overview and attendance.`,
+      change: has("roster.edit")
+        ? ["Add and change residents, take attendance, Keep or Remove in Review, and restore removed residents."]
+        : ["Nothing: looking up only. A Site Manager or Admin can turn on “Can manage the roster” for you."],
+      switched: has("roster.edit") && o.switched?.roster,
+    },
+    "The roster"
+  );
+  add(has("roster.view"), {
+    id: "activity",
+    title: "Activity",
+    to: "/roster/activity",
+    needs: ["roster.view"],
+    see: has("audit.view") ? "Everything that happened on the site, by anyone (the audit log)." : `What was recorded for residents at ${at}.`,
+    change: [],
+  });
+  add(
+    has("users.manage") || has("users.manageSite"),
+    {
+      id: "people",
+      title: has("users.manage") ? "People & roles" : "Site settings (people)",
+      to: "/admin/people",
+      needs: ["users.manage", "users.manageSite"],
+      see: has("users.manage") ? "Everyone, their roles, sites and switches, and access requests." : "The people at your sites, and requests for your sites.",
+      change: has("users.manage")
+        ? [
+            "Let people in or decline them, give roles and sites, turn switches on and off, and remove people.",
+            has("admins.manage") ? "Make someone an Admin, and change or remove an Admin." : "Admins are a Super Admin's to make or change.",
+          ]
+        : ["Approve or decline requests and remove people at your sites, and give the site roles (Site Staff, Site Manager, Main Office Staff). Only Admins let new people in."],
+    },
+    "People & roles"
+  );
+  add(has("people.records"), {
+    id: "records",
+    title: "A person's records",
+    to: "/admin/people",
+    needs: ["people.records"],
+    see: "Everything one person filed, was told and did, and which forms they can open.",
+    change: ["Nothing: it's for looking."],
+  });
+  add(has("users.manage"), { id: "groups", title: "Groups", to: "/admin/groups", needs: ["users.manage"], see: "Every group and who's in it.", change: ["Make groups, by job title or by hand, and change who's in them."] });
+  add(
+    has("forms.manage"),
+    {
+      id: "builder",
+      title: "Form builder and Forms catalog",
+      to: "/admin/builder",
+      needs: ["forms.manage"],
+      see: "Every form, its drafts and versions, and the catalog staff see.",
+      change: [
+        "Build, change, publish and go back to a version of any form, with the builder or the AI form builder.",
+        "Choose who fills each form in and who sees its entries.",
+        "Arrange the Forms catalog, and limit a category or form to groups, positions or people.",
+      ],
+    },
+    "Building forms"
+  );
+  add(
+    has("apps.develop"),
+    {
+      id: "code",
+      title: "Code forms",
+      to: "/admin/apps",
+      needs: ["apps.develop", "forms.manage"],
+      see: "Every code form: its pages, server code and data.",
+      change: ["Build, test and publish code forms."],
+    },
+    "Code forms"
+  );
+  add(
+    has("forms.manage"),
+    {
+      id: "routing",
+      title: "Notifications and email",
+      to: "/admin/notifications",
+      needs: ["forms.manage"],
+      see: "Who each form tells, the email templates, the site's own emails, and every email sent.",
+      change: [
+        "Set who each form tells and when, follow-ups and weekly reports.",
+        has("email.templates") ? "Make and change email templates, the site's own emails and how emails look." : "Pick from the email templates (a Super Admin makes and changes them).",
+      ],
+    },
+    "Form notifications"
+  );
+  add(
+    has("sites.manage") || has("sites.manageRules"),
+    {
+      id: "sites",
+      title: "Sites",
+      to: has("sites.manage") ? "/admin/sites" : "/admin/settings",
+      needs: ["sites.manage", "sites.manageRules"],
+      see: has("sites.manage") ? "Every site." : "Your sites' roster rules.",
+      change: has("sites.manage") ? ["Add, change and turn off sites, and import a tenant list."] : ["Change how long before a resident at your sites shows in Review."],
+    },
+    "Sites"
+  );
+  add(
+    has("settings.manage"),
+    {
+      id: "settings",
+      title: "Settings and sign-in access",
+      to: "/admin/settings",
+      needs: ["settings.manage"],
+      see: "The site's settings.",
+      change: ["Roster rules for everyone or per site, which other email domains may sign in, and whether the welcome tour starts by itself."],
+    },
+    "Settings"
+  );
+  add(
+    has("integrations.manage"),
+    {
+      id: "integrations",
+      title: "Integrations",
+      to: "/admin/api-keys",
+      needs: ["integrations.manage"],
+      see: "API keys, webhooks and WordPress.",
+      change: ["Make and revoke API keys (for other systems and Claude), and set up webhooks and WordPress."],
+    },
+    "Integrations"
+  );
+  add(has("devlog.view"), { id: "devlog", title: "Dev log", to: "/admin/devlog", needs: ["devlog.view"], see: "Response times, errors, memory and the server log.", change: [] }, "The dev log");
+  return { rows, not };
 }
 
 export const articleById = (id: string) => ARTICLES.find((a) => a.id === id);
