@@ -35,6 +35,15 @@ const PAD = 6;
 const GAP = 12;
 const MARGIN = 12;
 const DEFAULT_WAIT = 6000;
+/**
+ * The most one gap between looks adds to a step's wait. A page busy loading (a
+ * code form's frame shares this thread) can freeze everything for seconds; that
+ * time isn't the spot failing to show, and counting it skipped steps whose spot
+ * was a moment away.
+ */
+const MAX_GAP = 500;
+/** How long the spinner shows before it offers a way out. */
+const STUCK_MS = 4000;
 /** A list, menu or picker that a field opens belongs to the field. */
 const POPUP = '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]';
 const BLOCKED_EVENTS = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "auxclick"];
@@ -140,9 +149,19 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
 }) {
   /** Which way the last move went: a step whose spot never shows is passed over in the same direction. */
   const dir = useRef<1 | -1>(1);
+  /**
+   * Steps passed over in a row. The steps after a click step usually need its
+   * click (Start serving opens the list the next ones point at), so once one is
+   * passed over the rest would each spin for the whole wait and be passed over
+   * too. The second in a row shows its card in the middle instead.
+   */
+  const passedInRow = useRef(0);
   const step: TourStep = tour.steps[Math.min(index, tour.steps.length - 1)];
   const last = index >= tour.steps.length - 1;
-  const action = step.action ?? "next";
+  // A spot that never showed (lost): its card shows in the middle, and Next moves on.
+  const [lostAt, setLostAt] = useState<number | null>(null);
+  const lost = lostAt === index;
+  const action = lost ? "next" : (step.action ?? "next");
   const interactive = action !== "next";
   const navigate = useNavigate();
   const vp = useViewport();
@@ -152,6 +171,8 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
   const [rect, setRect] = useState<Rect | null>(null);
   const [shown, setShown] = useState(false);
   const [slow, setSlow] = useState(false);
+  const [stuck, setStuck] = useState(false);
+  const pillRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
   const [filled, setFilled] = useState(false);
   const [nudge, setNudge] = useState(0);
@@ -194,21 +215,52 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
 
   // Find the spot and follow it as the page scrolls, resizes or re-renders.
   // One that never shows (a field hidden by a rule, a tab this person can't
-  // see) is passed over.
+  // see) is passed over, unless the step before was passed over too: then
+  // its card shows in the middle with Next (see passedInRow).
   useEffect(() => {
     // The old spot stays lit until the new one is found, so the light glides from one to the next.
     setShown(false);
     setSlow(false);
     setFilled(false);
     spot.current = null;
+    setStuck(false);
     const wait = step.waitMs ?? tour.waitMs ?? DEFAULT_WAIT;
-    let lastSeen = Date.now();
+    // How long the spot has been missing, counting at most MAX_GAP for any one gap between looks.
+    let waited = 0;
+    let lastLook = performance.now();
+    const overdue = () => {
+      const now = performance.now();
+      waited += Math.min(now - lastLook, MAX_GAP);
+      lastLook = now;
+      return waited > wait;
+    };
     const slowTimer = window.setTimeout(() => setSlow(true), 700);
-    const passOver = () => go(index + dir.current < 0 ? index + 1 : index + dir.current);
-    const show = (r: Rect | null) => {
-      lastSeen = Date.now();
+    const stuckTimer = window.setTimeout(() => setStuck(true), STUCK_MS);
+    let gaveUp = false;
+    const place = (r: Rect | null) => {
       setRect((prev) => (samePlace(prev, r) ? prev : r));
       setShown(true);
+    };
+    /** The step's card is up for real (its spot, or a step without one). */
+    const show = (r: Rect | null) => {
+      waited = 0;
+      passedInRow.current = 0;
+      if (gaveUp) {
+        gaveUp = false;
+        setLostAt(null);
+      }
+      place(r);
+    };
+    /** The spot didn't show in time: pass the step over, or, after one already passed over, show its card in the middle. */
+    const giveUp = () => {
+      gaveUp = true;
+      if (passedInRow.current < 1) {
+        passedInRow.current += 1;
+        go(index + dir.current < 0 ? index + 1 : index + dir.current);
+        return;
+      }
+      setLostAt(index);
+      place(null);
     };
     let off = () => {};
     /** One look at the spot. False once the step is settled for good (a centred card shown, a spot given up on). */
@@ -217,7 +269,7 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
     if (!step.target) {
       tellFrame({ t: "tour:lock" });
       tick = () => {
-        if (!onRoute(window.location.pathname) && Date.now() - lastSeen <= wait) return true;
+        if (!onRoute(window.location.pathname) && !overdue()) return true;
         show(null);
         return false;
       };
@@ -241,10 +293,10 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
           const r = Math.min(f.left + inFrame.x + inFrame.width, f.right);
           const b = Math.min(f.top + inFrame.y + inFrame.height, f.bottom);
           show(r > x && b > y ? round({ x, y, width: r - x, height: b - y }) : null);
-        } else if (Date.now() - lastSeen > wait) {
-          passOver();
-          return false;
+        } else if (!gaveUp && overdue()) {
+          giveUp();
         }
+        // Keeps looking after giving up: a spot that turns up late still lights up.
         return true;
       };
     } else {
@@ -262,9 +314,8 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
             if (r.top < 8 || r.bottom > window.innerHeight - 8) el.scrollIntoView({ block: "center", behavior: "smooth" });
           }
           show(round(el.getBoundingClientRect()));
-        } else if (Date.now() - lastSeen > wait) {
-          passOver();
-          return false;
+        } else if (!gaveUp && overdue()) {
+          giveUp();
         }
         return true;
       };
@@ -287,6 +338,7 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
       cancelAnimationFrame(raf);
       window.clearInterval(timer);
       window.clearTimeout(slowTimer);
+      window.clearTimeout(stuckTimer);
       off();
     };
   }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -322,7 +374,7 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
     const allowed = (target: EventTarget | null) => {
       const node = target instanceof Node ? target : null;
       if (!node) return false;
-      if (cardRef.current?.contains(node)) return true;
+      if (cardRef.current?.contains(node) || pillRef.current?.contains(node)) return true;
       const s = live.current;
       if (!s.interactive || s.step.target?.in !== "page") return false;
       if (spot.current?.contains(node)) return true;
@@ -461,8 +513,17 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
       </div>
 
       {!shown && slow && (
-        <div className="fixed left-1/2 top-1/2 z-[210] -translate-x-1/2 -translate-y-1/2 rounded-pill bg-surface px-3 py-2 shadow-panel" role="status">
+        <div ref={pillRef} className="fixed left-1/2 top-1/2 z-[210] flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-pill bg-surface px-3 py-2 shadow-panel" role="status">
           <Loader2 className="h-4 w-4 animate-spin text-muted" aria-label="Loading the next step" />
+          {/* Taking a while: never leave someone with a spinner and no way out (no Escape key on an iPad). */}
+          {stuck && (
+            <>
+              <span className="text-[13px] text-muted">Still loading…</span>
+              <button type="button" onClick={() => live.current.skip()} className="min-h-[32px] rounded-input px-2 text-[13px] font-semibold text-accent hover:bg-rowhover dark:text-white">
+                End the {kind}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -499,6 +560,11 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
             <div id="tour-step-body" className="mt-1.5 space-y-2 text-[14px] leading-relaxed text-muted">
               <Body text={step.body} />
             </div>
+          )}
+          {lost && (
+            <p className="mt-3 rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+              This part of the page didn&apos;t show up. Press Next to go on.
+            </p>
           )}
           {action === "click" && (
             <p className="mt-3 flex items-center gap-2 rounded-input bg-navsel px-3 py-2 text-[13px] font-semibold text-accent dark:text-white">
