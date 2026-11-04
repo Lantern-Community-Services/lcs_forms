@@ -73,6 +73,20 @@ export function clientIp(req: Request, _res: Response, next: NextFunction) {
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   const id = req.id ?? "-";
 
+  // The JSON body parser (body-parser) throws http-errors with a `type`.
+  const parser = err && typeof err === "object" && typeof (err as { type?: unknown }).type === "string" ? (err as { type: string; status?: number; expose?: boolean; message: string }) : null;
+  // The client hung up before its body was read — usually while loadUser waited on
+  // the database (a tab closed, an iPad asleep, a beacon on page unload). Nobody is
+  // waiting for an answer; it isn't a server fault. requestMetrics counts it as 499.
+  if (parser && (parser.type === "request.aborted" || (parser.type === "stream.not.readable" && (req.destroyed || req.socket?.destroyed)))) {
+    if (!res.headersSent && !res.destroyed) res.status(499).end();
+    return;
+  }
+  // The parser's own refusals (bad JSON, too large, wrong charset) are the client's to fix.
+  if (parser && parser.expose && typeof parser.status === "number" && parser.status >= 400 && parser.status < 500) {
+    return res.status(parser.status).json({ error: parser.message, requestId: id });
+  }
+
   if (err instanceof ZodError) {
     return res.status(400).json({
       error: "Validation failed",
