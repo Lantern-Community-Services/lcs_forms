@@ -121,6 +121,31 @@ export const rosterOps = [
   }),
 
   defineOp({
+    name: "send_resident_to_review",
+    description:
+      "Put a resident back in the review queue (Needs review) even if they were confirmed recently. They stay there — form activity doesn't clear it — until someone keeps (keep_resident) or removes them.",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/residents/:id/send-to-review" },
+    shape: { id: residentId },
+    annotations: { idempotentHint: true },
+    run: (ctx, a) => ctx.route(tenantsRouter, { method: "POST", path: `/${id(a.id)}/send-to-review` }),
+  }),
+
+  defineOp({
+    name: "send_site_to_review",
+    description:
+      "Put EVERY active resident at one site back in the review queue (Needs review), e.g. to have staff re-check the whole roster. Each stays there until someone keeps or removes them. Returns how many were sent and how many are now waiting. Needs confirm: true.",
+    scope: "roster:archive",
+    as: "creator",
+    http: { method: "POST", path: "/residents/send-to-review" },
+    shape: { site: z.string().describe("Site code or id") },
+    confirm: true,
+    annotations: { idempotentHint: true },
+    run: (ctx, a) => ctx.route(tenantsRouter, { method: "POST", path: "/send-to-review", body: { site: a.site } }),
+  }),
+
+  defineOp({
     name: "archive_resident",
     description: "Remove a resident from the roster (they're kept, marked removed, and can be restored).",
     scope: "roster:archive",

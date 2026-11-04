@@ -117,6 +117,10 @@ export const rosterApi = {
   restore: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/restore`)),
   keep: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/keep`)),
   undoKeep: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/undo-keep`)),
+  sendToReview: (id: string) => unlessSample(id, () => api.post<Tenant>(`/tenants/${id}/send-to-review`)),
+  /** Everyone active at one site (managers). */
+  sendSiteToReview: (site: string) =>
+    api.post<{ site: { code: string; name: string }; sent: number; inReview: number }>("/tenants/send-to-review", { site }),
 };
 
 // ── Forms ────────────────────────────────────────────────────────────────

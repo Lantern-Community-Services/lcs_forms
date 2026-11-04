@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, ClipboardList, History, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, History, ListChecks, RotateCcw } from "lucide-react";
 import { DesktopBackLink, Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
@@ -38,7 +38,7 @@ export function TenantDetailPage() {
   const { can } = useAuth();
   const toast = useToast();
   const { data: t, isLoading } = useTenant(id);
-  const { remove, keep, restore } = useRosterActions();
+  const { remove, keep, restore, sendToReview } = useRosterActions();
   const [form, setForm] = useState<FormState | null>(null);
   /** The version of the record the form was filled from — what a save is checked against. */
   const [loaded, setLoaded] = useState<Tenant | null>(null);
@@ -121,6 +121,11 @@ export function TenantDetailPage() {
                       <CheckCircle2 className="h-4 w-4" /> Still here
                     </Button>
                   )}
+                  {can("roster.edit") && !t.needsAttention && (
+                    <Button variant="secondary" onClick={() => void sendToReview(t)} className="min-h-[44px] flex-1 md:h-9 md:min-h-0">
+                      <ListChecks className="h-4 w-4" /> Send to review
+                    </Button>
+                  )}
                   {can("roster.archive") && (
                     <Button variant="outlineDanger" onClick={() => setRemoving(true)} className="min-h-[44px] flex-1 md:h-9 md:min-h-0">
                       <RemoveResidentIcon className="h-4 w-4" /> Remove
@@ -143,6 +148,11 @@ export function TenantDetailPage() {
             <Stat label="Quiet for" value={t.status === "active" ? quietFor(t.hoursQuiet) : "—"} />
             <Stat label="Roster ID" value={<span className="font-mono text-[11.5px]">{t.id}</span>} />
           </dl>
+          {t.sentToReview && (
+            <p className="mt-4 rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
+              Sent back to review. They stay in Review until someone confirms they're still here or removes them.
+            </p>
+          )}
           {t.status === "archived" && (
             <p className="mt-4 rounded-input bg-subtle px-3 py-2 text-[13px] text-ink">
               Removed {formatDate(t.archivedAt)} — {t.archiveReason}

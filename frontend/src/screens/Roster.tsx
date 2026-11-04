@@ -13,6 +13,7 @@ import { AddResident } from "@/components/roster/AddResident";
 import { HighAcuityFlag } from "@/components/roster/HighAcuity";
 import { RosterExportButtons, RosterExportMenu } from "@/components/roster/RosterExport";
 import { RemoveDialog } from "@/components/roster/RemoveDialog";
+import { SendSiteToReview } from "@/components/roster/SendSiteToReview";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
 import { useRosterActions } from "@/components/roster/useRosterActions";
 import { useTenants } from "@/lib/queries";
@@ -313,6 +314,9 @@ export function RosterPage() {
           <div className="mb-4 grid grid-cols-[minmax(0,1fr)_340px] gap-3">{controls}</div>
         </div>
 
+        {tab === "attention" && selected.length === 1 && can("roster.archive") && !sitesLoading && !isLoading && (
+          <SendSiteToReview site={selected[0]} onRoster={onRoster} />
+        )}
         {sitesLoading || isLoading ? (
           <RosterSkeleton />
         ) : selected.length === 0 ? (
