@@ -79,6 +79,7 @@ const baseField = z.object({
   display: z.enum(["number", "currency", "percent"]).optional(),
   siteField: z.string().max(64).optional(),
   logActivity: z.boolean().optional(),
+  highAcuityOnly: z.boolean().optional(),
   content: z.string().max(200_000).optional(),
   nextLabel: z.string().max(60).optional(),
   code: codeBlock.optional(),

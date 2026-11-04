@@ -148,6 +148,8 @@ export interface Field {
   siteField?: string;
   /** Log a roster activity for the picked resident when the entry is saved (default true). */
   logActivity?: boolean;
+  /** Only list residents flagged High Acuity on the roster. */
+  highAcuityOnly?: boolean;
 
   // section / html / page
   /** HTML for an html block, or the lead text of a section / page. Merge tags work. */
@@ -430,7 +432,7 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "repeater", label: "Repeater", group: "Advanced", input: true, value: "Values[] (one per row)", description: "A group of sub-fields (fields) the person can add rows of. minRows, maxRows." },
   { type: "calculation", label: "Calculation", group: "Advanced", input: true, value: "number | string", description: "Worked out from other fields with `expression`. Read-only; recomputed on the server." },
   { type: "site", label: "Site", group: "Lantern", input: true, value: "string (site code)", description: "Pick a Lantern site, limited to the person's own sites." },
-  { type: "resident", label: "Resident", group: "Lantern", input: true, value: "{ id, name, unit }", description: "Pick a resident from a site's roster (siteField). Logs roster activity." },
+  { type: "resident", label: "Resident", group: "Lantern", input: true, value: "{ id, name, unit }", description: "Pick a resident from a site's roster (siteField). Logs roster activity. highAcuityOnly lists only High Acuity residents." },
   { type: "section", label: "Section", group: "Layout", input: false, value: "—", description: "A heading that groups the fields after it. Its conditional hides the whole section." },
   { type: "html", label: "Content", group: "Layout", input: false, value: "—", description: "Text, links, images (HTML in `content`). Merge tags work." },
   { type: "page", label: "Page break", group: "Layout", input: false, value: "—", description: "Starts a new page. Its conditional skips the whole page." },

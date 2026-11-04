@@ -199,6 +199,7 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
           <Row label="Roster from" hint="Which site's residents to list.">
             <Select value={f.siteField ?? ""} onChange={(e) => set({ siteField: e.target.value })} options={[{ value: "", label: "The form's site (Settings → Ask which site)" }, ...siblings.filter((s) => s.type === "site").map((s) => ({ value: s.id, label: `Site field: ${s.label || s.id}` }))]} />
           </Row>
+          <Toggle label="High Acuity residents only" hint="List only residents flagged High Acuity on the roster." checked={f.highAcuityOnly === true} onChange={(v) => set({ highAcuityOnly: v ? true : undefined })} />
           <Toggle label="Log roster activity" hint="Picking a resident here counts as seeing them, which resets their review clock." checked={f.logActivity !== false} onChange={(v) => set({ logActivity: v ? undefined : false })} />
         </>
       )}
