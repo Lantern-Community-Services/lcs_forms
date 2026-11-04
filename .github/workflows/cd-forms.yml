@@ -40,7 +40,7 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       migration: ${{ steps.meta.outputs.migration }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: meta
         run: |
@@ -50,7 +50,7 @@ jobs:
           [ -n "$migration" ] || { echo "::error::no migrations found in backend/prisma/migrations"; exit 1; }
           echo "migration=$migration" >> "$GITHUB_OUTPUT"
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -81,13 +81,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
 
@@ -138,13 +138,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod           # required reviewers configured on the environment gate this job
     steps:
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
 
