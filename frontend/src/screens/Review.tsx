@@ -320,7 +320,7 @@ export function ReviewPage() {
                     <Link to={`/tenants/${t.id}`} className="min-w-0 flex-1">
                       <p className="truncate text-[13.5px] font-semibold text-ink">{t.displayName}</p>
                       <p className="truncate text-micro text-muted">
-                        {[t.unit && `Unit ${t.unit}`, multiSite && t.site?.name, `quiet ${quietFor(t.hoursQuiet)}`].filter(Boolean).join(" · ")}
+                        {[t.unit && `Unit ${t.unit}`, multiSite && t.site?.name, t.sentToReview ? "sent back to review" : `quiet ${quietFor(t.hoursQuiet)}`].filter(Boolean).join(" · ")}
                       </p>
                     </Link>
                     {canRemove && (
@@ -401,7 +401,7 @@ function ReviewCard({
       onSwipeDown={onSwipeDown}
     >
       <ResidentCardHeader tenant={t} showSite={showSite} />
-      <SwipeNote tone="bg-status-amberBg text-status-amberText" icon={<Clock3 className="h-4 w-4" />} title={`Quiet for ${quietFor(t.hoursQuiet)}`}>
+      <SwipeNote tone="bg-status-amberBg text-status-amberText" icon={<Clock3 className="h-4 w-4" />} title={t.sentToReview ? "Sent back to review" : `Quiet for ${quietFor(t.hoursQuiet)}`}>
         {lastSeen.label}
         {lastSeen.detail ? ` · ${lastSeen.detail}` : ""}
       </SwipeNote>

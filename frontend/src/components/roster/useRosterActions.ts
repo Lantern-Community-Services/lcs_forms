@@ -54,5 +54,18 @@ export function useRosterActions() {
     }
   }
 
-  return { remove, keep, restore };
+  async function sendToReview(t: Tenant): Promise<boolean> {
+    try {
+      await rosterApi.sendToReview(t.id);
+      toast(`${t.displayName} is waiting in Review.`, "info");
+      return true;
+    } catch (e) {
+      toast(errorMessage(e, "Could not send to review."), "error");
+      return false;
+    } finally {
+      await refresh();
+    }
+  }
+
+  return { remove, keep, restore, sendToReview };
 }

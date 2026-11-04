@@ -10,12 +10,15 @@ import { loadRoster } from "../services/rosterQuery.js";
 import { exportFilename, scopeLabel, toCsv, toPdf, toXlsx, type ExportContext } from "../services/rosterExport.js";
 import { actorOf, audit, diff } from "../services/audit.js";
 import { attentionHours } from "../services/settings.js";
-import { clockFrom, cutoff, displayName, publicTenant, serializeTenant } from "../services/roster.js";
+import { clockFrom, cutoff, displayName, isSentToReview, publicTenant, REVIEW_CLOCK, serializeTenant } from "../services/roster.js";
 
 export const tenantsRouter = Router();
 tenantsRouter.use(requireAuth);
 
 const SITE_SELECT = { id: true, code: true, name: true, attentionHours: true } as const;
+
+/** Audit action for "Send back to review" (see the routes near the end). */
+const SENT_TO_REVIEW = "tenant.sent_to_review";
 
 async function loadTenant(req: Request, id: string) {
   const t = await prisma.tenant.findUnique({ where: { id }, include: { site: { select: SITE_SELECT } } });
@@ -449,16 +452,21 @@ tenantsRouter.post(
     // later undo already reversed, to find the live keep (the one being undone)
     // and the live confirmation before it.
     const events = await prisma.auditEvent.findMany({
-      where: { tenantId: t.id, action: { in: ["tenant.kept", "tenant.restored", "tenant.keep_undone"] } },
+      where: { tenantId: t.id, action: { in: ["tenant.kept", "tenant.restored", "tenant.keep_undone", SENT_TO_REVIEW] } },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
     const live: typeof events = [];
+    // Sent back to review between the keep being undone and the confirmation
+    // before it: the undo puts them back in review, as they were.
+    let wasSentToReview = false;
     let cancelled = 0;
     for (const e of events) {
       if (e.action === "tenant.keep_undone") cancelled++;
       else if (e.action === "tenant.kept" && cancelled > 0) cancelled--;
-      else live.push(e);
+      else if (e.action === SENT_TO_REVIEW) {
+        if (live.length === 1) wasSentToReview = true;
+      } else live.push(e);
       if (live.length === 2) break;
     }
     const [latest, previous] = live;
@@ -477,7 +485,7 @@ tenantsRouter.post(
       data: {
         lastKeptAt,
         lastKeptById: previous?.actorId ?? null,
-        attentionClockAt: clockFrom({ ...t, lastKeptAt }),
+        attentionClockAt: wasSentToReview ? REVIEW_CLOCK : clockFrom({ ...t, lastKeptAt }),
       },
       include: { site: { select: SITE_SELECT } },
     });
@@ -490,6 +498,82 @@ tenantsRouter.post(
       webhook: { event: "tenant.updated", data: { ...publicTenant(after), changed: ["lastKeptAt"] } },
     });
     res.json(serializeTenant(after, await attentionHours()));
+  })
+);
+
+// ── Send back to review ──────────────────────────────────────────────────
+
+/**
+ * Put people back in the review queue even though they were confirmed
+ * recently — e.g. a manager wants every resident at a site checked again.
+ * They stay there (form activity doesn't take them out) until someone keeps or
+ * removes them; see REVIEW_CLOCK. (SENT_TO_REVIEW is defined at the top.)
+ */
+tenantsRouter.post(
+  "/:id/send-to-review",
+  requirePermission("roster.edit"),
+  asyncHandler(async (req, res) => {
+    const t = await loadTenant(req, req.params.id);
+    if (t.status !== "active") throw badRequest("Only people on the roster can be sent to review.");
+    if (isSentToReview(t)) return res.json(serializeTenant(t, await attentionHours()));
+    const after = await prisma.tenant.update({
+      where: { id: t.id },
+      data: { attentionClockAt: REVIEW_CLOCK },
+      include: { site: { select: SITE_SELECT } },
+    });
+    await audit({
+      actor: actorOf(req),
+      action: SENT_TO_REVIEW,
+      tenantId: t.id,
+      siteId: t.siteId,
+      summary: `Sent ${displayName(t)} back to review`,
+    });
+    res.json(serializeTenant(after, await attentionHours()));
+  })
+);
+
+/** Everyone active at one site, in one go. Managers only (roster.archive). */
+tenantsRouter.post(
+  "/send-to-review",
+  requirePermission("roster.archive"),
+  asyncHandler(async (req, res) => {
+    const body = z.object({ site: z.string().min(1, "Choose a site.") }).parse(req.body ?? {});
+    const site = await resolveSite(req, body.site);
+    if (!site) throw badRequest("Choose a site.");
+    if (isOffice(site)) throw badRequest(`${site.name} is an office: it has no roster.`);
+    const actor = actorOf(req);
+    const targets = await prisma.tenant.findMany({
+      where: { siteId: site.id, status: "active", attentionClockAt: { gt: REVIEW_CLOCK } },
+      select: { id: true },
+    });
+    const ids = targets.map((t) => t.id);
+    if (ids.length > 0) {
+      await prisma.$transaction([
+        prisma.tenant.updateMany({ where: { id: { in: ids } }, data: { attentionClockAt: REVIEW_CLOCK } }),
+        // One history line per person, so their page (and an undo of a later
+        // keep) knows they were sent back.
+        prisma.auditEvent.createMany({
+          data: ids.map((tenantId) => ({
+            actorId: actor.id,
+            actorName: actor.name,
+            action: SENT_TO_REVIEW,
+            summary: `Sent back to review with everyone at ${site.name}`,
+            tenantId,
+            siteId: site.id,
+            changes: null,
+          })),
+        }),
+      ]);
+    }
+    await audit({
+      actor,
+      action: "roster.sent_to_review",
+      siteId: site.id,
+      summary: `Sent everyone at ${site.name} back to review (${ids.length} ${ids.length === 1 ? "person" : "people"})`,
+      changes: { count: ids.length },
+    });
+    const inReview = await prisma.tenant.count({ where: { siteId: site.id, status: "active", attentionClockAt: { lte: REVIEW_CLOCK } } });
+    res.json({ site: { id: site.id, code: site.code, name: site.name }, sent: ids.length, inReview });
   })
 );
 

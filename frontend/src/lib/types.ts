@@ -102,6 +102,8 @@ export interface Tenant {
   attentionClockAt: string;
   hoursQuiet: number;
   needsAttention: boolean;
+  /** Someone sent them back to review: in review until kept, whatever their activity. */
+  sentToReview?: boolean;
   archivedAt: string | null;
   archiveReason: string | null;
   version: number;
