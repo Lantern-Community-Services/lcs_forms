@@ -246,8 +246,8 @@ and the key: `Ada Example (API key: Power Automate)`.
 | Scope | Creator needs | Operations |
 |---|---|---|
 | `roster:read` | roster.view | `list_residents`, `get_resident`, `resident_review_queue`, `roster_dashboard`, `list_attendance`, `get_attendance` |
-| `roster:write` | roster.edit | `add_resident`, `update_resident` (needs the `version` it read), `keep_resident`, `take_attendance` |
-| `roster:archive` | roster.archive / roster.restore | `archive_resident`\*, `restore_resident` |
+| `roster:write` | roster.edit | `add_resident`, `update_resident` (needs the `version` it read), `keep_resident`, `send_resident_to_review`, `take_attendance` |
+| `roster:archive` | roster.archive / roster.restore | `archive_resident`\*, `restore_resident`, `send_site_to_review`\* |
 | `roster:import` | sites.manage | `import_residents` (dry run unless `commit`\*) |
 | `audit:read` | roster.view (audit.view for non-roster events) | `list_audit` |
 | `sites:manage` | sites.manage, or sites.manageRules for `set_site_rules` | `list_sites`, `create_site`, `update_site` (\* to deactivate or recode), `set_site_rules` |

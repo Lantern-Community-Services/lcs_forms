@@ -159,14 +159,21 @@ export async function clearRoster() {
 // ── Reading ──────────────────────────────────────────────────────────────
 
 const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const REVIEW_CLOCK = Date.parse("2000-01-01T00:00:00Z");
 
 /** The list as the server would send it now: attention worked out for this moment, the server's order. */
 function present(rows: Row[], state: State, codes: string[]): RosterList {
   const now = Date.now();
   const items: Tenant[] = rows.map(({ siteCode, ...t }) => {
     const hours = state.sites[siteCode]?.attentionHours ?? state.defaultHours;
-    const quiet = Math.max(0, (now - new Date(t.attentionClockAt).getTime()) / 3600_000);
-    return { ...t, hoursQuiet: Math.round(quiet), needsAttention: t.status === "active" && quiet >= hours };
+    // Sent back to review (backend services/roster.ts REVIEW_CLOCK): the clock
+    // is parked in 2000, so quiet time comes from the real signals instead.
+    const sent = t.status === "active" && new Date(t.attentionClockAt).getTime() <= REVIEW_CLOCK;
+    const since = sent
+      ? Math.max(...[t.createdAt, t.lastActivityAt, t.lastKeptAt].filter((d): d is string => Boolean(d)).map((d) => new Date(d).getTime()))
+      : new Date(t.attentionClockAt).getTime();
+    const quiet = Math.max(0, (now - since) / 3600_000);
+    return { ...t, hoursQuiet: Math.round(quiet), sentToReview: sent, needsAttention: t.status === "active" && (sent || quiet >= hours) };
   });
   items.sort(
     (a, b) =>
