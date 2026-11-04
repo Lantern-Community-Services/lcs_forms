@@ -11,7 +11,7 @@ import { Input, SearchInput, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tag } from "@/components/ui/badge";
+import { Tag, ToneBadge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -543,15 +543,53 @@ function Pill({ children, onRemove }: { children: React.ReactNode; onRemove?: ()
   );
 }
 
+/** The account behind an address on a route, as it is now (null: no account, so email only). */
+interface Account { id: string; name: string; status: string; avatarColor: string | null }
+
+// Every person row on the page asks at once; one request answers them all.
+let waiting: { email: string; resolve: (a: Account | null) => void; reject: (e: unknown) => void }[] = [];
+let flush: ReturnType<typeof setTimeout> | null = null;
+function fetchAccount(email: string): Promise<Account | null> {
+  return new Promise((resolve, reject) => {
+    waiting.push({ email, resolve, reject });
+    flush ??= setTimeout(async () => {
+      const batch = waiting;
+      waiting = [];
+      flush = null;
+      try {
+        const found = await api.post<Record<string, Account>>("/routing/accounts", { emails: [...new Set(batch.map((b) => b.email))] });
+        for (const b of batch) b.resolve(found[b.email] ?? null);
+      } catch (e) {
+        for (const b of batch) b.reject(e);
+      }
+    }, 20);
+  });
+}
+function useAccount(email: string | undefined) {
+  return useQuery({ queryKey: ["routing-account", email], queryFn: () => fetchAccount(email!), enabled: Boolean(email), staleTime: 60_000 });
+}
+
+/** Signed in, not yet, gone, or no account at all: said next to the person's name. */
+function AccountBadge({ acct, known }: { acct: Account | null | undefined; known: boolean }) {
+  if (!known) return null;
+  if (!acct) return <ToneBadge tone="neutral" dot={false}>No account</ToneBadge>;
+  if (acct.status === "invited" || acct.status === "requested") return <ToneBadge tone="amber">Pending</ToneBadge>;
+  if (acct.status !== "active") return <ToneBadge tone="red" dot={false}>Deactivated</ToneBadge>;
+  return null;
+}
+
 function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; event: RoutingEvent; roles: RoutingView["roles"]; siteName: (c: string) => string; onChange: (r: Recipient | null) => void }) {
   const { data: groups } = useStaffGroups(r.kind === "group");
   const { data: titles } = useJobTitles(r.kind === "group");
+  const { data: acct, isSuccess: known } = useAccount(r.kind === "person" ? r.email.toLowerCase() : undefined);
   let icon = <User className="h-4 w-4" />;
   let title = "";
   let sub = "";
   if (r.kind === "person") {
-    title = r.name || r.email;
-    sub = [r.name ? r.email : null, r.sites?.length ? `only for ${r.sites.map(siteName).join(", ")}` : null].filter(Boolean).join(" · ");
+    // A signed-in account's own name; until they sign in, the name saved on the route.
+    title = (acct?.status === "active" ? acct.name : r.name || acct?.name) || r.email;
+    const state = !known ? null : !acct ? "no account: email with a link only" : acct.status === "invited" || acct.status === "requested" ? "hasn't signed in yet" : acct.status !== "active" ? "account deactivated" : null;
+    sub = [title !== r.email ? r.email : null, r.sites?.length ? `only for ${r.sites.map(siteName).join(", ")}` : null, state].filter(Boolean).join(" · ");
   } else if (r.kind === "role") {
     icon = <Users className="h-4 w-4" />;
     const role = roles.find((x) => x.key === r.role);
@@ -581,9 +619,16 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
   }
   return (
     <li className="flex items-center gap-3 px-3 py-2">
-      {r.kind === "person" ? <Avatar name={r.name || r.email} size={28} /> : <span className="grid h-7 w-7 place-items-center rounded-full bg-navsel text-accent">{icon}</span>}
+      {r.kind === "person" ? (
+        <Avatar name={title} color={acct?.avatarColor} size={28} className={cn(known && acct?.status !== "active" && "opacity-70")} />
+      ) : (
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-navsel text-accent">{icon}</span>
+      )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] font-semibold text-ink">{title}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[13.5px] font-semibold text-ink">{title}</span>
+          {r.kind === "person" && <AccountBadge acct={acct} known={known} />}
+        </span>
         {sub && <span className="block truncate text-[12px] text-muted">{sub}</span>}
       </span>
       {r.kind === "role" && !roles.find((x) => x.key === r.role)?.everySite && (
@@ -676,7 +721,7 @@ function SitesDialog({ open, sites, value, title, hint, onClose, onSave }: { ope
   );
 }
 
-interface Person { id: string; name: string; email: string; roleName: string; status: string }
+interface Person { id: string; name: string; email: string; roleName: string; status: string; avatarColor: string | null }
 
 function PersonDialog({ open, sites, taken, onClose, onAdd }: { open: boolean; sites: Site[]; taken: Recipient[]; onClose: () => void; onAdd: (r: Recipient) => void }) {
   const [q, setQ] = useState("");
@@ -715,9 +760,12 @@ function PersonDialog({ open, sites, taken, onClose, onAdd }: { open: boolean; s
             {people.map((p) => (
               <li key={p.id}>
                 <button type="button" disabled={has(p.email)} onClick={() => pick(p.email, p.name)} className="flex w-full items-center gap-3 py-2 text-left hover:bg-rowhover disabled:opacity-50">
-                  <Avatar name={p.name} size={30} />
+                  <Avatar name={p.name} color={p.avatarColor} size={30} className={cn(p.status !== "active" && "opacity-70")} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-semibold text-ink">{p.name}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[13.5px] font-semibold text-ink">{p.name}</span>
+                      {p.status !== "active" && <ToneBadge tone="amber">Pending</ToneBadge>}
+                    </span>
                     <span className="block truncate text-[12px] text-muted">{p.roleName} · {p.email}{p.status !== "active" ? " · hasn't signed in yet" : ""}</span>
                   </span>
                   {has(p.email) ? <span className="text-[12px] text-muted">Added</span> : <Plus className="h-4 w-4 text-muted" />}

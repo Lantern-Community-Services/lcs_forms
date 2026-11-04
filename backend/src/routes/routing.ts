@@ -59,9 +59,25 @@ routingRouter.get(
       where: { status: { in: ["active", "invited"] }, ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q } }] } : {}) },
       orderBy: { name: "asc" },
       take: 25,
-      select: { id: true, name: true, email: true, roleKey: true, status: true },
+      select: { id: true, name: true, email: true, roleKey: true, status: true, avatarColor: true },
     });
     res.json(rows.map((u) => ({ ...u, roleName: ROLES.find((r) => r.key === u.roleKey)?.name ?? u.roleKey })));
+  })
+);
+
+/**
+ * The accounts behind the addresses on a form's routes, follow-ups and reports, as they are now:
+ * name, profile color and status (active, invited = hasn't signed in yet, deactivated, ...).
+ * Keyed by the lower-cased address; an address with no account is left out.
+ */
+routingRouter.post(
+  "/accounts",
+  asyncHandler(async (req, res) => {
+    const { emails } = z.object({ emails: z.array(z.string().trim().max(320)).max(500) }).parse(req.body);
+    const wanted = [...new Set(emails.map((e) => e.toLowerCase()).filter(Boolean))];
+    if (!wanted.length) return void res.json({});
+    const rows = await prisma.user.findMany({ where: { email: { in: wanted } }, select: { id: true, name: true, email: true, status: true, avatarColor: true } });
+    res.json(Object.fromEntries(rows.map((u) => [u.email.toLowerCase(), { id: u.id, name: u.name, status: u.status, avatarColor: u.avatarColor }])));
   })
 );
 
