@@ -84,7 +84,7 @@ Text validation: minLength, maxLength, pattern (regex, whole value), patternMess
 Number: min, max, step, prefix, suffix. Date: minDate/maxDate as YYYY-MM-DD or "today", "today+7".
 Repeater: "fields": [sub-fields] (no page/file/signature/code/resident/repeater inside), minRows, maxRows, addLabel.
 Likert: "choices" = the scale, "statements" = the rows.
-Resident: "siteField": "<id of a site field>" (else the form's site). Logs roster activity unless logActivity:false.
+Resident: "siteField": "<id of a site field>" (else the form's site). Logs roster activity unless logActivity:false. "highAcuityOnly": true lists only residents flagged High Acuity on the roster.
 
 ## Calculations ("calculation" field, "expression")
 {qty} * {price}, + - * / % ^, comparisons == != > < >= <=, && || !, "text".

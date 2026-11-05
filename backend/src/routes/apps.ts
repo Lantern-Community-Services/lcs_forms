@@ -19,6 +19,7 @@ import {
 import { readAppFile, uploadAppFile } from "../apps/files.js";
 import { fileBytes } from "../services/fileStore.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
+import { noteActionFailure } from "../services/devlog.js";
 import {
   createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, projectDetail, publishProject, restoreProjectVersion,
   saveProject, versionFiles,
@@ -390,6 +391,7 @@ appsRouter.post(
     const app = await appFor(req);
     const r = await runAction(app, req.user!, req.params.name, req.body?.args);
     const logs = app.draft ? r.logs : undefined;
+    if (!r.ok && !r.userError) noteActionFailure(req, { slug: app.form.slug, version: app.form.liveVersion, draft: app.draft }, req.params.name, r);
     if (!r.ok) return res.status(r.userError ? 400 : 500).json({ error: r.userError ? r.error : `The form's server code failed: ${r.error}`, stack: app.draft ? r.stack : undefined, logs });
     res.json({ value: r.value, logs });
   })

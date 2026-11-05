@@ -479,7 +479,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
       return <SiteSelect inputId={inputId} value={text} onChange={onChange} disabled={disabled} slug={props.slug} />;
     case "resident": {
       const siteCode = (f.siteField ? String(props.values[f.siteField] ?? "") : props.formSite) || null;
-      return <ResidentPicker siteCode={siteCode} value={value as ResidentValue | undefined} onChange={onChange} disabled={disabled} needsSite={f.siteField ? "Pick a site above first." : "Pick the site first."} />;
+      return <ResidentPicker siteCode={siteCode} highAcuityOnly={f.highAcuityOnly === true} value={value as ResidentValue | undefined} onChange={onChange} disabled={disabled} needsSite={f.siteField ? "Pick a site above first." : "Pick the site first."} />;
     }
     case "code":
       return f.code ? (
@@ -803,7 +803,7 @@ interface ResidentValue {
   unit?: string;
 }
 
-function ResidentPicker({ siteCode, value, onChange, disabled, needsSite }: { siteCode: string | null; value?: ResidentValue; onChange: (v: unknown) => void; disabled?: boolean; needsSite: string }) {
+function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, needsSite }: { siteCode: string | null; highAcuityOnly?: boolean; value?: ResidentValue; onChange: (v: unknown) => void; disabled?: boolean; needsSite: string }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(!value);
   const { data, isLoading } = useTenants(siteCode ?? undefined, "active", Boolean(siteCode) && open && !disabled);
@@ -817,7 +817,7 @@ function ResidentPicker({ siteCode, value, onChange, disabled, needsSite }: { si
   }
   if (!siteCode) return <p className="rounded-input border border-dashed border-hairline px-3 py-2.5 text-[13px] text-muted">{needsSite}</p>;
   const needle = q.trim().toLowerCase();
-  const people = (data?.items ?? []).filter((t) => !needle || t.displayName.toLowerCase().includes(needle) || `${t.firstName} ${t.lastName}`.toLowerCase().includes(needle) || (t.unit ?? "").toLowerCase().includes(needle) || (t.formerNames ?? []).some((n) => n.toLowerCase().includes(needle)));
+  const people = (data?.items ?? []).filter((t) => !highAcuityOnly || t.highAcuity).filter((t) => !needle || t.displayName.toLowerCase().includes(needle) || `${t.firstName} ${t.lastName}`.toLowerCase().includes(needle) || (t.unit ?? "").toLowerCase().includes(needle) || (t.formerNames ?? []).some((n) => n.toLowerCase().includes(needle)));
   return (
     <div className="rounded-input border border-hairline bg-surface">
       <div className="relative border-b border-hairline">

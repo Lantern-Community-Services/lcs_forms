@@ -7,6 +7,7 @@ import { uploadAppFile } from "../apps/files.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { formIncludesOffice, notOffice, OFFICE } from "../services/officeSites.js";
 import { linkUsed, resolveShare } from "../services/shareLinks.js";
+import { noteActionFailure } from "../services/devlog.js";
 
 /**
  * A code form filled in through an employee's share link (/s/<token>), not
@@ -100,6 +101,7 @@ appShareRouter.post(
   asyncHandler(async (req, res) => {
     const { app, guest } = await guestOf(req);
     const r = await runAction(app, guest, req.params.name, req.body?.args);
+    if (!r.ok && !r.userError) noteActionFailure(req, { slug: app.form.slug, version: app.form.liveVersion }, req.params.name, r);
     if (!r.ok) return res.status(r.userError ? 400 : 500).json({ error: r.userError ? r.error : "Something went wrong. Try again in a moment." });
     res.json({ value: r.value });
   })
