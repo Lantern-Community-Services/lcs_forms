@@ -236,6 +236,8 @@ fillRouter.get(
       olderId: neighbours[1]?.id ?? null,
       // Whether this person can mark the entry's follow-up done (or reopen it).
       canFollowUp: await canFollowUp(form, req.user, entry),
+      // What they fill in when they mark it done.
+      followUpFields: entry.followUp ? (await loadFollowUp(form)).doneFields : [],
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
       isAdmin: isFormAdmin(req.user),
     });
@@ -278,7 +280,7 @@ fillRouter.post(
 fillRouter.post(
   "/:slug/entries/:id/follow-up",
   asyncHandler(async (req, res) => {
-    const body = z.object({ done: z.boolean(), note: z.string().max(2000).optional() }).parse(req.body);
+    const body = z.object({ done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional() }).parse(req.body);
     const { form, reach } = await readable(req);
     const entry = await entryIn(req, form, reach);
     await requireFollowUp(form, req.user, entry);

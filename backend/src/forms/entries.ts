@@ -11,7 +11,7 @@ import { mailConfigured, sendLogged } from "../services/mailer.js";
 import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
-import { canFollowUp, openFollowUp } from "../services/followUp.js";
+import { canFollowUp, loadFollowUp, openFollowUp, parseDoneValues } from "../services/followUp.js";
 import { movedRuleCheck } from "../services/ruleConversion.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
@@ -506,7 +506,8 @@ export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): 
   if (filter.followUp) and.push({ followUp: filter.followUp });
   if (filter.q?.trim()) {
     const q = filter.q.trim();
-    and.push({ OR: [{ data: { contains: q } }, { createdByName: { contains: q } }, { id: q }] });
+    // What a follow-up's done fields kept too (the account IT made): never a password, which isn't kept.
+    and.push({ OR: [{ data: { contains: q } }, { createdByName: { contains: q } }, { followUpValues: { contains: q } }, { id: q }] });
   }
   return { AND: and };
 }
@@ -539,7 +540,7 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     voidedAt: e.voidedAt,
     voidedByName: e.voidedByName,
     voidReason: e.voidReason,
-    followUp: e.followUp ? { status: e.followUp, doneAt: e.followUpDoneAt, doneByName: e.followUpDoneByName, note: e.followUpNote, reminders: e.followUpReminders } : null,
+    followUp: e.followUp ? { status: e.followUp, doneAt: e.followUpDoneAt, doneByName: e.followUpDoneByName, note: e.followUpNote, reminders: e.followUpReminders, values: parseDoneValues(e.followUpValues) } : null,
     noteCount: e._count?.notes,
   };
 }
@@ -613,10 +614,22 @@ export async function exportEntries(form: BuiltForm, doc: FormDoc, where: Prisma
   const rows = await prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take: 50_000 });
   const sites = new Map((await prisma.site.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
   const cols = exportColumns(doc);
-  const header = ["Entry ID", "Submitted", "Submitted by", "Site", ...cols.map((c) => c.header), "Status", "Void reason", "Device", "Time to fill (minutes)"];
+  // Follow-up: its state, and what was filled in when it was marked done (never a password).
+  const tracked = rows.some((e) => e.followUp);
+  const follow = tracked ? await loadFollowUp(form) : null;
+  const doneCols = new Map<string, string>();
+  for (const f of follow?.doneFields ?? []) if (f.type !== "password") doneCols.set(f.id, f.label);
+  const doneOf = new Map(rows.map((e) => [e.id, parseDoneValues(e.followUpValues)]));
+  for (const vals of doneOf.values()) for (const v of vals) if (!v.emailed && !doneCols.has(v.id)) doneCols.set(v.id, v.label);
+  const followHeader = tracked ? ["Follow-up", "Done by", "Done at", "What was done", ...doneCols.values()] : [];
+  const header = ["Entry ID", "Submitted", "Submitted by", "Site", ...cols.map((c) => c.header), ...followHeader, "Status", "Void reason", "Device", "Time to fill (minutes)"];
   const data = rows.map((e) => {
     const v = JSON.parse(e.data) as Values;
-    return [e.id, stamp(e.createdAt), e.createdByName, e.siteId ? sites.get(e.siteId) ?? "" : "", ...cols.map((c) => c.get(v)), e.status, e.voidReason ?? "", deviceLabel(e.deviceKind), fillMinutes(e.fillSeconds)];
+    const dv = doneOf.get(e.id) ?? [];
+    const followCells = tracked
+      ? [e.followUp ?? "", e.followUpDoneByName ?? "", e.followUpDoneAt ? stamp(e.followUpDoneAt) : "", e.followUpNote ?? "", ...[...doneCols.keys()].map((id) => dv.find((x) => x.id === id)?.value ?? "")]
+      : [];
+    return [e.id, stamp(e.createdAt), e.createdByName, e.siteId ? sites.get(e.siteId) ?? "" : "", ...cols.map((c) => c.get(v)), ...followCells, e.status, e.voidReason ?? "", deviceLabel(e.deviceKind), fillMinutes(e.fillSeconds)];
   });
   const base = `${form.slug}-entries-${new Date().toISOString().slice(0, 10)}`;
   if (format === "csv") {

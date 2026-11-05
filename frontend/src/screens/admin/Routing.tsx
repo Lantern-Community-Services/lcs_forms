@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useSites } from "@/lib/queries";
 import type { Site } from "@/lib/types";
+import type { DoneField, DoneFieldType } from "@/lib/builder";
 import { cn, errorMessage, formatDateTime, relativeTime } from "@/lib/utils";
 import { listWords, templateOptions, useEmailTemplates, type TemplateKind } from "@/lib/emailTemplates";
 
@@ -1091,8 +1092,56 @@ interface FollowUp {
   maxReminders: number;
   tellSubmitter: boolean;
   whatToDo?: string;
+  doneFields: DoneField[];
+  reply?: { subject?: string; message?: string };
   open?: number;
 }
+
+const DONE_TYPES: { value: DoneFieldType; label: string }[] = [
+  { value: "text", label: "Short text" },
+  { value: "email", label: "Email address" },
+  { value: "textarea", label: "Long text" },
+  { value: "date", label: "Date" },
+  { value: "password", label: "Password (emailed once, not kept)" },
+];
+
+/** A done field's id from its label: "Email address" → email_address. */
+const doneId = (label: string, taken: string[]) => {
+  const base = (label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "f_$1") || "field").slice(0, 36);
+  let id = base;
+  for (let n = 2; taken.includes(id); n++) id = `${base}_${n}`;
+  return id;
+};
+
+/** IT's usual "account created" email, for HR's Onboarding. */
+const NEW_ACCOUNT: Pick<FollowUp, "doneFields" | "reply" | "tellSubmitter"> = {
+  tellSubmitter: true,
+  doneFields: [
+    { id: "username", label: "Username (email)", type: "email", required: true, help: "The new person's Lantern email address: it's kept on the entry." },
+    { id: "temp_password", label: "Temporary password", type: "password", required: false },
+  ],
+  reply: {
+    subject: "Account created: {username}",
+    message: [
+      "The network and email account has been created. Please see credentials below:",
+      "",
+      "Computer/Email Login:",
+      "Username: {username}",
+      "Password: {temp_password}",
+      "",
+      "Please note user will need to change password upon login",
+      "",
+      "Steps to setup MFA:",
+      "Download Microsoft Authenticator on Phone",
+      "Follow on screen instructions",
+      "Tutorial here -",
+      "https://www.youtube.com/watch?v=JCFAoMPFq-Q",
+      "",
+      "Steps to access Outlook on the web:",
+      "Visit office.com > select Sign in > Enter your email address and password.",
+    ].join("\n"),
+  },
+};
 
 /**
  * Follow-up: each new entry stays open until someone it's for marks it done
@@ -1191,6 +1240,37 @@ function FollowUpSection({ formId, roles, sites }: { formId: string; roles: Rout
               <Textarea value={f.whatToDo ?? ""} onChange={(e) => set({ whatToDo: e.target.value || undefined })} rows={2} maxLength={500} placeholder="e.g. Set up their accounts, then mark it done." className="max-w-[560px]" />
               <p className="mt-1 text-[12px] text-muted">Shown in the reminder emails.</p>
             </Row>
+            <Row label="They fill in">
+              <DoneFieldsEditor
+                fields={f.doneFields ?? []}
+                saved={(data.doneFields ?? []).map((d) => d.id)}
+                onChange={(doneFields) => set({ doneFields })}
+                onPreset={() => set({ ...NEW_ACCOUNT, doneFields: NEW_ACCOUNT.doneFields.map((d) => ({ ...d })) })}
+              />
+            </Row>
+            {f.tellSubmitter && (
+              <Row label="Reply">
+                <div className="grid max-w-[640px] gap-2">
+                  <Field label="Subject">
+                    <Input value={f.reply?.subject ?? ""} onChange={(e) => set({ reply: { ...f.reply, subject: e.target.value || undefined } })} maxLength={200} placeholder="Done: {form}" />
+                  </Field>
+                  <Field label="Message">
+                    <Textarea
+                      value={f.reply?.message ?? ""}
+                      onChange={(e) => set({ reply: { ...f.reply, message: e.target.value || undefined } })}
+                      rows={8}
+                      maxLength={4000}
+                      placeholder="Leave empty to send the usual “it's done” email with what they filled in."
+                    />
+                  </Field>
+                  <p className="text-[12px] text-muted">
+                    Emailed to whoever filed it when it's marked done, in these words. Tags:{" "}
+                    {[...(f.doneFields ?? []).map((d) => d.id), "done_by", "filed_by", "form", "site", "note"].map((t) => `{${t}}`).join(" ")}, and any of the form's answers by field id.
+                    {(f.doneFields ?? []).some((d) => d.type === "password") && " A password tag only fills the message, never the subject."}
+                  </p>
+                </div>
+              </Row>
+            )}
             <p className="text-[12px] text-muted">Applies to entries saved after it's turned on.</p>
           </div>
         )}
@@ -1207,6 +1287,54 @@ function FollowUpSection({ formId, roles, sites }: { formId: string; roles: Rout
       {picking === "group" && <TeamDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
       {picking === "title" && <PositionDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
     </section>
+  );
+}
+
+/**
+ * What the people a follow-up is for fill in when they mark it done. A field
+ * keeps its id once saved (a reply's {tags} use it); a new one takes it from its label.
+ */
+function DoneFieldsEditor({ fields, saved, onChange, onPreset }: { fields: DoneField[]; saved: string[]; onChange: (f: DoneField[]) => void; onPreset: () => void }) {
+  const put = (i: number, patch: Partial<DoneField>) =>
+    onChange(
+      fields.map((d, j) => {
+        if (j !== i) return d;
+        const next = { ...d, ...patch };
+        if (patch.label !== undefined && !saved.includes(d.id)) next.id = doneId(patch.label, fields.filter((_, k) => k !== i).map((x) => x.id));
+        return next;
+      })
+    );
+  return (
+    <div className="max-w-[640px]">
+      {fields.length > 0 && (
+        <ul className="mb-2 divide-y divide-hairline rounded-input border border-hairline">
+          {fields.map((d, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <Input value={d.label} onChange={(e) => put(i, { label: e.target.value })} maxLength={80} placeholder="e.g. Email address" aria-label="Label" className="min-w-[160px] flex-1" />
+              <Select value={d.type} onChange={(e) => put(i, { type: e.target.value as DoneFieldType })} options={DONE_TYPES} aria-label="Kind" className="w-[220px]" />
+              <label className="flex items-center gap-1.5 text-[12.5px] text-ink">
+                <Switch checked={d.required} onCheckedChange={(v) => put(i, { required: v })} aria-label="Required" /> Required
+              </label>
+              <code className="text-[11.5px] text-muted">{`{${d.id}}`}</code>
+              <Button variant="ghost" size="sm" aria-label="Remove" onClick={() => onChange(fields.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-1">
+        <Button variant="ghost" size="sm" disabled={fields.length >= 15} onClick={() => onChange([...fields, { id: doneId("field", fields.map((x) => x.id)), label: "", type: "text", required: false }])}>
+          <Plus className="h-4 w-4" /> Add a field
+        </Button>
+        {!fields.length && (
+          <Button variant="ghost" size="sm" onClick={onPreset}>
+            <UserCheck className="h-4 w-4" /> Start from “account created”
+          </Button>
+        )}
+      </div>
+      <p className="mt-1 text-[12px] text-muted">
+        Kept on the entry and shown in its entries and exports, so you can see the account that was made. A password is emailed to whoever filed it once and never kept.
+      </p>
+    </div>
   );
 }
 
