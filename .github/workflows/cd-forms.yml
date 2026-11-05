@@ -29,6 +29,14 @@ on:
   # push images to ACR). ci.yml is the PR build check.
   workflow_dispatch:
 
+# One deploy at a time: a second merge waits for the first run to finish instead
+# of restarting the api in the middle of its health wait (run 61, 2026-11-05).
+# cancel-in-progress stays false so a run waiting on the prod approval isn't
+# cancelled; approve only the newest one so an older image never goes out last.
+concurrency:
+  group: cd-forms
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
