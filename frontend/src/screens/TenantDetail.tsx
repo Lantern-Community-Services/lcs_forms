@@ -111,7 +111,7 @@ export function TenantDetailPage() {
                 {t.preferredName && ` · legal name ${t.firstName} ${t.lastName}`}
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <TenantStatusBadge status={t.status} needsAttention={t.needsAttention} />
+                <TenantStatusBadge status={t.status} needsAttention={t.needsAttention && can("roster.archive")} />
                 {t.highAcuity && <HighAcuityFlag />}
               </div>
             </div>
@@ -150,7 +150,7 @@ export function TenantDetailPage() {
             <Stat label="Quiet for" value={t.status === "active" ? quietFor(t.hoursQuiet) : "—"} />
             <Stat label="Roster ID" value={<span className="font-mono text-[11.5px]">{t.id}</span>} />
           </dl>
-          {t.sentToReview && (
+          {t.sentToReview && can("roster.archive") && (
             <p className="mt-4 rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
               Sent back to review. They stay in Review until someone confirms they're still here or removes them.
             </p>

@@ -12,6 +12,7 @@ import { actorOf, audit, auditView, diff } from "../services/audit.js";
 import { attentionHours } from "../services/settings.js";
 import { clockFrom, cutoff, displayName, isSentToReview, publicTenant, REVIEW_CLOCK, serializeTenant } from "../services/roster.js";
 import { formerNamesAfter, nameHistory, parseFormerNames } from "../services/nameHistory.js";
+import { reviewsRoster } from "../services/permissions.js";
 
 export const tenantsRouter = Router();
 tenantsRouter.use(requireAuth);
@@ -168,7 +169,8 @@ tenantsRouter.get(
   asyncHandler(async (req, res) => {
     const sites = await sitesInScope(req, req.query.site);
     const orgHours = await attentionHours();
-    if (sites.length === 0) return res.json({ items: [], attentionHours: orgHours });
+    // Looking residents up only: the review queue isn't theirs to see.
+    if (sites.length === 0 || !reviewsRoster(req.user!.permissions)) return res.json({ items: [], attentionHours: orgHours });
     // Per-site thresholds, so one OR per site. Oldest silence first.
     const rows = await prisma.tenant.findMany({
       where: {

@@ -87,6 +87,14 @@ export interface RoleDef {
  */
 export const ROSTER_MANAGEMENT: PermissionKey[] = ["roster.edit", "roster.archive", "roster.restore"];
 
+/**
+ * Takes part in the roster's review queue (residents with no recent form
+ * activity: Keep or Remove each one). Someone who can only look up residents
+ * sees none of it — no Review tab, no counts, nothing on Home — since there's
+ * nothing they could do about it. The frontend's twin is can("roster.archive").
+ */
+export const reviewsRoster = (permissions: readonly string[]) => permissions.includes("roster.archive");
+
 /** Most privileged first — the order People & roles lists them in. */
 export const ROLES: RoleDef[] = [
   {

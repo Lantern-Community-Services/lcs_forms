@@ -18,7 +18,8 @@ export function useReviewCount(): number {
   const { can } = useAuth();
   const rosterUser = can("roster.view");
   const { data } = useSites(false, rosterUser);
-  return rosterUser ? (data ?? []).reduce((n, s) => n + s.attentionCount, 0) : 0;
+  // Only for people who can Keep or Remove (the server sends them no counts either).
+  return rosterUser && can("roster.archive") ? (data ?? []).reduce((n, s) => n + s.attentionCount, 0) : 0;
 }
 
 /** The Roster's catalog URL. It sits in the top group of the nav (Home, Roster, Calendar), not among the forms. */

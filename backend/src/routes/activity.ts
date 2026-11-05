@@ -7,6 +7,7 @@ import { attentionHours } from "../services/settings.js";
 import { cutoff } from "../services/roster.js";
 import { sitesInScope } from "../services/siteScope.js";
 import { auditView } from "../services/audit.js";
+import { reviewsRoster } from "../services/permissions.js";
 
 export const activityRouter = Router();
 activityRouter.use(requireAuth);
@@ -91,10 +92,12 @@ activityRouter.get(
     const attentionBy = new Map(attentionRows.map((a) => [a.siteId, Number(a.cnt)]));
     const addedBy = new Map(addedBySite.map((a) => [a.siteId, a._count._all]));
     const removedBy = new Map(removedBySite.map((a) => [a.siteId, a._count._all]));
+    const reviews = reviewsRoster(req.user!.permissions);
     const attentionPerSite = sites.map((s) => ({
       ...s,
       activeCount: activeBy.get(s.id) ?? 0,
-      attentionCount: attentionBy.get(s.id) ?? 0,
+      // The review queue is only for people who can act on it.
+      attentionCount: reviews ? attentionBy.get(s.id) ?? 0 : 0,
       addedWeek: addedBy.get(s.id) ?? 0,
       removedWeek: removedBy.get(s.id) ?? 0,
     }));

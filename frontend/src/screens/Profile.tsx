@@ -114,7 +114,7 @@ export function ProfilePage() {
     ...(can("roster.view")
       ? [
           { value: "/roster", label: "Roster · Residents" },
-          { value: "/roster/review", label: "Roster · Review" },
+          ...(can("roster.archive") ? [{ value: "/roster/review", label: "Roster · Review" }] : []),
           { value: "/roster/overview", label: "Roster · Overview" },
         ]
       : []),

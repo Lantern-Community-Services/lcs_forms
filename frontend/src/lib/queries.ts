@@ -142,7 +142,7 @@ export function useHome() {
   const { can } = useAuth();
   return useQuery({
     queryKey: sample ? sampleKey("home") : ["home"],
-    queryFn: () => (sample ? Promise.resolve(sampleHome(can("roster.view"))) : api.get<HomeData>("/home")),
+    queryFn: () => (sample ? Promise.resolve(sampleHome(can("roster.view") && can("roster.archive"))) : api.get<HomeData>("/home")),
     staleTime: 60_000,
   });
 }
