@@ -243,6 +243,27 @@ export function noteServerError(req: Request, status: number, err: unknown) {
   });
 }
 
+/**
+ * A code form's server action that failed (not a userError) and was answered
+ * 500 by its route rather than thrown to the error handler. The form's own
+ * logs stay out: they can hold residents' details.
+ */
+export function noteActionFailure(req: Request, form: { slug: string; version?: number | null; draft?: boolean }, action: string, r: { error?: string; stack?: string }) {
+  const message = `${form.slug} · ${action}: ${r.error ?? "failed"}`;
+  devEvent({
+    kind: "error",
+    level: "error",
+    path: `${req.method} ${routeName(req, { statusCode: 500 } as Response)}`,
+    status: 500,
+    message,
+    data: { url: req.originalUrl.split("?")[0], form: form.slug, action, version: form.version ?? null, draft: Boolean(form.draft), stack: r.stack ?? null },
+    requestId: req.id,
+    userEmail: req.user?.email,
+  });
+  // For App Service's log stream, in the handler's shape so captureConsole doesn't keep it twice.
+  console.error(`[${req.id ?? "-"}] ${req.method} ${req.originalUrl} -> 500 (user ${req.user?.email ?? "anonymous"}) ${message}`);
+}
+
 // ── Database ──────────────────────────────────────────────────────────────
 
 /** The log's own writes aren't the site's work; leave them out of the numbers. */
