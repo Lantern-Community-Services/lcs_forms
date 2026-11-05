@@ -600,6 +600,10 @@ model FormEntry {
   followUpDoneByName String?   @db.NVarChar(255)
   /// What they did, written when marking it done.
   followUpNote       String?   @db.NVarChar(2000)
+  /// What they filled in when marking it done (the follow-up's done fields), as
+  /// [{ id, label, value }]. A password field is emailed once and never kept:
+  /// it's saved here as { value: null, emailed: true }.
+  followUpValues     String?   @db.NVarChar(Max)
   followUpRemindedAt DateTime?
   followUpReminders  Int       @default(0)
 

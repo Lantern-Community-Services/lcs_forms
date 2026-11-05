@@ -8,7 +8,7 @@ import {
 } from "../services/routing.js";
 import { loadReports, saveReports, sendReport } from "../services/emailReports.js";
 import { sentEmails } from "../services/mailer.js";
-import { followUpView, saveFollowUp, setFollowUp } from "../services/followUp.js";
+import { doneFieldSchema, followUpView, parseDoneValues, saveFollowUp, setFollowUp } from "../services/followUp.js";
 import { convertRules } from "../services/ruleConversion.js";
 import { DEFAULT_MESSAGE_TEMPLATE, DEFAULT_REPORT_TEMPLATE, listTemplates } from "../services/emailTemplates.js";
 import { ENTRY_CREATED } from "./routingSchema.js";
@@ -340,7 +340,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "set_follow_up",
-    "Turn a basic form's follow-up on or off and set it: doers (who marks entries done and is reminded; route recipient kinds), remindAfterDays (remind them this many days after it was filed and again every as many days; null for never), maxReminders, tellSubmitter (tell whoever filed it when it's done), whatToDo (shown in reminders). Applies to entries saved after it's turned on.",
+    "Turn a basic form's follow-up on or off and set it: doers (who marks entries done and is reminded; route recipient kinds), remindAfterDays (remind them this many days after it was filed and again every as many days; null for never), maxReminders, tellSubmitter (tell whoever filed it when it's done), whatToDo (shown in reminders). doneFields: what the doers fill in when they mark it done (id, label, type text|email|textarea|date|password, required, help); kept on the entry and in its exports, except a password, which is emailed once to whoever filed it and never kept (needs tellSubmitter). reply: { subject, message }, the email whoever filed it gets, in the doers' words, with {tags}: a done field's id, any entry answer by field id, {done_by}, {filed_by}, {form}, {site}, {note}; a password tag only fills the message, never the subject. Applies to entries saved after it's turned on. Send every setting each time: the ones left out go back to their defaults.",
     {
       form: formRef,
       enabled: z.boolean(),
@@ -349,6 +349,8 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       maxReminders: z.number().int().min(1).max(10).optional(),
       tellSubmitter: z.boolean().optional(),
       whatToDo: z.string().optional(),
+      doneFields: z.array(doneFieldSchema).max(15).optional(),
+      reply: z.object({ subject: z.string().max(200).optional(), message: z.string().max(4000).optional() }).optional(),
     },
     async ({ form, ...settings }) => {
       need("forms:build");
@@ -368,23 +370,23 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
         where: { formId: f.id, status: "active", followUp: status },
         orderBy: { createdAt: status === "open" ? "asc" : "desc" },
         take: limit,
-        select: { id: true, createdAt: true, createdByName: true, siteId: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpReminders: true },
+        select: { id: true, createdAt: true, createdByName: true, siteId: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpReminders: true },
       });
-      return { status, count: rows.length, items: rows };
+      return { status, count: rows.length, items: rows.map(({ followUpValues, ...r }) => ({ ...r, doneValues: parseDoneValues(followUpValues) })) };
     }
   );
 
   tool(
     "mark_follow_up",
-    "Mark an entry's follow-up done, with a note of what was done (whoever filed it is told), or open it again with done: false. Acts as this key (the admin who made it).",
-    { form: formRef, entryId: z.string(), done: z.boolean(), note: z.string().max(2000).optional() },
-    async ({ form, entryId, done, note }) => {
+    "Mark an entry's follow-up done, with a note of what was done and its done fields (values: { fieldId: answer }; see get_follow_up), or open it again with done: false. Whoever filed it is told. A password done field is emailed to them once and never kept; if that email can't go, nothing is saved. Acts as this key (the admin who made it).",
+    { form: formRef, entryId: z.string(), done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional() },
+    async ({ form, entryId, done, note, values }) => {
       need("entries:manage");
       const f = await routingForm(form);
       const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id } });
       if (!entry) throw new HttpError(404, "That form has no such entry.");
-      const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note });
-      return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, note: out.followUpNote };
+      const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note, values });
+      return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, note: out.followUpNote, doneValues: parseDoneValues(out.followUpValues) };
     },
     { destructiveHint: true }
   );

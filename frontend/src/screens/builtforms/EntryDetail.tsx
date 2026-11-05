@@ -5,13 +5,14 @@ import { CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Pencil, Printer,
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
+import { Field } from "@/components/ui/label";
 import { ToneBadge } from "@/components/ui/badge";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { AnswerList, FormRenderer } from "@/components/formkit/FormRenderer";
-import { fillApi, submitErrors, useEntry, type EntryDetail } from "@/lib/builder";
+import { fillApi, submitErrors, useEntry, type DoneField, type EntryDetail } from "@/lib/builder";
 import type { Errors, Values } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import { deviceLabel, fillTimeText } from "@/lib/fillMeta";
@@ -37,13 +38,16 @@ export function BuiltFormEntryPage() {
   if (isLoading || !data) return <LoadingState />;
   const { entry, doc } = data;
 
-  async function act(fn: () => Promise<unknown>, done: string) {
+  /** Run it, refresh and say so; false when it didn't work (its error is shown). */
+  async function act(fn: () => Promise<unknown>, done: string): Promise<boolean> {
     try {
       await fn();
       await refresh();
       toast(done);
+      return true;
     } catch (e) {
       toast(errorMessage(e, "That didn't work."), "error");
+      return false;
     }
   }
 
@@ -123,7 +127,14 @@ export function BuiltFormEntryPage() {
         )}
       </Card>
 
-      {entry.followUp && <FollowUpPanel entry={entry} canDo={data.canFollowUp} onDone={(done, text) => act(() => fillApi.followUp(slug, id, done, text), done ? "Marked done. Whoever filed it has been told." : "Opened again.")} />}
+      {entry.followUp && (
+        <FollowUpPanel
+          entry={entry}
+          canDo={data.canFollowUp}
+          fields={data.followUpFields ?? []}
+          onDone={(done, text, values) => act(() => fillApi.followUp(slug, id, done, text, values), done ? "Marked done. Whoever filed it has been told." : "Opened again.")}
+        />
+      )}
 
       <Card className="p-5 print:hidden">
         <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">Notes</p>
@@ -163,15 +174,32 @@ export function BuiltFormEntryPage() {
  * The entry's follow-up: open until someone it's for marks it done, with what
  * they did; then whoever filed it is told. Done ones can be opened again.
  */
-function FollowUpPanel({ entry, canDo, onDone }: { entry: EntryDetail["entry"]; canDo: boolean; onDone: (done: boolean, note?: string) => Promise<void> }) {
+function FollowUpPanel({
+  entry,
+  canDo,
+  fields,
+  onDone,
+}: {
+  entry: EntryDetail["entry"];
+  canDo: boolean;
+  fields: DoneField[];
+  onDone: (done: boolean, note?: string, values?: Record<string, string>) => Promise<boolean>;
+}) {
   const [text, setText] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const f = entry.followUp!;
+  const missing = fields.filter((d) => d.required && !values[d.id]?.trim());
+  const hasPassword = fields.some((d) => d.type === "password" && values[d.id]?.trim());
   const run = async (done: boolean) => {
     setBusy(true);
     try {
-      await onDone(done, text.trim() || undefined);
-      setText("");
+      const filled = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim()));
+      // Kept until it works, so a failed send loses nothing they typed.
+      if (await onDone(done, text.trim() || undefined, done && fields.length ? filled : undefined)) {
+        setText("");
+        setValues({});
+      }
     } finally {
       setBusy(false);
     }
@@ -188,7 +216,19 @@ function FollowUpPanel({ entry, canDo, onDone }: { entry: EntryDetail["entry"]; 
           <p className="text-[13.5px] text-ink">
             Done by <span className="font-semibold">{f.doneByName}</span>{f.doneAt ? `, ${formatDateTime(f.doneAt)}` : ""}.
           </p>
-          {f.note && <p className="mt-1 whitespace-pre-wrap rounded-input bg-subtle px-3 py-2 text-[13.5px] text-ink">{f.note}</p>}
+          {!!f.values?.length && (
+            <dl className="mt-2 grid gap-x-4 gap-y-2 rounded-input border border-hairline px-3 py-2.5 text-[13.5px] sm:grid-cols-[minmax(140px,auto)_1fr]">
+              {f.values.map((v) => (
+                <div key={v.id} className="contents">
+                  <dt className="text-muted">{v.label}</dt>
+                  <dd className="min-w-0 whitespace-pre-wrap break-words text-ink">
+                    {v.emailed ? <span className="text-muted">Emailed to {entry.createdByName}, not kept</span> : v.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {f.note && <p className="mt-2 whitespace-pre-wrap rounded-input bg-subtle px-3 py-2 text-[13.5px] text-ink">{f.note}</p>}
           {canDo && (
             <div className="mt-3">
               <Button variant="secondary" size="sm" disabled={busy} onClick={() => void run(false)}><RotateCcw className="h-4 w-4" /> Open it again</Button>
@@ -197,10 +237,45 @@ function FollowUpPanel({ entry, canDo, onDone }: { entry: EntryDetail["entry"]; 
         </>
       ) : canDo ? (
         <>
-          <p className="mb-2 text-[13px] text-muted">When it's done, say what you did. Whoever filed it is told.</p>
-          <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="e.g. Accounts created, laptop handed over at orientation." className="min-h-[64px]" />
-          <div className="mt-2 flex justify-end">
-            <Button disabled={busy} onClick={() => void run(true)}><CheckCircle2 className="h-4 w-4" /> Mark as done</Button>
+          <p className="mb-3 text-[13px] text-muted">When it's done, fill this in. {entry.createdByName} is told.</p>
+          {fields.length > 0 && (
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              {fields.map((d) => {
+                const set = (v: string) => setValues((x) => ({ ...x, [d.id]: v }));
+                const label = `${d.label}${d.required ? "" : " (optional)"}`;
+                const hint = d.type === "password" ? `Emailed to ${entry.createdByName} once. Lantern Forms doesn't keep it.` : d.help;
+                return (
+                  <div key={d.id} className={cn(d.type === "textarea" && "sm:col-span-2")}>
+                    <Field label={label} hint={hint}>
+                      {d.type === "textarea" ? (
+                        <Textarea aria-label={d.label} value={values[d.id] ?? ""} onChange={(e) => set(e.target.value)} maxLength={2000} className="min-h-[64px]" />
+                      ) : (
+                        <Input
+                          aria-label={d.label}
+                          type={d.type === "email" ? "email" : d.type === "date" ? "date" : "text"}
+                          value={values[d.id] ?? ""}
+                          onChange={(e) => set(e.target.value)}
+                          maxLength={d.type === "password" ? 200 : 320}
+                          autoComplete="off"
+                          spellCheck={false}
+                          data-1p-ignore={d.type === "password" ? "" : undefined}
+                          data-lpignore={d.type === "password" ? "true" : undefined}
+                        />
+                      )}
+                    </Field>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <Field label={fields.length ? "Anything else (optional)" : undefined}>
+            <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="e.g. Accounts created, laptop handed over at orientation." className="min-h-[64px]" />
+          </Field>
+          <div className="mt-2 flex items-center justify-end gap-3">
+            {missing.length > 0 && <span className="text-[12.5px] text-muted">Fill in {missing.map((d) => d.label).join(", ")}</span>}
+            <Button disabled={busy || missing.length > 0} onClick={() => void run(true)}>
+              <CheckCircle2 className="h-4 w-4" /> {busy && hasPassword ? "Sending…" : "Mark as done"}
+            </Button>
           </div>
         </>
       ) : (

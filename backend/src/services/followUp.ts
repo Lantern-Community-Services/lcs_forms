@@ -8,6 +8,9 @@ import { checkRoutes, planRoutes } from "./routing.js";
 import { notify, type TypeRule } from "./notifications.js";
 import { FOLLOW_UP_DONE_TEMPLATE, REMINDER_TEMPLATE, messageTags, messageWording, templateByKey } from "./emailTemplates.js";
 import { audit, type Actor } from "./audit.js";
+import { appBaseUrl } from "../env.js";
+import { mailConfigured, sendLogged } from "./mailer.js";
+import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 
 /**
  * Follow-ups: a form's entries stay "open" until someone they're for marks
@@ -28,6 +31,35 @@ const DAY = 86_400_000;
 /** Most entries reminded about per form per run. */
 const BATCH = 100;
 
+/**
+ * What the people it's for fill in when they mark it done (HR's Onboarding: the
+ * new email address and username IT made). Kept on the entry, so they show in
+ * its entries and exports. A "password" field is emailed once to whoever filed
+ * the entry and never kept: not on the entry, the notification or the email log.
+ */
+export const DONE_FIELD_TYPES = ["text", "email", "textarea", "date", "password"] as const;
+export type DoneFieldType = (typeof DONE_FIELD_TYPES)[number];
+export const doneFieldSchema = z
+  .object({
+    id: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "a done field's id is lower-case letters, digits and _, starting with a letter (e.g. work_email)"),
+    label: z.string().trim().min(1).max(80),
+    type: z.enum(DONE_FIELD_TYPES).default("text"),
+    required: z.boolean().default(false),
+    /** A line under the box. */
+    help: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type DoneField = z.infer<typeof doneFieldSchema>;
+
+/** One done field's answer, as kept on the entry. A password's value is never kept. */
+export interface DoneValue {
+  id: string;
+  label: string;
+  value: string | null;
+  /** A password: emailed to whoever filed it, then dropped. */
+  emailed?: boolean;
+}
+
 export const followUpSchema = z
   .object({
     enabled: z.boolean().default(false),
@@ -41,6 +73,20 @@ export const followUpSchema = z
     tellSubmitter: z.boolean().default(true),
     /** Shown in the reminder email: what's expected. */
     whatToDo: z.string().trim().max(500).optional(),
+    /** What they fill in when they mark it done. */
+    doneFields: z.array(doneFieldSchema).max(15).default([]),
+    /**
+     * The email whoever filed it gets when it's done, in the doers' own words
+     * (IT's "the account has been created…"). {tags}: a done field's id, any of
+     * the entry's answers by field id, {done_by}, {filed_by}, {form}, {site}, {note}.
+     */
+    reply: z
+      .object({
+        subject: z.string().trim().max(200).optional(),
+        message: z.string().trim().max(4000).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type FollowUpSettings = z.infer<typeof followUpSchema>;
@@ -53,7 +99,7 @@ export type FollowUpSettings = z.infer<typeof followUpSchema>;
 export const followUpTopicKey = (formId: string, which: "reminder" | "done") => `followup:${formId}:${which}`;
 export const FOLLOW_UP_RULE: TypeRule = { inApp: true, email: true, emailWhen: null, choice: "required" };
 
-const DEFAULTS: FollowUpSettings = { enabled: false, doers: [], remindAfterDays: 3, maxReminders: 3, tellSubmitter: true };
+const DEFAULTS: FollowUpSettings = { enabled: false, doers: [], remindAfterDays: 3, maxReminders: 3, tellSubmitter: true, doneFields: [] };
 
 export interface FollowUpView extends FollowUpSettings {
   /** Entries still open now. */
@@ -81,6 +127,12 @@ export async function saveFollowUp(form: BuiltForm, input: unknown, actor: Actor
   const p = followUpSchema.safeParse(input);
   if (!p.success) throw badRequest(p.error.issues.map((i) => `${i.path.join(".") || "follow-up"}: ${i.message}`).join("; "));
   if (p.data.enabled && !p.data.doers.length) throw badRequest("Say who the follow-up is for: they mark entries done and get the reminders.");
+  const ids = p.data.doneFields.map((f) => f.id);
+  const twice = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (twice) throw badRequest(`Two done fields are called "${twice}": give each its own id.`);
+  if (p.data.doneFields.some((f) => f.type === "password") && !p.data.tellSubmitter) {
+    throw badRequest("A password field is emailed to whoever filed the entry and never kept, so turn on telling them when it's done.");
+  }
   if (p.data.doers.length) await checkRoutes(form, [asRoute(p.data)]);
   await prisma.formRecord.upsert({
     where: { formId_collection_docId: { formId: form.id, collection: COLLECTION, docId: DOC } },
@@ -129,37 +181,172 @@ export async function canFollowUp(form: BuiltForm, user: CurrentUser | null | un
 
 const entryPath = (form: BuiltForm, entryId: string) => `/f/${form.slug}/entries/${entryId}`;
 
-/** Mark an entry done (with what was done), or open it again. Tells whoever filed it when it's done. */
-export async function setFollowUp(form: BuiltForm, entry: FormEntry, actor: { userId: string | null; name: string }, input: { done: boolean; note?: string | null }) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_LEN: Record<DoneFieldType, number> = { text: 300, email: 320, textarea: 2000, date: 10, password: 200 };
+
+/** The done fields' answers, checked against the settings: what's kept, and the passwords to email once. */
+export function readDoneValues(fields: DoneField[], input: Record<string, unknown> | undefined) {
+  const errors: string[] = [];
+  const kept: DoneValue[] = [];
+  const secrets = new Map<string, string>();
+  const known = new Set(fields.map((f) => f.id));
+  const stray = Object.keys(input ?? {}).filter((k) => !known.has(k));
+  if (stray.length) errors.push(`This follow-up has no done field ${stray.map((k) => `"${k}"`).join(", ")}.`);
+  for (const f of fields) {
+    const raw = input?.[f.id];
+    const v = typeof raw === "string" ? (f.type === "textarea" ? raw.trim() : raw.replace(/\s+/g, " ").trim()) : raw == null ? "" : String(raw).trim();
+    if (!v) {
+      if (f.required) errors.push(`Fill in ${f.label}.`);
+      continue;
+    }
+    if (v.length > MAX_LEN[f.type]) errors.push(`${f.label} is too long (at most ${MAX_LEN[f.type]} characters).`);
+    else if (f.type === "email" && !EMAIL_RE.test(v)) errors.push(`${f.label} isn't an email address.`);
+    else if (f.type === "date" && (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(v)))) errors.push(`${f.label} isn't a date (YYYY-MM-DD).`);
+    if (f.type === "password") {
+      secrets.set(f.id, v);
+      kept.push({ id: f.id, label: f.label, value: null, emailed: true });
+    } else {
+      kept.push({ id: f.id, label: f.label, value: f.type === "email" ? v.toLowerCase() : v });
+    }
+  }
+  return { errors, kept, secrets };
+}
+
+/** The done fields' answers kept on an entry, or none. */
+export function parseDoneValues(raw: string | null | undefined): DoneValue[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((x): x is DoneValue => Boolean(x && typeof x === "object" && typeof (x as DoneValue).id === "string" && typeof (x as DoneValue).label === "string")) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** An entry answer as plain words, for a reply's {tags}. */
+function answerText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(answerText).filter(Boolean).join(", ");
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.name === "string") return o.name;
+    if (typeof o.label === "string") return o.label;
+    return Object.values(o).map(answerText).filter(Boolean).join(" ");
+  }
+  return "";
+}
+
+/** Fill a reply's {tags}. Unknown tags are left out. */
+export function fillReply(template: string, tags: Record<string, string>) {
+  return template.replace(/\{([a-z][a-z0-9_]{0,39})\}/gi, (_, k: string) => tags[k] ?? tags[k.toLowerCase()] ?? "");
+}
+
+/**
+ * Mark an entry done (with what was done and its done fields), or open it again.
+ * Tells whoever filed it when it's done. When the follow-up has a reply, or a
+ * password was filled in, that's an email of its own to them, sent before
+ * anything is saved: if it can't go, nothing changes and they can try again,
+ * and the password is never written anywhere.
+ */
+export async function setFollowUp(
+  form: BuiltForm,
+  entry: FormEntry,
+  actor: { userId: string | null; name: string },
+  input: { done: boolean; note?: string | null; values?: Record<string, unknown> }
+) {
   if (!entry.followUp) throw badRequest("This entry isn't tracked for follow-up. Turn follow-up on for the form; it applies to entries saved after that.");
   const note = input.note?.trim().slice(0, 2000) || null;
   if (input.done && entry.followUp === "done") throw badRequest(`Already done, by ${entry.followUpDoneByName ?? "someone"}.`);
   if (!input.done && entry.followUp === "open") throw badRequest("It's already open.");
 
+  const s = await loadFollowUp(form);
+  const done = input.done ? readDoneValues(s.doneFields, input.values) : { errors: [] as string[], kept: [] as DoneValue[], secrets: new Map<string, string>() };
+  if (done.errors.length) throw badRequest(done.errors.join(" "));
+
+  // Whoever filed it, when they're someone to tell.
+  const tell = Boolean(input.done && s.tellSubmitter && entry.createdById && entry.createdById !== actor.userId);
+  const filer = tell ? await prisma.user.findUnique({ where: { id: entry.createdById! }, select: { id: true, email: true, status: true } }) : null;
+  const reachable = Boolean(filer && filer.status === "active" && isInternalAddress(filer.email));
+  const site = input.done ? await siteOf(entry.siteId) : null;
+
+  if (done.secrets.size) {
+    if (!filer || filer.status !== "active") {
+      throw badRequest("There's nobody to email the password to: whoever filed this can't be told (they filed it through a link, no longer have access, or it's you). Leave the password blank and give it to them another way.");
+    }
+    if (!isInternalAddress(filer.email)) throw badRequest("A password is only emailed to a Lantern address, and whoever filed this doesn't have one. Leave it blank and give it to them another way.");
+    if (!mailConfigured()) throw badRequest("Email isn't set up on this server, so the password can't be sent. Leave it blank and give it to them another way.");
+  }
+
+  let replied = false;
+  if (filer && reachable && (s.reply?.message || done.secrets.size)) {
+    const answers = JSON.parse(entry.data) as Record<string, unknown>;
+    const base: Record<string, string> = {};
+    for (const [k, v] of Object.entries(answers)) base[k] = answerText(v);
+    Object.assign(base, { done_by: actor.name, filed_by: entry.createdByName, form: form.title, site: site?.name ?? "", note: note ?? "" });
+    for (const v of done.kept) if (v.value) base[v.id] = v.value;
+    // A password goes in the message, never the subject (subjects are logged).
+    const withSecrets: Record<string, string> = { ...base, ...Object.fromEntries(done.secrets) };
+    const subject = (s.reply?.subject ? fillReply(s.reply.subject, base) : "").replace(/\s+/g, " ").trim().slice(0, 200) || `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
+    const message = s.reply?.message ? fillReply(s.reply.message, withSecrets) : null;
+    // Without a message of their own, the done fields are listed (a password too, in this email only).
+    const fields = message
+      ? []
+      : [
+          ...done.kept.map((v) => ({ label: v.label, value: v.emailed ? done.secrets.get(v.id) ?? "" : v.value ?? "" })),
+          ...(note ? [{ label: "Note", value: note }] : []),
+        ];
+    try {
+      await sendLogged({
+        to: [filer.email],
+        subject,
+        kind: "notification",
+        formId: form.id,
+        withAnswers: true,
+        html: brandedEmail({
+          kicker: form.title,
+          heading: subject,
+          intro: message ? null : `${actor.name} marked it done.`,
+          message,
+          fields,
+          button: { label: "Open it in Lantern Forms", url: `${appBaseUrl}${entryPath(form, entry.id)}` },
+          note: done.secrets.size ? "The password is only in this email: Lantern Forms doesn't keep it." : null,
+        }),
+      });
+      replied = true;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      if (done.secrets.size) throw badRequest(`Couldn't email the password to ${entry.createdByName} (${why}). Nothing was saved, so try again.`);
+      console.error(`[follow-up] reply for ${entry.id} failed, telling them the usual way instead:`, why);
+    }
+  }
+
   const updated = await prisma.formEntry.update({
     where: { id: entry.id },
     data: input.done
-      ? { followUp: "done", followUpDoneAt: new Date(), followUpDoneByName: actor.name.slice(0, 255), followUpNote: note }
-      : { followUp: "open", followUpDoneAt: null, followUpDoneByName: null, followUpNote: null, followUpRemindedAt: null, followUpReminders: 0 },
+      ? { followUp: "done", followUpDoneAt: new Date(), followUpDoneByName: actor.name.slice(0, 255), followUpNote: note, followUpValues: done.kept.length ? JSON.stringify(done.kept) : null }
+      : { followUp: "open", followUpDoneAt: null, followUpDoneByName: null, followUpNote: null, followUpValues: null, followUpRemindedAt: null, followUpReminders: 0 },
   });
+  const emailedLabels = done.kept.filter((v) => v.emailed).map((v) => v.label);
   await prisma.formEntryNote.create({
     data: {
       entryId: entry.id,
       kind: "system",
       authorName: "System",
-      body: (input.done ? `Follow-up marked done by ${actor.name}${note ? `: ${note}` : "."}` : `Follow-up reopened by ${actor.name}${note ? `: ${note}` : "."}`).slice(0, 2000),
+      body: (input.done
+        ? `Follow-up marked done by ${actor.name}${note ? `: ${note}` : "."}${emailedLabels.length ? ` ${emailedLabels.join(", ")} emailed to ${entry.createdByName} and not kept.` : ""}`
+        : `Follow-up reopened by ${actor.name}${note ? `: ${note}` : "."}`
+      ).slice(0, 2000),
     },
   });
 
-  const s = await loadFollowUp(form);
-  if (input.done && s.tellSubmitter && entry.createdById && entry.createdById !== actor.userId) {
-    const site = await siteOf(entry.siteId);
+  if (tell) {
     // Worded by the "Follow-up done" template (Admin → Notifications → Templates).
     const fallback = `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
     const t = await templateByKey(FOLLOW_UP_DONE_TEMPLATE);
     const w = t ? messageWording(t, messageTags({ form: form.title, title: fallback, site: site?.name }), fallback) : null;
     await notify({
-      to: { users: [entry.createdById] },
+      to: { users: [entry.createdById!] },
       type: "forms.entry",
       title: w?.subject ?? fallback,
       body: note ? `${actor.name}: ${note}` : `${actor.name} marked it done.`,
@@ -167,15 +354,22 @@ export async function setFollowUp(form: BuiltForm, entry: FormEntry, actor: { us
       source: `form:${form.slug}`,
       sourceLabel: form.title,
       formId: form.id,
-      topic: { key: followUpTopicKey(form.id, "done"), rule: FOLLOW_UP_RULE },
-      urgent: w?.urgent,
-      email: {
-        whatToDo: w?.whatToDo ?? null,
-        heading: w?.heading,
-        intro: w?.intro,
-        buttonLabel: w?.buttonLabel,
-        fields: [{ label: "Done by", value: actor.name }, ...(note ? [{ label: "What was done", value: note }] : [])],
-      },
+      // Their reply was already emailed: this one is the bell only.
+      topic: { key: followUpTopicKey(form.id, "done"), rule: replied ? { inApp: true, email: false, emailWhen: null, choice: "locked" } : FOLLOW_UP_RULE },
+      urgent: replied ? false : w?.urgent,
+      email: replied
+        ? undefined
+        : {
+            whatToDo: w?.whatToDo ?? null,
+            heading: w?.heading,
+            intro: w?.intro,
+            buttonLabel: w?.buttonLabel,
+            fields: [
+              { label: "Done by", value: actor.name },
+              ...(note ? [{ label: "What was done", value: note }] : []),
+              ...done.kept.filter((v) => v.value).map((v) => ({ label: v.label, value: v.value! })),
+            ],
+          },
     }).catch((err) => console.error(`[follow-up] couldn't tell the submitter of ${entry.id}:`, err));
   }
   return updated;

@@ -113,7 +113,15 @@ export interface EntryRow {
   voidedByName: string | null;
   voidReason: string | null;
   /** Follow-up (backend services/followUp.ts): null when the form doesn't track it. */
-  followUp: { status: "open" | "done"; doneAt: string | null; doneByName: string | null; note: string | null; reminders: number } | null;
+  followUp: {
+    status: "open" | "done";
+    doneAt: string | null;
+    doneByName: string | null;
+    note: string | null;
+    reminders: number;
+    /** What was filled in when it was marked done. A password is never kept: emailed: true. */
+    values?: FollowUpValue[];
+  } | null;
   noteCount?: number;
 }
 
@@ -149,6 +157,24 @@ export interface EntryDetail {
   isAdmin: boolean;
   /** This person can mark the follow-up done or reopen it. */
   canFollowUp: boolean;
+  /** What they fill in when they mark it done. */
+  followUpFields?: DoneField[];
+}
+
+export type DoneFieldType = "text" | "email" | "textarea" | "date" | "password";
+/** A follow-up's done field (backend services/followUp.ts). */
+export interface DoneField {
+  id: string;
+  label: string;
+  type: DoneFieldType;
+  required: boolean;
+  help?: string;
+}
+export interface FollowUpValue {
+  id: string;
+  label: string;
+  value: string | null;
+  emailed?: boolean;
 }
 
 export const builderKeys = {
@@ -254,7 +280,7 @@ export const fillApi = {
   star: (slug: string, id: string, starred: boolean) => api.post(`/f/${slug}/entries/${id}/star`, { starred }),
   note: (slug: string, id: string, body: string) => api.post<EntryNote>(`/f/${slug}/entries/${id}/notes`, { body }),
   /** Mark the entry's follow-up done (with what was done), or open it again. */
-  followUp: (slug: string, id: string, done: boolean, note?: string) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note }),
+  followUp: (slug: string, id: string, done: boolean, note?: string, values?: Record<string, string>) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note, values }),
   remove: (slug: string, id: string) => api.delete(`/f/${slug}/entries/${id}`),
   exportFile: (slug: string, qs: string, format: "csv" | "xlsx") => downloadGet(`/f/${slug}/entries-export?${qs}&format=${format}`, `${slug}-entries.${format}`),
 };
