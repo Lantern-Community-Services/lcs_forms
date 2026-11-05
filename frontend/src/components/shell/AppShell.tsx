@@ -22,6 +22,7 @@ import { LockedBar, useLocked } from "./FormLock";
 import { TestSiteBar, useTestSite } from "./TestSiteBar";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/PageHelp";
+import { HomeScreenPrompt } from "./HomeScreenPrompt";
 
 /**
  * Full-page shell.
@@ -179,6 +180,9 @@ export function AppShell() {
       </div>
       {/* The welcome tour, the first time someone reaches their home screen. */}
       {nav && <SiteTourStarter />}
+      {/* In an iPad or iPhone browser tab: how to add the site to the home screen (after the tour, if one runs). */}
+      {/* Not tied to the dock: an iPad with a trackpad keyboard can get the sidebar. */}
+      <HomeScreenPrompt enabled={nav} />
       {touch && nav && <Launcher device={device} open={launcher} onClose={closeLauncher} />}
       {touch && nav && !keyboard && <Dock device={device} launcherOpen={launcher} onToggleLauncher={() => setLauncher((o) => !o)} onCloseLauncher={closeLauncher} />}
     </div>
