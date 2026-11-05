@@ -6,6 +6,9 @@ import { fillRouter } from "../routes/fill.js";
 import { appsRouter } from "../routes/apps.js";
 import { findForm, formDetail, listForms, readDoc, versionDoc } from "../forms/service.js";
 import { docForEntry, entryRow, entryWhere, submitEntry } from "../forms/entries.js";
+import { importEntries } from "../forms/entryImport.js";
+import { assertRealDataAllowed } from "../services/testData.js";
+import { permissionsFor, roleFor } from "../services/permissions.js";
 import { defineOp, flag, int } from "./registry.js";
 
 /**
@@ -140,6 +143,44 @@ export const formOps = [
       });
       return { id: entry.id, values: JSON.parse(entry.data), url: `${appBaseUrl}/f/${row.slug}/entries/${entry.id}` };
     },
+  }),
+
+  defineOp({
+    name: "import_entries",
+    description:
+      "Migrate entries from an old system (e.g. Gravity Forms) into a basic form's entries, saved as given: no notifications, routing, follow-up or roster activity, and each keeps its old date (submittedAt) and filer. values are keyed by field id (get_form, which: live) and checked for shape — a choice must be one of the field's choices — but not for required or hidden questions. A Resident is { id } (from the roster) or { name, unit? } when no one matches; a File field is [{ name, mime, base64 }] (≤ 10 MB each; a call's body can be at most 25 MB, so send entries with photos a few at a time); a Signature is a PNG data URL. createdByEmail links the entry to that person's account, so it shows as theirs. Each entry needs an externalId (e.g. \"gf31:1234\"); one already imported into this form is skipped, so a batch can be sent again safely. Up to 200 a call; any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin.",
+    scope: "entries:manage",
+    as: "key",
+    http: { method: "POST", path: "/forms/:form/entries/import" },
+    shape: {
+      form: formRef,
+      entries: z
+        .array(
+          z.object({
+            externalId: z.string().min(1).max(200),
+            values: z.record(z.unknown()),
+            site: z.string().optional().describe("Site code (else the form's Site field answer is used)"),
+            submittedAt: z.string().optional().describe("ISO time it was filed in the old system"),
+            createdByName: z.string().max(255).optional().describe("Who filed it"),
+            createdByEmail: z.string().max(255).optional().describe("Their email, to link the entry to their account here"),
+          })
+        )
+        .min(1)
+        .max(200),
+      dryRun: flag().optional(),
+    },
+    confirm: (a) => !a.dryRun,
+    annotations: { destructiveHint: true },
+    run: async (ctx, { form, entries, dryRun }) => {
+      assertRealDataAllowed("migrating entries from an old system");
+      const creator = ctx.key.createdById ? await prisma.user.findUnique({ where: { id: ctx.key.createdById } }) : null;
+      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
+      const row = await findForm(form);
+      if (row.kind === "code") throw new HttpError(400, "That's a code form: use import_code_entries.");
+      return importEntries(row, entries, { dryRun: Boolean(dryRun) });
+    },
+    audit: (a, r) =>
+      r?.saved ? { action: "entries.imported", summary: `Imported ${r.saved} entries into form “${a.form}”`, changes: { form: a.form, count: r.saved, skipped: r.skipped?.length ?? 0 } } : null,
   }),
 
   // ── As the key's creator: managing entries ──

@@ -138,6 +138,10 @@ export function createApp() {
   // A code form filled in through a share link, not signed in (routes/appShare.ts).
   app.use("/api/s", submitLimiter);
   app.post("/api/s/:token/entries", express.json({ limit: "5mb" }));
+  // A key's calls may carry imported entries with their photos (import_entries):
+  // the larger body only when a key is sent; the key itself is checked after.
+  const keyed = express.json({ limit: "25mb" });
+  app.post(["/mcp", "/api/mcp", "/api/v1/forms/:form/entries/import"], (req, res, next) => (req.headers.authorization ? keyed(req, res, next) : next()));
   app.use(["/api/builder", "/mcp", "/api/mcp", "/api/apps"], express.json({ limit: "5mb" }));
   const json = express.json({ limit: "1mb" });
   app.use((req, res, next) => (isUpload(req.path) ? next() : json(req, res, next)));
