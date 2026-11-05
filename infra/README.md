@@ -1,7 +1,8 @@
 # Lantern Forms – Azure infrastructure
 
 How the app is hosted, what everything is called, and how a change gets to production.
-Build commands are in `build.sh`; the full playbook with rationale lives with IT.
+Dev was built with `build.sh`, prod with `prod.sh` (same shape, plus the production guardrails:
+locks, policies, Defender, alerts, backups, custom domain). The full playbook with rationale lives with IT.
 
 ## Where it runs
 
@@ -15,9 +16,10 @@ rg-forms-dev      everything development
 rg-forms-prod     everything production
 ```
 
-Region is **East US 2** for everything except the SQL servers, which are in **East US** because the
-subscription is not permitted to create SQL servers in East US 2. Private endpoints in the East US 2
-VNets reach them across regions; the app never notices.
+Region is **East US 2** for everything except the SQL servers, which are in **Central US** because the
+subscription is not permitted to create SQL servers in East US 2 (or East US). Private endpoints in the
+East US 2 VNets reach them across regions; the app never notices. An Azure Policy on the subscription
+allows only those two regions.
 
 ## Naming
 
