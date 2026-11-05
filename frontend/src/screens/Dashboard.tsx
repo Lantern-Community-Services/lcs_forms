@@ -11,7 +11,10 @@ import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
 import { cn, relativeTime } from "@/lib/utils";
 
 export function DashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  // The review queue is for people who can Keep or Remove: anyone else gets no review banner, tile or column.
+  const reviews = can("roster.archive");
+  const cols = reviews ? "grid-cols-[minmax(0,1fr)_70px_80px] md:grid-cols-[minmax(0,1fr)_80px_90px_70px_70px]" : "grid-cols-[minmax(0,1fr)_70px] md:grid-cols-[minmax(0,1fr)_80px_70px_70px]";
   const { codes, setCodes, sites, param } = useSiteSelection();
   const { data, isLoading } = useDashboard(param);
   const first = user?.name.split(" ")[0];
@@ -35,7 +38,7 @@ export function DashboardPage() {
           <LoadingState />
         ) : (
           <>
-            {data.totals.attention > 0 && (
+            {reviews && data.totals.attention > 0 && (
               <Link
                 to={`/roster/review${param ? `?site=${param}` : ""}`}
                 className="page-list-item-enter mb-4 flex items-center gap-3 rounded-card border border-status-amberDot/40 bg-status-amberBg px-4 py-3.5 text-status-amberText"
@@ -49,19 +52,19 @@ export function DashboardPage() {
               </Link>
             )}
 
-            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className={cn("mb-5 grid grid-cols-2 gap-3", reviews ? "md:grid-cols-4" : "md:grid-cols-3")}>
               <Tile icon={Users} label="On roster" value={data.totals.active} />
-              <Tile icon={Layers} label="To review" value={data.totals.attention} tone={data.totals.attention ? "amber" : undefined} to={`/roster/review${param ? `?site=${param}` : ""}`} />
+              {reviews && <Tile icon={Layers} label="To review" value={data.totals.attention} tone={data.totals.attention ? "amber" : undefined} to={`/roster/review${param ? `?site=${param}` : ""}`} />}
               <Tile icon={UserPlus} label="Added · 7 days" value={data.totals.addedWeek} />
               <Tile icon={UserMinus} label="Removed · 7 days" value={data.totals.removedWeek} />
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
               <Card className="page-list-item-enter overflow-hidden">
-                <div className="grid grid-cols-[minmax(0,1fr)_70px_80px] gap-2 border-b border-hairline px-4 py-2.5 text-micro font-bold uppercase tracking-[0.04em] text-muted md:grid-cols-[minmax(0,1fr)_80px_90px_70px_70px]">
+                <div className={cn("grid gap-2 border-b border-hairline px-4 py-2.5 text-micro font-bold uppercase tracking-[0.04em] text-muted", cols)}>
                   <span>Site</span>
                   <span className="text-right">Roster</span>
-                  <span className="text-right">Review</span>
+                  {reviews && <span className="text-right">Review</span>}
                   <span className="hidden text-right md:block">+7d</span>
                   <span className="hidden text-right md:block">−7d</span>
                 </div>
@@ -70,17 +73,19 @@ export function DashboardPage() {
                     <li key={s.id} className="border-b border-hairline last:border-0">
                       <Link
                         to={`/roster?site=${s.code}`}
-                        className="grid min-h-[48px] grid-cols-[minmax(0,1fr)_70px_80px] items-center gap-2 px-4 hover:bg-rowhover md:grid-cols-[minmax(0,1fr)_80px_90px_70px_70px]"
+                        className={cn("grid min-h-[48px] items-center gap-2 px-4 hover:bg-rowhover", cols)}
                       >
                         <span className="truncate text-[13.5px] font-semibold text-ink">{s.name}</span>
                         <span className="text-right text-[13.5px] tabular text-ink">{s.activeCount}</span>
-                        <span className="text-right">
-                          {s.attentionCount > 0 ? (
-                            <CountBadge count={s.attentionCount} className="px-2" />
-                          ) : (
-                            <span className="text-[13px] text-muted">—</span>
-                          )}
-                        </span>
+                        {reviews && (
+                          <span className="text-right">
+                            {s.attentionCount > 0 ? (
+                              <CountBadge count={s.attentionCount} className="px-2" />
+                            ) : (
+                              <span className="text-[13px] text-muted">—</span>
+                            )}
+                          </span>
+                        )}
                         <span className="hidden text-right text-[13px] tabular text-muted md:block">{s.addedWeek || "—"}</span>
                         <span className="hidden text-right text-[13px] tabular text-muted md:block">{s.removedWeek || "—"}</span>
                       </Link>

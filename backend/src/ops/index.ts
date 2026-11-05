@@ -3,6 +3,7 @@ import { currentUserById } from "../auth/middleware.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
 import type { ToolRegistrar } from "../forms/mcp.js";
 import { describeOp, runOp, shapeOf, type Op } from "./registry.js";
+import type { CallFrom } from "./callRoute.js";
 import { SCOPE_GRANTS, delegatedUser } from "./principal.js";
 import { formOps } from "./forms.js";
 import { rosterOps } from "./roster.js";
@@ -43,9 +44,9 @@ export async function describeKey(key: ResolvedKey) {
 export const OPS: Op<any>[] = [...formOps, ...rosterOps, ...adminOps, ...calendarOps, ...emailOps];
 
 /** Register every operation (and whoami) as an MCP tool. */
-export function registerOps(tool: ToolRegistrar, key: ResolvedKey) {
+export function registerOps(tool: ToolRegistrar, key: ResolvedKey, from?: CallFrom) {
   tool("whoami", WHOAMI, {}, async () => describeKey(key), { readOnlyHint: true });
   for (const op of OPS) {
-    tool(op.name, describeOp(op), shapeOf(op), (args) => runOp(op, key, args as Record<string, unknown>, "MCP"), op.annotations);
+    tool(op.name, describeOp(op), shapeOf(op), (args) => runOp(op, key, args as Record<string, unknown>, "MCP", from), op.annotations);
   }
 }

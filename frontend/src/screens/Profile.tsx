@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Compass, LogOut, RotateCcw } from "lucide-react";
+import { Compass, LogOut, RotateCcw, SquarePlus } from "lucide-react";
 import { resetTours } from "@/lib/tour/progress";
 import { MobileBackLink, Page, PageHeader } from "@/components/shell/AppShell";
 import { SnapshotSummary } from "@/components/shell/OfflineBar";
+import { canAddToHomeScreen, openHomeScreenHelp } from "@/components/shell/HomeScreenPrompt";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { ClaudeProfileCard } from "@/components/ClaudeConnections";
 import { Button } from "@/components/ui/button";
@@ -113,7 +114,7 @@ export function ProfilePage() {
     ...(can("roster.view")
       ? [
           { value: "/roster", label: "Roster · Residents" },
-          { value: "/roster/review", label: "Roster · Review" },
+          ...(can("roster.archive") ? [{ value: "/roster/review", label: "Roster · Review" }] : []),
           { value: "/roster/overview", label: "Roster · Overview" },
         ]
       : []),
@@ -211,6 +212,14 @@ export function ProfilePage() {
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "88ms" }}>
         <p className="kicker">Offline</p>
         <SnapshotSummary className="mt-2" />
+        {canAddToHomeScreen() && (
+          <div className="mt-4">
+            <p className="mb-3 text-[13px] text-muted">You're using Lantern Forms in a browser tab. Added to your Home Screen, it keeps offline work safer.</p>
+            <Button variant="secondary" onClick={openHomeScreenHelp}>
+              <SquarePlus className="h-4 w-4" /> Add to Home Screen
+            </Button>
+          </div>
+        )}
       </Card>
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "105ms" }}>

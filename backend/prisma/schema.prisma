@@ -90,6 +90,10 @@ model Tenant {
   /// Elevated needs: more frequent check-ins, closer case management. Shown
   /// as a flag on the roster.
   highAcuity    Boolean   @default(false)
+  /// Names they had before (JSON array of "First Last" and preferred names),
+  /// kept on each rename so search finds them by an old name. The full record
+  /// of who changed what, and when, is the audit log (services/nameHistory.ts).
+  formerNames   String?   @db.NVarChar(Max)
 
   // ── Activity / attention ────────────────────────────────
   /// Last time any designated form or integration referenced this person.
@@ -161,6 +165,12 @@ model AuditEvent {
   summary   String   @db.NVarChar(Max)
   /// JSON text: { field: [before, after] } or free-form metadata.
   changes   String?  @db.NVarChar(Max)
+  /// Where it was done from: the request's IP (past TRUST_PROXY), the browser's
+  /// description, and the place looked up on the server (services/geoip.ts).
+  /// Only Admins (audit.view) are shown them. Null for system jobs.
+  ip        String?  @db.NVarChar(64)
+  userAgent String?  @db.NVarChar(300)
+  location  String?  @db.NVarChar(255)
   createdAt DateTime @default(now())
 
   @@index([createdAt])

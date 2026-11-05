@@ -21,7 +21,7 @@ export const ROSTER_CAP = 5000;
  */
 const LIST_COLUMNS = Prisma.raw(
   [
-    "id", "siteId", "unit", "firstName", "lastName", "preferredName", "status",
+    "id", "siteId", "unit", "firstName", "lastName", "preferredName", "formerNames", "status",
     "moveInDate", "moveOutDate", "externalId", "highAcuity", "lastActivityAt", "lastActivitySource",
     "lastKeptAt", "attentionClockAt", "archivedAt", "archiveReason", "version",
     "createdAt", "updatedAt",
@@ -68,6 +68,8 @@ export async function loadRoster(
       Prisma.sql`firstName LIKE ${like} ESCAPE '\\'`,
       Prisma.sql`lastName LIKE ${like} ESCAPE '\\'`,
       Prisma.sql`preferredName LIKE ${like} ESCAPE '\\'`,
+      // An old name finds them too (a JSON list of names, so LIKE inside it is enough).
+      Prisma.sql`formerNames LIKE ${like} ESCAPE '\\'`,
       Prisma.sql`unit LIKE ${like} ESCAPE '\\'`,
     ];
     // With several sites in view, typing a site's name finds its residents.

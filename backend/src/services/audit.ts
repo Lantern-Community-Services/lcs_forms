@@ -1,16 +1,40 @@
 import type { Request } from "express";
 import { prisma } from "../prisma.js";
 import { emitEvent, type RosterEvent } from "./webhooks.js";
+import { cleanIp, deviceFrom, locate } from "./geoip.js";
+
+/**
+ * An audit event as an API sends it: where it was done from (IP, device,
+ * place) only for people with audit.view (Admins). Everyone else who can see
+ * roster activity sees who and when, not their colleagues' addresses.
+ */
+export function auditView<T extends { ip: string | null; userAgent: string | null; location: string | null; changes: string | null }>(row: T, canSeeWhere: boolean) {
+  const { ip, userAgent, location, changes, ...rest } = row;
+  return {
+    ...rest,
+    changes: changes ? JSON.parse(changes) : null,
+    ...(canSeeWhere ? { ip, location, device: deviceFrom(userAgent) } : {}),
+  };
+}
 
 export interface Actor {
   id: string | null;
   name: string;
+  /** Where the request came from (req.ip, past TRUST_PROXY) and the browser's description: kept on the audit event. */
+  ip?: string | null;
+  userAgent?: string | null;
 }
 
 export function actorOf(req: Request): Actor {
-  if (req.user) return { id: req.user.userId, name: req.user.name };
-  if (req.apiKey) return { id: null, name: `API key: ${req.apiKey.name}` };
-  return { id: null, name: "System" };
+  const from = fromRequest(req);
+  if (req.user) return { id: req.user.userId, name: req.user.name, ...from };
+  if (req.apiKey) return { id: null, name: `API key: ${req.apiKey.name}`, ...from };
+  return { id: null, name: "System", ...from };
+}
+
+/** The request's address and browser, for an Actor built by hand (sign-in). */
+export function fromRequest(req: Request): Pick<Actor, "ip" | "userAgent"> {
+  return { ip: cleanIp(req.ip), userAgent: String(req.headers["user-agent"] ?? "").slice(0, 300) || null };
 }
 
 /** { field: [before, after] } for the fields that actually changed. */
@@ -55,6 +79,10 @@ export async function audit(opts: {
       tenantId: opts.tenantId ?? null,
       siteId: opts.siteId ?? null,
       changes: opts.changes === undefined ? null : JSON.stringify(opts.changes),
+      // Where it was done from: looked up on this server (services/geoip.ts), never sent anywhere.
+      ip: opts.actor.ip ?? null,
+      userAgent: opts.actor.userAgent ?? null,
+      location: locate(opts.actor.ip),
     },
   });
   if (opts.webhook) emitEvent(opts.webhook.event, opts.webhook.data);
