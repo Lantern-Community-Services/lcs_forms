@@ -8,9 +8,10 @@ import { canAccessSite, requireAuth, requirePermission } from "../auth/middlewar
 import { resolveSite, sitesInScope } from "../services/siteScope.js";
 import { loadRoster } from "../services/rosterQuery.js";
 import { exportFilename, scopeLabel, toCsv, toPdf, toXlsx, type ExportContext } from "../services/rosterExport.js";
-import { actorOf, audit, diff } from "../services/audit.js";
+import { actorOf, audit, auditView, diff } from "../services/audit.js";
 import { attentionHours } from "../services/settings.js";
 import { clockFrom, cutoff, displayName, isSentToReview, publicTenant, REVIEW_CLOCK, serializeTenant } from "../services/roster.js";
+import { formerNamesAfter, nameHistory, parseFormerNames } from "../services/nameHistory.js";
 
 export const tenantsRouter = Router();
 tenantsRouter.use(requireAuth);
@@ -192,14 +193,17 @@ tenantsRouter.get(
   requirePermission("roster.view"),
   asyncHandler(async (req, res) => {
     const t = await loadTenant(req, req.params.id);
-    const [activities, history] = await Promise.all([
+    const [activities, history, names] = await Promise.all([
       prisma.tenantActivity.findMany({ where: { tenantId: t.id }, orderBy: { occurredAt: "desc" }, take: 25 }),
       prisma.auditEvent.findMany({ where: { tenantId: t.id }, orderBy: { createdAt: "desc" }, take: 40 }),
+      // Every rename, however long ago: History above stops at 40 events.
+      nameHistory(t),
     ]);
     res.json({
       ...serializeTenant(t, await attentionHours()),
       activities,
-      history: history.map((h) => ({ ...h, changes: h.changes ? JSON.parse(h.changes) : null })),
+      history: history.map((h) => auditView(h, req.user?.permissions.includes("audit.view") ?? false)),
+      nameHistory: names,
     });
   })
 );
@@ -260,6 +264,11 @@ tenantsRouter.post(
 // ── Update (optimistic concurrency) ──────────────────────────────────────
 
 const EDITABLE = ["unit", "firstName", "lastName", "preferredName", "moveInDate", "notes", "externalId", "highAcuity", "siteId"] as const;
+/** How an edit's summary names each field: "Updated Inez Ortiz (last name, unit)". */
+const FIELD_WORDS: Record<string, string> = {
+  unit: "unit", firstName: "first name", lastName: "last name", preferredName: "preferred name", moveInDate: "move-in date",
+  notes: "notes", externalId: "outside ID", highAcuity: "High Acuity", siteId: "site",
+};
 
 tenantsRouter.patch(
   "/:id",
@@ -293,6 +302,11 @@ tenantsRouter.patch(
     if (Object.keys(changes).length === 0) {
       return res.json(serializeTenant(before, await attentionHours()));
     }
+    // A rename keeps the old name for search (the audit log below keeps who and when).
+    if ("firstName" in changes || "lastName" in changes || "preferredName" in changes) {
+      const next = { firstName: (data.firstName as string | undefined) ?? before.firstName, lastName: (data.lastName as string | undefined) ?? before.lastName, preferredName: "preferredName" in data ? (data.preferredName as string | null) : before.preferredName };
+      data.formerNames = JSON.stringify(formerNamesAfter(parseFormerNames(before.formerNames), before, next));
+    }
 
     // The WHERE on version is the lock: if someone saved since this person
     // loaded the record, zero rows match and we report the conflict instead of
@@ -318,7 +332,7 @@ tenantsRouter.patch(
         ? `Moved ${displayName(after)} from ${before.site.name} to ${transferTo.name}`
         : Object.keys(changes).join() === "highAcuity"
           ? `${after.highAcuity ? "Flagged" : "Cleared High Acuity flag on"} ${displayName(after)}${after.highAcuity ? " as High Acuity" : ""}`
-          : `Updated ${displayName(after)} (${Object.keys(changes).join(", ")})`,
+          : `Updated ${displayName(after)} (${Object.keys(changes).map((k) => FIELD_WORDS[k] ?? k).join(", ")})`,
       changes,
       webhook: { event: "tenant.updated", data: { ...publicTenant(after), changed: Object.keys(changes) } },
     });

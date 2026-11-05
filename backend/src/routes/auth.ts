@@ -1,4 +1,4 @@
-import { Router, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, forbidden, notFound, unauthorized } from "../http.js";
@@ -7,7 +7,8 @@ import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, safeRetur
 import { requireAuth } from "../auth/middleware.js";
 import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured, testSite } from "../env.js";
 import { guestDomains } from "../services/settings.js";
-import { audit } from "../services/audit.js";
+import { audit, fromRequest } from "../services/audit.js";
+import { locate } from "../services/geoip.js";
 import { notifyQuietly } from "../services/notifications.js";
 import { ROLES, SITE_ROLE_KEYS, roleFor, roleNameFor } from "../services/permissions.js";
 import { dropGraphToken, saveGraphToken } from "../services/graphTokens.js";
@@ -66,6 +67,21 @@ authRouter.get(
     res.redirect(authUrl);
   })
 );
+
+/**
+ * A sign-in in the audit log, with where it came from: the IP, the device and
+ * the place (looked up on this server, services/geoip.ts). Admins see them in
+ * Activity, Super Admins in the person's Records. Never holds up a sign-in.
+ */
+async function noteSignIn(req: Request, user: { id: string; name: string; email: string }, how: string) {
+  const from = fromRequest(req);
+  const place = locate(from.ip);
+  await audit({
+    actor: { id: user.id, name: user.name, ...from },
+    action: "user.signed_in",
+    summary: `${user.name} signed in${place ? ` from ${place}` : ""} (${how})`,
+  }).catch((err) => console.error("[auth] couldn't record a sign-in:", err));
+}
 
 authRouter.get(
   "/microsoft/callback",
@@ -133,6 +149,7 @@ authRouter.get(
         user = await prisma.user.update({ where: { id: user.id }, data: { status: "active" } });
       }
       await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() } });
+      await noteSignIn(req, user, "Microsoft");
       // Their own Outlook, for the calendar (services/graphTokens.ts). Never holds up a sign-in.
       if (graph) {
         await saveGraphToken(user.id, graph.refreshToken, graph.scopes)
@@ -178,6 +195,7 @@ authRouter.post(
     }
     if (!user || user.status !== "active") throw unauthorized();
     await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() } });
+    await noteSignIn(req, user, "dev sign-in");
     setSessionCookie(res, signSession({ userId: user.id, name: user.name, email: user.email }));
     res.json({ ok: true });
   })

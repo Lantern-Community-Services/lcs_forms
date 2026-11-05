@@ -12,6 +12,12 @@ export interface RouteCall {
   body?: unknown;
 }
 
+/** Where the MCP or API request that started this call came from (audit.ts fromRequest). */
+export interface CallFrom {
+  ip?: string | null;
+  userAgent?: string | null;
+}
+
 export interface RouteResult {
   status: number;
   body: unknown;
@@ -30,12 +36,12 @@ export interface RouteResult {
  * A thrown error (HttpError, ZodError) is rethrown to the caller unchanged.
  * Nothing here is logged: the bodies can hold resident details.
  */
-export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey?: ResolvedKey }): Promise<RouteResult> {
+export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey?: ResolvedKey; from?: CallFrom }): Promise<RouteResult> {
   const query = Object.fromEntries(Object.entries(call.query ?? {}).filter(([, v]) => v !== undefined && v !== "")) as Record<string, string>;
   const qs = new URLSearchParams(query).toString();
   const url = call.path + (qs ? `?${qs}` : "");
   return new Promise<RouteResult>((resolve, reject) => {
-    const headers: Record<string, string> = { "content-type": "application/json" };
+    const headers: Record<string, string> = { "content-type": "application/json", ...(as.from?.userAgent ? { "user-agent": as.from.userAgent } : {}) };
     const req = {
       method: call.method,
       url,
@@ -49,7 +55,8 @@ export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUs
       _body: true,
       headers,
       cookies: {},
-      ip: "internal",
+      // The MCP or API caller's own address, so the audit log says where a change came from.
+      ip: as.from?.ip ?? "internal",
       id: `op-${crypto.randomUUID().slice(0, 8)}`,
       user: as.user,
       apiKey: as.apiKey,
@@ -112,7 +119,7 @@ export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUs
 }
 
 /** callRoute(), treating a 4xx/5xx answer as an error with the route's own message. */
-export async function callRouteOk(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey?: ResolvedKey }): Promise<unknown> {
+export async function callRouteOk(router: Router, call: RouteCall, as: { user: CurrentUser; apiKey?: ResolvedKey; from?: CallFrom }): Promise<unknown> {
   const out = await callRoute(router, call, as);
   if (out.status >= 400) {
     const b = out.body as { error?: string; details?: unknown } | null;

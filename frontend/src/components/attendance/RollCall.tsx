@@ -62,7 +62,7 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
   const searchResults = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return [];
-    return roster.filter((tenant) => [tenant.displayName, tenant.firstName, tenant.lastName, tenant.preferredName, tenant.unit]
+    return roster.filter((tenant) => [tenant.displayName, tenant.firstName, tenant.lastName, tenant.preferredName, tenant.unit, ...(tenant.formerNames ?? [])]
       .some((value) => value?.toLowerCase().includes(needle))).slice(0, 40);
   }, [roster, search]);
 

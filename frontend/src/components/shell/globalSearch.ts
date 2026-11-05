@@ -73,7 +73,7 @@ export function useGlobalSearch(q: string, categories: NavCategory[]): SearchHit
     const forms = searchForms(categories, q);
     const roster: Tenant[] = Array.isArray(tenants) ? tenants : (tenants?.items ?? []);
     const allResidents = rosterUser
-      ? roster.filter((t) => matches(`${t.displayName} ${t.firstName} ${t.lastName} ${t.preferredName ?? ""} ${t.unit ?? ""} ${t.site?.name ?? ""}`.toLowerCase(), words))
+      ? roster.filter((t) => matches(`${t.displayName} ${t.firstName} ${t.lastName} ${t.preferredName ?? ""} ${t.unit ?? ""} ${t.site?.name ?? ""} ${(t.formerNames ?? []).join(" ")}`.toLowerCase(), words))
       : [];
     const residents = allResidents.slice(0, RESIDENT_LIMIT);
     const firstForm = forms[0]?.form;

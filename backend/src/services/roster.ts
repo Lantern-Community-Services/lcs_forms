@@ -1,6 +1,7 @@
 import type { Site, Tenant } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { attentionHours } from "./settings.js";
+import { parseFormerNames } from "./nameHistory.js";
 
 /**
  * Roster rules that more than one route needs: how a person is named, how the
@@ -61,6 +62,8 @@ export function serializeTenant(
     lastName: t.lastName,
     preferredName: t.preferredName,
     displayName: displayName(t),
+    /** Names they had before, so search finds them by an old name (services/nameHistory.ts). */
+    formerNames: parseFormerNames(t.formerNames),
     status: t.status,
     moveInDate: t.moveInDate,
     moveOutDate: t.moveOutDate,

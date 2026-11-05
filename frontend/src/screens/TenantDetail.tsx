@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, ClipboardList, History, ListChecks, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, History, ListChecks, RotateCcw, UserPen } from "lucide-react";
+import { ChangeList } from "@/components/roster/ChangeList";
+import { DoneFrom } from "@/components/roster/DoneFrom";
 import { DesktopBackLink, Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
@@ -232,6 +234,19 @@ export function TenantDetailPage() {
               </ul>
             )}
           </Card>
+          {(t.nameHistory?.length ?? 0) > 0 && (
+            <Card className="page-list-item-enter p-5" style={{ animationDelay: "90ms" }}>
+              <p className="kicker mb-3 flex items-center gap-1.5"><UserPen className="h-3.5 w-3.5" /> Previous names</p>
+              <ul className="space-y-3">
+                {t.nameHistory!.map((n, i) => (
+                  <li key={`${n.at}-${i}`} className="text-[13px]">
+                    <p className="text-ink"><span className="font-semibold">{n.from}</span> <span className="text-muted">→</span> {n.to}</p>
+                    <p className="text-micro text-muted">Changed by {n.by} · {formatDateTime(n.at)}</p>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card className="page-list-item-enter p-5" style={{ animationDelay: "105ms" }}>
             <p className="kicker mb-3 flex items-center gap-1.5"><History className="h-3.5 w-3.5" /> History</p>
             {t.history.length === 0 ? (
@@ -241,7 +256,9 @@ export function TenantDetailPage() {
                 {t.history.map((h) => (
                   <li key={h.id} className="text-[13px]">
                     <p className="text-ink">{h.summary}</p>
+                    <ChangeList event={h} />
                     <p className="text-micro text-muted">{h.actorName} · {formatDateTime(h.createdAt)}</p>
+                    <DoneFrom e={h} />
                   </li>
                 ))}
               </ul>
