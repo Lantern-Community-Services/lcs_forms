@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Bell, ChevronLeft, ChevronRight, Download, ExternalLink, MessageSquare, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, MessageSquare, Star } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Page, PageHeader, DesktopBackLink } from "@/components/shell/AppShell";
+import { Page } from "@/components/shell/AppShell";
+import { BUILT_FORM_HEADER_WIDTH, BuiltFormHeader } from "./FormHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, SearchInput } from "@/components/ui/input";
@@ -13,7 +14,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/components/ui/toast";
 import { fillApi, useEntries } from "@/lib/builder";
 import { formatValue, isInputField, type Field } from "@/lib/formEngine";
-import { useDeviceKind } from "@/lib/device";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 
 const PAGE = 50;
@@ -22,8 +22,6 @@ const PAGE = 50;
 export function BuiltFormEntriesPage() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
-  // The builder is desktop only, so no way into it elsewhere.
-  const canOpenBuilder = useDeviceKind() === "desktop";
   const toast = useToast();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
@@ -71,32 +69,27 @@ export function BuiltFormEntriesPage() {
     await qc.invalidateQueries({ queryKey: ["fill", slug] });
   }
 
-  if (error) return <Page><Card><EmptyState title={errorMessage(error, "Couldn't load entries.")} /></Card></Page>;
-  if (isLoading || !data) return <LoadingState />;
+  const header = <BuiltFormHeader slug={slug} fallback={data ? { title: data.form.title, id: data.form.id, isAdmin: data.isAdmin, canReadEntries: true } : undefined} />;
+  if (error) return <>{header}<Page className={BUILT_FORM_HEADER_WIDTH}><Card><EmptyState title={errorMessage(error, "Couldn't load entries.")} /></Card></Page></>;
+  if (isLoading || !data) return <>{header}<LoadingState /></>;
   const pages = Math.max(1, Math.ceil(data.total / PAGE));
 
   return (
-    <Page>
-      <DesktopBackLink to={`/f/${slug}`}>{data.form.title}</DesktopBackLink>
-      <PageHeader
-        title={`${data.form.title}: entries`}
-        help={{ article: "entries", text: "What's been filed on this form that you can see. Search, filter, star and export; each entry opens on its own page." }}
-        subtitle={`${data.total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${data.total === 1 ? "y" : "ies"}${q || from || to || starred ? " match" : ""}${data.reach === "own" ? " · yours, and any you were told about" : data.reach === "site" ? " · your sites' and your own" : ""}`}
-        actions={
-          <>
-            <Link to={`/f/${slug}`}><Button variant="secondary"><ExternalLink className="h-4 w-4" /> Open form</Button></Link>
-            {data.isAdmin && <Link to={canOpenBuilder ? `/admin/builder/${data.form.id}?tab=notifications` : `/f/${slug}/notifications`}><Button variant="secondary"><Bell className="h-4 w-4" /> Notifications</Button></Link>}
-            {data.isAdmin && canOpenBuilder && <Link to={`/admin/builder/${data.form.id}`}><Button variant="secondary">Edit form</Button></Link>}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button><Download className="h-4 w-4" /> Export</Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => exportAs("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => exportAs("csv")}>CSV</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        }
-      />
+    <>
+    {header}
+    <Page className={BUILT_FORM_HEADER_WIDTH}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <p className="min-w-0 flex-1 text-[13.5px] text-muted">
+          {`${data.total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${data.total === 1 ? "y" : "ies"}${q || from || to || starred ? " match" : ""}${data.reach === "own" ? " · yours, and any you were told about" : data.reach === "site" ? " · your sites' and your own" : ""}`}
+        </p>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button><Download className="h-4 w-4" /> Export</Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => exportAs("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportAs("csv")}>CSV</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <SearchInput wrapperClassName="min-w-[220px] flex-1" placeholder="Search answers or who submitted…" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
@@ -194,6 +187,7 @@ export function BuiltFormEntriesPage() {
         </div>
       )}
     </Page>
+    </>
   );
 }
 

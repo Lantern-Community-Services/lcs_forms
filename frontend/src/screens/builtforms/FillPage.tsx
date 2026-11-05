@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
-import { Bell, CheckCircle2, CircleHelp, ClipboardList, CloudOff, Lock, PencilRuler, QrCode } from "lucide-react";
+import { CheckCircle2, CircleHelp, CloudOff, Lock } from "lucide-react";
 import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { useAuth } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
@@ -10,16 +10,17 @@ import { Page } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/misc";
-import { ToneBadge } from "@/components/ui/badge";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
+import { headerLinkClass } from "@/components/shell/FormTabs";
+import { BuiltFormHeader } from "./FormHeader";
 import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { useToast } from "@/components/ui/toast";
 import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit/FormRenderer";
 import { FillShareContext, fillApi, submitErrors, useFillForm } from "@/lib/builder";
 import { ApiError, api } from "@/lib/api";
 import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
-import { entryDeviceKind, useDeviceKind } from "@/lib/device";
-import { errorMessage } from "@/lib/utils";
+import { entryDeviceKind } from "@/lib/device";
+import { cn, errorMessage } from "@/lib/utils";
 import { lazyScreen } from "@/lib/lazyScreen";
 
 /** A code form opened through a share link: its own page (the sandboxed frame), loaded only then. */
@@ -37,8 +38,6 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   const slug = slugProp ?? params.slug ?? "";
   const location = useLocation();
   const { data, isLoading, error } = useFillForm(slug, shareToken);
-  // The builder is desktop only, so no way into it elsewhere.
-  const canOpenBuilder = useDeviceKind() === "desktop";
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [serverErrors, setServerErrors] = useState<Errors | undefined>();
@@ -144,37 +143,18 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
     setRound((r) => r + 1);
   }
 
-  return (
-    <Shell>
-      {data.isAdmin && !publicView && !locked && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-[13px]">
-          <ToneBadge tone={form.isDraft ? "amber" : form.status === "published" ? "green" : "neutral"}>{form.isDraft ? "Draft" : form.status === "published" ? `Live · v${form.version}` : form.status}</ToneBadge>
-          <span className="text-muted">You're an admin.</span>
-          <div className="flex-1" />
-          <Link to={canOpenBuilder ? `/admin/builder/${form.id}?tab=notifications` : `/f/${slug}/notifications`} className="inline-flex items-center gap-1 font-semibold text-accent"><Bell className="h-3.5 w-3.5" /> Notifications</Link>
-          {canOpenBuilder && <Link to={`/admin/builder/${form.id}`} className="inline-flex items-center gap-1 font-semibold text-accent"><PencilRuler className="h-3.5 w-3.5" /> Edit form</Link>}
-        </div>
-      )}
-      {(!publicView || (tutorial.available && !done)) && (
-        <div className="mb-3 flex justify-end gap-5">
-          {!publicView && !locked && <LockFormButton base={`/f/${slug}`} title={doc.title} className="mr-auto" />}
-          {tutorial.available && !done && (
-            <button type="button" data-tour="form-help" onClick={tutorial.start} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent dark:text-white">
-              <CircleHelp className="h-3.5 w-3.5" /> Show me how
-            </button>
-          )}
-          {doc.settings.access?.mode === "link" && data.user && !publicView && !locked && (
-            <Link to={`/f/${slug}/share`} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent dark:text-white"><QrCode className="h-3.5 w-3.5" /> Share it: my link and QR code</Link>
-          )}
-          {data.canReadEntries && !publicView && !locked && (
-            <Link to={`/f/${slug}/entries`} data-tour="form-entries" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent"><ClipboardList className="h-3.5 w-3.5" /> {data.entriesReach === "all" ? "Entries" : "Your entries"}</Link>
-          )}
-        </div>
-      )}
+  const helpButton = tutorial.available && !done && (
+    <button type="button" data-tour="form-help" onClick={tutorial.start} className={headerLinkClass} title="Show me how this form works">
+      <CircleHelp className="h-3.5 w-3.5" /> <span className={publicView ? undefined : "hidden sm:inline"}>Show me how</span>
+    </button>
+  );
+  const content = (
+    <>
+      {publicView && helpButton && <div className="mb-3 flex justify-end">{helpButton}</div>}
 
       <Card className="p-5 md:p-8">
         <div data-tour="form-title">
-          <h1 className="font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]">{doc.title}</h1>
+          <h1 className={cn("font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]", !publicView && "md:hidden")}>{doc.title}</h1>
           {doc.description && !done && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
         </div>
         <div className="mt-6">
@@ -200,7 +180,16 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
           )}
         </div>
       </Card>
-    </Shell>
+    </>
+  );
+
+  // In the app the form sits under its tabs (Form, Entries, Notifications), like a code form.
+  if (publicView) return <PublicShell>{content}</PublicShell>;
+  return (
+    <>
+      <BuiltFormHeader slug={slug} actions={<>{helpButton}{!locked && <LockFormButton base={`/f/${slug}`} title={doc.title} />}</>} />
+      <Page className="max-w-[820px]">{content}</Page>
+    </>
   );
 }
 
