@@ -506,6 +506,8 @@ function NotificationsWidget({ size }: { size: WidgetSize }) {
 
 function RosterSitesWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading, isError } = useDashboard();
+  // The review bar is for people who can Keep or Remove; anyone else just sees head counts.
+  const reviews = useAuth().can("roster.archive");
   const sites = [...(data?.sites ?? [])].sort((a, b) => b.attentionCount - a.attentionCount || b.activeCount - a.activeCount);
   const shown = sites.slice(0, ROWS[size] + 2);
   return (
@@ -534,14 +536,14 @@ function RosterSitesWidget({ size }: { size: WidgetSize }) {
                           {s.activeCount} {s.activeCount === 1 ? "resident" : "residents"}
                         </span>
                       </span>
-                      <span className="mt-1.5 flex items-center gap-2">
+                      {reviews && <span className="mt-1.5 flex items-center gap-2">
                         <span className="h-1.5 flex-1 overflow-hidden rounded-pill bg-subtle">
                           <span className="block h-full rounded-pill bg-status-amberDot" style={{ width: `${share * 100}%` }} />
                         </span>
                         <span className={cn("w-[72px] shrink-0 text-right text-[11.5px] font-semibold", s.attentionCount ? "text-status-amberText" : "text-muted")}>
                           {s.attentionCount ? `${s.attentionCount} to check` : "all seen"}
                         </span>
-                      </span>
+                      </span>}
                     </span>
                   </Link>
                 </li>

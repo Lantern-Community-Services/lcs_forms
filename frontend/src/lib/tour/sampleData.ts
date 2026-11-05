@@ -61,6 +61,7 @@ export function sampleCatalog(): FormCatalog {
   };
 }
 
+/** `roster`: the sample review item — only for people who can Keep or Remove. */
 export function sampleHome(roster: boolean): HomeData {
   const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
   return {

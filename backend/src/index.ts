@@ -3,6 +3,8 @@ import { createApp } from "./app.js";
 import { devAuthEnabled, env, ssoConfigured } from "./env.js";
 import { retireLegacyCatalog } from "./services/formCatalog.js";
 import { migrateLegacyRoles } from "./services/permissions.js";
+import { backfillFormerNames } from "./services/nameHistory.js";
+import { startGeoip } from "./services/geoip.js";
 import { syncSuperAdmins } from "./services/superAdmins.js";
 import { ensureSiteLocations } from "./services/siteLocations.js";
 import { ensureDefaultCalendarCategories } from "./services/calendar.js";
@@ -53,6 +55,13 @@ ensureSiteLocations()
 migrateLegacyRoles()
   .then((n) => n && console.log(`  Roles: moved ${n} people off retired roles.`))
   .catch((err) => console.error("[roles] could not migrate retired roles:", err));
+
+// IP → place for the audit log and sign-ins, on this server (downloads DB-IP's free file once a month).
+startGeoip();
+
+backfillFormerNames()
+  .then((n) => n && console.log(`  Roster: kept the earlier names of ${n} renamed residents for search.`))
+  .catch((err) => console.error("[roster] could not fill in earlier names:", err));
 
 // Staff groups (which limited forms each person sees): the starting set on an
 // empty table, then the in-memory copy, kept fresh once a minute.

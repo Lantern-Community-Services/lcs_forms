@@ -93,7 +93,7 @@ export function buildSiteTour(
       waitMs: 1500,
       target: at("home-attention"),
       title: "Needs your attention",
-      body: roster
+      body: roster && can("roster.archive")
         ? "Residents due for a review, and anything a form flags for you, show up here. When it's empty, you're caught up."
         : "Anything a form flags for you shows up here. When it's empty, you're caught up.",
     });
@@ -181,14 +181,15 @@ export function buildSiteTour(
         : `Residents at ${user.allSites ? "every site" : "your sites"}.${can("roster.edit") ? " Add, update or remove residents under **Residents**." : ""} **Attendance** and **Activity** have their own tabs.` +
           "\n\nThe residents you see during the tour are **sample** people at Sample House.",
     });
-    add({
-      id: "open-review",
-      target: at("tab-review"),
-      action: "click",
-      title: "Open Review",
-      body: `**Review** lists people nobody has seen in a while. ${tap} **Review**.`,
-    });
-    if (can("roster.edit")) {
+    // Review is only there for people who can Keep or Remove (App.tsx RosterSection).
+    if (can("roster.archive")) {
+      add({
+        id: "open-review",
+        target: at("tab-review"),
+        action: "click",
+        title: "Open Review",
+        body: `**Review** lists people nobody has seen in a while. ${tap} **Review**.`,
+      });
       add({
         id: "review-keep",
         route: "/roster/review",
@@ -197,15 +198,9 @@ export function buildSiteTour(
         placement: "right",
         action: "click",
         title: "Keep someone who's still here",
-        body: `Jordan Example (a sample resident) hasn't been on a form in a few days. They're still living here, so ${tap.toLowerCase()} **Keep**.\n\nYou can also swipe the card: right to keep, left to remove, down to skip.`,
-      });
-    } else {
-      add({
-        id: "review-card",
-        route: "/roster/review",
-        target: at("review-card"),
-        title: "Who needs a look",
-        body: "One card per person nobody has seen in a while (these are sample residents). Your Site Manager decides who stays on the roster.",
+        body: `Jordan Example (a sample resident) hasn't been on a form in a few days. They're still living here, so ${tap.toLowerCase()} **Keep**.
+
+You can also swipe the card: right to keep, left to remove, down to skip.`,
       });
     }
   }

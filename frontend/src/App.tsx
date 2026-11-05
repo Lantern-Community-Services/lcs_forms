@@ -158,18 +158,30 @@ function HomeRedirect() {
   const { user, can } = useAuth();
   const saved = user?.defaultLandingPage;
   const chosen = !saved || saved === "/forms" ? "/home" : saved;
-  return <Navigate to={chosen === "/home" || can("roster.view") ? chosen : "/home"} replace />;
+  // Review is only for people who can act on it; anyone else saved on it lands on the Residents tab.
+  const allowed = chosen === "/roster/review" && !can("roster.archive") ? "/roster" : chosen;
+  return <Navigate to={allowed === "/home" || can("roster.view") ? allowed : "/home"} replace />;
+}
+
+/** The review queue, for people who can act on it; anyone else (a bookmark, an old link) gets the roster. */
+function ReviewOrRoster() {
+  const { can } = useAuth();
+  const { search } = useLocation();
+  return can("roster.archive") ? <ReviewPage /> : <Navigate to={{ pathname: "/roster", search }} replace />;
 }
 
 /** The Roster: one sidebar entry, its screens as tabs. */
 function RosterSection() {
+  const { can } = useAuth();
   const reviewCount = useReviewCount();
+  // The review queue is for people who can Keep or Remove; someone who only looks residents up doesn't see it.
+  const reviews = can("roster.archive");
   return (
     <SectionTabsLayout
       title="Roster"
       tabs={[
         { to: "/roster", label: "Residents", end: true },
-        { to: "/roster/review", label: "Review", count: reviewCount },
+        ...(reviews ? [{ to: "/roster/review", label: "Review", count: reviewCount }] : []),
         { to: "/roster/attendance", label: "Attendance" },
         { to: "/roster/activity", label: "Activity" },
         { to: "/roster/overview", label: "Overview" },
@@ -240,7 +252,7 @@ export function App() {
         <Route element={<RequirePermission anyOf={["roster.view"]} />}>
           <Route element={<RosterSection />}>
             <Route path="/roster" element={<RosterPage />} />
-            <Route path="/roster/review" element={<ReviewPage />} />
+            <Route path="/roster/review" element={<ReviewOrRoster />} />
             <Route path="/roster/attendance" element={<AttendancePage />} />
             <Route path="/roster/activity" element={<ActivityPage />} />
             <Route path="/roster/overview" element={<DashboardPage />} />

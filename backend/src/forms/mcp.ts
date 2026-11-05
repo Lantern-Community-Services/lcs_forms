@@ -5,7 +5,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
-import type { Actor } from "../services/audit.js";
+import { fromRequest, type Actor } from "../services/audit.js";
+import type { CallFrom } from "../ops/callRoute.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
 import { currentUserById, type CurrentUser } from "../auth/middleware.js";
 import type { ResolvedGrant } from "../oauth/provider.js";
@@ -303,8 +304,9 @@ async function keyPrincipal(key: ResolvedKey): Promise<CurrentUser | null> {
   return { ...creator, name: `${creator.name} (API key: ${key.name})`, siteIds };
 }
 
-function buildServer(key: ResolvedKey, principal: CurrentUser): McpServer {
-  const actor: Actor = { id: null, name: `API key: ${key.name} (MCP)` };
+function buildServer(key: ResolvedKey, principal: CurrentUser, from?: CallFrom): McpServer {
+  // `from`: the MCP caller's address and client, so the audit log says where a change came from.
+  const actor: Actor = { id: null, name: `API key: ${key.name} (MCP)`, ...from };
   const can = (scope: string) => key.scopes.includes(scope as never);
   const need = (scope: string) => {
     if (!can(scope)) throw new HttpError(403, `This API key lacks the ${scope} scope. An admin can add it in Admin → API keys.`);
@@ -465,7 +467,7 @@ function buildServer(key: ResolvedKey, principal: CurrentUser): McpServer {
   registerTutorialTools(tool, need, actor);
   registerNotificationTools(tool, need, key, actor);
   registerRoutingTools(tool, need, actor);
-  registerOps(tool, key);
+  registerOps(tool, key, from);
   return server;
 }
 
@@ -494,7 +496,7 @@ export async function handleMcp(req: Request, res: Response) {
     res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "This MCP server is stateless; use POST." }, id: null });
     return;
   }
-  const server = req.apiKey ? buildServer(req.apiKey, principal!) : buildPersonServer(person!, req.oauthGrant!);
+  const server = req.apiKey ? buildServer(req.apiKey, principal!, fromRequest(req)) : buildPersonServer(person!, req.oauthGrant!);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => {
     void transport.close();

@@ -8,6 +8,7 @@ import { attentionHours } from "../services/settings.js";
 import { cutoff, displayName } from "../services/roster.js";
 import { sitesInScope, type ScopedSite } from "../services/siteScope.js";
 import { appHomeCards } from "../apps/home.js";
+import { reviewsRoster } from "../services/permissions.js";
 
 export const homeRouter = Router();
 homeRouter.use(requireAuth);
@@ -338,7 +339,7 @@ homeRouter.get(
     const rosterSites = has(req, "roster.view") ? await sitesInScope(req, undefined) : null;
 
     const [roster, drafts, activity, recent, shortcuts, entriesWeek, residents] = await Promise.all([
-      rosterSites ? rosterAttention(rosterSites) : Promise.resolve({ items: [], total: 0 }),
+      rosterSites && reviewsRoster(req.user!.permissions) ? rosterAttention(rosterSites) : Promise.resolve({ items: [], total: 0 }),
       myDrafts(req),
       recentActivity(req, rosterSites),
       recentForms(req),

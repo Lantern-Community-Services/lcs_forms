@@ -6,6 +6,8 @@ import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { attentionHours } from "../services/settings.js";
 import { cutoff } from "../services/roster.js";
 import { sitesInScope } from "../services/siteScope.js";
+import { auditView } from "../services/audit.js";
+import { reviewsRoster } from "../services/permissions.js";
 
 export const activityRouter = Router();
 activityRouter.use(requireAuth);
@@ -31,8 +33,9 @@ activityRouter.get(
     if (typeof req.query.before === "string") where.createdAt = { lt: new Date(req.query.before) };
 
     const rows = await prisma.auditEvent.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    const where_ = req.user!.permissions.includes("audit.view");
     res.json({
-      items: rows.map((r) => ({ ...r, changes: r.changes ? JSON.parse(r.changes) : null })),
+      items: rows.map((r) => auditView(r, where_)),
       nextBefore: rows.length === limit ? rows[rows.length - 1].createdAt : null,
     });
   })
@@ -89,10 +92,12 @@ activityRouter.get(
     const attentionBy = new Map(attentionRows.map((a) => [a.siteId, Number(a.cnt)]));
     const addedBy = new Map(addedBySite.map((a) => [a.siteId, a._count._all]));
     const removedBy = new Map(removedBySite.map((a) => [a.siteId, a._count._all]));
+    const reviews = reviewsRoster(req.user!.permissions);
     const attentionPerSite = sites.map((s) => ({
       ...s,
       activeCount: activeBy.get(s.id) ?? 0,
-      attentionCount: attentionBy.get(s.id) ?? 0,
+      // The review queue is only for people who can act on it.
+      attentionCount: reviews ? attentionBy.get(s.id) ?? 0 : 0,
       addedWeek: addedBy.get(s.id) ?? 0,
       removedWeek: removedBy.get(s.id) ?? 0,
     }));
@@ -106,7 +111,7 @@ activityRouter.get(
       },
       attentionHours: orgHours,
       sites: attentionPerSite,
-      recent,
+      recent: recent.map((r) => auditView(r, req.user!.permissions.includes("audit.view"))),
     });
   })
 );

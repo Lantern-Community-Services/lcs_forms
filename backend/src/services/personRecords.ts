@@ -8,6 +8,7 @@ import { manifestOf } from "./routing.js";
 import { allGroups, canUseBuiltForm, entryReach } from "./staffGroups.js";
 import { isFollowUpDoer, loadFollowUp } from "./followUp.js";
 import { roleFor, roleNameFor } from "./permissions.js";
+import { deviceFrom } from "./geoip.js";
 
 /**
  * People & roles → a person → Records (Super Admins, people.records): what
@@ -57,7 +58,8 @@ export async function personRecords(idOrEmail: string, opts: { form?: string; be
       select: { id: true, title: true, sourceLabel: true, createdAt: true, readAt: true, urgent: true, emailStatus: true, link: true },
     }),
     prisma.emailLog.findMany({ where: { to: user.email }, orderBy: { createdAt: "desc" }, take: LIMIT }),
-    prisma.auditEvent.findMany({ where: { actorId: user.id }, orderBy: { createdAt: "desc" }, take: LIMIT, select: { id: true, action: true, summary: true, createdAt: true } }),
+    // What they did, and where from (sign-ins included). Records are Super Admins' only (people.records).
+    prisma.auditEvent.findMany({ where: { actorId: user.id }, orderBy: { createdAt: "desc" }, take: LIMIT, select: { id: true, action: true, summary: true, createdAt: true, ip: true, location: true, userAgent: true } }),
   ]);
 
   const sites = await prisma.site.findMany({ select: { id: true, name: true } });
@@ -127,7 +129,7 @@ export async function personRecords(idOrEmail: string, opts: { form?: string; be
     },
     notifications,
     emails,
-    activity,
+    activity: activity.map(({ userAgent, ...a }) => ({ ...a, device: deviceFrom(userAgent) })),
     access,
   };
 }

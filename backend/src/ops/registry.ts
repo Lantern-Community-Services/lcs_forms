@@ -2,9 +2,9 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { asyncHandler, HttpError } from "../http.js";
 import { requireApiScope, type CurrentUser } from "../auth/middleware.js";
-import { audit, type Actor } from "../services/audit.js";
+import { audit, fromRequest, type Actor } from "../services/audit.js";
 import type { ApiScope, ResolvedKey } from "../services/apiKeys.js";
-import { callRoute, callRouteOk, type RouteCall, type RouteResult } from "./callRoute.js";
+import { callRoute, callRouteOk, type CallFrom, type RouteCall, type RouteResult } from "./callRoute.js";
 import { principalFor } from "./principal.js";
 
 /**
@@ -92,7 +92,7 @@ export function describeOp(op: Op<any>): string {
 }
 
 /** Run an operation for a key: scope, who it acts as, confirm, audit. Input is already parsed. */
-export async function runOp(op: Op<any>, key: ResolvedKey, args: Record<string, unknown>, via: "MCP" | "API"): Promise<unknown> {
+export async function runOp(op: Op<any>, key: ResolvedKey, args: Record<string, unknown>, via: "MCP" | "API", from?: CallFrom): Promise<unknown> {
   if (!key.scopes.includes(op.scope)) {
     throw new HttpError(403, `This API key lacks the ${op.scope} scope. An admin can add it in Admin → API keys.`);
   }
@@ -101,10 +101,10 @@ export async function runOp(op: Op<any>, key: ResolvedKey, args: Record<string, 
   if (needsConfirm && args.confirm !== true) {
     throw new HttpError(400, `${op.name} removes, overwrites or changes access to something. Check with the person you're working for, then call it again with confirm: true.`);
   }
-  const actor: Actor = user ? { id: user.userId, name: user.name } : { id: null, name: `API key: ${key.name} (${via})` };
+  const actor: Actor = user ? { id: user.userId, name: user.name, ...from } : { id: null, name: `API key: ${key.name} (${via})`, ...from };
   const as = () => {
     if (!user) throw new HttpError(500, `${op.name} has no person to act as.`);
-    return { user, apiKey: key };
+    return { user, apiKey: key, from };
   };
   const ctx: OpContext = {
     key,
@@ -129,7 +129,7 @@ export function mountOps(router: Router, ops: Op<any>[]) {
     const handler = asyncHandler(async (req: Request, res) => {
       const bodyIn = op.http.method === "GET" ? {} : req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
       const args = schema.parse({ ...req.query, ...bodyIn, ...req.params });
-      res.json(await runOp(op, req.apiKey!, args, "API"));
+      res.json(await runOp(op, req.apiKey!, args, "API", fromRequest(req)));
     });
     const method = op.http.method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete";
     router[method](op.http.path, requireApiScope(op.scope), handler);
