@@ -5,6 +5,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { SignaturePad, type SignaturePadHandle } from "@/components/attendance/SignaturePad";
 import { CodeBlockFrame } from "./CodeBlockFrame";
+import { LocatedSiteSelect } from "./LocatedSiteSelect";
 import { useSites, useTenants } from "@/lib/queries";
 import { FillShareContext, fillApi } from "@/lib/builder";
 import { ApiError } from "@/lib/api";
@@ -284,13 +285,10 @@ function widthClass(f: Field) {
 
 function SitePickerRow({ value, onChange, error, slug }: { value: string | null; onChange: (v: string | null) => void; error?: string; slug?: string }) {
   const { data: sites } = useSites(false, true, slug);
-  useEffect(() => {
-    if (!value && sites?.length === 1) onChange(sites[0].code);
-  }, [sites]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="mb-5" data-tour="form-site" data-field-error={error ? true : undefined}>
       <FieldLabel label="Site" required />
-      <Select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} placeholder="Pick a site…" options={(sites ?? []).map((s) => ({ value: s.code, label: s.name }))} />
+      <LocatedSiteSelect sites={sites} value={value ?? ""} onChange={(v) => onChange(v || null)} />
       {error && <FieldError message={error} />}
     </div>
   );
@@ -791,10 +789,7 @@ function SignatureInput({ value, onChange, disabled }: { value: string; onChange
 
 function SiteSelect({ inputId, value, onChange, disabled, slug }: { inputId: string; value: string; onChange: (v: unknown) => void; disabled?: boolean; slug?: string }) {
   const { data: sites, isLoading } = useSites(false, true, slug);
-  useEffect(() => {
-    if (!value && sites?.length === 1) onChange(sites[0].code);
-  }, [sites]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <Select id={inputId} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled || isLoading} placeholder={isLoading ? "Loading…" : "Pick a site…"} options={(sites ?? []).map((s) => ({ value: s.code, label: s.name }))} className="min-h-[44px] md:min-h-9" />;
+  return <LocatedSiteSelect id={inputId} sites={sites} value={value} onChange={onChange} disabled={disabled} loading={isLoading} className="min-h-[44px] md:min-h-9" />;
 }
 
 interface ResidentValue {
