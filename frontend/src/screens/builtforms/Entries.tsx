@@ -51,6 +51,12 @@ export function BuiltFormEntriesPage() {
     [data?.doc]
   );
   const hasSites = data?.items.some((e) => e.site);
+  // What was filled in when follow-ups were marked done (IT's new account, say): a column each, passwords never.
+  const doneColumns = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const e of data?.items ?? []) for (const v of e.followUp?.values ?? []) if (!v.emailed && !seen.has(v.id)) seen.set(v.id, v.label);
+    return [...seen].slice(0, 3).map(([id, label]) => ({ id, label }));
+  }, [data?.items]);
 
   async function exportAs(format: "csv" | "xlsx") {
     try {
@@ -127,6 +133,7 @@ export function BuiltFormEntriesPage() {
                   <th className="px-3 py-2.5">By</th>
                   {hasSites && <th className="px-3 py-2.5">Site</th>}
                   {columns.map((c) => <th key={c.id} className="max-w-[220px] truncate px-3 py-2.5">{c.label || c.id}</th>)}
+                  {doneColumns.map((c) => <th key={`done:${c.id}`} className="max-w-[220px] truncate px-3 py-2.5" title="Filled in when the follow-up was marked done">{c.label}</th>)}
                   <th className="px-3 py-2.5" />
                 </tr>
               </thead>
@@ -142,6 +149,10 @@ export function BuiltFormEntriesPage() {
                     <td className="whitespace-nowrap px-3 py-2.5 text-ink">{e.createdByName}</td>
                     {hasSites && <td className="whitespace-nowrap px-3 py-2.5 text-ink">{e.site?.name ?? "—"}</td>}
                     {columns.map((c) => <td key={c.id} className="max-w-[240px] truncate px-3 py-2.5 text-ink">{formatValue(c, e.values[c.id]) || <span className="text-muted">—</span>}</td>)}
+                    {doneColumns.map((c) => {
+                      const v = e.followUp?.values?.find((x) => x.id === c.id)?.value;
+                      return <td key={`done:${c.id}`} className="max-w-[240px] truncate px-3 py-2.5 text-ink">{v || <span className="text-muted">—</span>}</td>;
+                    })}
                     <td className="whitespace-nowrap px-3 py-2.5 text-right text-muted">
                       {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
                       {e.followUp && <span className="ml-2"><ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{e.followUp.status === "open" ? "Open" : "Done"}</ToneBadge></span>}
@@ -163,6 +174,11 @@ export function BuiltFormEntriesPage() {
                     {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{e.followUp.status === "open" ? "Open" : "Done"}</ToneBadge>}
                   </div>
                   <p className="mt-0.5 text-micro text-muted">{formatDateTime(e.createdAt)} · {e.createdByName}{e.site ? ` · ${e.site.name}` : ""}</p>
+                  {doneColumns.some((c) => e.followUp?.values?.some((x) => x.id === c.id && x.value)) && (
+                    <p className="mt-0.5 truncate text-micro text-ink">
+                      {doneColumns.map((c) => ({ c, v: e.followUp?.values?.find((x) => x.id === c.id)?.value })).filter((x) => x.v).map((x) => `${x.c.label}: ${x.v}`).join(" · ")}
+                    </p>
+                  )}
                 </Link>
               </li>
             ))}

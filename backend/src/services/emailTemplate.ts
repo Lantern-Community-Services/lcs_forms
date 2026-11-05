@@ -27,6 +27,8 @@ export interface EmailParts {
   intro?: string | null;
   /** What the reader has to do, written by an admin on the route or report. */
   whatToDo?: string | null;
+  /** A message in its own words (a follow-up's reply), shown as written: line breaks kept. */
+  message?: string | null;
   /** Chosen answers, as label and value. */
   fields?: { label: string; value: string }[];
   /** A table, for summary reports. `more` rows weren't shown. */
@@ -84,6 +86,8 @@ export function brandedEmail(p: EmailParts, look: EmailLook = currentLook()): st
         `<strong style="color:${NAVY}">What to do:</strong> ${text(p.whatToDo)}</td></tr></table>`
     );
   }
+
+  if (p.message) out.push(`<p style="margin:0 0 18px;font-size:14px;color:${INK}">${text(p.message)}</p>`);
 
   if (p.fields?.length) {
     out.push(`<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 18px;width:100%">`);
