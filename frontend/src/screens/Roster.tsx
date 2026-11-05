@@ -186,7 +186,8 @@ export function RosterPage() {
     const base = tab === "attention" ? all.filter((t) => t.needsAttention) : all;
     if (!query) return base;
     return base.filter((t) =>
-      [t.displayName, t.firstName, t.lastName, t.preferredName, t.unit, multiSite ? t.site?.name : null].some((v) =>
+      // An old name finds them too (formerNames, kept on each rename).
+      [t.displayName, t.firstName, t.lastName, t.preferredName, t.unit, multiSite ? t.site?.name : null, ...(t.formerNames ?? [])].some((v) =>
         v?.toLowerCase().includes(query)
       )
     );
@@ -369,6 +370,7 @@ export function RosterPage() {
                   groups={groups}
                   tab={tab}
                   multiSite={multiSite}
+                  query={query}
                   canRestore={can("roster.restore")}
                   canArchive={can("roster.archive")}
                   onToggleSite={toggleSite}
@@ -402,13 +404,15 @@ const NO_SITES: Set<string> = new Set();
 
 /** One batch of the list. Re-renders only when its own rows, the folds or the tab change. */
 const RosterChunk = memo(function RosterChunk({
-  entries, folded, groups, tab, multiSite, canRestore, canArchive, onToggleSite, onRemove, onRestore,
+  entries, folded, groups, tab, multiSite, query, canRestore, canArchive, onToggleSite, onRemove, onRestore,
 }: {
   entries: { t: Tenant; heading: boolean; index: number }[];
   folded: Set<string>;
   groups: Map<string, { count: number; attention: number }>;
   tab: Tab;
   multiSite: boolean;
+  /** The search, lower-cased, to say which old name a row matched. */
+  query: string;
   canRestore: boolean;
   canArchive: boolean;
   onToggleSite: (siteId: string) => void;
@@ -434,6 +438,7 @@ const RosterChunk = memo(function RosterChunk({
               t={t}
               tab={tab}
               multiSite={multiSite}
+              formerly={query ? t.formerNames?.find((n) => n.toLowerCase().includes(query)) : undefined}
               // Only the first screenful slides in; rows appended after it are
               // below the fold and simply appear.
               enterDelay={index < STAGGERED ? index * STAGGER_MS : null}
@@ -483,11 +488,13 @@ const SiteHeading = memo(function SiteHeading({
  * square of the list and took seconds at ~1,900 people.
  */
 const RosterRow = memo(function RosterRow({
-  t, tab, multiSite, enterDelay, canRestore, canArchive, onRemove, onRestore,
+  t, tab, multiSite, formerly, enterDelay, canRestore, canArchive, onRemove, onRestore,
 }: {
   t: Tenant;
   tab: Tab;
   multiSite: boolean;
+  /** The old name the search matched, shown so it's clear why they're listed. */
+  formerly?: string;
   enterDelay: number | null;
   canRestore: boolean;
   canArchive: boolean;
@@ -587,6 +594,7 @@ const RosterRow = memo(function RosterRow({
                     : `Added ${formatDate(t.createdAt)}`}
             </span>
             {t.preferredName && <span className="hidden truncate text-micro text-muted lg:block">{t.firstName} {t.lastName}</span>}
+            {formerly && <span className="block truncate text-micro text-muted">Formerly {formerly}</span>}
           </span>
         </Link>
         <span className="hidden truncate text-[13px] text-muted lg:block">

@@ -33,7 +33,8 @@ interface Records {
   };
   notifications: { id: string; title: string; sourceLabel: string | null; createdAt: string; readAt: string | null; urgent: boolean; emailStatus: string; link: string | null }[];
   emails: { id: string; createdAt: string; subject: string; kind: string; status: string; error: string | null; withAnswers: boolean }[];
-  activity: { id: string; action: string; summary: string; createdAt: string }[];
+  /** Includes sign-ins (user.signed_in), each with where it came from. */
+  activity: { id: string; action: string; summary: string; createdAt: string; ip?: string | null; location?: string | null; device?: string | null }[];
   access: { id: string; slug: string; title: string; kind: string; canOpen: boolean; entries: "all" | "site" | "own" | null }[];
 }
 
@@ -166,9 +167,9 @@ export function PersonRecordsPage() {
       )}
 
       {section === "activity" && (
-        <List title="What they changed" empty="Nothing in the audit log.">
+        <List title="What they did, and where from" empty="Nothing in the audit log.">
           {first.activity.map((a) => (
-            <Row key={a.id} title={a.summary} meta={`${a.action} · ${formatDateTime(a.createdAt)}`} />
+            <Row key={a.id} title={a.summary} meta={[a.action === "user.signed_in" ? "Signed in" : a.action, formatDateTime(a.createdAt), a.location, a.device, a.ip].filter(Boolean).join(" · ")} />
           ))}
         </List>
       )}

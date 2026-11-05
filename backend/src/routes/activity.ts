@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { attentionHours } from "../services/settings.js";
 import { cutoff } from "../services/roster.js";
 import { sitesInScope } from "../services/siteScope.js";
+import { auditView } from "../services/audit.js";
 
 export const activityRouter = Router();
 activityRouter.use(requireAuth);
@@ -31,8 +32,9 @@ activityRouter.get(
     if (typeof req.query.before === "string") where.createdAt = { lt: new Date(req.query.before) };
 
     const rows = await prisma.auditEvent.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    const where_ = req.user!.permissions.includes("audit.view");
     res.json({
-      items: rows.map((r) => ({ ...r, changes: r.changes ? JSON.parse(r.changes) : null })),
+      items: rows.map((r) => auditView(r, where_)),
       nextBefore: rows.length === limit ? rows[rows.length - 1].createdAt : null,
     });
   })
@@ -106,7 +108,7 @@ activityRouter.get(
       },
       attentionHours: orgHours,
       sites: attentionPerSite,
-      recent,
+      recent: recent.map((r) => auditView(r, req.user!.permissions.includes("audit.view"))),
     });
   })
 );

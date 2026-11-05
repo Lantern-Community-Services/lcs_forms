@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
-import { CheckCircle2, History, ListChecks, PencilLine, RotateCcw, Settings2, Undo2, UserMinus, UserPlus } from "lucide-react";
+import { CheckCircle2, History, ListChecks, LogIn, PencilLine, RotateCcw, Settings2, Undo2, UserMinus, UserPlus } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
+import { ChangeList } from "@/components/roster/ChangeList";
+import { DbIpCredit, DoneFrom } from "@/components/roster/DoneFrom";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { useAudit } from "@/lib/queries";
 import { SitePicker, useSiteSelection } from "@/lib/site";
@@ -17,6 +19,7 @@ const ICONS: Record<string, typeof History> = {
   "tenant.remove_undone": Undo2,
   "tenant.sent_to_review": ListChecks,
   "roster.sent_to_review": ListChecks,
+  "user.signed_in": LogIn,
 };
 
 /** The audit trail: who changed which roster, when, and why. */
@@ -50,7 +53,9 @@ export function ActivityPage() {
                     ) : (
                       <p className="text-ink">{e.summary}</p>
                     )}
+                    <ChangeList event={e} />
                     <p className="text-micro text-muted">{e.actorName} · {formatDateTime(e.createdAt)}</p>
+                    <DoneFrom e={e} />
                   </div>
                 </li>
               );
@@ -58,6 +63,7 @@ export function ActivityPage() {
           </ul>
         </Card>
       )}
+      {data?.items.some((e) => e.location) && <DbIpCredit />}
     </Page>
   );
 }

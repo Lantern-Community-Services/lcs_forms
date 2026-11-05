@@ -90,6 +90,8 @@ export interface Tenant {
   lastName: string;
   preferredName: string | null;
   displayName: string;
+  /** Names they had before ("First Last" and preferred names), so search finds them by an old name. */
+  formerNames?: string[];
   status: "active" | "archived";
   moveInDate: string | null;
   moveOutDate: string | null;
@@ -129,12 +131,18 @@ export interface AuditEvent {
   siteId: string | null;
   summary: string;
   changes: Record<string, [unknown, unknown]> | Record<string, unknown> | null;
+  /** Where it was done from: sent to Admins (audit.view) only. */
+  ip?: string | null;
+  location?: string | null;
+  device?: string | null;
   createdAt: string;
 }
 
 export interface TenantDetail extends Tenant {
   activities: TenantActivity[];
   history: AuditEvent[];
+  /** Every rename, newest first, from the whole audit log (History stops at 40 events). */
+  nameHistory?: { at: string; by: string; from: string; to: string }[];
 }
 
 export interface DashboardData {
