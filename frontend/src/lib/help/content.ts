@@ -252,7 +252,7 @@ export const ARTICLES: HelpArticle[] = [
     needs: ["roster.view"],
     where: [
       { label: "Residents", to: "/roster", needs: ["roster.view"] },
-      { label: "Review", to: "/roster/review", needs: ["roster.view"] },
+      { label: "Review", to: "/roster/review", needs: ["roster.archive"] },
       { label: "Activity", to: "/roster/activity", needs: ["roster.view"] },
     ],
     words: "residents tenants roster review queue activity overview acuity",
@@ -571,7 +571,7 @@ export const ROLE_GUIDES: RoleGuide[] = [
     ],
     startHere: [
       { label: "Roster", to: "/roster", needs: ["roster.view"] },
-      { label: "Review", to: "/roster/review", needs: ["roster.view"] },
+      { label: "Review", to: "/roster/review", needs: ["roster.archive"] },
       { label: "Site settings", to: "/admin/people", needs: ["users.manageSite", "users.manage"] },
     ],
     read: ["roster", "attendance", "admin-people", "filling-forms", "entries"],
@@ -770,7 +770,7 @@ export function accessFor(
       title: "Roster",
       to: "/roster",
       needs: ["roster.view"],
-      see: `Residents at ${at}, Review, Overview and attendance.`,
+      see: `Residents at ${at}, ${has("roster.archive") ? "Review, " : ""}Overview and attendance.`,
       change: has("roster.edit")
         ? ["Add and change residents, take attendance, Keep or Remove in Review, and restore removed residents."]
         : ["Nothing: looking up only. A Site Manager or Admin can turn on “Can manage the roster” for you."],

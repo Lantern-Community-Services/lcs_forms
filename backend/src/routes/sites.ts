@@ -9,6 +9,7 @@ import { actorOf, audit, diff } from "../services/audit.js";
 import { attentionHours } from "../services/settings.js";
 import { cutoff } from "../services/roster.js";
 import { geocode } from "../services/siteLocations.js";
+import { reviewsRoster } from "../services/permissions.js";
 
 export const sitesRouter = Router();
 sitesRouter.use(requireAuth);
@@ -45,7 +46,8 @@ sitesRouter.get(
     });
     // One query for every site's attention count: each has its own threshold,
     // so it's an OR of per-site conditions rather than a single groupBy WHERE.
-    const attentionRows = ids.length
+    // None for someone who only looks residents up: the review queue isn't theirs.
+    const attentionRows = ids.length && reviewsRoster(req.user!.permissions)
       ? await prisma.$queryRaw<{ siteId: string; cnt: bigint | number }[]>`
           SELECT siteId, COUNT(*) as cnt FROM Tenant
           WHERE status = 'active' AND (${Prisma.join(
