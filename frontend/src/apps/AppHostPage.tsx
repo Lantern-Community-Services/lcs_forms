@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { setNavMode } from "@/lib/shellNav";
-import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { FormTabsHeader, headerLinkClass } from "@/components/shell/FormTabs";
 import { Bell, CircleHelp, CloudOff, Code2, QrCode, RefreshCw } from "lucide-react";
 import { codeFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { setFrameTutorialStarter } from "@/lib/tour/frameBridge";
@@ -105,69 +106,39 @@ export function AppHostPage() {
     : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-none border-b border-hairline bg-sidebar pt-safe-top md:bg-surface md:pt-5">
-        <div className={cn("mx-auto flex items-end gap-3 md:px-7", HEADER_WIDTH[headerWidth])}>
-          <div className="min-w-0 flex-1">
-            <h1 className="hidden font-heading text-[24px] font-extrabold text-ink md:block">{runtime.form.title}</h1>
-            {!locked && (visible.length > 1 || canRoute) ? (
-              <nav aria-label={runtime.form.title} data-tour="app-tabs" className="chiprow flex px-1.5 md:mt-1 md:gap-1 md:px-0">
-                {visible.map((p) => (
-                  <NavLink
-                    key={p.id}
-                    data-tour={`app-tab-${p.id}`}
-                    to={`/apps/${slug}/${p.id}${withDraft({})}`}
-                    className={({ isActive }) =>
-                      cn(
-                        "-mb-px flex min-h-[44px] shrink-0 items-center whitespace-nowrap border-b-2 px-2.5 text-[13px] font-semibold md:min-h-[42px] md:px-3 md:text-[13.5px]",
-                        isActive ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink"
-                      )
-                    }
-                  >
-                    {p.label}
-                  </NavLink>
-                ))}
-                {canRoute && (
-                  <NavLink
-                    to={`/apps/${slug}/${ROUTING_PAGE}${withDraft({})}`}
-                    title="Who this form tells, and when (Admins only)"
-                    className={({ isActive }) =>
-                      cn(
-                        "-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-[13px] font-semibold md:min-h-[42px] md:px-3 md:text-[13.5px]",
-                        isActive ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink"
-                      )
-                    }
-                  >
-                    <Bell className="h-3.5 w-3.5" /> Notifications
-                  </NavLink>
-                )}
-              </nav>
-            ) : (
-              <p className="px-4 pb-2 font-heading text-[18px] font-extrabold text-ink md:hidden">{runtime.form.title}</p>
-            )}
-            {(locked || visible.length <= 1) && <div className="hidden h-3 md:block" />}
-          </div>
-          <div className="flex items-center gap-2 pb-2 pr-3 md:pr-0">
+      <FormTabsHeader
+        title={runtime.form.title}
+        className={HEADER_WIDTH[headerWidth]}
+        showTabs={!locked && (visible.length > 1 || canRoute)}
+        tabs={[
+          ...visible.map((p) => ({ to: `/apps/${slug}/${p.id}${withDraft({})}`, label: p.label, tour: `app-tab-${p.id}` })),
+          ...(canRoute
+            ? [{ to: `/apps/${slug}/${ROUTING_PAGE}${withDraft({})}`, title: "Who this form tells, and when (Admins only)", label: <><Bell className="h-3.5 w-3.5" /> Notifications</> }]
+            : []),
+        ]}
+        actions={
+          <>
             {draft && <span className="rounded-pill bg-status-violetBg px-2 py-0.5 text-micro font-bold text-status-violetText">Draft</span>}
             <QueueBadge slug={slug} />
             {tutorial.available && (
-              <button type="button" data-tour="app-help" onClick={() => tutorial.start()} className="inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Show me how this form works">
+              <button type="button" data-tour="app-help" onClick={() => tutorial.start()} className={headerLinkClass} title="Show me how this form works">
                 <CircleHelp className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Show me how</span>
               </button>
             )}
             {runtime.shareable && !locked && (
-              <Link to={`/f/${slug}/share`} className="inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Your link and QR code: people without an account can fill this form in">
+              <Link to={`/f/${slug}/share`} className={headerLinkClass} title="Your link and QR code: people without an account can fill this form in">
                 <QrCode className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Share link</span>
               </Link>
             )}
             {!draft && !locked && <LockFormButton base={`/apps/${slug}`} title={runtime.form.title} />}
             {runtime.canEdit && canOpenEditor && !locked && (
-              <Link to={`/admin/apps/${runtime.form.id}`} className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white" title="Edit this code form">
+              <Link to={`/admin/apps/${runtime.form.id}`} className={headerLinkClass} title="Edit this code form">
                 <Code2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Edit</span>
               </Link>
             )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
       {onRouting ? (
         <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
           <Suspense fallback={<LoadingState />}>
