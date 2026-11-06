@@ -16,7 +16,7 @@ import type {
  * is cheaper than keeping four caches surgically in step.
  */
 export const qk = {
-  sites: (all = false, form?: string) => ["roster", "sites", all, form ?? ""] as const,
+  sites: (all = false, form?: string, office = false) => ["roster", "sites", all, form ?? "", office] as const,
   tenants: (site: string, status: string) => ["roster", "tenants", site, status] as const,
   review: (site: string) => ["roster", "review", site] as const,
   tenant: (id: string) => ["roster", "tenant", id] as const,
@@ -36,10 +36,13 @@ export const sampleKey = (...key: readonly unknown[]) => ["tour-sample", ...key]
 /** `?site=` for a selection: a comma list of codes, or nothing for all my sites. */
 const siteQs = (site: string | undefined) => (site ? `site=${encodeURIComponent(site)}` : "");
 
-/** `form`: a form's slug, so its site list has the Main Office when the form includes it. */
-export function useSites(all = false, enabled = true, form?: string) {
-  const qs = [all ? "all=1" : "", form ? `form=${encodeURIComponent(form)}` : ""].filter(Boolean).join("&");
-  return useQuery({ queryKey: qk.sites(all, form), queryFn: () => api.get<Site[]>(`/sites${qs ? `?${qs}` : ""}`), enabled });
+/**
+ * `form`: a form's slug, so its site list has the Main Office when the form includes it.
+ * `office`: the office sites (the Main Office) I'm at as well, for the calendar.
+ */
+export function useSites(all = false, enabled = true, form?: string, office = false) {
+  const qs = [all ? "all=1" : "", form ? `form=${encodeURIComponent(form)}` : "", office ? "office=1" : ""].filter(Boolean).join("&");
+  return useQuery({ queryKey: qk.sites(all, form, office), queryFn: () => api.get<Site[]>(`/sites${qs ? `?${qs}` : ""}`), enabled });
 }
 
 /** `site`: comma list of site codes, or undefined for all of my sites. */

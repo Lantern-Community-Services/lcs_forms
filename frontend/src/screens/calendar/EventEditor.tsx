@@ -141,7 +141,8 @@ export function EventEditor({ target, onClose }: { target: EditorTarget | null; 
 function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () => void }) {
   const toast = useToast();
   const { data: categories } = useCalendarCategories();
-  const { data: sites } = useSites();
+  // The Main Office too, when it's one of mine (every office site for an Admin).
+  const { data: sites } = useSites(false, true, undefined, true);
   const { can, user } = useAuth();
   // Admins make events for every site; a calendar editor only for their own (the server holds them to it).
   const everySite = can("calendar.manage");

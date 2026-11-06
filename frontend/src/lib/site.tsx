@@ -31,9 +31,12 @@ function remembered(): string[] | null {
  * The choice lives in the URL (?site=amber-hall,rockaway-terrace) so a link
  * opens the same view, and is remembered per device so the Roster, Review,
  * Dashboard and Activity screens all open on the same selection.
+ *
+ * `office`: offer the office sites (the Main Office) I'm at too. The calendar
+ * does; the roster screens don't, since an office has no residents.
  */
-export function useSiteSelection() {
-  const { data, isLoading } = useSites();
+export function useSiteSelection({ office = false }: { office?: boolean } = {}) {
+  const { data, isLoading } = useSites(false, true, undefined, office);
   const [params, setParams] = useSearchParams();
   const sites = data ?? [];
 
@@ -101,14 +104,17 @@ export function SitePicker({
   onChange,
   className,
   counts = true,
+  office = false,
 }: {
   codes: string[];
   onChange: (codes: string[]) => void;
   className?: string;
   /** The roster's numbers beside each site (residents, people to review). Off where they mean nothing (the calendar). */
   counts?: boolean;
+  /** Office sites (the Main Office) I'm at as well, as useSiteSelection({ office }). */
+  office?: boolean;
 }) {
-  const { data: sites } = useSites();
+  const { data: sites } = useSites(false, true, undefined, office);
   const phone = useIsPhone();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");

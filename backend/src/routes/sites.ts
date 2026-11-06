@@ -28,12 +28,15 @@ sitesRouter.get(
     // Office sites (the Main Office) have no roster: only site management and
     // forms that include them (?form=<slug>) see them, whatever sites the person has.
     const office = includeInactive || (await formRefIncludesOffice(req.query.form));
+    // ?office=1 (the calendar): office sites too, but only ones the person is at,
+    // like any other site there.
+    const ownOffice = !office && req.query.office === "1";
     const mine = req.user!.siteIds;
     const sites = await prisma.site.findMany({
       where: {
         ...(includeInactive ? {} : { active: true }),
         ...(mine ? (office ? { OR: [{ id: { in: mine } }, { siteType: OFFICE }] } : { id: { in: mine } }) : {}),
-        ...(office ? {} : notOffice),
+        ...(office || ownOffice ? {} : notOffice),
       },
       orderBy: { name: "asc" },
     });
