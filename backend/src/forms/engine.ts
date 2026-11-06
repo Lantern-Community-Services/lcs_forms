@@ -511,6 +511,21 @@ export function isoDate(d: Date): string {
   return `${y}-${mo}-${da}`;
 }
 
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * Month names for {date:month}, {date:last_month} and {date:pay_month}, on New York's calendar.
+ * pay_month is the month a payment or report is usually for: last month during the first
+ * 10 days of a month, this month after that.
+ */
+export function monthTag(which: "month" | "last_month" | "pay_month", now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric", day: "numeric" }).formatToParts(now);
+  const month = Number(parts.find((p) => p.type === "month")?.value) - 1;
+  const day = Number(parts.find((p) => p.type === "day")?.value);
+  const back = which === "last_month" || (which === "pay_month" && day <= 10);
+  return MONTHS[(month + (back ? 11 : 0)) % 12];
+}
+
 // ───────────────────────── Reading a value ─────────────────────────
 
 /** A field's value as the rules and calculations see it ("applicant.first" reaches a part). */
@@ -1027,6 +1042,7 @@ export function allFieldsText(ctx: MergeContext): string {
  *   {field_id} {field_id.part} {field_id:value}   an answer (label form, or raw value)
  *   {all_fields}  {form:title}  {entry:id}  {entry:url}  {entry:date}
  *   {user:name}  {user:email}  {site:name}  {site:code}  {date:today}  {date:now}
+ *   {date:month}  {date:last_month}  {date:pay_month}   month names (see monthTag)
  */
 export function renderTemplate(tpl: string | undefined, ctx: MergeContext): string {
   if (!tpl) return "";
@@ -1045,6 +1061,9 @@ export function renderTemplate(tpl: string | undefined, ctx: MergeContext): stri
         case "site:name": return out(ctx.site?.name ?? "");
         case "site:code": return out(ctx.site?.code ?? "");
         case "date:today": return out(isoDate(new Date()));
+        case "date:month":
+        case "date:last_month":
+        case "date:pay_month": return out(monthTag(sub as "month" | "last_month" | "pay_month"));
         case "date:now": return out(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
       }
     }

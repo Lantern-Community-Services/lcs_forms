@@ -93,6 +93,7 @@ Functions: ${EXPRESSION_FUNCTIONS.join(", ")}. decimals (default 2), display: nu
 ## Merge tags (defaultValue, html content, confirmation, notifications)
 {field_id}  {field_id.part}  {field_id:value}  {all_fields}  {form:title}  {entry:id}  {entry:url}
 {user:name}  {user:email}  {site:name}  {date:today}  {date:now}
+{date:month} (this month's name, e.g. November)  {date:last_month}  {date:pay_month} (last month during the first 10 days, else this month; a good default for a "month this is for" dropdown whose choice values are month names)
 
 ## Custom code ("code" field)
 "code": { "html": "…", "css": "…", "js": "…", "height": 120 } runs in a sandboxed iframe with:
