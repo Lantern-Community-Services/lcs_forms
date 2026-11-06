@@ -40,7 +40,9 @@ export interface Part {
  * file once the last one is in.
  */
 export async function receivePart(p: Part): Promise<Buffer | null> {
-  if (!ID_RE.test(p.uploadId)) throw badRequest("That upload id isn't valid.");
+  // Checked here, not only by the caller: the bytes and the id come from a request.
+  if (!Buffer.isBuffer(p.data)) throw badRequest("Send the part as the request body.");
+  if (typeof p.uploadId !== "string" || !ID_RE.test(p.uploadId)) throw badRequest("That upload id isn't valid.");
   if (!Number.isInteger(p.count) || p.count < 1 || p.count > MAX_PARTS) throw badRequest(`An upload has 1 to ${MAX_PARTS} parts.`);
   if (!Number.isInteger(p.index) || p.index < 0 || p.index >= p.count) throw badRequest("That part number isn't in the upload.");
   if (p.data.length === 0) throw badRequest("That part is empty.");
@@ -71,20 +73,27 @@ export async function receivePart(p: Part): Promise<Buffer | null> {
  * For a raw-body upload route: the file, whole — the body itself, or, when the
  * request is one part of a larger file (X-Upload-Id, X-Upload-Part,
  * X-Upload-Parts headers), the joined parts once the last is in. Null means a
- * part was kept and the route should answer 202 (see answerPart).
+ * part was kept and the route should answer 202 with PART_RECEIVED.
  */
 export async function wholeBody(req: Request, formId: string, createdById: string | null): Promise<Buffer | null> {
-  if (!Buffer.isBuffer(req.body)) throw badRequest("Send the file as the request body.");
-  const uploadId = req.headers["x-upload-id"];
-  if (!uploadId) return req.body;
+  const body: unknown = req.body;
+  if (!Buffer.isBuffer(body)) throw badRequest("Send the file as the request body.");
+  const uploadId = header(req, "x-upload-id");
+  if (uploadId === null) return body;
   return receivePart({
     formId,
-    uploadId: String(uploadId),
-    index: Number(req.headers["x-upload-part"]),
-    count: Number(req.headers["x-upload-parts"]),
-    data: req.body,
+    uploadId,
+    index: Number(header(req, "x-upload-part")),
+    count: Number(header(req, "x-upload-parts")),
+    data: body,
     createdById,
   });
+}
+
+/** One header's value; sent twice (an array) or not at all counts as missing. */
+function header(req: Request, name: string): string | null {
+  const v: unknown = req.headers[name];
+  return typeof v === "string" && v !== "" ? v : null;
 }
 
 /** The answer to a part that isn't the last. */
