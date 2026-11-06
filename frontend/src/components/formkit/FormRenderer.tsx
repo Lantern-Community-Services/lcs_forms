@@ -73,7 +73,7 @@ export function FormRenderer({
     if (saveDrafts) {
       try {
         const saved = JSON.parse(localStorage.getItem(draftKey!) ?? "null");
-        if (saved?.values) return saved.values as Values;
+        if (saved?.values && typeof saved.startedAt === "number") return saved.values as Values;
       } catch {
         /* storage blocked — start fresh */
       }
@@ -96,7 +96,8 @@ export function FormRenderer({
   const [restored] = useState(() => {
     if (!saveDrafts) return false;
     try {
-      return Boolean(localStorage.getItem(draftKey!));
+      // A draft of only auto-filled answers (no startedAt) isn't "unfinished answers".
+      return typeof JSON.parse(localStorage.getItem(draftKey!) ?? "null")?.startedAt === "number";
     } catch {
       return false;
     }
@@ -120,7 +121,8 @@ export function FormRenderer({
 
   useEffect(() => {
     onValuesChange?.(computed);
-    if (!saveDrafts) return;
+    // Nothing typed or picked yet: defaults and auto-fills ({user:name}, {date:today}, the site) aren't a draft.
+    if (!saveDrafts || startedAt.current === null) return;
     const t = setTimeout(() => {
       try {
         localStorage.setItem(draftKey!, JSON.stringify({ values, savedAt: Date.now(), startedAt: startedAt.current }));
@@ -131,8 +133,9 @@ export function FormRenderer({
     return () => clearTimeout(t);
   }, [values]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set = (id: string, v: unknown) => {
-    touched();
+  /** auto: filled in by the form itself (the only site, the site you're at, a repeater's first row), not by the person. */
+  const set = (id: string, v: unknown, auto?: boolean) => {
+    if (!auto) touched();
     setValues((prev) => ({ ...prev, [id]: v }));
     setErrors((prev) => {
       if (!Object.keys(prev).some((k) => k === id || k.startsWith(`${id}.`))) return prev;
@@ -212,7 +215,7 @@ export function FormRenderer({
       )}
 
       {doc.settings.requireSite && mode === "fill" && page === 0 && (
-        <SitePickerRow slug={slug} value={siteCode} onChange={(v) => { touched(); setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
+        <SitePickerRow slug={slug} value={siteCode} onChange={(v, auto) => { if (!auto) touched(); setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
       )}
 
       {current.pageField?.content && <div className="prose-form mb-4 text-[14px] text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(current.pageField.content, merge) }} />}
@@ -227,7 +230,7 @@ export function FormRenderer({
                 values={computed}
                 error={errors[f.id]}
                 errors={errors}
-                onChange={(v) => set(f.id, v)}
+                onChange={(v, auto) => set(f.id, v, auto)}
                 disabled={disabled || f.readOnly}
                 slug={slug}
                 keepFilesOffline={mode === "fill"}
@@ -284,12 +287,12 @@ function widthClass(f: Field) {
   return "col-span-12";
 }
 
-function SitePickerRow({ value, onChange, error, slug }: { value: string | null; onChange: (v: string | null) => void; error?: string; slug?: string }) {
+function SitePickerRow({ value, onChange, error, slug }: { value: string | null; onChange: (v: string | null, auto?: boolean) => void; error?: string; slug?: string }) {
   const { data: sites } = useSites(false, true, slug);
   return (
     <div className="mb-5" data-tour="form-site" data-field-error={error ? true : undefined}>
       <FieldLabel label="Site" required />
-      <LocatedSiteSelect sites={sites} value={value ?? ""} onChange={(v) => onChange(v || null)} />
+      <LocatedSiteSelect sites={sites} value={value ?? ""} onChange={(v, auto) => onChange(v || null, auto)} />
       {error && <FieldError message={error} />}
     </div>
   );
@@ -315,7 +318,7 @@ interface FieldProps {
   values: Values;
   error?: string;
   errors: Errors;
-  onChange: (v: unknown) => void;
+  onChange: (v: unknown, auto?: boolean) => void;
   disabled?: boolean;
   slug?: string;
   /** Filling in (not editing an entry): with no connection a file is kept on the device and goes with the queued entry. */
@@ -634,7 +637,7 @@ function Repeater(props: FieldProps) {
   const subs = f.fields ?? [];
   const min = f.minRows ?? 0;
   useEffect(() => {
-    if (rows.length < Math.max(1, min) && !disabled) onChange([...rows, ...Array.from({ length: Math.max(1, min) - rows.length }, () => ({}))]);
+    if (rows.length < Math.max(1, min) && !disabled) onChange([...rows, ...Array.from({ length: Math.max(1, min) - rows.length }, () => ({}))], true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const setRow = (i: number, id: string, v: unknown) => onChange(rows.map((r, j) => (j === i ? { ...r, [id]: v } : r)));
   return (
@@ -791,7 +794,7 @@ function SignatureInput({ value, onChange, disabled }: { value: string; onChange
   );
 }
 
-function SiteSelect({ inputId, value, onChange, disabled, slug }: { inputId: string; value: string; onChange: (v: unknown) => void; disabled?: boolean; slug?: string }) {
+function SiteSelect({ inputId, value, onChange, disabled, slug }: { inputId: string; value: string; onChange: (v: unknown, auto?: boolean) => void; disabled?: boolean; slug?: string }) {
   const { data: sites, isLoading } = useSites(false, true, slug);
   return <LocatedSiteSelect id={inputId} sites={sites} value={value} onChange={onChange} disabled={disabled} loading={isLoading} className="min-h-[44px] md:min-h-9" />;
 }
