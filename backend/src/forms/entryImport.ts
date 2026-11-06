@@ -16,11 +16,13 @@ import { notFound } from "../http.js";
  *   Resident  { id } is looked up on the roster (name, unit and site come from
  *             there); { name, unit? } with no id keeps a resident who couldn't
  *             be matched, shown by name only.
- *   File      [{ name, mime, base64 }] — the bytes are stored like an upload.
+ *   File      [{ name, mime, base64 }] — the bytes are stored like an upload —
+ *             or [{ fileId }] for a file sent ahead with upload_import_file
+ *             (in parts, for one too big to go in an import call).
  *   Signature a PNG data URL, as the fill page saves it.
  */
 
-export interface ImportFile { name: string; mime: string; base64: string }
+export type ImportFile = { name: string; mime: string; base64: string } | { fileId: string };
 export interface ImportEntry {
   externalId: string;
   values: Values;
@@ -38,8 +40,9 @@ export interface ImportResult {
   ids?: { externalId: string; id: string }[];
 }
 
-export const IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024;
-export const IMPORT_MAX_ENTRY_BYTES = 25 * 1024 * 1024;
+/** A file sent inline in an import call; a bigger one goes ahead with upload_import_file. */
+export const IMPORT_MAX_FILE_BYTES = 15 * 1024 * 1024;
+export const IMPORT_MAX_ENTRY_BYTES = 18 * 1024 * 1024;
 export const importClientId = (externalId: string) => `import:${externalId}`;
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -67,11 +70,15 @@ export async function importEntries(form: BuiltForm, entries: ImportEntry[], opt
   }
   const sites = new Map((await prisma.site.findMany({ where: { code: { in: [...siteCodes] } }, select: { id: true, code: true } })).map((s) => [s.code, s.id]));
   const tenants = new Map((await prisma.tenant.findMany({ where: { id: { in: [...tenantIds] } } })).map((t) => [t.id, t]));
+  // Files sent ahead (upload_import_file): this form's, for that field, not on an entry yet.
+  const stagedIds = entries.flatMap((e) => Object.values(e.values)).flatMap((v) => (Array.isArray(v) ? v : [])).filter((it) => isObj(it) && typeof it.fileId === "string").map((it) => String(it.fileId));
+  const staged = new Map((await prisma.formFile.findMany({ where: { id: { in: stagedIds }, formId: form.id, entryId: null } })).map((r) => [r.id, r]));
   const users = new Map(
     (await prisma.user.findMany({ where: { email: { in: [...emails] } }, select: { id: true, email: true, name: true } })).map((u) => [u.email.toLowerCase(), u])
   );
 
   const seen = new Set<string>();
+  const claimed = new Set<string>();
   const prepared: { e: ImportEntry; values: Values; files: Map<string, ImportFile[]>; siteId: string | null; at: Date }[] = [];
   for (const e of entries) {
     const x = e.externalId;
@@ -91,13 +98,22 @@ export async function importEntries(form: BuiltForm, entries: ImportEntry[], opt
       if (isEmptyValue(v)) continue;
       if (f.type === "file") {
         const list = Array.isArray(v) ? v : [];
-        const ok = list.length > 0 && list.every((it) => isObj(it) && typeof it.name === "string" && it.name && typeof it.mime === "string" && typeof it.base64 === "string" && it.base64);
-        if (!ok) { bad(x, `${id}: files are [{ name, mime, base64 }].`); continue; }
+        const inline = (it: unknown) => isObj(it) && typeof it.name === "string" && it.name && typeof it.mime === "string" && typeof it.base64 === "string" && it.base64;
+        const ahead = (it: unknown) => isObj(it) && typeof it.fileId === "string";
+        if (!list.length || !list.every((it) => inline(it) || ahead(it))) { bad(x, `${id}: files are [{ name, mime, base64 }] or [{ fileId }].`); continue; }
         for (const it of list as ImportFile[]) {
+          if ("fileId" in it) {
+            const row = staged.get(it.fileId);
+            if (!row || row.fieldId !== id) bad(x, `${id}: no file "${it.fileId}" waiting for this field (upload_import_file).`);
+            continue;
+          }
           const n = b64Bytes(it.base64);
-          if (n > IMPORT_MAX_FILE_BYTES) bad(x, `${id}: "${it.name}" is over 10 MB.`);
+          if (n > IMPORT_MAX_FILE_BYTES) bad(x, `${id}: "${it.name}" is over ${IMPORT_MAX_FILE_BYTES / 1024 / 1024} MB.`);
           bytes += n;
         }
+        const twice = list.filter(ahead).map((it) => (it as { fileId: string }).fileId).filter((fid, i, a) => a.indexOf(fid) !== i || claimed.has(fid));
+        if (twice.length) bad(x, `${id}: file "${twice[0]}" is used twice.`);
+        list.filter(ahead).forEach((it) => claimed.add((it as { fileId: string }).fileId));
         files.set(id, list as ImportFile[]);
         continue;
       }
@@ -163,6 +179,12 @@ export async function importEntries(form: BuiltForm, entries: ImportEntry[], opt
         for (const [fieldId, list] of p.files) {
           const refs = [];
           for (const it of list) {
+            if ("fileId" in it) {
+              const r = staged.get(it.fileId)!;
+              made.push(r.id);
+              refs.push({ id: r.id, name: r.name, size: r.size, mime: r.mime });
+              continue;
+            }
             const row = await createFormFile({ formId: form.id, fieldId, name: it.name.slice(0, 200), mime: it.mime.slice(0, 100) || "application/octet-stream", data: Buffer.from(it.base64, "base64") });
             made.push(row.id);
             refs.push({ id: row.id, name: row.name, size: row.size, mime: row.mime });
@@ -173,7 +195,9 @@ export async function importEntries(form: BuiltForm, entries: ImportEntry[], opt
         await prisma.formEntry.update({ where: { id: entry.id }, data: { data: JSON.stringify(p.values), updatedAt: p.at } });
       } catch (err) {
         // Leave nothing half-saved: the batch can be sent again.
-        if (made.length) await deleteFiles({ id: { in: made } }).catch(() => undefined);
+        const own = made.filter((fid) => !staged.has(fid));
+        if (own.length) await deleteFiles({ id: { in: own } }).catch(() => undefined);
+        await prisma.formFile.updateMany({ where: { id: { in: made.filter((fid) => staged.has(fid)) } }, data: { entryId: null } }).catch(() => undefined);
         await prisma.formEntry.delete({ where: { id: entry.id } }).catch(() => undefined);
         throw err;
       }

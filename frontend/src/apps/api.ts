@@ -1,3 +1,4 @@
+import { sendFile } from "@/lib/upload";
 import { useQuery } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "@/lib/api";
 import type { FormTutorial } from "@/lib/formEngine";
@@ -148,8 +149,7 @@ export const shareApi = {
     throw new ApiError(res.status, body?.error ?? res.statusText, body?.details, body?.requestId);
   },
   upload: async (token: string, file: { name: string; mime: string; label?: string; data: Blob }) => {
-    const res = await fetch(`${API_BASE}/s/${encodeURIComponent(token)}/files`, {
-      method: "POST",
+    const res = await sendFile(`${API_BASE}/s/${encodeURIComponent(token)}/files`, {
       credentials: "omit",
       headers: {
         "Content-Type": "application/octet-stream",
@@ -157,8 +157,7 @@ export const shareApi = {
         "X-File-Type": encodeURIComponent(file.mime),
         "X-File-Label": encodeURIComponent(file.label ?? ""),
       },
-      body: file.data,
-    });
+    }, file.data, file.mime);
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(res.status, out?.error ?? res.statusText, out?.details, out?.requestId);
     return out as { fileId: string; name: string; mime: string; size: number };
@@ -198,8 +197,7 @@ export const runtimeApi = {
   history: (slug: string, draft: boolean, id: string) => api.get(`/apps/${slug}/entries/${encodeURIComponent(id)}/history${q(draft)}`),
   /** Upload a photo or file; the server answers with its FileRef. */
   upload: async (slug: string, draft: boolean, file: { name: string; mime: string; label?: string; data: Blob }) => {
-    const res = await fetch(`${API_BASE}/apps/${slug}/files${q(draft)}`, {
-      method: "POST",
+    const res = await sendFile(`${API_BASE}/apps/${slug}/files${q(draft)}`, {
       credentials: "include",
       headers: {
         "Content-Type": "application/octet-stream",
@@ -207,8 +205,7 @@ export const runtimeApi = {
         "X-File-Type": encodeURIComponent(file.mime),
         "X-File-Label": encodeURIComponent(file.label ?? ""),
       },
-      body: file.data,
-    });
+    }, file.data, file.mime);
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(res.status, out?.error ?? res.statusText, out?.details, out?.requestId);
     return out as { fileId: string; name: string; mime: string; size: number };

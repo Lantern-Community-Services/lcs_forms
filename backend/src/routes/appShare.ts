@@ -1,3 +1,4 @@
+import { PART_RECEIVED, wholeBody } from "../services/uploadChunks.js";
 import express, { Router, type Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
@@ -88,10 +89,12 @@ appShareRouter.post(
   "/:token/files",
   express.raw({ type: () => true, limit: "11mb" }),
   asyncHandler(async (req, res) => {
-    if (!Buffer.isBuffer(req.body)) throw badRequest("Send the file as the request body.");
     const header = (h: string) => decodeURIComponent(String(req.headers[h] ?? ""));
     const { app, guest } = await guestOf(req);
-    res.status(201).json(await uploadAppFile(app, guest, { name: header("x-file-name") || "file", mime: header("x-file-type"), label: header("x-file-label"), data: req.body }));
+    // A big file comes in parts (services/uploadChunks.ts); a guest's parts are nobody's, like their files.
+    const data = await wholeBody(req, app.form.id, null);
+    if (!data) return res.status(202).json(PART_RECEIVED);
+    res.status(201).json(await uploadAppFile(app, guest, { name: header("x-file-name") || "file", mime: header("x-file-type"), label: header("x-file-label"), data }));
   })
 );
 

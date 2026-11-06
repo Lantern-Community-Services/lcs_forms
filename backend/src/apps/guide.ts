@@ -30,7 +30,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "share": { "forms": ["other-form-slug"] },                       // let that form's server code read this one's entries
   "shareLink": { "page": "report", "actions": ["bootstrap"] },      // fill "report" in without signing in, through staff's share links (ctx.user.guest; no reading back)
   "calendar": { "ownEvents": true },                                // server code manages the form's own calendar events
-  "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (default: 10 MB, images, PDF, office files)
+  "files": { "maxMb": 10, "accept": "image/*,application/pdf" },   // photos and uploads (maxMb: 10 by default, up to 50, for files other than photos — photos are shrunk on the device; default accept: images, PDF, office files)
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
   "email": { "to": ["vendor@example.com", "@partner.org"] },        // who server code may email besides Lantern addresses
   "schedule": [{ "action": "digest", "at": "08:00", "on": "weekdays" }, { "action": "monthly", "at": "08:00", "on": "monthly", "day": 3 }],

@@ -1,3 +1,4 @@
+import { PART_RECEIVED, wholeBody } from "../services/uploadChunks.js";
 import express, { Router, type Request } from "express";
 import { z } from "zod";
 import type { BuiltForm } from "@prisma/client";
@@ -131,8 +132,11 @@ fillRouter.post(
     if (blocker && !isFormAdmin(req.user)) throw new HttpError(blocker.status, blocker.message);
     const field = String(req.query.field ?? "");
     const name = decodeURIComponent(String(req.headers["x-file-name"] ?? "upload"));
-    if (!Buffer.isBuffer(req.body)) throw badRequest("Send the file as the request body.");
-    const row = await saveUpload(form, doc, field, { name, mime: String(req.headers["content-type"] ?? ""), data: req.body });
+    // A big file comes in parts (services/uploadChunks.ts); its type rides in X-File-Type then.
+    const data = await wholeBody(req, form.id, req.user?.userId ?? null);
+    if (!data) return res.status(202).json(PART_RECEIVED);
+    const mime = req.headers["x-file-type"] ? decodeURIComponent(String(req.headers["x-file-type"])) : String(req.headers["content-type"] ?? "");
+    const row = await saveUpload(form, doc, field, { name, mime, data });
     res.status(201).json(row);
   })
 );

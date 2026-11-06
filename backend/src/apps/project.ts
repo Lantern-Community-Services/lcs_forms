@@ -86,7 +86,7 @@ export const manifestSchema = z.object({
   /** Photos and files pages upload (files.upload / takePhoto). Default: 10 MB, images, PDF and office files. */
   files: z
     .object({
-      maxMb: z.number().min(0.1).max(10).optional(),
+      maxMb: z.number().min(0.1).max(50).optional(),
       /** Like an <input accept>: "image/*,application/pdf,.docx". */
       accept: z.string().max(300).optional(),
     })
