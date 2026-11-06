@@ -131,6 +131,8 @@ export interface EntryList {
   doc: FormDoc;
   total: number;
   items: EntryRow[];
+  /** The Site filter's choices: sites with an entry under the other filters. */
+  sites?: { id: string; name: string; count: number }[];
   canVoid: boolean;
   isAdmin: boolean;
   /** The form tracks follow-ups. */
@@ -279,7 +281,11 @@ export const fillApi = {
   /** Mark the entry's follow-up done (with what was done), or open it again. */
   followUp: (slug: string, id: string, done: boolean, note?: string, values?: Record<string, string>) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note, values }),
   remove: (slug: string, id: string) => api.delete(`/f/${slug}/entries/${id}`),
-  exportFile: (slug: string, qs: string, format: "csv" | "xlsx") => downloadGet(`/f/${slug}/entries-export?${qs}&format=${format}`, `${slug}-entries.${format}`),
+  /** What the filters match, or just `ids` (the ticked entries) within them. */
+  exportFile: (slug: string, qs: string, format: "csv" | "xlsx" | "pdf", ids?: string[]) =>
+    ids
+      ? api.download(`/f/${slug}/entries-export?${qs}&format=${format}`, { ids }, `${slug}-entries.${format}`).then(() => undefined)
+      : downloadGet(`/f/${slug}/entries-export?${qs}&format=${format}`, `${slug}-entries.${format}`),
 };
 
 async function downloadGet(path: string, fallbackName: string) {

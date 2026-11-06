@@ -21,6 +21,8 @@ import {
   type Field, type FormDoc, type Values,
 } from "./engine.js";
 import { readDoc, versionDoc } from "./service.js";
+import { buildExport } from "../apps/exports.js";
+import type { ExportDocument } from "../apps/exportDocuments.js";
 import { deviceLabel, fillMeta, fillMinutes } from "./fillMeta.js";
 
 /**
@@ -497,7 +499,21 @@ export interface EntryFilter {
   site?: string;
   /** Follow-up: still open, or done. */
   followUp?: "open" | "done";
+  /** Only these entries (the ones ticked on the Entries screen). */
+  ids?: string[];
 }
+
+/**
+ * The order of an entries list: when it came in, who sent it, its site, or
+ * one of the form's answers ("field:<id>"). Blank answers go last either way.
+ */
+export interface EntrySort {
+  key: string;
+  dir: "asc" | "desc";
+}
+export const NEWEST: EntrySort = { key: "createdAt", dir: "desc" };
+/** Sorting by a site or an answer is done here, not in SQL; past this many matches it falls back to newest first. */
+const SORT_IN_MEMORY_MAX = 20_000;
 
 export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): Prisma.FormEntryWhereInput {
   const and: Prisma.FormEntryWhereInput[] = [{ formId: form.id }, entryScope(user)];
@@ -507,12 +523,73 @@ export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): 
   if (filter.to) and.push({ createdAt: { lt: new Date(nyDayStart(filter.to).getTime() + 86_400_000) } });
   if (filter.site) and.push({ siteId: filter.site });
   if (filter.followUp) and.push({ followUp: filter.followUp });
+  if (filter.ids) and.push({ id: { in: filter.ids } });
   if (filter.q?.trim()) {
     const q = filter.q.trim();
     // What a follow-up's done fields kept too (the account IT made): never a password, which isn't kept.
     and.push({ OR: [{ data: { contains: q } }, { createdByName: { contains: q } }, { followUpValues: { contains: q } }, { id: q }] });
   }
   return { AND: and };
+}
+
+type SortRow = { id: string; createdAt: Date; siteId: string | null; data?: string };
+
+/** Site names and answers aren't columns, so those sorts are done here. Null when SQL can sort. */
+async function memorySorter(doc: FormDoc, sort: EntrySort) {
+  const field = sort.key.startsWith("field:") ? doc.fields.find((f) => f.id === sort.key.slice(6) && isInputField(f)) : undefined;
+  if (sort.key !== "site" && !field) return null;
+  const sites = field ? null : new Map((await prisma.site.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
+  const keyOf = (r: SortRow) => {
+    if (sites) return r.siteId ? sites.get(r.siteId) ?? "" : "";
+    try {
+      return formatValue(field!, (JSON.parse(r.data ?? "{}") as Values)[field!.id]);
+    } catch {
+      return "";
+    }
+  };
+  const collator = new Intl.Collator("en-US", { numeric: true, sensitivity: "base" });
+  return {
+    needsData: Boolean(field),
+    sort<T extends SortRow>(rows: T[]): T[] {
+      const keyed = rows.map((r) => ({ r, k: keyOf(r) }));
+      keyed.sort((a, b) => {
+        // Blanks last, whichever way; ties newest first.
+        if (!a.k !== !b.k) return a.k ? -1 : 1;
+        const c = collator.compare(a.k, b.k);
+        return c ? (sort.dir === "asc" ? c : -c) : b.r.createdAt.getTime() - a.r.createdAt.getTime();
+      });
+      return keyed.map((x) => x.r);
+    },
+  };
+}
+
+function sqlOrder(sort: EntrySort): Prisma.FormEntryOrderByWithRelationInput[] {
+  if (sort.key === "by") return [{ createdByName: sort.dir }, { createdAt: "desc" }];
+  return [{ createdAt: sort.key === "createdAt" ? sort.dir : "desc" }];
+}
+
+/** One page of matching entry ids, in the asked-for order (only what's sorted on is read). */
+export async function sortedEntryIds(doc: FormDoc, where: Prisma.FormEntryWhereInput, sort: EntrySort, page: { skip: number; take: number }): Promise<string[]> {
+  const sorter = await memorySorter(doc, sort);
+  if (sorter && (await prisma.formEntry.count({ where })) <= SORT_IN_MEMORY_MAX) {
+    const rows = await prisma.formEntry.findMany({ where, select: { id: true, createdAt: true, siteId: true, data: sorter.needsData } });
+    return sorter.sort(rows).slice(page.skip, page.skip + page.take).map((r) => r.id);
+  }
+  const rows = await prisma.formEntry.findMany({ where, orderBy: sqlOrder(sort), skip: page.skip, take: page.take, select: { id: true } });
+  return rows.map((r) => r.id);
+}
+
+/** Every matching entry (up to `max`), in the asked-for order — for an export. */
+async function sortedEntries(doc: FormDoc, where: Prisma.FormEntryWhereInput, sort: EntrySort, max: number): Promise<FormEntry[]> {
+  const sorter = await memorySorter(doc, sort);
+  if (sorter) return sorter.sort(await prisma.formEntry.findMany({ where, take: max }));
+  return prisma.formEntry.findMany({ where, orderBy: sqlOrder(sort), take: max });
+}
+
+/** Rows fetched by id, put back in the order of `ids`. */
+export function inOrder<T extends { id: string }>(ids: string[], rows: T[]): T[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.map((id) => byId.get(id)).filter((r): r is T => Boolean(r));
 }
 
 function nyDayStart(day: string): Date {
@@ -613,9 +690,22 @@ function exportColumns(doc: FormDoc): { header: string; get: (v: Values) => stri
   return cols;
 }
 
-export async function exportEntries(form: BuiltForm, doc: FormDoc, where: Prisma.FormEntryWhereInput, format: "csv" | "xlsx") {
-  const rows = await prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take: 50_000 });
+/** A PDF lays every entry out on its own pages, so it's kept to a printable number. */
+export const PDF_MAX_ENTRIES = 200;
+
+export async function exportEntries(
+  form: BuiltForm,
+  doc: FormDoc,
+  where: Prisma.FormEntryWhereInput,
+  format: "csv" | "xlsx" | "pdf",
+  opts: { sort?: EntrySort; by?: string } = {}
+) {
+  if (format === "pdf" && (await prisma.formEntry.count({ where })) > PDF_MAX_ENTRIES) {
+    throw badRequest(`A PDF can hold up to ${PDF_MAX_ENTRIES} entries. Tick the ones you need, or narrow the filters.`);
+  }
+  const rows = await sortedEntries(doc, where, opts.sort ?? NEWEST, 50_000);
   const sites = new Map((await prisma.site.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
+  if (format === "pdf") return entriesPdf(form, rows, sites, opts.by ?? "Lantern Forms");
   const cols = exportColumns(doc);
   // Follow-up: its state, and what was filled in when it was marked done (never a password).
   const tracked = rows.some((e) => e.followUp);
@@ -651,4 +741,91 @@ export async function exportEntries(form: BuiltForm, doc: FormDoc, where: Prisma
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: header.length } };
   const buf = Buffer.from(await wb.xlsx.writeBuffer());
   return { filename: `${base}.xlsx`, mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: buf };
+}
+
+// ── PDF ──────────────────────────────────────────────────────────────────
+
+const SIGNATURE_URL = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+/** Answers that read better on a line of their own than half a row. */
+const WIDE = new Set(["textarea", "address", "repeater", "likert", "multiselect", "checkbox", "file"]);
+
+/** Each entry as its paper form: a title block, then its answers in labelled boxes under their sections. */
+async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string, string>, by: string) {
+  const docs = new Map<number, FormDoc>();
+  const documents: ExportDocument[] = [];
+  for (const e of rows) {
+    if (!docs.has(e.formVersion)) docs.set(e.formVersion, await docForEntry(form, e.formVersion));
+    const fdoc = docs.get(e.formVersion)!;
+    const values = JSON.parse(e.data) as Values;
+    const blocks: ExportDocument["blocks"] = [];
+    let pending: { label: string; value: string; width: number; image?: string; lines?: number }[] = [];
+    let section: { type: "section"; title: string } | null = null;
+    const flush = () => {
+      if (pending.length) blocks.push({ type: "fields", fields: pending });
+      pending = [];
+    };
+    const add = (box: (typeof pending)[number], wide: boolean) => {
+      if (section) {
+        flush();
+        blocks.push(section);
+        section = null;
+      }
+      if (wide) {
+        flush();
+        blocks.push({ type: "fields", fields: [box] });
+      } else {
+        pending.push(box);
+        if (pending.length === 2) flush();
+      }
+    };
+    for (const f of fdoc.fields) {
+      if (f.type === "section" || f.type === "page") {
+        flush();
+        // Only shown once something under it was answered.
+        section = f.label ? { type: "section", title: f.label.slice(0, 160) } : null;
+        continue;
+      }
+      if (!isInputField(f) || f.type === "hidden") continue;
+      const raw = values[f.id];
+      if (isEmptyValue(raw)) continue;
+      const label = (f.label || f.id).slice(0, 120);
+      if (f.type === "signature") {
+        const url = typeof raw === "string" && raw.length <= 600_000 && SIGNATURE_URL.test(raw) ? raw : undefined;
+        add({ label, value: url ? "" : "Signed", width: 1, image: url }, false);
+        continue;
+      }
+      const value = formatValue(f, raw).slice(0, 8000);
+      if (!value) continue;
+      add({ label, value, width: 1 }, WIDE.has(f.type) || value.length > 60);
+    }
+    flush();
+    if (e.followUp) {
+      blocks.push({ type: "section", title: "Follow-up" });
+      const done = parseDoneValues(e.followUpValues).filter((v) => !v.emailed && v.value);
+      blocks.push({
+        type: "fields",
+        fields: [
+          { label: "Status", value: e.followUp === "done" ? "Done" : "Open", width: 1 },
+          { label: "Done by", value: e.followUpDoneByName ?? "", width: 1 },
+          { label: "Done at", value: e.followUpDoneAt ? stamp(e.followUpDoneAt) : "", width: 1 },
+        ],
+      });
+      if (e.followUpNote) blocks.push({ type: "fields", fields: [{ label: "What was done", value: e.followUpNote.slice(0, 8000), width: 1 }] });
+      for (const v of done) blocks.push({ type: "fields", fields: [{ label: v.label.slice(0, 120), value: String(v.value).slice(0, 8000), width: 1 }] });
+    }
+    if (!blocks.length) blocks.push({ type: "note", text: "No answers were filled in." });
+    const site = e.siteId ? sites.get(e.siteId) : undefined;
+    documents.push({
+      title: form.title.slice(0, 160),
+      org: "Lantern Community Services",
+      intro: `Submitted ${stamp(e.createdAt)} by ${e.createdByName}${site ? ` · ${site}` : ""} · Entry ${e.id}`.slice(0, 600),
+      stamp: e.status === "voided" ? `VOIDED${e.voidReason ? ` — ${e.voidReason}` : ""}`.slice(0, 80) : undefined,
+      footer: `${form.title} · ${stamp(e.createdAt)}${site ? ` · ${site}` : ""}`.slice(0, 160),
+      blocks,
+    });
+  }
+  // One entry: named for it; several: for the form and the day.
+  const filename = `${form.slug}-${rows.length === 1 ? rows[0].id : `entries-${new Date().toISOString().slice(0, 10)}`}`;
+  const file = await buildExport({ format: "pdf", filename, title: form.title, sheets: [], documents }, by);
+  return { filename: file.filename, mime: file.mime, body: file.body };
 }

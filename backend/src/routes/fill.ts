@@ -12,7 +12,7 @@ import { fillMetaFields } from "../forms/fillMeta.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
   canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
-  entryScope, liveDoc, saveUpload, submitEntry, updateEntry, type EntryFilter,
+  entryScope, inOrder, liveDoc, NEWEST, saveUpload, sortedEntryIds, submitEntry, updateEntry, type EntryFilter, type EntrySort,
 } from "../forms/entries.js";
 
 /**
@@ -152,8 +152,12 @@ async function readable(req: Request) {
   return { form, doc, reach: entryReachOf(form, doc, req.user)! };
 }
 
+/** The list's filters, from the query string (and, for an export of ticked entries, `ids` in the body). */
 function filterOf(req: Request): EntryFilter {
   const q = req.query;
+  const bodyIds = req.method === "POST" && Array.isArray(req.body?.ids) ? (req.body.ids as unknown[]) : null;
+  const ids = bodyIds ? bodyIds.filter((x): x is string => typeof x === "string" && x.length <= 64) : undefined;
+  if (ids && ids.length > 1000) throw badRequest("Tick up to 1,000 entries at a time, or export everything the filters match.");
   return {
     q: typeof q.q === "string" ? q.q : undefined,
     from: typeof q.from === "string" && q.from ? q.from : undefined,
@@ -162,7 +166,15 @@ function filterOf(req: Request): EntryFilter {
     starred: q.starred === "1",
     site: typeof q.site === "string" && q.site ? q.site : undefined,
     followUp: q.followUp === "open" || q.followUp === "done" ? q.followUp : undefined,
+    ids,
   };
+}
+
+/** ?sort=createdAt|by|site|field:<id> and ?dir=asc|desc; newest first otherwise. */
+function sortOf(req: Request): EntrySort {
+  const key = typeof req.query.sort === "string" && /^(createdAt|by|site|field:[\w-]{1,64})$/.test(req.query.sort) ? req.query.sort : NEWEST.key;
+  const dir = req.query.dir === "asc" ? "asc" : req.query.dir === "desc" ? "desc" : key === NEWEST.key ? "desc" : "asc";
+  return { key, dir };
 }
 
 async function siteNames() {
@@ -174,19 +186,28 @@ fillRouter.get(
   "/:slug/entries",
   asyncHandler(async (req, res) => {
     const { form, doc, reach } = await readable(req);
-    const where = { AND: [entryWhere(form, req.user, filterOf(req)), await visibleWhere(form, req.user, reach)] };
+    const filter = filterOf(req);
+    const visible = await visibleWhere(form, req.user, reach);
+    const where = { AND: [entryWhere(form, req.user, filter), visible] };
     const take = Math.min(200, Math.max(1, Number(req.query.take) || 50));
     const skip = Math.max(0, Number(req.query.skip) || 0);
-    const [rows, total, sites] = await Promise.all([
-      prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take, skip, include: { _count: { select: { notes: true } } } }),
+    const [ids, total, sites, bySite] = await Promise.all([
+      sortedEntryIds(doc, where, sortOf(req), { skip, take }),
       prisma.formEntry.count({ where }),
       siteNames(),
+      // The Site filter's choices: every site with an entry under the other filters, with how many.
+      prisma.formEntry.groupBy({ by: ["siteId"], where: { AND: [entryWhere(form, req.user, { ...filter, site: undefined }), visible] }, _count: { _all: true } }),
     ]);
+    const rows = inOrder(ids, ids.length ? await prisma.formEntry.findMany({ where: { id: { in: ids } }, include: { _count: { select: { notes: true } } } }) : []);
     res.json({
       form: { id: form.id, slug: form.slug, title: form.title, status: form.status, version: form.liveVersion },
       doc,
       total,
       items: rows.map((e) => entryRow({ ...e, site: e.siteId ? sites.get(e.siteId) ?? null : null })),
+      sites: bySite
+        .filter((g) => g.siteId && sites.has(g.siteId))
+        .map((g) => ({ id: g.siteId!, name: sites.get(g.siteId!)!.name, count: g._count._all }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
       canVoid: canVoidEntries(form, doc, req.user),
       isAdmin: isFormAdmin(req.user),
       followUp: (await loadFollowUp(form)).enabled,
@@ -196,16 +217,17 @@ fillRouter.get(
   })
 );
 
-fillRouter.get(
-  "/:slug/entries-export",
-  asyncHandler(async (req, res) => {
-    const { form, doc, reach } = await readable(req);
-    const format = req.query.format === "xlsx" ? "xlsx" : "csv";
-    const file = await exportEntries(form, doc, { AND: [entryWhere(form, req.user, filterOf(req)), await visibleWhere(form, req.user, reach)] }, format);
-    res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
-    res.type(file.mime).send(file.body);
-  })
-);
+/** Export what the filters match (GET), or just the ticked entries (POST, ids in the body). csv, xlsx or pdf. */
+const exportHandler = asyncHandler(async (req, res) => {
+  const { form, doc, reach } = await readable(req);
+  const format = req.query.format === "xlsx" ? "xlsx" : req.query.format === "pdf" ? "pdf" : "csv";
+  const where = { AND: [entryWhere(form, req.user, filterOf(req)), await visibleWhere(form, req.user, reach)] };
+  const file = await exportEntries(form, doc, where, format, { sort: sortOf(req), by: req.user?.name });
+  res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+  res.type(file.mime).send(file.body);
+});
+fillRouter.get("/:slug/entries-export", exportHandler);
+fillRouter.post("/:slug/entries-export", express.json({ limit: "1mb" }), exportHandler);
 
 /** One entry, if this person may see it: their sites, then the form's "Who sees entries". */
 async function entryIn(req: Request, form: BuiltForm, reach: "all" | "site" | "own") {
