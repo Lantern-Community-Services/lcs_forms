@@ -1,3 +1,4 @@
+import { MAX_UPLOAD_BYTES, shrinkPhotoFile } from "@/lib/upload";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CloudOff, Loader2, Paperclip, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -693,18 +694,21 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
     const room = max - latest.current.length;
     const list = Array.from(files).slice(0, room);
     if (files.length > room) setErr(`You can add ${max} file${max === 1 ? "" : "s"} at most.`);
-    for (const file of list) {
-      if (file.size > (f.maxSizeMb ?? 10) * 1024 * 1024) {
-        setErr(`${file.name} is bigger than ${f.maxSizeMb ?? 10} MB.`);
-        continue;
-      }
+    for (const picked of list) {
       setBusy((n) => n + 1);
       try {
+        // Photos are shrunk here first, so the field's size limit is only for other files (lib/upload.ts).
+        const file = picked.type.startsWith("image/") ? await shrinkPhotoFile(picked) : picked;
+        const cap = file.type.startsWith("image/") ? MAX_UPLOAD_BYTES : Math.min(MAX_UPLOAD_BYTES, (f.maxSizeMb ?? 10) * 1024 * 1024);
+        if (file.size > cap) {
+          setErr(`${file.name} is bigger than ${Math.round(cap / 1024 / 1024)} MB.`);
+          continue;
+        }
         const up = slug ? (keepOffline ? await uploadOrKeep(slug, f.id, file, share) : await fillApi.upload(slug, f.id, file, share)) : { id: `preview-${Math.random().toString(36).slice(2)}`, name: file.name, size: file.size, mime: file.type };
         latest.current = [...latest.current, up];
         onChange(latest.current);
       } catch (e) {
-        setErr(errorMessage(e, `${file.name} didn't upload.`));
+        setErr(errorMessage(e, `${picked.name} didn't upload.`));
       } finally {
         setBusy((n) => n - 1);
       }
@@ -741,7 +745,7 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
         </label>
       )}
       <p className="mt-1 text-micro text-muted">
-        {f.accept ? `${f.accept.replace(/,/g, ", ")} · ` : ""}up to {f.maxSizeMb ?? 10} MB{max > 1 ? ` · ${max} files` : ""}
+        {f.accept ? `${f.accept.replace(/,/g, ", ")} · ` : ""}{f.accept?.trim() === "image/*" ? "any size" :`up to ${f.maxSizeMb ?? 10} MB${!f.accept || f.accept.includes("image") ? " (photos any size)" : ""}`}{max > 1 ? ` · ${max} files` : ""}
       </p>
       {err && <p className="mt-1 text-[12.5px] text-status-redText">{err}</p>}
     </div>

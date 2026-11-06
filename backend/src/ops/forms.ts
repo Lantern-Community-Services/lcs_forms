@@ -7,6 +7,8 @@ import { appsRouter } from "../routes/apps.js";
 import { findForm, formDetail, listForms, readDoc, versionDoc } from "../forms/service.js";
 import { docForEntry, entryRow, entryWhere, submitEntry } from "../forms/entries.js";
 import { importEntries } from "../forms/entryImport.js";
+import { MAX_ASSEMBLED_BYTES, receivePart } from "../services/uploadChunks.js";
+import { createFormFile } from "../services/fileStore.js";
 import { assertRealDataAllowed } from "../services/testData.js";
 import { permissionsFor, roleFor } from "../services/permissions.js";
 import { defineOp, flag, int } from "./registry.js";
@@ -148,7 +150,7 @@ export const formOps = [
   defineOp({
     name: "import_entries",
     description:
-      "Migrate entries from an old system (e.g. Gravity Forms) into a basic form's entries, saved as given: no notifications, routing, follow-up or roster activity, and each keeps its old date (submittedAt) and filer. values are keyed by field id (get_form, which: live) and checked for shape — a choice must be one of the field's choices — but not for required or hidden questions. A Resident is { id } (from the roster) or { name, unit? } when no one matches; a File field is [{ name, mime, base64 }] (≤ 10 MB each; a call's body can be at most 25 MB, so send entries with photos a few at a time); a Signature is a PNG data URL. createdByEmail links the entry to that person's account, so it shows as theirs. Each entry needs an externalId (e.g. \"gf31:1234\"); one already imported into this form is skipped, so a batch can be sent again safely. Up to 200 a call; any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin.",
+      "Migrate entries from an old system (e.g. Gravity Forms) into a basic form's entries, saved as given: no notifications, routing, follow-up or roster activity, and each keeps its old date (submittedAt) and filer. values are keyed by field id (get_form, which: live) and checked for shape — a choice must be one of the field's choices — but not for required or hidden questions. A Resident is { id } (from the roster) or { name, unit? } when no one matches; a File field is [{ name, mime, base64 }] (≤ 15 MB each, ≤ 18 MB of files per entry) or [{ fileId }] from upload_import_file, for bigger files or entries with many photos. Keep each call's body under 25 MB: send entries with photos a few at a time; a Signature is a PNG data URL. createdByEmail links the entry to that person's account, so it shows as theirs. Each entry needs an externalId (e.g. \"gf31:1234\"); one already imported into this form is skipped, so a batch can be sent again safely. Up to 200 a call; any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin.",
     scope: "entries:manage",
     as: "key",
     http: { method: "POST", path: "/forms/:form/entries/import" },
@@ -181,6 +183,40 @@ export const formOps = [
     },
     audit: (a, r) =>
       r?.saved ? { action: "entries.imported", summary: `Imported ${r.saved} entries into form “${a.form}”`, changes: { form: a.form, count: r.saved, skipped: r.skipped?.length ?? 0 } } : null,
+  }),
+
+  defineOp({
+    name: "upload_import_file",
+    description:
+      "Send a file ahead for import_entries, in parts when it's big: cut the file's bytes into parts of up to 6 MB, send each as base64 with the same uploadId (any 16–64 letters, digits, - or _), part (0-based) and parts (the total), one call at a time. The last part's answer has the fileId; put [{ fileId }] in the File field's value in import_entries. A one-part file needs no uploadId. A file not used by an import within a day is deleted. Up to 50 MB. Admin keys only.",
+    scope: "entries:manage",
+    as: "key",
+    http: { method: "POST", path: "/forms/:form/import-files" },
+    shape: {
+      form: formRef,
+      field: z.string().describe("The File field's id"),
+      name: z.string().min(1).max(200),
+      mime: z.string().min(1).max(100),
+      base64: z.string().min(1),
+      uploadId: z.string().optional(),
+      part: z.number().int().min(0).optional(),
+      parts: z.number().int().min(1).optional(),
+    },
+    run: async (ctx, a) => {
+      assertRealDataAllowed("migrating entries from an old system");
+      const creator = ctx.key.createdById ? await prisma.user.findUnique({ where: { id: ctx.key.createdById } }) : null;
+      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
+      const row = await findForm(a.form);
+      const doc = row.liveSchema ? readDoc(row.liveSchema) : null;
+      if (!doc?.fields.some((f) => f.id === a.field && f.type === "file")) throw new HttpError(400, `The live form has no File field "${a.field}".`);
+      const data = Buffer.from(a.base64, "base64");
+      const parts = a.parts ?? 1;
+      const whole = parts === 1 && !a.uploadId ? data : await receivePart({ formId: row.id, uploadId: a.uploadId ?? "", index: a.part ?? 0, count: parts, data, createdById: null });
+      if (!whole) return { received: a.part, of: parts };
+      if (whole.length > MAX_ASSEMBLED_BYTES) throw new HttpError(413, "Files can be at most 50 MB.");
+      const file = await createFormFile({ formId: row.id, fieldId: a.field, name: a.name, mime: a.mime, data: whole, createdById: null });
+      return { fileId: file.id, name: file.name, size: file.size, mime: file.mime };
+    },
   }),
 
   // ── As the key's creator: managing entries ──

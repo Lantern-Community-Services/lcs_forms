@@ -1,3 +1,4 @@
+import { PART_RECEIVED, wholeBody } from "../services/uploadChunks.js";
 import express, { Router, type Request } from "express";
 import { z } from "zod";
 import { asyncHandler, badRequest, forbidden } from "../http.js";
@@ -293,9 +294,13 @@ appsRouter.post(
   "/:slug/files",
   express.raw({ type: () => true, limit: "11mb" }),
   asyncHandler(async (req, res) => {
-    if (!Buffer.isBuffer(req.body)) throw badRequest("Send the file as the request body.");
     const header = (h: string) => decodeURIComponent(String(req.headers[h] ?? ""));
-    const ref = await uploadAppFile(await appFor(req), req.user!, { name: header("x-file-name") || "file", mime: header("x-file-type"), label: header("x-file-label"), data: req.body });
+    const app = await appFor(req);
+    requireOpen(app, req.user!);
+    // A big file comes in parts (services/uploadChunks.ts).
+    const data = await wholeBody(req, app.form.id, req.user!.userId);
+    if (!data) return res.status(202).json(PART_RECEIVED);
+    const ref = await uploadAppFile(app, req.user!, { name: header("x-file-name") || "file", mime: header("x-file-type"), label: header("x-file-label"), data });
     res.status(201).json(ref);
   })
 );

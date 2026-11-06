@@ -14,7 +14,8 @@ import { createFormFile, sweepUnattachedFiles } from "../services/fileStore.js";
  * back, and anything never attached is swept after a day.
  */
 
-export const MAX_APP_FILE_BYTES = 10 * 1024 * 1024;
+/** The most any one file can be (a big one uploads in parts: services/uploadChunks.ts). */
+export const MAX_APP_FILE_BYTES = 50 * 1024 * 1024;
 
 export interface FileRef {
   fileId: string;
@@ -38,7 +39,8 @@ export async function uploadAppFile(app: LoadedApp, user: CurrentUser, file: { n
   const a = requireOpen(app, user);
   if (!a.create && !a.editAny) throw forbidden("You can't add files to this form.");
   const rule = app.manifest.files ?? {};
-  const cap = Math.min(MAX_APP_FILE_BYTES, (rule.maxMb ?? 10) * 1024 * 1024);
+  // Photos are shrunk on the device first; files.maxMb is for other files.
+  const cap = file.mime.toLowerCase().startsWith("image/") ? MAX_APP_FILE_BYTES : Math.min(MAX_APP_FILE_BYTES, (rule.maxMb ?? 10) * 1024 * 1024);
   if (file.data.length === 0) throw badRequest("That file is empty.");
   if (file.data.length > cap) throw new HttpError(413, `Files can be at most ${Math.round(cap / 1024 / 1024)} MB.`);
   const accept = rule.accept ?? "image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt";

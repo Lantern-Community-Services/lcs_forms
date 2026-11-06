@@ -425,7 +425,7 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "likert", label: "Likert / matrix", group: "Choices", input: true, choices: true, value: "{ [rowValue]: columnValue }", description: "Several statements (`statements`) rated on one scale (choices)." },
   { type: "name", label: "Name", group: "Advanced", input: true, value: "{ prefix?, first, middle?, last, suffix? }", description: "A person's name in parts. nameParts." },
   { type: "address", label: "Address", group: "Advanced", input: true, value: "{ line1, line2?, city, state, zip, country? }", description: "A postal address. addressParts." },
-  { type: "file", label: "File upload", group: "Advanced", input: true, value: "[{ id, name, size, mime }]", description: "Upload files. accept, maxFiles, maxSizeMb (max 10)." },
+  { type: "file", label: "File upload", group: "Advanced", input: true, value: "[{ id, name, size, mime }]", description: "Upload files. accept, maxFiles, maxSizeMb (max 50; photos are shrunk on the device and not held to it)." },
   { type: "signature", label: "Signature", group: "Advanced", input: true, value: "PNG data URL", description: "Sign with a finger, mouse or pen." },
   { type: "rating", label: "Rating", group: "Advanced", input: true, value: "number", description: "Stars from 1 to max (default 5)." },
   { type: "slider", label: "Slider", group: "Advanced", input: true, value: "number", description: "A range slider. min, max, step." },
