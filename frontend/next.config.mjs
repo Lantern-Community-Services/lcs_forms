@@ -24,6 +24,11 @@ const nextConfig = {
     // connection (offline testing on an iPad, scripts/dev-https.mjs) stayed blank
     // with no error. The SPA renders client-side, so there's nothing to lose.
     reactDebugChannel: false,
+    // The /api rewrite below buffers each request body, and cut anything over its
+    // 10 MB default off mid-way: the backend got half a request and answered 500.
+    // Browser uploads go in 4 MB parts (lib/upload.ts); this leaves room for an
+    // MCP key's import calls (the backend takes up to 25 MB from a key).
+    proxyClientMaxBodySize: "30mb",
   },
   // Self-contained server bundle for the Docker image (frontend/Dockerfile).
   output: "standalone",

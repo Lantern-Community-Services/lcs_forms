@@ -187,7 +187,7 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
           <Row label="Allowed types" hint="e.g. image/*,.pdf — empty allows anything."><Input value={f.accept ?? ""} onChange={(e) => set({ accept: e.target.value })} /></Row>
           <div className="grid grid-cols-2 gap-2">
             <Row label="Max files"><Input type="number" min={1} max={20} value={f.maxFiles ?? 1} onChange={(e) => set({ maxFiles: num(e.target.value) })} /></Row>
-            <Row label="Max size (MB)"><Input type="number" min={0.1} max={10} step={0.5} value={f.maxSizeMb ?? 10} onChange={(e) => set({ maxSizeMb: num(e.target.value) })} /></Row>
+            <Row label="Max size (MB, not photos)"><Input type="number" min={0.1} max={50} step={0.5} value={f.maxSizeMb ?? 10} onChange={(e) => set({ maxSizeMb: num(e.target.value) })} /></Row>
           </div>
         </>
       )}

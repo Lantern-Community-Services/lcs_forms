@@ -35,7 +35,8 @@ import { deviceLabel, fillMeta, fillMinutes } from "./fillMeta.js";
  */
 
 export const DEFAULT_ENTRIES_ROLES = ["main_office", "site_manager", "site_staff"];
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** The most any one file can be (a big one uploads in parts: services/uploadChunks.ts). */
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export type Viewer = CurrentUser | undefined;
 
@@ -465,7 +466,9 @@ async function runNotifications(form: BuiltForm, doc: FormDoc, entry: FormEntry,
 export async function saveUpload(form: BuiltForm, doc: FormDoc, fieldId: string, file: { name: string; mime: string; data: Buffer }) {
   const f = doc.fields.find((x) => x.id === fieldId && x.type === "file");
   if (!f) throw badRequest("That form has no such file field.");
-  const cap = Math.min(MAX_FILE_BYTES, (f.maxSizeMb ?? 10) * 1024 * 1024);
+  // Photos are shrunk on the device before they're sent, so the field's limit is for other files;
+  // a photo that couldn't be shrunk (a format the browser can't draw) is only held to the overall cap.
+  const cap = file.mime.toLowerCase().startsWith("image/") ? MAX_FILE_BYTES : Math.min(MAX_FILE_BYTES, (f.maxSizeMb ?? 10) * 1024 * 1024);
   if (file.data.length === 0) throw badRequest("That file is empty.");
   if (file.data.length > cap) throw new HttpError(413, `Files can be at most ${Math.round(cap / 1024 / 1024)} MB.`);
   if (f.accept && !acceptOk(f.accept, file.name, file.mime)) throw badRequest(`This field takes ${f.accept} files.`);

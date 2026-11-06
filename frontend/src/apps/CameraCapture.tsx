@@ -16,25 +16,8 @@ export interface CameraRequest {
   facing?: "environment" | "user";
 }
 
-/** Downscale a photo so a dozen of them don't fill the database: longest side `max` px, JPEG. */
-export async function shrinkImage(blob: Blob, max = 1600, quality = 0.85): Promise<Blob> {
-  if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(blob.type)) return blob;
-  try {
-    const bmp = await createImageBitmap(blob);
-    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-    if (scale === 1 && blob.type === "image/jpeg" && blob.size < 1.5 * 1024 * 1024) return blob;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bmp.width * scale);
-    canvas.height = Math.round(bmp.height * scale);
-    canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    bmp.close();
-    const out = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", quality));
-    return out && out.size < blob.size ? out : blob;
-  } catch {
-    // A format this browser can't draw (HEIC outside Safari): keep the original.
-    return blob;
-  }
-}
+/** Downscale a photo so a dozen of them don't fill the database (lib/upload.ts). */
+export { shrinkImage } from "@/lib/upload";
 
 export function CameraCapture({ request, onDone }: { request: CameraRequest | null; onDone: (photo: File | null) => void }) {
   const video = useRef<HTMLVideoElement>(null);

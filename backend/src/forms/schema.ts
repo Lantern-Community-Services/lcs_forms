@@ -69,7 +69,7 @@ const baseField = z.object({
   addressParts: z.array(z.enum(["line1", "line2", "city", "state", "zip", "country"])).min(1).optional(),
   accept: z.string().max(300).optional(),
   maxFiles: z.number().int().min(1).max(20).optional(),
-  maxSizeMb: z.number().min(0.1).max(10).optional(),
+  maxSizeMb: z.number().min(0.1).max(50).optional(),
   consentText: z.string().max(5000).optional(),
   minRows: z.number().int().min(0).optional(),
   maxRows: z.number().int().min(1).max(500).optional(),
