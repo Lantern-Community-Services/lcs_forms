@@ -15,8 +15,11 @@ export type ScopedSite = { id: string; code: string; name: string; siteType: str
  * active site for an admin and exactly the assigned sites for everyone else.
  * Asking for a site you aren't assigned to is a 403, not a silent drop, so a
  * stale bookmark says what's wrong.
+ *
+ * `office`: "all my sites" also takes in the office sites (the Main Office) the
+ * person is at. Only the calendar wants that; the roster screens have none there.
  */
-export async function sitesInScope(req: Request, raw: unknown): Promise<ScopedSite[]> {
+export async function sitesInScope(req: Request, raw: unknown, opts: { office?: boolean } = {}): Promise<ScopedSite[]> {
   const allowed = req.user?.siteIds ?? null;
   const asked =
     typeof raw === "string"
@@ -26,7 +29,7 @@ export async function sitesInScope(req: Request, raw: unknown): Promise<ScopedSi
   if (asked.length === 0) {
     // Office sites (the Main Office) have no roster.
     return prisma.site.findMany({
-      where: { active: true, ...(allowed ? { id: { in: allowed } } : {}), ...notOffice },
+      where: { active: true, ...(allowed ? { id: { in: allowed } } : {}), ...(opts.office ? {} : notOffice) },
       select: SELECT,
       orderBy: { name: "asc" },
     });

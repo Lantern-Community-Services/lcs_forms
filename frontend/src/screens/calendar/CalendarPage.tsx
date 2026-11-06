@@ -88,7 +88,7 @@ export function CalendarPage() {
     );
   };
 
-  const { codes, setCodes, param: siteParam } = useSiteSelection();
+  const { codes, setCodes, param: siteParam } = useSiteSelection({ office: true });
   const range = fetchRange(anchor);
   const { data, isLoading, isError, error, isFetching } = useCalendar(range.from, range.to, siteParam);
   const { data: categories } = useCalendarCategories();
@@ -311,7 +311,7 @@ export function CalendarPage() {
             {viewSwitch}
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <SitePicker codes={codes} onChange={setCodes} counts={false} className="flex-1" />
+            <SitePicker codes={codes} onChange={setCodes} counts={false} office className="flex-1" />
             <PhoneCategoryFilter options={filterOptions} hidden={hidden} onToggle={toggle} onShowAll={() => setHidden(new Set())} />
           </div>
         </div>
@@ -327,7 +327,7 @@ export function CalendarPage() {
             <h2 className="min-w-0 text-[17px] font-bold text-ink">{title}</h2>
             {isFetching && <Spinner className="h-4 w-4" />}
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <SitePicker codes={codes} onChange={setCodes} counts={false} className="w-[220px]" />
+              <SitePicker codes={codes} onChange={setCodes} counts={false} office className="w-[220px]" />
               <CategoryFilterMenu options={filterOptions} hidden={hidden} onChange={setHidden} />
               {outlookButton}
               {viewSwitch}
