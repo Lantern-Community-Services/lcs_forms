@@ -397,7 +397,7 @@ export async function loadOccurrences(req: Request, query: Record<string, unknow
   const siteFilter: Prisma.CalendarEventWhereInput =
     req.user!.siteIds === null && !asked
       ? {}
-      : { OR: [{ allSites: true }, { sites: { some: { siteId: { in: (await sitesInScope(req, query.site)).map((s) => s.id) } } } }] };
+      : { OR: [{ allSites: true }, { sites: { some: { siteId: { in: (await sitesInScope(req, query.site, { office: true })).map((s) => s.id) } } } }] };
 
   const rows = await prisma.calendarEvent.findMany({
     where: {
