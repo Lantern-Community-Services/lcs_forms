@@ -1,6 +1,6 @@
 import { MAX_UPLOAD_BYTES, shrinkPhotoFile } from "@/lib/upload";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, CloudOff, Loader2, Paperclip, Plus, Search, Star, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, CloudOff, Loader2, Paperclip, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -805,12 +805,21 @@ interface ResidentValue {
 function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, needsSite }: { siteCode: string | null; highAcuityOnly?: boolean; value?: ResidentValue; onChange: (v: unknown) => void; disabled?: boolean; needsSite: string }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(!value);
+  // The list drops down only while the search box is in use; it closes on a pick, Escape or a tap outside.
+  const [showList, setShowList] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showList) return;
+    const close = (e: PointerEvent) => { if (!boxRef.current?.contains(e.target as Node)) setShowList(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [showList]);
   const { data, isLoading } = useTenants(siteCode ?? undefined, "active", Boolean(siteCode) && open && !disabled);
   if (value?.id && !open) {
     return (
       <div className="flex min-h-[44px] items-center gap-2 rounded-input border border-navy bg-navsel px-3 py-2 text-[14px] text-ink">
         <span className="min-w-0 flex-1 truncate font-semibold">{value.name}{value.unit ? <span className="font-normal text-muted"> · {value.unit}</span> : null}</span>
-        {!disabled && <button type="button" onClick={() => { setOpen(true); onChange(undefined); }} className="text-[13px] font-semibold text-accent">Change</button>}
+        {!disabled && <button type="button" onClick={() => { setOpen(true); setShowList(true); onChange(undefined); }} className="text-[13px] font-semibold text-accent">Change</button>}
       </div>
     );
   }
@@ -818,16 +827,30 @@ function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, n
   const needle = q.trim().toLowerCase();
   const people = (data?.items ?? []).filter((t) => !highAcuityOnly || t.highAcuity).filter((t) => !needle || t.displayName.toLowerCase().includes(needle) || `${t.firstName} ${t.lastName}`.toLowerCase().includes(needle) || (t.unit ?? "").toLowerCase().includes(needle) || (t.formerNames ?? []).some((n) => n.toLowerCase().includes(needle)));
   return (
-    <div className="rounded-input border border-hairline bg-surface">
-      <div className="relative border-b border-hairline">
+    <div ref={boxRef} className="relative">
+      <div className={cn("relative rounded-input border bg-surface", showList ? "border-navy" : "border-hairline")}>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or room…" disabled={disabled} className="w-full bg-transparent py-2.5 pl-9 pr-3 text-[14px] text-ink outline-none" />
+        <input
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setShowList(true); }}
+          onFocus={() => setShowList(true)}
+          onClick={() => setShowList(true)}
+          onKeyDown={(e) => { if (e.key === "Escape") setShowList(false); }}
+          placeholder="Search name or room…"
+          disabled={disabled}
+          autoFocus={showList}
+          role="combobox"
+          aria-expanded={showList}
+          className="min-h-[44px] w-full bg-transparent py-2.5 pl-9 pr-9 text-[14px] text-ink outline-none"
+        />
+        <ChevronDown className={cn("pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-transform", showList && "rotate-180")} />
       </div>
-      <ul className="max-h-60 overflow-y-auto p-1">
+      {showList && (
+      <ul role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-input border border-hairline bg-surface p-1 shadow-lg">
         {isLoading && <li className="px-2 py-2 text-[13px] text-muted">Loading the roster…</li>}
         {people.slice(0, 200).map((t) => (
           <li key={t.id}>
-            <button type="button" onClick={() => { onChange({ id: t.id, name: t.displayName, unit: t.unit ?? undefined }); setOpen(false); setQ(""); }} className="flex min-h-[40px] w-full items-center gap-2 rounded px-2 text-left text-[14px] text-ink hover:bg-rowhover">
+            <button type="button" role="option" aria-selected={false} onClick={() => { onChange({ id: t.id, name: t.displayName, unit: t.unit ?? undefined }); setOpen(false); setShowList(false); setQ(""); }} className="flex min-h-[40px] w-full items-center gap-2 rounded px-2 text-left text-[14px] text-ink hover:bg-rowhover">
               <span className="min-w-0 flex-1 truncate">{t.displayName}</span>
               {t.unit && <span className="text-micro text-muted">{t.unit}</span>}
             </button>
@@ -835,6 +858,7 @@ function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, n
         ))}
         {!isLoading && !people.length && <li className="px-2 py-2 text-[13px] text-muted">Nobody matches.</li>}
       </ul>
+      )}
     </div>
   );
 }
