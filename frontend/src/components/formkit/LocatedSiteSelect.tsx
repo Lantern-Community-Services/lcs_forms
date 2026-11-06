@@ -28,7 +28,8 @@ export function LocatedSiteSelect({
 }: {
   sites: Site[] | undefined;
   value: string;
-  onChange: (code: string) => void;
+  /** auto is true when the picker filled itself in (one site, or where you are). */
+  onChange: (code: string, auto?: boolean) => void;
   disabled?: boolean;
   loading?: boolean;
   id?: string;
@@ -46,14 +47,14 @@ export function LocatedSiteSelect({
 
   // One site: it's that one.
   useEffect(() => {
-    if (!value && list.length === 1) onChange(list[0].code);
+    if (!value && list.length === 1) onChange(list[0].code, true);
   }, [sites]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Located: fill an empty picker with the site you're at, or else the nearest within 5 km.
   useEffect(() => {
     if (value || chosenByHand.current || disabled || !ranked) return;
     const pick = here ?? (nearest && nearest.meters <= NEAREST_WITHIN ? nearest : null);
-    if (pick) onChange(pick.site.code);
+    if (pick) onChange(pick.site.code, true);
   }, [ranked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = useMemo(() => {
