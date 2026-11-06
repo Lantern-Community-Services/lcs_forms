@@ -259,7 +259,7 @@ function DefaultValue({ field: f, set }: { field: Field; set: (p: Partial<Field>
     return <Row label="Starting value"><Input type="number" value={typeof dv === "number" ? dv : ""} onChange={(e) => set({ defaultValue: num(e.target.value) })} className="w-32" /></Row>;
   }
   return (
-    <Row label="Starting value" hint="Merge tags work: {user:name}, {user:email}, {date:today}.">
+    <Row label="Starting value" hint="Merge tags work: {user:name}, {user:email}, {date:today}, {date:month}, {date:pay_month} (last month in the first 10 days).">
       <Input value={typeof dv === "string" ? dv : ""} onChange={(e) => set({ defaultValue: e.target.value })} />
     </Row>
   );
