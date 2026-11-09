@@ -360,6 +360,33 @@ function FieldControl(props: FieldProps & { inputId: string }) {
   const { field: f, value, onChange, disabled, inputId } = props;
   const text = typeof value === "string" || typeof value === "number" ? String(value) : "";
   const invalid = props.error ? "border-status-redDot" : "";
+  // A fixed domain ("@lanterncommunity.org"): people type the name, the whole address is kept.
+  if (f.type === "email" && f.suffix?.startsWith("@")) {
+    const domain = f.suffix;
+    const shown = text.toLowerCase().endsWith(domain.toLowerCase()) ? text.slice(0, -domain.length) : text;
+    return (
+      <div className="flex items-center gap-1.5">
+        <Input
+          id={inputId}
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          spellCheck={false}
+          value={shown}
+          placeholder={f.placeholder ?? "first.last"}
+          maxLength={f.maxLength}
+          onChange={(e) => {
+            const v = e.target.value.trim();
+            // A whole address (someone outside Lantern) is kept as typed.
+            onChange(!v ? "" : v.includes("@") ? v : `${v}${domain}`);
+          }}
+          disabled={disabled}
+          className={cn("min-h-[44px] min-w-0 flex-1 md:min-h-9", invalid)}
+        />
+        <span className="shrink-0 text-[14px] text-muted">{domain}</span>
+      </div>
+    );
+  }
   switch (f.type) {
     case "text":
     case "email":

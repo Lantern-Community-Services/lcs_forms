@@ -57,7 +57,8 @@ const baseField = z.object({
   max: z.number().optional(),
   step: z.number().positive().optional(),
   prefix: z.string().max(20).optional(),
-  suffix: z.string().max(20).optional(),
+  /** After the box: a number's unit, or an email field's fixed domain ("@lanterncommunity.org": people type the name). */
+  suffix: z.string().max(64).optional(),
   minDate: z.string().max(20).optional(),
   maxDate: z.string().max(20).optional(),
   choices: z.array(choice).max(2000).optional(),
