@@ -412,7 +412,7 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "text", label: "Single line", group: "Standard", input: true, value: "string", description: "One line of text. minLength, maxLength, pattern." },
   { type: "textarea", label: "Paragraph", group: "Standard", input: true, value: "string", description: "Several lines of text. rows, maxLength." },
   { type: "number", label: "Number", group: "Standard", input: true, value: "number", description: "A number. min, max, step, prefix, suffix." },
-  { type: "email", label: "Email", group: "Standard", input: true, value: "string", description: "An email address, checked for shape." },
+  { type: "email", label: "Email", group: "Standard", input: true, value: "string", description: "An email address, checked for shape. suffix \"@domain\" (e.g. \"@lanterncommunity.org\"): people type the name, the whole address is kept." },
   { type: "phone", label: "Phone", group: "Standard", input: true, value: "string", description: "A phone number (10+ digits)." },
   { type: "url", label: "Website", group: "Standard", input: true, value: "string", description: "An http(s) link." },
   { type: "date", label: "Date", group: "Standard", input: true, value: "string YYYY-MM-DD", description: "A calendar date. minDate / maxDate accept YYYY-MM-DD or 'today'." },
