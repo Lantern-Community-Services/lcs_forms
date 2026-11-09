@@ -57,6 +57,12 @@ export const PERMISSIONS = [
    * organization's email templates (Admins pick from them). Super Admins only.
    */
   "email.templates",
+  /**
+   * View as: see the site as someone else, read only (auth/middleware.ts). Not part of
+   * any role: every Super Admin has it, and an Admin when a Super Admin has switched
+   * it on for them (User.viewAsEnabled). See permissionsFor().
+   */
+  "users.viewAs",
   /** Admin → Dev log: response times, errors, memory and the server log. Admin only. */
   "devlog.view",
 ] as const;
@@ -101,7 +107,7 @@ export const ROLES: RoleDef[] = [
     key: "admin",
     name: "Admin",
     description: "Full control on every site — the forms catalog, people, sites, integrations and settings. Only a Super Admin can make someone an Admin.",
-    permissions: PERMISSIONS.filter((p) => p !== "admins.manage" && p !== "people.records" && p !== "email.templates"),
+    permissions: PERMISSIONS.filter((p) => p !== "admins.manage" && p !== "people.records" && p !== "email.templates" && p !== "users.viewAs"),
     allSites: true,
   },
   {
@@ -184,12 +190,13 @@ export function roleFor(key: string): RoleDef {
  */
 export function permissionsFor(
   role: RoleDef,
-  person: { calendarEditor?: boolean | null; rosterEditor?: boolean | null; globalAdmin?: boolean | null }
+  person: { calendarEditor?: boolean | null; rosterEditor?: boolean | null; globalAdmin?: boolean | null; viewAsEnabled?: boolean | null }
 ): PermissionKey[] {
   const extra: PermissionKey[] = [];
   if (person.calendarEditor && !role.permissions.includes("calendar.edit")) extra.push("calendar.edit");
   if (person.rosterEditor) for (const p of ROSTER_MANAGEMENT) if (!role.permissions.includes(p)) extra.push(p);
   if (person.globalAdmin && role.key === "admin") extra.push("admins.manage", "people.records", "email.templates");
+  if ((person.globalAdmin || person.viewAsEnabled) && role.key === "admin") extra.push("users.viewAs");
   return extra.length ? [...role.permissions, ...extra] : role.permissions;
 }
 

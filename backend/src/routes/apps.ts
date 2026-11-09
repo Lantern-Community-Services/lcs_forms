@@ -204,7 +204,9 @@ appsRouter.delete(
 
 async function appFor(req: Request) {
   const draft = req.query.draft === "1";
-  if (draft && !isDeveloper(req.user)) throw forbidden("Only developers can open a draft.");
+  // Viewing as someone (View as), a developer can still try a draft out as them: it opens, and answers as it would for them.
+  const viewerDevelops = Boolean(req.user?.viewAs && isDeveloper({ ...req.user, permissions: req.user.viewAs.permissions }));
+  if (draft && !isDeveloper(req.user) && !viewerDevelops) throw forbidden("Only developers can open a draft.");
   if (!draft) return loadLiveApp(req.params.slug);
   return loadApp(await findCodeForm(req.params.slug), true);
 }

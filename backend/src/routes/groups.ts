@@ -138,7 +138,7 @@ groupsRouter.get(
   asyncHandler(async (req, res) => {
     const u = await prisma.user.findUnique({
       where: { id: req.params.userId },
-      select: { id: true, title: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, groupOverrides: { select: { groupId: true, include: true } } },
+      select: { id: true, title: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, viewAsEnabled: true, groupOverrides: { select: { groupId: true, include: true } } },
     });
     if (!u) throw notFound();
     const groupIds = effectiveGroups(u.title, u.groupOverrides);

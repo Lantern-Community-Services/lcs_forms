@@ -98,7 +98,7 @@ export const GUEST_BOOTSTRAP = String.raw`
 globalThis.__out = undefined;
 const __h = (name, args) => {
   const r = JSON.parse(__hostCall(name, JSON.stringify(args === undefined ? null : args)));
-  if (r && r.error) { const e = new Error(r.error); e.fromHost = true; throw e; }
+  if (r && r.error) { const e = new Error(r.error); e.fromHost = true; if (r.userError) e.userError = true; throw e; }
   return r ? r.value : undefined;
 };
 const __fmt = (a) => { try { return typeof a === "string" ? a : JSON.stringify(a); } catch (e) { return String(a); } };
@@ -279,7 +279,8 @@ export async function runInSandbox(opts: { bundle: string; call: string; onHost:
         const value = await opts.onHost(msg.name!, JSON.parse(msg.args ?? "null"));
         reply = JSON.stringify({ value: value === undefined ? null : value });
       } catch (err) {
-        reply = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+        // A refusal meant for the person (View as) reaches them as the action's error, like a UserError.
+        reply = JSON.stringify({ error: err instanceof Error ? err.message : String(err), ...(err instanceof Error && (err as { userError?: boolean }).userError ? { userError: true } : {}) });
       }
       let buf = encoder.encode(reply);
       if (buf.length > REPLY_BYTES) buf = encoder.encode(JSON.stringify({ error: "That query returned too much data; ask for less (limit, dates)." }));
