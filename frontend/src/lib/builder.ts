@@ -162,6 +162,25 @@ export interface EntryDetail {
   canFollowUp: boolean;
   /** What they fill in when they mark it done. */
   followUpFields?: DoneField[];
+  /** The things to tick off one by one, as they stand on this entry. */
+  followUpChecklist?: CheckState[];
+}
+
+/** A follow-up checklist item on one entry (backend services/followUp.ts). */
+export interface CheckState {
+  id: string;
+  label: string;
+  help?: string;
+  done: { at: string; byName: string } | null;
+}
+
+/** A follow-up checklist item as set up on the form. */
+export interface CheckItem {
+  id: string;
+  label: string;
+  help?: string;
+  /** Only on entries whose answer to this field is one of these. */
+  when?: { field: string; values: string[] };
 }
 
 export type DoneFieldType = "text" | "email" | "textarea" | "date" | "password";
@@ -280,6 +299,8 @@ export const fillApi = {
   note: (slug: string, id: string, body: string) => api.post<EntryNote>(`/f/${slug}/entries/${id}/notes`, { body }),
   /** Mark the entry's follow-up done (with what was done), or open it again. */
   followUp: (slug: string, id: string, done: boolean, note?: string, values?: Record<string, string>) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note, values }),
+  /** Tick one of the follow-up's checklist items off, or untick it. */
+  followUpItem: (slug: string, id: string, item: string, done: boolean) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up/items`, { item, done }),
   remove: (slug: string, id: string) => api.delete(`/f/${slug}/entries/${id}`),
   /** What the filters match, or just `ids` (the ticked entries) within them. */
   exportFile: (slug: string, qs: string, format: "csv" | "xlsx" | "pdf", ids?: string[]) =>

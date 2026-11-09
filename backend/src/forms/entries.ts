@@ -11,7 +11,7 @@ import { mailConfigured, sendLogged } from "../services/mailer.js";
 import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
-import { canFollowUp, loadFollowUp, openFollowUp, parseDoneValues } from "../services/followUp.js";
+import { canFollowUp, checklistFor, loadFollowUp, openFollowUp, parseDoneValues } from "../services/followUp.js";
 import { movedRuleCheck } from "../services/ruleConversion.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
@@ -714,13 +714,22 @@ export async function exportEntries(
   for (const f of follow?.doneFields ?? []) if (f.type !== "password") doneCols.set(f.id, f.label);
   const doneOf = new Map(rows.map((e) => [e.id, parseDoneValues(e.followUpValues)]));
   for (const vals of doneOf.values()) for (const v of vals) if (!v.emailed && !doneCols.has(v.id)) doneCols.set(v.id, v.label);
-  const followHeader = tracked ? ["Follow-up", "Done by", "Done at", "What was done", ...doneCols.values()] : [];
+  const checked = Boolean(follow && (follow.checklist.length || rows.some((e) => e.followUpChecks)));
+  const followHeader = tracked ? ["Follow-up", "Done by", "Done at", "What was done", ...doneCols.values(), ...(checked ? ["Checklist"] : [])] : [];
   const header = ["Entry ID", "Submitted", "Submitted by", "Site", ...cols.map((c) => c.header), ...followHeader, "Status", "Void reason", "Device", "Time to fill (minutes)"];
   const data = rows.map((e) => {
     const v = JSON.parse(e.data) as Values;
     const dv = doneOf.get(e.id) ?? [];
     const followCells = tracked
-      ? [e.followUp ?? "", e.followUpDoneByName ?? "", e.followUpDoneAt ? stamp(e.followUpDoneAt) : "", e.followUpNote ?? "", ...[...doneCols.keys()].map((id) => dv.find((x) => x.id === id)?.value ?? "")]
+      ? [
+          e.followUp ?? "",
+          e.followUpDoneByName ?? "",
+          e.followUpDoneAt ? stamp(e.followUpDoneAt) : "",
+          e.followUpNote ?? "",
+          ...[...doneCols.keys()].map((id) => dv.find((x) => x.id === id)?.value ?? ""),
+          // Each item, ticked or not, with who did it and when.
+          ...(checked && follow && e.followUp ? [checklistFor(follow, e).map((c) => `${c.done ? "[x]" : "[ ]"} ${c.label}${c.done ? ` (${c.done.byName}, ${stamp(new Date(c.done.at))})` : ""}`).join("; ")] : checked ? [""] : []),
+        ]
       : [];
     return [e.id, stamp(e.createdAt), e.createdByName, e.siteId ? sites.get(e.siteId) ?? "" : "", ...cols.map((c) => c.get(v)), ...followCells, e.status, e.voidReason ?? "", deviceLabel(e.deviceKind), fillMinutes(e.fillSeconds)];
   });
@@ -752,6 +761,7 @@ const WIDE = new Set(["textarea", "address", "repeater", "likert", "multiselect"
 /** Each entry as its paper form: a title block, then its answers in labelled boxes under their sections. */
 async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string, string>, by: string) {
   const docs = new Map<number, FormDoc>();
+  const follow = rows.some((e) => e.followUp) ? await loadFollowUp(form) : null;
   const documents: ExportDocument[] = [];
   for (const e of rows) {
     if (!docs.has(e.formVersion)) docs.set(e.formVersion, await docForEntry(form, e.formVersion));
@@ -812,6 +822,9 @@ async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string,
       });
       if (e.followUpNote) blocks.push({ type: "fields", fields: [{ label: "What was done", value: e.followUpNote.slice(0, 8000), width: 1 }] });
       for (const v of done) blocks.push({ type: "fields", fields: [{ label: v.label.slice(0, 120), value: String(v.value).slice(0, 8000), width: 1 }] });
+      for (const c of follow ? checklistFor(follow, e) : []) {
+        blocks.push({ type: "fields", fields: [{ label: c.label.slice(0, 120), value: c.done ? `Done by ${c.done.byName}, ${stamp(new Date(c.done.at))}` : "Not done", width: 1 }] });
+      }
     }
     if (!blocks.length) blocks.push({ type: "note", text: "No answers were filled in." });
     const site = e.siteId ? sites.get(e.siteId) : undefined;
