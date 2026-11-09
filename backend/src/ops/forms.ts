@@ -101,12 +101,13 @@ export const formOps = [
       from: z.string().optional().describe("YYYY-MM-DD"),
       to: z.string().optional().describe("YYYY-MM-DD"),
       status: z.enum(["active", "voided", "all"]).optional(),
+      archived: z.enum(["hide", "only", "all"]).optional().describe("Archived entries: hide (default), only, or all"),
       limit: int(1, 200).optional(),
     },
     annotations: { readOnlyHint: true },
-    run: async (ctx, { form, q, from, to, status, limit }) => {
+    run: async (ctx, { form, q, from, to, status, archived, limit }) => {
       const row = await findForm(form);
-      const where = entryWhere(row, undefined, { q, from, to, status });
+      const where = entryWhere(row, undefined, { q, from, to, status, archived: archived ?? "hide" });
       if (ctx.key.siteId) (where.AND as object[]).push({ siteId: ctx.key.siteId });
       const [items, total] = await Promise.all([prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take: limit ?? 50 }), prisma.formEntry.count({ where })]);
       return { total, items: items.map((e) => entryRow(e)) };
@@ -231,6 +232,17 @@ export const formOps = [
     annotations: { destructiveHint: true },
     run: (ctx, a) => ctx.route(fillRouter, { method: "POST", path: `/${enc(a.form)}/entries/${enc(a.id)}/void`, body: { reason: a.reason } }),
     audit: (a) => ({ action: "entries.voided", summary: `Voided entry ${a.id} of form “${a.form}”`, changes: { form: a.form, entry: a.id, reason: a.reason } }),
+  }),
+
+  defineOp({
+    name: "archive_entries",
+    description: "Archive a basic form's entries (put dealt-with ones away: hidden from the entries list, still active and in exports when asked for) or bring them back with archived: false. Give ids, up to 1,000. Admins, people who can void, and anyone who sees every entry of the form.",
+    scope: "entries:manage",
+    as: "creator",
+    http: { method: "POST", path: "/forms/:form/entries-archive" },
+    shape: { form: formRef, ids: z.array(z.string()).min(1).max(1000), archived: z.boolean().optional().describe("false brings them back. Default true.") },
+    run: (ctx, a) => ctx.route(fillRouter, { method: "POST", path: `/${enc(a.form)}/entries-archive`, query: { status: "all", archived: "all" }, body: { ids: a.ids, archived: a.archived ?? true } }),
+    audit: (a) => ({ action: a.archived === false ? "entries.unarchived" : "entries.archived", summary: `${a.archived === false ? "Brought back" : "Archived"} ${a.ids.length} entr${a.ids.length === 1 ? "y" : "ies"} of form “${a.form}”`, changes: { form: a.form, entries: a.ids } }),
   }),
 
   defineOp({

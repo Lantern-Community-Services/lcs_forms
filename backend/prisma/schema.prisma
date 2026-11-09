@@ -581,6 +581,9 @@ model FormEntry {
   voidedAt       DateTime?
   voidedByName   String?   @db.NVarChar(255)
   voidReason     String?   @db.NVarChar(Max)
+  /// Archived: dealt with and put away (a processed separation, say). Hidden from the entries list unless asked for; still counts as active, unlike void.
+  archivedAt     DateTime?
+  archivedByName String?   @db.NVarChar(255)
   /// Starred by an entry viewer (Gravity Forms' star), for follow-up.
   starred        Boolean   @default(false)
   updatedByName  String?   @db.NVarChar(255)
