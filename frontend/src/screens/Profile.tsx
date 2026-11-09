@@ -8,6 +8,7 @@ import { SnapshotSummary } from "@/components/shell/OfflineBar";
 import { canAddToHomeScreen, openHomeScreenHelp } from "@/components/shell/HomeScreenPrompt";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { ClaudeProfileCard } from "@/components/ClaudeConnections";
+import { ViewAsCard } from "@/components/shell/ViewAs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -193,6 +194,8 @@ export function ProfilePage() {
       <NotificationSettings delay="80ms" />
 
       <ClaudeProfileCard delay="82ms" />
+
+      <ViewAsCard delay="83ms" />
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "84ms" }}>
         <p className="kicker">Tutorials</p>

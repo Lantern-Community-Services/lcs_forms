@@ -6,7 +6,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
 import { clientIp, compressJson, errorHandler, requestId } from "./http.js";
-import { loadUser, requireAuth } from "./auth/middleware.js";
+import { loadUser, requireAuth, viewAsReadOnly } from "./auth/middleware.js";
 import { authRouter } from "./routes/auth.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { attendanceRouter } from "./routes/attendance.js";
@@ -126,6 +126,8 @@ export function createApp() {
   app.use(compressJson);
   app.use(cookieParser());
   app.use(loadUser);
+  // Someone viewing the site as another person only reads (auth/middleware.ts).
+  app.use(viewAsReadOnly);
   // A session may contain many PNG signatures. Accept the larger body only
   // for an authenticated attendance write; all other JSON keeps the 1 MB cap.
   app.post("/api/attendance", requireAuth, express.json({ limit: "20mb" }));

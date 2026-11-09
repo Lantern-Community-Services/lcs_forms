@@ -1,10 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { asyncHandler, forbidden, notFound, unauthorized } from "../http.js";
-import { AUTH_COOKIE, ONBOARDING_COOKIE, signOnboarding, signSession, type OnboardingPass } from "../auth/auth.js";
+import { asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
+import { AUTH_COOKIE, ONBOARDING_COOKIE, VIEW_AS_COOKIE, VIEW_AS_TTL_MS, signOnboarding, signSession, signViewAs, type OnboardingPass } from "../auth/auth.js";
 import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, safeReturnTo } from "../auth/entra.js";
-import { requireAuth } from "../auth/middleware.js";
+import { canViewAs, currentUserById, mayViewAs, requireAuth } from "../auth/middleware.js";
 import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured, testSite } from "../env.js";
 import { guestDomains } from "../services/settings.js";
 import { audit, fromRequest } from "../services/audit.js";
@@ -220,6 +220,7 @@ authRouter.post(
     // they sign in again.
     if (req.user) await dropGraphToken(req.user.userId).catch((err) => console.error("[auth] couldn't drop the Outlook sign-in:", err));
     res.clearCookie(AUTH_COOKIE, COOKIE_ATTRS);
+    res.clearCookie(VIEW_AS_COOKIE, COOKIE_ATTRS);
     res.json({ ok: true });
   })
 );
@@ -240,7 +241,73 @@ authRouter.get(
       role: { key: role.key, name: roleNameFor(role, user), description: role.description, allSites: role.allSites },
       permissions: req.user!.permissions,
       allSites: req.user!.siteIds === null,
+      // A Super Admin seeing the site as this person: who they are (the bar along the top).
+      viewAs: req.user!.viewAs ? { id: req.user!.viewAs.userId, name: req.user!.viewAs.name } : null,
+      canViewAs: canViewAs(req.user!) || Boolean(req.user!.viewAs),
     });
+  })
+);
+
+// ── View as (Super Admins, and Admins they've let: users.viewAs) ───────────
+
+/** Who's really behind the request, whether or not they're viewing as someone right now. */
+function viewerOf(req: Request) {
+  const u = req.user!;
+  if (u.viewAs) return u.viewAs;
+  if (!canViewAs(u)) throw forbidden("You can't view the site as someone else.");
+  return { userId: u.userId, name: u.name, email: u.email, permissions: u.permissions };
+}
+
+/** People the viewer may view the site as (mayViewAs): active, never a Super Admin, and an Admin only for a Super Admin. */
+authRouter.get(
+  "/view-as/people",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const me = viewerOf(req);
+    const q = String(req.query.q ?? "").trim().slice(0, 100);
+    const people = await prisma.user.findMany({
+      where: {
+        status: "active",
+        globalAdmin: false,
+        id: { not: me.userId },
+        ...(me.permissions.includes("admins.manage") ? {} : { roleKey: { not: "admin" } }),
+        ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q } }, { title: { contains: q } }] } : {}),
+      },
+      select: { id: true, name: true, email: true, title: true, roleKey: true, avatarColor: true, sites: { where: { approved: true }, select: { site: { select: { code: true } } } } },
+      orderBy: { name: "asc" },
+      take: 30,
+    });
+    res.json(people.map(({ sites, ...p }) => ({ ...p, roleName: roleFor(p.roleKey).name, sites: sites.map((s) => s.site.code) })));
+  })
+);
+
+/** Start (or switch) seeing the site as someone. Changes stay off until they stop (auth/middleware.ts viewAsReadOnly). */
+authRouter.post(
+  "/view-as",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const me = viewerOf(req);
+    const { userId } = z.object({ userId: z.string().min(1) }).parse(req.body);
+    if (userId === me.userId) throw badRequest("That's you.");
+    const target = await currentUserById(userId);
+    if (!target) throw notFound("That person isn't active on the site.");
+    const refused = mayViewAs(me, target);
+    if (refused) throw forbidden(refused);
+    res.cookie(VIEW_AS_COOKIE, signViewAs({ by: me.userId, as: target.userId }), { ...COOKIE_ATTRS, maxAge: VIEW_AS_TTL_MS });
+    await audit({ actor: { id: me.userId, name: me.name, ...fromRequest(req) }, action: "user.view_as", summary: `${me.name} viewed the site as ${target.name} (${target.email})` });
+    res.json({ ok: true });
+  })
+);
+
+/** Back to seeing the site as themselves. */
+authRouter.delete(
+  "/view-as",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.clearCookie(VIEW_AS_COOKIE, COOKIE_ATTRS);
+    const by = req.user!.viewAs;
+    if (by) await audit({ actor: { id: by.userId, name: by.name, ...fromRequest(req) }, action: "user.view_as_ended", summary: `${by.name} stopped viewing the site as ${req.user!.name}` });
+    res.json({ ok: true });
   })
 );
 

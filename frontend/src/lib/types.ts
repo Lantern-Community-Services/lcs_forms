@@ -21,6 +21,8 @@ export type PermissionKey =
   | "admins.manage"
   /** A person's Records (entries, notifications, emails, activity): Super Admins only. */
   | "people.records"
+  /** View the site as someone else, read only: Super Admins, and Admins one has let (User.viewAsEnabled). */
+  | "users.viewAs"
   /** Admin → Dev log. Admin only. */
   | "devlog.view";
 
@@ -63,6 +65,15 @@ export interface User {
   rosterEditor?: boolean;
   /** A Super Admin: an Admin who also makes, changes and removes Admins. Set only by the server (SUPER_ADMINS); the field keeps its first name. */
   globalAdmin?: boolean;
+  /** An Admin a Super Admin has let view the site as others (View as). */
+  viewAsEnabled?: boolean;
+  /**
+   * /auth/me while someone views the site as this person (View as): who's really
+   * signed in. Everything else here is the person being viewed. Nothing can be changed meanwhile.
+   */
+  viewAs?: { id: string; name: string } | null;
+  /** /auth/me: whoever is really signed in may view the site as others (also true while they are). */
+  canViewAs?: boolean;
 }
 
 export interface Site extends SiteRef {
