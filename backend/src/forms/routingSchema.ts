@@ -27,6 +27,12 @@ export const recipientSchema = z.discriminatedUnion("kind", [
     name: z.string().trim().max(120).optional(),
     /** Only for events at these sites (codes). Omit for every site. */
     sites: z.array(z.string().trim().min(1).max(64)).max(100).optional(),
+    /**
+     * An address outside Lantern trusted with the route's chosen answers (a
+     * partner who does the work, like IT's outside helpdesk). Otherwise an
+     * outside address gets the link-only email.
+     */
+    details: z.boolean().optional(),
   }).strict(),
   z.object({
     kind: z.literal("role"),

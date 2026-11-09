@@ -35,7 +35,7 @@ import { listWords, templateOptions, useEmailTemplates, type TemplateKind } from
  */
 
 type Recipient =
-  | { kind: "person"; email: string; name?: string; sites?: string[] }
+  | { kind: "person"; email: string; name?: string; sites?: string[]; details?: boolean }
   | { kind: "role"; role: string; siteOnly?: boolean }
   | { kind: "field"; field: string }
   | { kind: "submitter" }
@@ -589,7 +589,7 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
   if (r.kind === "person") {
     // A signed-in account's own name; until they sign in, the name saved on the route.
     title = (acct?.status === "active" ? acct.name : r.name || acct?.name) || r.email;
-    const state = !known ? null : !acct ? "no account: email with a link only" : acct.status === "invited" || acct.status === "requested" ? "hasn't signed in yet" : acct.status !== "active" ? "account deactivated" : null;
+    const state = !known ? null : !acct ? (r.details ? "outside address: gets the details" : "no account: email with a link only") : acct.status === "invited" || acct.status === "requested" ? "hasn't signed in yet" : acct.status !== "active" ? "account deactivated" : null;
     sub = [title !== r.email ? r.email : null, r.sites?.length ? `only for ${r.sites.map(siteName).join(", ")}` : null, state].filter(Boolean).join(" · ");
   } else if (r.kind === "role") {
     icon = <Users className="h-4 w-4" />;
@@ -636,6 +636,12 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
         <Select value={r.siteOnly === false ? "all" : "site"} onChange={(e) => onChange({ ...r, siteOnly: e.target.value === "site" ? undefined : false })} className="w-40" aria-label="Where">
           <option value="site">At the event's site</option>
           <option value="all">At every site</option>
+        </Select>
+      )}
+      {r.kind === "person" && known && !acct && (
+        <Select value={r.details ? "details" : "link"} onChange={(e) => onChange({ ...r, details: e.target.value === "details" || undefined })} className="w-44" aria-label="What they get">
+          <option value="link">A link only</option>
+          <option value="details">The details too</option>
         </Select>
       )}
       {(r.kind === "group" || r.kind === "title") && (
