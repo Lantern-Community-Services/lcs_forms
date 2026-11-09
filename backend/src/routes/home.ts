@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { canUseBuiltForm, entryReach, groupFormKeys, personFormKeys } from "../services/staffGroups.js";
+import { canUseBuiltForm, entryReach, groupFormKeys, knownTitles, personFormKeys } from "../services/staffGroups.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { asyncHandler } from "../http.js";
@@ -375,5 +375,13 @@ homeRouter.get(
   "/apps",
   asyncHandler(async (req, res) => {
     res.json(await appHomeCards(req.user!));
+  })
+);
+
+/** Every job title in the system (Lantern's positions and the titles people have), for a form's job-title box. */
+homeRouter.get(
+  "/job-titles",
+  asyncHandler(async (_req, res) => {
+    res.json({ titles: (await knownTitles()).map((t) => t.title) });
   })
 );
