@@ -35,9 +35,9 @@ export interface CurrentUser extends SessionPayload {
    * Set when someone with View as (a Super Admin, or an Admin they've let) is
    * seeing the site as this person: who's really behind the request. Everything else on the object is the
    * person being viewed, so every screen and check answers as it would for
-   * them. Changes are refused meanwhile (viewAsReadOnly below).
+   * them. Changes are refused meanwhile unless `act` (viewAsLimits below).
    */
-  viewAs?: { userId: string; name: string; email: string; permissions: PermissionKey[] };
+  viewAs?: { userId: string; name: string; email: string; permissions: PermissionKey[]; act: boolean };
 }
 
 declare global {
@@ -142,15 +142,20 @@ async function viewingAs(req: Request, real: CurrentUser): Promise<CurrentUser |
   if (!pass || pass.by !== real.userId || pass.as === real.userId || !canViewAs(real)) return null;
   const target = await currentUserById(pass.as);
   if (!target || mayViewAs(real, target)) return null;
-  return { ...target, viewAs: { userId: real.userId, name: real.name, email: real.email, permissions: real.permissions } };
+  return { ...target, viewAs: { userId: real.userId, name: real.name, email: real.email, permissions: real.permissions, act: pass.act === true } };
 }
 
 /**
- * While someone views the site as another person, nothing is changed in their
- * name: only reads get through. The exceptions read too, or change nothing of
- * the person's: leaving View as and signing out; a code form's server actions,
+ * Viewing the site as another person, nothing is changed in their name: only
+ * reads get through. The exceptions read too, or change nothing of the
+ * person's: leaving View as and signing out; a code form's server actions,
  * whose writes the runtime refuses itself (apps/runtime.ts hostFor), since
  * pages load their data through them; exports and previews.
+ *
+ * Acting as them (IT support), everything goes through in their name, and the
+ * audit log says who really did it (services/audit.ts actorOf), except handing
+ * out credentials that would outlast the session: connecting Claude as them,
+ * or making an API key.
  */
 const VIEW_AS_OPEN: RegExp[] = [
   /^\/api\/auth\/(view-as|logout)(\/|$)/,
@@ -159,11 +164,17 @@ const VIEW_AS_OPEN: RegExp[] = [
   /\/(preview|email-preview|reports\/preview)$/,
 ];
 
-export function viewAsReadOnly(req: Request, _res: Response, next: NextFunction) {
+const ACT_AS_CLOSED: RegExp[] = [/^\/api\/oauth\//, /^\/api\/admin\/api-keys(\/|$)/];
+
+export function viewAsLimits(req: Request, _res: Response, next: NextFunction) {
   const who = req.user?.viewAs && req.user;
   if (!who || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  if (who.viewAs!.act) {
+    if (ACT_AS_CLOSED.some((r) => r.test(req.path))) return next(forbidden(`You're acting as ${who.name}: that can't be done in their name. Stop acting as them first.`));
+    return next();
+  }
   if (VIEW_AS_OPEN.some((r) => r.test(req.path))) return next();
-  next(forbidden(`You're viewing the site as ${who.name}, so nothing can be changed. Stop viewing as them to make changes.`));
+  next(forbidden(`You're viewing the site as ${who.name}, so nothing can be changed. Turn on "Act as them" in the bar along the top, or stop viewing as them.`));
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {

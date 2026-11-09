@@ -69,9 +69,10 @@ export interface User {
   viewAsEnabled?: boolean;
   /**
    * /auth/me while someone views the site as this person (View as): who's really
-   * signed in. Everything else here is the person being viewed. Nothing can be changed meanwhile.
+   * signed in. Everything else here is the person being viewed. Nothing can be changed
+   * meanwhile unless `act` (acting as them): then changes go through in their name.
    */
-  viewAs?: { id: string; name: string } | null;
+  viewAs?: { id: string; name: string; act: boolean } | null;
   /** /auth/me: whoever is really signed in may view the site as others (also true while they are). */
   canViewAs?: boolean;
 }

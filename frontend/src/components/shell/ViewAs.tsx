@@ -1,12 +1,13 @@
 import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Eye } from "lucide-react";
+import { Eye, UserCog } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SearchInput } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/misc";
 import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -15,9 +16,10 @@ import { cn, errorMessage } from "@/lib/utils";
 /**
  * View as: a Super Admin (or an Admin one has let) sees the whole site as
  * someone else, to check what it looks like for them. The server swaps who
- * every request runs as (backend auth/middleware.ts) and refuses changes
- * meanwhile, so it's read only. Starting, switching and stopping reload the
- * page, so nothing fetched as one person is shown as another.
+ * every request runs as (backend auth/middleware.ts). Read only unless they
+ * act as them (IT support): then changes go through in that person's name, and
+ * the audit log says who really made them. Starting, switching and stopping
+ * reload the page, so nothing fetched as one person is shown as another.
  */
 
 type Candidate = { id: string; name: string; email: string; title: string | null; roleName: string; avatarColor: string | null; sites: string[] };
@@ -26,8 +28,12 @@ async function change(go: () => Promise<unknown>) {
   await go();
   window.location.assign("/");
 }
-export const startViewAs = (userId: string) => change(() => api.post("/auth/view-as", { userId }));
+export const startViewAs = (userId: string, act = false) => change(() => api.post("/auth/view-as", { userId, act }));
 export const stopViewAs = () => change(() => api.delete("/auth/view-as"));
+const setActing = (act: boolean) => change(() => api.patch("/auth/view-as", { act }));
+
+/** The "Act as them" switch's explanation, wherever it's offered. */
+const ACT_HINT = "Changes go through in their name: forms, roster, calendar, everything they can do. The audit log records that you made them.";
 
 /** Pick whom to view the site as. */
 export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -35,6 +41,7 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
   const [q, setQ] = useState("");
   const query = useDeferredValue(q.trim());
   const [busy, setBusy] = useState<string | null>(null);
+  const [act, setAct] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["view-as", "people", query],
     queryFn: () => api.get<Candidate[]>(`/auth/view-as/people?q=${encodeURIComponent(query)}`),
@@ -44,7 +51,7 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
   async function pick(p: Candidate) {
     setBusy(p.id);
     try {
-      await startViewAs(p.id);
+      await startViewAs(p.id, act);
     } catch (e) {
       toast(errorMessage(e, `Couldn't view the site as ${p.name}.`), "error");
       setBusy(null);
@@ -55,8 +62,15 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
     <ResponsiveDialog open={open} onOpenChange={onOpenChange} title="View the site as…">
       <div className="flex flex-col gap-3">
         <p className="text-[13px] text-muted">
-          See every screen as they would: their role, sites and forms. Nothing can be changed while you do.
+          See every screen as they would: their role, sites and forms. Nothing can be changed unless you act as them.
         </p>
+        <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
+          <span>
+            <span className="block text-[13.5px] font-semibold text-ink">Act as them</span>
+            <span className="block text-micro text-muted">{ACT_HINT}</span>
+          </span>
+          <Switch checked={act} onCheckedChange={setAct} className="mt-0.5" />
+        </label>
         <SearchInput autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, email or job title" aria-label="Search people" />
         {isLoading ? (
           <LoadingState />
@@ -99,7 +113,7 @@ export function ViewAsCard({ delay }: { delay?: string }) {
     <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: delay }}>
       <p className="kicker flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> View as</p>
       <p className="mt-1 text-[13px] text-muted">
-        See the whole site as someone else sees it: their role, sites, forms and entries. Nothing can be changed while you do, and a strip along the top takes you back.
+        See the whole site as someone else sees it: their role, sites, forms and entries. It's read only unless you act as them (for IT support), and a strip along the top takes you back.
       </p>
       <Button variant="secondary" className="mt-3" onClick={() => setPicking(true)}>
         <Eye className="h-4 w-4" /> View the site as…
@@ -117,6 +131,18 @@ export function ViewAsBar({ top }: { top: boolean }) {
   const [busy, setBusy] = useState(false);
   if (!user?.viewAs) return null;
 
+  const acting = user.viewAs.act;
+  async function toggleActing() {
+    if (!acting && !window.confirm(`Act as ${user!.name}? ${ACT_HINT}`)) return;
+    setBusy(true);
+    try {
+      await setActing(!acting);
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't change that."), "error");
+      setBusy(false);
+    }
+  }
+
   async function stop() {
     setBusy(true);
     try {
@@ -131,17 +157,21 @@ export function ViewAsBar({ top }: { top: boolean }) {
     <div
       role="status"
       className={cn(
-        "flex flex-none flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-status-violetDot/40 bg-status-violetBg px-4 pb-1.5 text-[12.5px] text-status-violetText md:px-7",
+        "flex flex-none flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 pb-1.5 text-[12.5px] md:px-7",
+        // Acting changes things for real: red, so it's never mistaken for just looking.
+        acting ? "border-status-redDot/40 bg-status-redBg text-status-redText" : "border-status-violetDot/40 bg-status-violetBg text-status-violetText",
         top ? "pt-[max(6px,var(--safe-top))]" : "pt-1.5"
       )}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
-        <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {acting ? <UserCog className="h-3.5 w-3.5 shrink-0" aria-hidden /> : <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />}
         <span className="min-w-0">
-          Viewing as <strong className="font-semibold">{user.name}</strong> ({user.role.name}). Nothing can be changed.
+          {acting ? "Acting as" : "Viewing as"} <strong className="font-semibold">{user.name}</strong> ({user.role.name}).{" "}
+          {acting ? `Changes are made in their name and logged as ${user.viewAs.name}.` : "Nothing can be changed."}
         </span>
       </span>
       <span className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => void toggleActing()}>{acting ? "View only" : "Act as them"}</Button>
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => setPicking(true)}>Switch</Button>
         <Button variant="secondary" size="sm" disabled={busy} onClick={() => void stop()}>Stop viewing</Button>
       </span>

@@ -218,7 +218,8 @@ authRouter.post(
     // Clears this app's session only — not the person's Microsoft 365 session —
     // and forgets their Outlook sign-in: nothing writes to their calendar until
     // they sign in again.
-    if (req.user) await dropGraphToken(req.user.userId).catch((err) => console.error("[auth] couldn't drop the Outlook sign-in:", err));
+    // Viewing as someone, it's the person really signed in who leaves, not the one viewed.
+    if (req.user) await dropGraphToken(req.user.viewAs?.userId ?? req.user.userId).catch((err) => console.error("[auth] couldn't drop the Outlook sign-in:", err));
     res.clearCookie(AUTH_COOKIE, COOKIE_ATTRS);
     res.clearCookie(VIEW_AS_COOKIE, COOKIE_ATTRS);
     res.json({ ok: true });
@@ -242,7 +243,7 @@ authRouter.get(
       permissions: req.user!.permissions,
       allSites: req.user!.siteIds === null,
       // A Super Admin seeing the site as this person: who they are (the bar along the top).
-      viewAs: req.user!.viewAs ? { id: req.user!.viewAs.userId, name: req.user!.viewAs.name } : null,
+      viewAs: req.user!.viewAs ? { id: req.user!.viewAs.userId, name: req.user!.viewAs.name, act: req.user!.viewAs.act } : null,
       canViewAs: canViewAs(req.user!) || Boolean(req.user!.viewAs),
     });
   })
@@ -281,20 +282,47 @@ authRouter.get(
   })
 );
 
-/** Start (or switch) seeing the site as someone. Changes stay off until they stop (auth/middleware.ts viewAsReadOnly). */
+/**
+ * Start (or switch) seeing the site as someone: read only, or with `act`, acting as them, so changes go
+ * through in their name (auth/middleware.ts viewAsLimits). Either way the audit log names who really did it.
+ */
 authRouter.post(
   "/view-as",
   requireAuth,
   asyncHandler(async (req, res) => {
     const me = viewerOf(req);
-    const { userId } = z.object({ userId: z.string().min(1) }).parse(req.body);
+    const { userId, act } = z.object({ userId: z.string().min(1), act: z.boolean().optional() }).parse(req.body);
     if (userId === me.userId) throw badRequest("That's you.");
     const target = await currentUserById(userId);
     if (!target) throw notFound("That person isn't active on the site.");
     const refused = mayViewAs(me, target);
     if (refused) throw forbidden(refused);
-    res.cookie(VIEW_AS_COOKIE, signViewAs({ by: me.userId, as: target.userId }), { ...COOKIE_ATTRS, maxAge: VIEW_AS_TTL_MS });
-    await audit({ actor: { id: me.userId, name: me.name, ...fromRequest(req) }, action: "user.view_as", summary: `${me.name} viewed the site as ${target.name} (${target.email})` });
+    res.cookie(VIEW_AS_COOKIE, signViewAs({ by: me.userId, as: target.userId, act: act === true }), { ...COOKIE_ATTRS, maxAge: VIEW_AS_TTL_MS });
+    await audit({
+      actor: { id: me.userId, name: me.name, ...fromRequest(req) },
+      action: act ? "user.act_as" : "user.view_as",
+      summary: `${me.name} ${act ? "acted" : "viewed the site"} as ${target.name} (${target.email})`,
+    });
+    res.json({ ok: true });
+  })
+);
+
+/** Viewing as someone already: switch between read only and acting as them. */
+authRouter.patch(
+  "/view-as",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const by = req.user!.viewAs;
+    if (!by) throw badRequest("You aren't viewing the site as anyone.");
+    const { act } = z.object({ act: z.boolean() }).parse(req.body);
+    if (act !== by.act) {
+      res.cookie(VIEW_AS_COOKIE, signViewAs({ by: by.userId, as: req.user!.userId, act }), { ...COOKIE_ATTRS, maxAge: VIEW_AS_TTL_MS });
+      await audit({
+        actor: { id: by.userId, name: by.name, ...fromRequest(req) },
+        action: act ? "user.act_as" : "user.view_as",
+        summary: act ? `${by.name} started acting as ${req.user!.name} (${req.user!.email})` : `${by.name} stopped acting as ${req.user!.name}, back to viewing only`,
+      });
+    }
     res.json({ ok: true });
   })
 );
