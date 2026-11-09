@@ -9,7 +9,7 @@ import { CodeBlockFrame } from "./CodeBlockFrame";
 import { LocatedSiteSelect } from "./LocatedSiteSelect";
 import { useSites, useTenants } from "@/lib/queries";
 import { FillShareContext, fillApi } from "@/lib/builder";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { isLocalFile, saveLocalFile } from "@/lib/fillQueue";
 import { isOnline } from "@/lib/offline";
 import { cn, errorMessage } from "@/lib/utils";
@@ -360,6 +360,10 @@ function FieldControl(props: FieldProps & { inputId: string }) {
   const { field: f, value, onChange, disabled, inputId } = props;
   const text = typeof value === "string" || typeof value === "number" ? String(value) : "";
   const invalid = props.error ? "border-status-redDot" : "";
+  // Offers every job title in the system as they type; a new one can still be typed.
+  if (f.type === "text" && f.suggest === "job_titles") {
+    return <SuggestInput id={inputId} value={text} placeholder={f.placeholder ?? "Start typing a job title"} maxLength={f.maxLength} disabled={disabled} invalid={invalid} onChange={onChange} />;
+  }
   // A fixed domain ("@lanterncommunity.org"): people type the name, the whole address is kept.
   if (f.type === "email" && f.suffix?.startsWith("@")) {
     const domain = f.suffix;
@@ -952,4 +956,111 @@ function AnswerValue({ field: f, value, slug }: { field: Field; value: unknown; 
     );
   }
   return <>{formatValue(f, value)}</>;
+}
+
+/** Job titles in the system, fetched once per page (signed-in people only; nothing is offered otherwise). */
+let titlesPromise: Promise<string[]> | null = null;
+function loadJobTitles(): Promise<string[]> {
+  titlesPromise ??= api.get<{ titles: string[] }>("/home/job-titles").then((r) => r.titles).catch(() => {
+    titlesPromise = null;
+    return [];
+  });
+  return titlesPromise;
+}
+
+/**
+ * A text box that offers the system's job titles as people type: pick one from
+ * the list (click, or arrows and Enter), or keep what they typed, which is
+ * kept as written even when it's not on the list.
+ */
+function SuggestInput({ id, value, placeholder, maxLength, disabled, invalid, onChange }: { id: string; value: string; placeholder?: string; maxLength?: number; disabled?: boolean; invalid: string; onChange: (v: string) => void }) {
+  const [titles, setTitles] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  useEffect(() => {
+    let live = true;
+    void loadJobTitles().then((t) => live && setTitles(t));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const q = value.trim().toLowerCase();
+  // Titles that start with what's typed come first, then ones that contain it.
+  const matches = useMemo(() => {
+    if (!q) return titles.slice(0, 50);
+    const starts = titles.filter((t) => t.toLowerCase().startsWith(q));
+    const has = titles.filter((t) => !t.toLowerCase().startsWith(q) && t.toLowerCase().includes(q));
+    return [...starts, ...has].slice(0, 50);
+  }, [titles, q]);
+  const exact = titles.some((t) => t.toLowerCase() === q);
+  const pick = (t: string) => {
+    onChange(t);
+    setOpen(false);
+    setActive(-1);
+  };
+  const listId = `${id}-titles`;
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        role="combobox"
+        aria-expanded={open && matches.length > 0}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        value={value}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        autoComplete="off"
+        disabled={disabled}
+        onFocus={() => setOpen(true)}
+        // After a pick's mousedown, so a click on the list lands first.
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+          setActive(-1);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setActive((a) => Math.min(a + 1, matches.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActive((a) => Math.max(a - 1, -1));
+          } else if (e.key === "Enter" && open && active >= 0 && matches[active]) {
+            e.preventDefault();
+            pick(matches[active]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        className={cn("min-h-[44px] md:min-h-9", invalid)}
+      />
+      {open && !disabled && (matches.length > 0 || q) && (
+        <ul id={listId} role="listbox" className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-input border border-hairline bg-surface py-1 shadow-lg">
+          {matches.map((t, i) => (
+            <li
+              key={t}
+              role="option"
+              aria-selected={i === active}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(t);
+              }}
+              onMouseEnter={() => setActive(i)}
+              className={cn("cursor-pointer px-3 py-2 text-[14px] text-ink", i === active && "bg-navsel", t === value && "font-semibold")}
+            >
+              {t}
+            </li>
+          ))}
+          {q && !exact && (
+            <li role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); pick(value.trim()); }} className="cursor-pointer border-t border-hairline px-3 py-2 text-[13px] text-muted">
+              Use “{value.trim()}” (new job title)
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
 }

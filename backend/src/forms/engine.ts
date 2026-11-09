@@ -109,6 +109,8 @@ export interface Field {
   choices?: Choice[];
   /** radio / checkbox: add an "Other" option with a text box. */
   allowOther?: boolean;
+  /** A text box that offers a list as people type, and still takes anything else: "job_titles" (every job title in the system). */
+  suggest?: "job_titles";
   /** radio / checkbox: lay choices out in columns. */
   columns?: 1 | 2 | 3;
   /** checkbox / multiselect: at most this many picked. */
@@ -408,7 +410,7 @@ export interface FieldTypeInfo {
 export const EMAIL_FIELD_TYPES: FieldType[] = ["text", "number", "date", "time", "select", "radio", "checkbox", "multiselect", "consent", "rating", "slider", "calculation", "site"];
 
 export const FIELD_TYPES: FieldTypeInfo[] = [
-  { type: "text", label: "Single line", group: "Standard", input: true, value: "string", description: "One line of text. minLength, maxLength, pattern." },
+  { type: "text", label: "Single line", group: "Standard", input: true, value: "string", description: "One line of text. minLength, maxLength, pattern. suggest \"job_titles\": offers every job title in the system as they type; a new one can still be typed." },
   { type: "textarea", label: "Paragraph", group: "Standard", input: true, value: "string", description: "Several lines of text. rows, maxLength." },
   { type: "number", label: "Number", group: "Standard", input: true, value: "number", description: "A number. min, max, step, prefix, suffix." },
   { type: "email", label: "Email", group: "Standard", input: true, value: "string", description: "An email address, checked for shape. suffix \"@domain\" (e.g. \"@lanterncommunity.org\"): people type the name, the whole address is kept." },

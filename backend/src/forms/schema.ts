@@ -63,6 +63,8 @@ const baseField = z.object({
   maxDate: z.string().max(20).optional(),
   choices: z.array(choice).max(2000).optional(),
   allowOther: z.boolean().optional(),
+  /** A text box that offers a list as people type: "job_titles". */
+  suggest: z.enum(["job_titles"]).optional(),
   columns: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   maxSelections: z.number().int().min(1).optional(),
   statements: z.array(choice).max(200).optional(),
