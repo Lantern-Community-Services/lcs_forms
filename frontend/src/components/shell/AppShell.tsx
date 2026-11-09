@@ -49,8 +49,8 @@ export function AppShell() {
   const qc = useQueryClient();
   const { user } = useAuth();
   useEffect(() => {
-    // Viewing as someone, nothing of theirs uploads: the server would refuse it anyway.
-    const uploader = user?.viewAs ? null : user?.id ?? null;
+    // Only viewing as someone, nothing of theirs uploads: the server would refuse it anyway.
+    const uploader = user?.viewAs && !user.viewAs.act ? null : user?.id ?? null;
     startAppQueue(uploader);
     startFillQueue(uploader);
     // The roster kept on this device, and its changes pulled from the server.
@@ -60,7 +60,7 @@ export function AppShell() {
       startFillQueue(null);
       startRosterSync(qc, null);
     };
-  }, [qc, user?.id]);
+  }, [qc, user?.id, user?.viewAs?.act]);
 
   // Offline mode (lib/offline.ts). While there's a connection, a copy of the
   // whole site is built up in the background (lib/snapshot.ts). When the

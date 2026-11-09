@@ -847,8 +847,9 @@ const GUEST_BLOCKED = new Set([
 ]);
 
 /**
- * What server code may not do while someone views the site as another person (ctx.user is that person):
- * anything that changes something or tells someone. Reads still run, so the pages look as they would for them.
+ * What server code may not do while someone views the site as another person (ctx.user is that person),
+ * read only: anything that changes something or tells someone. Reads still run, so the pages look as they
+ * would for them. Acting as them, it all runs.
  */
 const VIEW_AS_BLOCKED = new Set([
   "collections.put", "collections.remove", "roster.logActivity", "email.send", "notify.send", "notify.route", "calendar.create",
@@ -894,8 +895,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
 
   return async (name: string, args: any): Promise<unknown> => {
     if (user?.guest && GUEST_BLOCKED.has(name)) throw new Error(`${name} isn't open to someone filling the form in through a share link (ctx.user.guest).`);
-    if (user?.viewAs && VIEW_AS_BLOCKED.has(name)) {
-      throw Object.assign(new Error(`You're viewing the site as ${user.name}, so nothing can be changed. Stop viewing as them to make changes.`), { userError: true });
+    if (user?.viewAs && !user.viewAs.act && VIEW_AS_BLOCKED.has(name)) {
+      throw Object.assign(new Error(`You're viewing the site as ${user.name}, so nothing can be changed. Turn on "Act as them" in the bar along the top, or stop viewing as them.`), { userError: true });
     }
     switch (name) {
       case "entries.find":

@@ -70,19 +70,22 @@ export function verifyOnboarding(token: string | undefined): OnboardingPass | nu
 }
 
 /**
- * A Super Admin seeing the site as someone else (routes/auth.ts /view-as). It
- * rides beside the session cookie and names both people, so it does nothing
- * for anyone but the Super Admin who started it, and nothing once they're no
- * longer one (auth/middleware.ts checks again on every request).
+ * Someone with View as seeing the site as another person (routes/auth.ts
+ * /view-as), read only or, with `act`, acting as them. It rides beside the
+ * session cookie and names both people, so it does nothing for anyone but who
+ * started it, and nothing once they can't any more (auth/middleware.ts checks
+ * again on every request).
  */
 export const VIEW_AS_COOKIE = "lantern_view_as";
 export const VIEW_AS_TTL_MS = 8 * 60 * 60 * 1000;
 
 export interface ViewAsPass {
-  /** The Super Admin. */
+  /** Who's really signed in. */
   by: string;
   /** Who they're seeing the site as. */
   as: string;
+  /** Acting as them: changes go through in their name (IT support). Otherwise read only. */
+  act?: boolean;
 }
 
 export function signViewAs(pass: ViewAsPass): string {
@@ -93,7 +96,7 @@ export function verifyViewAs(token: string | undefined): ViewAsPass | null {
   if (!token) return null;
   try {
     const p = jwt.verify(token, env.jwtSecret) as Partial<ViewAsPass> & { purpose?: string };
-    return p.purpose === "view_as" && p.by && p.as ? { by: p.by, as: p.as } : null;
+    return p.purpose === "view_as" && p.by && p.as ? { by: p.by, as: p.as, act: p.act === true } : null;
   } catch {
     return null;
   }
