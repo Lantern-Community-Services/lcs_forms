@@ -224,9 +224,10 @@ async function nameOf(userId: string | null | undefined) {
 export function routeEmail(
   form: BuiltForm,
   route: { urgent?: boolean; whatToDo?: string | null; heading?: string | null; buttonLabel?: string | null },
-  p: { subject: string; to: string; intro: string; url: string; fields: { label: string; value: string }[] }
+  p: { subject: string; to: string; intro: string; url: string; fields: { label: string; value: string }[]; trusted?: boolean }
 ) {
-  const withAnswers = isInternalAddress(p.to) && p.fields.length > 0;
+  // A Lantern address, or an outside one the route trusts with them (details: true).
+  const withAnswers = (isInternalAddress(p.to) || Boolean(p.trusted)) && p.fields.length > 0;
   return {
     withAnswers,
     html: brandedEmail({
@@ -401,6 +402,8 @@ export interface RoutePlan {
   people: { id: string; name: string; email: string }[];
   /** Addresses with no account here: a link-only email. */
   emails: string[];
+  /** Of those, the outside addresses the route trusts with its chosen answers (a person recipient's details: true). */
+  trusted?: string[];
   /** Why someone on the route wasn't reached (no site, no address given…). */
   notes: string[];
 }
@@ -444,11 +447,14 @@ export async function planRoutes(form: BuiltForm, routes: Route[], input: RouteI
 
     const plan: RoutePlan = { routeId: r.id, routeName: r.name, people: [], emails: [], notes: [] };
     const named: string[] = [];
+    // Outside addresses this route sends its chosen answers to.
+    const trusted = new Set<string>();
     const roleGroups: { roles?: string[]; groups?: string[]; titles?: string[]; sites?: string[] }[] = [];
     for (const t of r.to as Recipient[]) {
       if (t.kind === "person") {
         if (t.sites?.length && !(input.site && t.sites.includes(input.site.code))) continue;
         named.push(t.email);
+        if (t.details) trusted.add(t.email.toLowerCase());
       } else if (t.kind === "field") {
         const found = addressesIn(input.people?.[t.field] ?? input.data?.[t.field]);
         if (!found.length) plan.notes.push(`Nobody in “${t.field}”.`);
@@ -489,6 +495,10 @@ export async function planRoutes(form: BuiltForm, routes: Route[], input: RouteI
           plan.emails.push(u.toLowerCase());
         }
       }
+    }
+    if (trusted.size) {
+      const kept = plan.emails.filter((e) => trusted.has(e));
+      if (kept.length) plan.trusted = kept;
     }
     for (const g of roleGroups) for (const p of (await resolveAudience(g)).people) found.set(p.id, p);
     const fresh = [...found.values()].filter((p) => !told.has(p.id) && !told.has(p.email.toLowerCase()));
@@ -603,7 +613,7 @@ export async function routeEvent(
       else {
         for (const to of plan.emails) {
           // One email each, so nobody sees who else is on the list; answers only for a Lantern address.
-          const mail = routeEmail(form, { whatToDo: w.whatToDo, urgent: w.urgent, heading: w.heading, buttonLabel: w.buttonLabel }, { subject, to, intro: w.intro, url: `${appBaseUrl}${link}`, fields });
+          const mail = routeEmail(form, { whatToDo: w.whatToDo, urgent: w.urgent, heading: w.heading, buttonLabel: w.buttonLabel }, { subject, to, intro: w.intro, url: `${appBaseUrl}${link}`, fields, trusted: plan.trusted?.includes(to) });
           void sendLogged({ to: [to], subject: w.urgent ? `Urgent: ${subject}` : subject, html: mail.html, kind: "route", formId: form.id, withAnswers: mail.withAnswers }).catch((err) =>
             audit({ actor: opts.actor, action: "forms.routing_email_failed", summary: `“${form.title}” couldn't email ${to}: ${subject} (${err instanceof Error ? err.message : err})` }).catch(() => undefined)
           );
