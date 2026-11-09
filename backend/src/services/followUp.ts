@@ -267,6 +267,12 @@ export function checklistFor(s: Pick<FollowUpSettings, "checklist">, entry: Pick
   return out;
 }
 
+/** How many of an entry's checklist items are ticked, of how many; nothing when it has no checklist. */
+export function checklistCount(s: Pick<FollowUpSettings, "checklist">, entry: Pick<FormEntry, "data" | "followUpChecks">): { checked?: number; checkTotal?: number } {
+  const c = checklistFor(s, entry);
+  return c.length ? { checked: c.filter((x) => x.done).length, checkTotal: c.length } : {};
+}
+
 const tickedText = (c: CheckState) => (c.done ? `Done by ${c.done.byName}, ${stampOf(c.done.at)}` : "Not done");
 /** A time as people at Lantern read it. */
 function stampOf(iso: string) {

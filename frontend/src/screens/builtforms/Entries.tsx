@@ -14,7 +14,7 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
-import { fillApi, useEntries } from "@/lib/builder";
+import { fillApi, useEntries, type EntryRow } from "@/lib/builder";
 import { formatValue, isInputField, type Field } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 
@@ -408,7 +408,7 @@ export function BuiltFormEntriesPage() {
                       })}
                       <td className="whitespace-nowrap px-3 py-2.5 text-right text-muted">
                         {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
-                        {e.followUp && <span className="ml-2"><ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{e.followUp.status === "open" ? "Open" : "Done"}</ToneBadge></span>}
+                        {e.followUp && <span className="ml-2"><ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge></span>}
                         {(e.noteCount ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 text-micro"><MessageSquare className="h-3.5 w-3.5" />{e.noteCount}</span>}
                       </td>
                     </tr>
@@ -430,7 +430,7 @@ export function BuiltFormEntriesPage() {
                       {e.starred && <Star className="h-3.5 w-3.5 fill-[#f5a524] text-[#f5a524]" />}
                       <span className="flex-1 truncate text-[14px] font-semibold text-ink">{columns[0] ? formatValue(columns[0], e.values[columns[0].id]) || "—" : e.createdByName}</span>
                       {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
-                      {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{e.followUp.status === "open" ? "Open" : "Done"}</ToneBadge>}
+                      {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge>}
                     </div>
                     <p className="mt-0.5 text-micro text-muted">{formatDateTime(e.createdAt)} · {e.createdByName}{e.site ? ` · ${e.site.name}` : ""}</p>
                     {doneColumns.some((c) => e.followUp?.values?.some((x) => x.id === c.id && x.value)) && (
@@ -464,4 +464,10 @@ function sortLabel(key: string, columns: Field[]) {
   if (key === "site") return "Site";
   const c = columns.find((x) => `field:${x.id}` === key);
   return c ? c.label || c.id : "Column";
+}
+
+/** An entry's follow-up badge: Open or Done, with how far its checklist has got ("Open · 2 of 4"). */
+function followUpText(f: NonNullable<EntryRow["followUp"]>) {
+  const word = f.status === "open" ? "Open" : "Done";
+  return f.checkTotal && f.status === "open" ? `${word} · ${f.checked ?? 0} of ${f.checkTotal}` : word;
 }

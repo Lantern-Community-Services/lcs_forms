@@ -11,7 +11,7 @@ import { mailConfigured, sendLogged } from "../services/mailer.js";
 import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
-import { canFollowUp, checklistFor, loadFollowUp, openFollowUp, parseDoneValues } from "../services/followUp.js";
+import { canFollowUp, checklistCount, checklistFor, loadFollowUp, openFollowUp, parseDoneValues, type FollowUpSettings } from "../services/followUp.js";
 import { movedRuleCheck } from "../services/ruleConversion.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
@@ -600,7 +600,7 @@ function nyDayStart(day: string): Date {
   return new Date(Date.parse(`${day}T00:00:00Z`) + (utc.getTime() - ny.getTime()));
 }
 
-export function entryRow(e: FormEntry & { site?: { name: string; code: string } | null; _count?: { notes: number } }) {
+export function entryRow(e: FormEntry & { site?: { name: string; code: string } | null; _count?: { notes: number } }, follow?: FollowUpSettings) {
   return {
     id: e.id,
     formVersion: e.formVersion,
@@ -620,7 +620,18 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     voidedAt: e.voidedAt,
     voidedByName: e.voidedByName,
     voidReason: e.voidReason,
-    followUp: e.followUp ? { status: e.followUp, doneAt: e.followUpDoneAt, doneByName: e.followUpDoneByName, note: e.followUpNote, reminders: e.followUpReminders, values: parseDoneValues(e.followUpValues) } : null,
+    followUp: e.followUp
+      ? {
+          status: e.followUp,
+          doneAt: e.followUpDoneAt,
+          doneByName: e.followUpDoneByName,
+          note: e.followUpNote,
+          reminders: e.followUpReminders,
+          values: parseDoneValues(e.followUpValues),
+          // How far its checklist has got, when the form has one: "2 of 4 done" in the entries list.
+          ...(follow ? checklistCount(follow, e) : {}),
+        }
+      : null,
     noteCount: e._count?.notes,
   };
 }

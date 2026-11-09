@@ -122,6 +122,9 @@ export interface EntryRow {
     reminders: number;
     /** What was filled in when it was marked done. A password is never kept: emailed: true. */
     values?: FollowUpValue[];
+    /** Its checklist so far, when the form has one (entries list only). */
+    checked?: number;
+    checkTotal?: number;
   } | null;
   noteCount?: number;
 }
