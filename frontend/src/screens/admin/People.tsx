@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, RotateCcw, Search, UserPlus } from "lucide-react";
+import { ClipboardList, Eye, RotateCcw, Search, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/auth";
 import { useRoles, useSites, useUsers } from "@/lib/queries";
 import { GROUPS_KEY, groupsApi, personFormsKey, useStaffGroups } from "@/lib/groups";
 import { PersonForms } from "./GroupForms";
+import { startViewAs } from "@/components/shell/ViewAs";
 import { errorMessage, relativeTime } from "@/lib/utils";
 import { useSearchParam } from "@/lib/useSearchParam";
 import type { ManagedUser, UserStatus } from "@/lib/types";
@@ -98,6 +99,8 @@ type Draft = {
    * (SUPER_ADMINS), and the API refuses any change to one.
    */
   superAdmin: boolean;
+  /** An Admin a Super Admin has let view the site as others. Only a Super Admin changes it. */
+  viewAsEnabled: boolean;
   /** The editor is looking at their own account: role and status are someone else's call. */
   isSelf: boolean;
 };
@@ -184,7 +187,9 @@ export function AdminPeople() {
       const calendar = everyone ? { calendarEditor: draft.calendarEditor } : {};
       // The roster switch goes only when this editor may change the person.
       const roster = draft.canEditRole && !draft.isSelf ? { rosterEditor: draft.rosterEditor } : {};
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar, ...roster });
+      // View as: a Super Admin's to give an Admin. Leaving Admin drops it on the server.
+      const viewAs = managesAdmins && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" ? { viewAsEnabled: draft.viewAsEnabled } : {};
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar, ...roster, ...viewAs });
       else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar });
       toast(draft.id ? "Saved." : `Added ${draft.email.trim()}. Their name and title fill in when they first sign in.`);
       // A new account lands in Pending; show it there.
@@ -221,6 +226,7 @@ export function AdminPeople() {
       canEditRole: u.canEditRole && (u.roleKey !== "admin" || managesAdmins),
       calendarEditor: Boolean(u.calendarEditor),
       rosterEditor: Boolean(u.rosterEditor),
+      viewAsEnabled: Boolean(u.viewAsEnabled),
       canDelete: u.canDelete,
       superAdmin: Boolean(u.globalAdmin),
       isSelf: u.id === me?.id,
@@ -243,7 +249,7 @@ export function AdminPeople() {
           ? "Add someone by work email ahead of time and they sign straight in. Anyone else who signs in can request access; let them in from Requests, with their role and sites."
           : "People at your sites. New people are let in by an Admin; you can change what the people at your sites can do."}
         actions={
-          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, rosterEditor: false, canDelete: false, superAdmin: false, isSelf: false })}>
+          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, rosterEditor: false, viewAsEnabled: false, canDelete: false, superAdmin: false, isSelf: false })}>
             <UserPlus className="h-4 w-4" /> Add person
           </Button>
         }
@@ -292,6 +298,7 @@ export function AdminPeople() {
                     </span>
                     {u.calendarEditor && u.roleKey !== "admin" && <Tag tone="accent" title="Can edit the calendar">Calendar</Tag>}
                     {u.rosterEditor && !MANAGES_ROSTER.includes(u.roleKey) && <Tag tone="accent" title="Can manage the roster">Roster</Tag>}
+                    {u.viewAsEnabled && u.roleKey === "admin" && !u.globalAdmin && <Tag tone="accent" title="Can view the site as others">View as</Tag>}
                     <span className="hidden text-[13px] text-ink sm:block">{u.role.name}</span>
                     {/* Only Deactivated mixes statuses (denied and deactivated); the other tabs say it already. */}
                     {tab === "deactivated" && <ToneBadge tone={STATUS_TONE[u.status]}>{STATUS_LABEL[u.status]}</ToneBadge>}
@@ -383,6 +390,17 @@ export function AdminPeople() {
                   <Switch checked={draft.rosterEditor} disabled={locked} onCheckedChange={(rosterEditor) => setDraft({ ...draft, rosterEditor })} className="mt-0.5" />
                 </label>
               )}
+              {managesAdmins && draft.id && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" && (
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
+                  <span>
+                    <span className="block text-[13.5px] font-semibold text-ink">Can view the site as others</span>
+                    <span className="block text-micro text-muted">
+                      See every screen as anyone who isn't an Admin sees it, to check what they get. Nothing can be changed while they do. Super Admins can always.
+                    </span>
+                  </span>
+                  <Switch checked={draft.viewAsEnabled} onCheckedChange={(viewAsEnabled) => setDraft({ ...draft, viewAsEnabled })} className="mt-0.5" />
+                </label>
+              )}
               {draft.superAdmin ? null : role?.allSites ? (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{role.name} sees every site.</p>
               ) : (
@@ -422,6 +440,12 @@ export function AdminPeople() {
               <Link to={`/admin/people/${draft.id}/records`} className="mr-auto">
                 <Button variant="secondary"><ClipboardList className="h-4 w-4" /> Records</Button>
               </Link>
+            )}
+            {draft?.id && me?.canViewAs && draft.status === "active" && !draft.superAdmin && !draft.isSelf &&
+              (draft.roleKey !== "admin" || (managesAdmins && !draft.viewAsEnabled)) && (
+              <Button variant="secondary" className={can("people.records") ? undefined : "mr-auto"} onClick={() => void startViewAs(draft.id!).catch((e) => toast(errorMessage(e, "Couldn't view the site as them."), "error"))}>
+                <Eye className="h-4 w-4" /> View as
+              </Button>
             )}
             {draft?.superAdmin ? (
               <Button variant="secondary" onClick={() => setDraft(null)}>Close</Button>

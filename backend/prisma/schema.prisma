@@ -718,6 +718,9 @@ model User {
   /// roleKey "admin". Set only from the SUPER_ADMINS setting, at start-up and at
   /// sign-in (services/superAdmins.ts); the app and the API never change it.
   globalAdmin               Boolean                @default(false)
+  /// An Admin who may view the site as someone else (View as, users.viewAs).
+  /// Only a Super Admin turns it on, and only for an Admin; Super Admins can always.
+  viewAsEnabled             Boolean                @default(false)
   /// Outlook invites: every-site events too. Set in the calendar's "Add to my
   /// Outlook" popup, along with the sites in CalendarFollow.
   calendarSyncEverySite     Boolean                @default(false)

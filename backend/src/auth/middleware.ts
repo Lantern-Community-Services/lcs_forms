@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { AUTH_COOKIE, verifySession, type SessionPayload } from "./auth.js";
+import { AUTH_COOKIE, VIEW_AS_COOKIE, verifySession, verifyViewAs, type SessionPayload } from "./auth.js";
 import { prisma } from "../prisma.js";
 import { forbidden, unauthorized } from "../http.js";
 import { permissionsFor, roleFor, roleNameFor, type PermissionKey } from "../services/permissions.js";
@@ -31,6 +31,13 @@ export interface CurrentUser extends SessionPayload {
   guest?: boolean;
   /** With guest: whose share link it is. */
   sharedBy?: { id: string; name: string };
+  /**
+   * Set when someone with View as (a Super Admin, or an Admin they've let) is
+   * seeing the site as this person: who's really behind the request. Everything else on the object is the
+   * person being viewed, so every screen and check answers as it would for
+   * them. Changes are refused meanwhile (viewAsReadOnly below).
+   */
+  viewAs?: { userId: string; name: string; email: string; permissions: PermissionKey[] };
 }
 
 declare global {
@@ -61,7 +68,7 @@ export async function currentUserById(id: string): Promise<CurrentUser | null> {
   const user = await prisma.user.findUnique({
     where: { id },
     select: {
-      id: true, name: true, email: true, status: true, roleKey: true, title: true, calendarEditor: true, rosterEditor: true, globalAdmin: true,
+      id: true, name: true, email: true, status: true, roleKey: true, title: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, viewAsEnabled: true,
       sites: { where: { approved: true }, select: { siteId: true } },
       groupOverrides: { select: { groupId: true, include: true } },
     },
@@ -105,11 +112,58 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
     if (!payload) return next();
 
     const user = await currentUserById(payload.userId);
-    if (user) req.user = user;
+    if (user) req.user = (await viewingAs(req, user)) ?? user;
     next();
   } catch (err) {
     next(err);
   }
+}
+
+/** Can this person see the site as someone else? Super Admins, and Admins one has let (users.viewAs). */
+export const canViewAs = (user: { permissions: PermissionKey[] }) => user.permissions.includes("users.viewAs");
+
+/**
+ * Whom: never someone who can view as others themselves (another Super Admin or
+ * an Admin with View as), and an Admin only for a Super Admin.
+ */
+export function mayViewAs(viewer: { permissions: PermissionKey[] }, target: CurrentUser): string | null {
+  if (canViewAs(target)) return "You can't view the site as someone who can view as others.";
+  if (target.roleKey === "admin" && !viewer.permissions.includes("admins.manage")) return "Only a Super Admin can view the site as an Admin.";
+  return null;
+}
+
+/**
+ * The person being viewed as, from the View as cookie, or null. The cookie must
+ * have been made for whoever is signed in, who must still have View as; the
+ * person must be active and someone they may view as (mayViewAs).
+ */
+async function viewingAs(req: Request, real: CurrentUser): Promise<CurrentUser | null> {
+  const pass = verifyViewAs(req.cookies?.[VIEW_AS_COOKIE]);
+  if (!pass || pass.by !== real.userId || pass.as === real.userId || !canViewAs(real)) return null;
+  const target = await currentUserById(pass.as);
+  if (!target || mayViewAs(real, target)) return null;
+  return { ...target, viewAs: { userId: real.userId, name: real.name, email: real.email, permissions: real.permissions } };
+}
+
+/**
+ * While someone views the site as another person, nothing is changed in their
+ * name: only reads get through. The exceptions read too, or change nothing of
+ * the person's: leaving View as and signing out; a code form's server actions,
+ * whose writes the runtime refuses itself (apps/runtime.ts hostFor), since
+ * pages load their data through them; exports and previews.
+ */
+const VIEW_AS_OPEN: RegExp[] = [
+  /^\/api\/auth\/(view-as|logout)(\/|$)/,
+  /^\/api\/apps\/[^/]+\/(actions\/[^/]+|export)$/,
+  /^\/api\/f\/[^/]+\/entries-export$/,
+  /\/(preview|email-preview|reports\/preview)$/,
+];
+
+export function viewAsReadOnly(req: Request, _res: Response, next: NextFunction) {
+  const who = req.user?.viewAs && req.user;
+  if (!who || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  if (VIEW_AS_OPEN.some((r) => r.test(req.path))) return next();
+  next(forbidden(`You're viewing the site as ${who.name}, so nothing can be changed. Stop viewing as them to make changes.`));
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {

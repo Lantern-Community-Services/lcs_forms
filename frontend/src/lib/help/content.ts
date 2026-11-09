@@ -682,12 +682,13 @@ export const TASKS: HelpTask[] = [
   { label: "Choose who's told about a form's entries", to: "/admin/notifications", needs: ["forms.manage"], words: "notifications routing email alert who is told weekly report follow-up" },
   { label: "Put a form on the Forms screen", to: "/admin/forms", needs: ["forms.manage"], words: "catalog category card list show hide" },
   { label: "Turn off someone's share link", to: "/admin/external-forms", needs: ["forms.manage"], words: "share link revoke stop qr code external" },
+  { label: "See the site as someone else sees it", to: "/profile", needs: ["users.viewAs"], words: "view as impersonate preview debug see what they see role" },
   { label: "Add a site", to: "/admin/sites", needs: ["sites.manage"], words: "site building new location" },
   { label: "Make an API key (for Claude or another system)", to: "/admin/api-keys", needs: ["integrations.manage"], words: "api key mcp claude integration token" },
 ];
 
 /** What a Super Admin has on top of an Admin (permissionsFor on the server). */
-export const SUPER_ADMIN_EXTRA: PermissionKey[] = ["admins.manage", "people.records", "email.templates"];
+export const SUPER_ADMIN_EXTRA: PermissionKey[] = ["admins.manage", "people.records", "email.templates", "users.viewAs"];
 
 /** One part of the site, and what a role can see and change there. */
 export interface AccessRow {

@@ -215,8 +215,8 @@ const clean = (s: string, max: number) => s.replace(/[\r\n\t]+/g, " ").replace(/
 
 /** Active people the audience names, with what they need for delivery. */
 export async function resolveAudience(to: Audience) {
-  const select = { id: true, email: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, notifyEmailMode: true, sites: { where: { approved: true }, select: { siteId: true } } } as const;
-  type Person = { id: string; email: string; roleKey: string; calendarEditor: boolean; rosterEditor: boolean; globalAdmin: boolean; notifyEmailMode: string; sites: { siteId: string }[] };
+  const select = { id: true, email: true, roleKey: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, viewAsEnabled: true, notifyEmailMode: true, sites: { where: { approved: true }, select: { siteId: true } } } as const;
+  type Person = { id: string; email: string; roleKey: string; calendarEditor: boolean; rosterEditor: boolean; globalAdmin: boolean; viewAsEnabled: boolean; notifyEmailMode: string; sites: { siteId: string }[] };
   const found = new Map<string, Person>();
   const unknown: string[] = [];
 

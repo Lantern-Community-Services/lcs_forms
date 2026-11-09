@@ -203,6 +203,7 @@ usersRouter.patch(
         name: z.string().trim().min(1).max(120).optional(),
         calendarEditor: z.boolean().optional(),
         rosterEditor: z.boolean().optional(),
+        viewAsEnabled: z.boolean().optional(),
       })
       .parse(req.body);
     const found = await prisma.user.findUnique({ where: { id: req.params.id }, include: { sites: { select: { siteId: true, approved: true } } } });
@@ -224,6 +225,11 @@ usersRouter.patch(
     if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
     const rosterChange = body.rosterEditor !== undefined && body.rosterEditor !== before.rosterEditor;
     if (rosterChange && before.id === req.user!.userId) throw forbidden(ROSTER_SWITCH_NOT_YOURS);
+    // View as is a Super Admin's to hand out, to an Admin only (it never outlives their being one).
+    const viewAsChange = body.viewAsEnabled !== undefined && body.viewAsEnabled !== before.viewAsEnabled;
+    if (viewAsChange && !managesAdmins(req)) throw forbidden("Only a Super Admin can let someone view the site as others.");
+    if (viewAsChange && body.viewAsEnabled && (body.roleKey ?? before.roleKey) !== "admin") throw badRequest("Only an Admin can be let view the site as others.");
+    const dropsViewAs = before.viewAsEnabled && body.roleKey !== undefined && body.roleKey !== "admin";
 
     const mine = managedSiteIds(req);
     if (mine) {
@@ -268,6 +274,7 @@ usersRouter.patch(
           name: body.name,
           calendarEditor: calendarChange ? body.calendarEditor : undefined,
           rosterEditor: rosterChange ? body.rosterEditor : undefined,
+          viewAsEnabled: dropsViewAs ? false : viewAsChange ? body.viewAsEnabled : undefined,
         },
         include: SITES_INCLUDE,
       });
@@ -278,6 +285,7 @@ usersRouter.patch(
       body.siteIds ? `sites → ${body.siteIds.length || "none"}` : null,
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
       rosterChange ? `roster management ${body.rosterEditor ? "on" : "off"}` : null,
+      dropsViewAs ? "View as off (no longer an Admin)" : viewAsChange ? `View as ${body.viewAsEnabled ? "on" : "off"}` : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });
     // Tell them, if they can sign in: let in, or given a different role or sites.
