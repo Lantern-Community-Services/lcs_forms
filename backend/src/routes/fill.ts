@@ -7,11 +7,11 @@ import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
 import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
-import { canFollowUp, checklistFor, loadFollowUp, requireFollowUp, setFollowUp, setFollowUpItem } from "../services/followUp.js";
+import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp, setFollowUp, setFollowUpItem } from "../services/followUp.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
-  canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin,
+  canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
   entryScope, inOrder, liveDoc, NEWEST, saveUpload, sortedEntryIds, submitEntry, updateEntry, type EntryFilter, type EntrySort,
 } from "../forms/entries.js";
 
@@ -25,7 +25,7 @@ export const fillRouter = Router();
 async function liveForm(req: Request) {
   const form = await findForm(req.params.slug);
   // Admins may open a form that isn't live yet (to try it); nobody else can tell it exists.
-  const doc = liveDoc(form) ?? (isFormAdmin(req.user) ? readDoc(form.draftSchema) : null);
+  const doc = liveDoc(form) ?? (canTryDraft(req.user) ? readDoc(form.draftSchema) : null);
   if (!doc || (form.status === "archived" && !isFormAdmin(req.user))) throw notFound("This form isn't available.");
   return { form, doc };
 }
@@ -125,7 +125,7 @@ fillRouter.post(
   express.raw({ type: () => true, limit: "11mb" }),
   asyncHandler(async (req, res) => {
     const form = await findForm(req.params.slug);
-    const doc = liveDoc(form) ?? (isFormAdmin(req.user) ? readDoc(form.draftSchema) : null);
+    const doc = liveDoc(form) ?? (canTryDraft(req.user) ? readDoc(form.draftSchema) : null);
     if (!doc) throw notFound("This form isn't available.");
     const share = await shareOf(form, req.query.share);
     const blocker = form.liveSchema ? fillBlocker(form, doc, req.user, Boolean(share)) : null;
@@ -265,7 +265,7 @@ fillRouter.get(
       // Whether this person can mark the entry's follow-up done (or reopen it).
       canFollowUp: await canFollowUp(form, req.user, entry),
       // What they fill in when they mark it done.
-      followUpFields: follow?.doneFields ?? [],
+      followUpFields: follow ? doneFieldsFor(follow, entry) : [],
       // The things to tick off one by one, as they stand on this entry.
       followUpChecklist: follow ? checklistFor(follow, entry) : [],
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
