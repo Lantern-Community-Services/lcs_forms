@@ -210,7 +210,7 @@ const ENTRY_META = {
   id: true, formId: true, formVersion: true, siteId: true, source: true, status: true, occurredAt: true, tenantId: true, overrideReason: true,
   clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, deviceKind: true, fillSeconds: true, voidedAt: true, voidedByName: true, voidReason: true,
   starred: true, updatedByName: true, createdAt: true, updatedAt: true,
-  followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpRemindedAt: true, followUpReminders: true,
+  followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpChecks: true, followUpRemindedAt: true, followUpReminders: true,
   shareLinkId: true, sharedById: true, sharedByName: true,
 } satisfies Prisma.FormEntrySelect;
 

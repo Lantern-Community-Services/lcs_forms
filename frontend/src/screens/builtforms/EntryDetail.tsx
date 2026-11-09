@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { AnswerList, FormRenderer } from "@/components/formkit/FormRenderer";
-import { fillApi, submitErrors, useEntry, type DoneField, type EntryDetail } from "@/lib/builder";
+import { fillApi, submitErrors, useEntry, type CheckState, type DoneField, type EntryDetail } from "@/lib/builder";
 import type { Errors, Values } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import { deviceLabel, fillTimeText } from "@/lib/fillMeta";
@@ -132,6 +132,8 @@ export function BuiltFormEntryPage() {
           entry={entry}
           canDo={data.canFollowUp}
           fields={data.followUpFields ?? []}
+          checklist={data.followUpChecklist ?? []}
+          onTick={(item, done) => act(() => fillApi.followUpItem(slug, id, item, done), done ? "Ticked off. They've been told." : "Unticked.")}
           onDone={(done, text, values) => act(() => fillApi.followUp(slug, id, done, text, values), done ? "Marked done. Whoever filed it has been told." : "Opened again.")}
         />
       )}
@@ -178,17 +180,30 @@ function FollowUpPanel({
   entry,
   canDo,
   fields,
+  checklist,
+  onTick,
   onDone,
 }: {
   entry: EntryDetail["entry"];
   canDo: boolean;
   fields: DoneField[];
+  checklist: CheckState[];
+  onTick: (item: string, done: boolean) => Promise<boolean>;
   onDone: (done: boolean, note?: string, values?: Record<string, string>) => Promise<boolean>;
 }) {
   const [text, setText] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const f = entry.followUp!;
+  const left = checklist.filter((c) => !c.done);
+  const tick = async (c: CheckState) => {
+    setBusy(true);
+    try {
+      await onTick(c.id, !c.done);
+    } finally {
+      setBusy(false);
+    }
+  };
   const missing = fields.filter((d) => d.required && !values[d.id]?.trim());
   const hasPassword = fields.some((d) => d.type === "password" && values[d.id]?.trim());
   const run = async (done: boolean) => {
@@ -210,7 +225,38 @@ function FollowUpPanel({
         {f.status === "open" ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
         <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up: {f.status === "open" ? "open" : "done"}</p>
         {f.status === "open" && f.reminders > 0 && <span className="text-micro text-muted">· {f.reminders} reminder{f.reminders === 1 ? "" : "s"} sent</span>}
+        {checklist.length > 0 && <span className="ml-auto text-[12.5px] font-semibold text-muted">{checklist.length - left.length} of {checklist.length} done</span>}
       </div>
+      {checklist.length > 0 && (
+        <ul className="mb-3 divide-y divide-hairline rounded-input border border-hairline">
+          {checklist.map((c) => {
+            const can = canDo && f.status === "open";
+            return (
+              <li key={c.id} className="flex items-start gap-3 px-3 py-2.5">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={Boolean(c.done)}
+                  aria-label={c.label}
+                  disabled={!can || busy}
+                  onClick={() => void tick(c)}
+                  className={cn("mt-0.5 shrink-0 rounded-full", can ? "cursor-pointer hover:opacity-80" : "cursor-default")}
+                >
+                  {c.done ? <CheckCircle2 className="h-5 w-5 text-status-greenText" /> : <Circle className="h-5 w-5 text-muted" />}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className={cn("text-[13.5px] text-ink", c.done && "text-muted line-through decoration-hairline")}>{c.label}</p>
+                  {c.done ? (
+                    <p className="text-micro text-muted">Done by {c.done.byName}, {formatDateTime(c.done.at)}</p>
+                  ) : (
+                    c.help && <p className="text-micro text-muted">{c.help}</p>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {f.status === "done" ? (
         <>
           <p className="text-[13.5px] text-ink">
@@ -237,7 +283,11 @@ function FollowUpPanel({
         </>
       ) : canDo ? (
         <>
-          <p className="mb-3 text-[13px] text-muted">When it's done, fill this in. {entry.createdByName} is told.</p>
+          <p className="mb-3 text-[13px] text-muted">
+            {checklist.length
+              ? `Tick each item off as it's done; ${entry.createdByName} is told. ${fields.some((d) => d.required || d.type === "password") ? "Then fill this in." : "Ticking the last one marks it done."}`
+              : `When it's done, fill this in. ${entry.createdByName} is told.`}
+          </p>
           {fields.length > 0 && (
             <div className="mb-3 grid gap-3 sm:grid-cols-2">
               {fields.map((d) => {
@@ -272,8 +322,12 @@ function FollowUpPanel({
             <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="e.g. Accounts created, laptop handed over at orientation." className="min-h-[64px]" />
           </Field>
           <div className="mt-2 flex items-center justify-end gap-3">
-            {missing.length > 0 && <span className="text-[12.5px] text-muted">Fill in {missing.map((d) => d.label).join(", ")}</span>}
-            <Button disabled={busy || missing.length > 0} onClick={() => void run(true)}>
+            {left.length > 0 ? (
+              <span className="text-[12.5px] text-muted">{left.length} item{left.length === 1 ? "" : "s"} still to tick off</span>
+            ) : (
+              missing.length > 0 && <span className="text-[12.5px] text-muted">Fill in {missing.map((d) => d.label).join(", ")}</span>
+            )}
+            <Button disabled={busy || missing.length > 0 || left.length > 0} onClick={() => void run(true)}>
               <CheckCircle2 className="h-4 w-4" /> {busy && hasPassword ? "Sending…" : "Mark as done"}
             </Button>
           </div>

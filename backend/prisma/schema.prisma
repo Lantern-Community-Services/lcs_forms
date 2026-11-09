@@ -604,6 +604,9 @@ model FormEntry {
   /// [{ id, label, value }]. A password field is emailed once and never kept:
   /// it's saved here as { value: null, emailed: true }.
   followUpValues     String?   @db.NVarChar(Max)
+  /// The follow-up checklist items ticked off so far, each on its own, as
+  /// [{ id, label, doneAt, doneByName }] (services/followUp.ts).
+  followUpChecks     String?   @db.NVarChar(Max)
   followUpRemindedAt DateTime?
   followUpReminders  Int       @default(0)
 
