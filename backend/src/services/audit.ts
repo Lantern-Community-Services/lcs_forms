@@ -27,8 +27,8 @@ export interface Actor {
 
 export function actorOf(req: Request): Actor {
   const from = fromRequest(req);
-  // Someone viewing the site as another person: it's the viewer who did it.
-  if (req.user?.viewAs) return { id: req.user.viewAs.userId, name: `${req.user.viewAs.name} (viewing as ${req.user.name})`, ...from };
+  // Someone viewing (or acting) as another person: it's them who did it.
+  if (req.user?.viewAs) return { id: req.user.viewAs.userId, name: `${req.user.viewAs.name} (${req.user.viewAs.act ? "acting" : "viewing"} as ${req.user.name})`, ...from };
   if (req.user) return { id: req.user.userId, name: req.user.name, ...from };
   if (req.apiKey) return { id: null, name: `API key: ${req.apiKey.name}`, ...from };
   return { id: null, name: "System", ...from };
