@@ -1126,7 +1126,7 @@ const doneId = (label: string, taken: string[]) => {
 const NEW_ACCOUNT: Pick<FollowUp, "doneFields" | "reply" | "tellSubmitter"> = {
   tellSubmitter: true,
   doneFields: [
-    { id: "username", label: "Username (email)", type: "email", required: true, help: "The new person's Lantern email address: it's kept on the entry." },
+    { id: "username", label: "Username (email)", type: "email", required: true, help: "The new person's Lantern email address: it's kept on the entry.", defaultValue: "{employee_name.first}.{employee_name.last}@lanterncommunity.org" },
     { id: "temp_password", label: "Temporary password", type: "password", required: false },
   ],
   reply: {
@@ -1360,6 +1360,7 @@ function DoneFieldsEditor({ fields, saved, onChange, onPreset }: { fields: DoneF
               <label className="flex items-center gap-1.5 text-[12.5px] text-ink">
                 <Switch checked={d.required} onCheckedChange={(v) => put(i, { required: v })} aria-label="Required" /> Required
               </label>
+              <Input value={d.defaultValue ?? ""} onChange={(e) => put(i, { defaultValue: e.target.value || undefined })} maxLength={300} placeholder="Starts as (optional)" aria-label="Starts as" className="basis-full" />
               <code className="text-[11.5px] text-muted">{`{${d.id}}`}</code>
               <Button variant="ghost" size="sm" aria-label="Remove" onClick={() => onChange(fields.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
             </li>

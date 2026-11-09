@@ -47,6 +47,12 @@ export const doneFieldSchema = z
     required: z.boolean().default(false),
     /** A line under the box. */
     help: z.string().trim().max(200).optional(),
+    /**
+     * What the box starts with, which they can change: {tags} from the entry's
+     * answers, a name's parts as {field.first} / {field.last}. HR's Onboarding:
+     * "{employee_name.first}.{employee_name.last}@lanterncommunity.org".
+     */
+    defaultValue: z.string().trim().max(300).optional(),
   })
   .strict();
 export type DoneField = z.infer<typeof doneFieldSchema>;
@@ -259,8 +265,7 @@ export function checklistFor(s: Pick<FollowUpSettings, "checklist">, entry: Pick
   const ticks = parseChecks(entry.followUpChecks);
   if (!s.checklist.length && !ticks.length) return [];
   const answers = JSON.parse(entry.data) as Record<string, unknown>;
-  const tags: Record<string, string> = {};
-  for (const [k, v] of Object.entries(answers)) tags[k] = answerText(v);
+  const tags = answerTags(answers);
   const out: CheckState[] = [];
   for (const c of s.checklist) {
     const tick = ticks.find((t) => t.id === c.id);
@@ -358,7 +363,35 @@ function answerText(v: unknown): string {
 
 /** Fill a reply's {tags}. Unknown tags are left out. */
 export function fillReply(template: string, tags: Record<string, string>) {
-  return template.replace(/\{([a-z][a-z0-9_]{0,39})\}/gi, (_, k: string) => tags[k] ?? tags[k.toLowerCase()] ?? "");
+  return template.replace(/\{([a-z][a-z0-9_]{0,39}(?:\.[a-z][a-z0-9_]{0,19})?)\}/gi, (_, k: string) => tags[k] ?? tags[k.toLowerCase()] ?? "");
+}
+
+/** An entry's answers as {tags}: each answer in words, and each part of one made of parts ({employee_name.first}). */
+export function answerTags(answers: Record<string, unknown>): Record<string, string> {
+  const tags: Record<string, string> = {};
+  for (const [k, v] of Object.entries(answers)) {
+    tags[k] = answerText(v);
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      for (const [part, pv] of Object.entries(v as Record<string, unknown>)) if (/^[a-z][a-z0-9_]{0,19}$/i.test(part)) tags[`${k}.${part}`] = answerText(pv);
+    }
+  }
+  return tags;
+}
+
+/**
+ * A follow-up's done fields for one entry, each with what it starts as
+ * (prefill), worked out from its defaultValue and the entry's answers. An
+ * email is made lower-case with no spaces ("Mary Ann" → maryann).
+ */
+export function doneFieldsFor(s: Pick<FollowUpSettings, "doneFields">, entry: Pick<FormEntry, "data">): (DoneField & { prefill?: string })[] {
+  if (!s.doneFields.some((f) => f.defaultValue)) return s.doneFields;
+  const tags = answerTags(JSON.parse(entry.data) as Record<string, unknown>);
+  return s.doneFields.map((f) => {
+    if (!f.defaultValue) return f;
+    let v = fillReply(f.defaultValue, tags).trim();
+    if (f.type === "email") v = v.toLowerCase().replace(/\s+/g, "").replace(/^\.+|\.(?=@)/g, "");
+    return v ? { ...f, prefill: v.slice(0, MAX_LEN[f.type]) } : f;
+  });
 }
 
 /**
@@ -408,7 +441,7 @@ export async function setFollowUp(
   const base: Record<string, string> = {};
   if (input.done) {
     const answers = JSON.parse(entry.data) as Record<string, unknown>;
-    for (const [k, v] of Object.entries(answers)) base[k] = answerText(v);
+    Object.assign(base, answerTags(answers));
     Object.assign(base, { done_by: actor.name, filed_by: entry.createdByName, form: form.title, site: site?.name ?? "", note: note ?? "" });
     for (const v of done.kept) if (v.value) base[v.id] = v.value;
   }

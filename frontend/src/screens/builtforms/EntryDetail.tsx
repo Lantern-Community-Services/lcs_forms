@@ -192,7 +192,9 @@ function FollowUpPanel({
   onDone: (done: boolean, note?: string, values?: Record<string, string>) => Promise<boolean>;
 }) {
   const [text, setText] = useState("");
-  const [values, setValues] = useState<Record<string, string>>({});
+  // Each box starts with what the follow-up fills in for this entry (Onboarding: first.last@lanterncommunity.org).
+  const starts = () => Object.fromEntries(fields.filter((d) => d.prefill).map((d) => [d.id, d.prefill!]));
+  const [values, setValues] = useState<Record<string, string>>(starts);
   const [busy, setBusy] = useState(false);
   const f = entry.followUp!;
   const left = checklist.filter((c) => !c.done);

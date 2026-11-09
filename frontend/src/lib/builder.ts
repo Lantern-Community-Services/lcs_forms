@@ -194,6 +194,10 @@ export interface DoneField {
   type: DoneFieldType;
   required: boolean;
   help?: string;
+  /** What the box starts with: {tags} from the entry's answers. */
+  defaultValue?: string;
+  /** That, filled in for this entry (entry page only). */
+  prefill?: string;
 }
 export interface FollowUpValue {
   id: string;
