@@ -46,6 +46,14 @@ export function isFormAdmin(user: Viewer) {
   return Boolean(user?.permissions.includes("forms.manage"));
 }
 
+/**
+ * May this request see a form that isn't live yet (its draft)? A form admin may, and so may one viewing the
+ * site as someone else (View as): the draft then opens as it would for that person, to try it out as them.
+ */
+export function canTryDraft(user: Viewer) {
+  return isFormAdmin(user) || Boolean(user?.viewAs?.permissions.includes("forms.manage"));
+}
+
 export function liveDoc(form: BuiltForm): FormDoc | null {
   return form.liveSchema ? readDoc(form.liveSchema) : null;
 }

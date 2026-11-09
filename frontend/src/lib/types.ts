@@ -72,7 +72,7 @@ export interface User {
    * signed in. Everything else here is the person being viewed. Nothing can be changed
    * meanwhile unless `act` (acting as them): then changes go through in their name.
    */
-  viewAs?: { id: string; name: string; act: boolean } | null;
+  viewAs?: { id: string; name: string; act: boolean; /** They build forms: the bar can open any form, drafts included. */ drafts: boolean } | null;
   /** /auth/me: whoever is really signed in may view the site as others (also true while they are). */
   canViewAs?: boolean;
 }

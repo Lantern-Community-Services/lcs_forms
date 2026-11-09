@@ -243,7 +243,15 @@ authRouter.get(
       permissions: req.user!.permissions,
       allSites: req.user!.siteIds === null,
       // A Super Admin seeing the site as this person: who they are (the bar along the top).
-      viewAs: req.user!.viewAs ? { id: req.user!.viewAs.userId, name: req.user!.viewAs.name, act: req.user!.viewAs.act } : null,
+      viewAs: req.user!.viewAs
+        ? {
+            id: req.user!.viewAs.userId,
+            name: req.user!.viewAs.name,
+            act: req.user!.viewAs.act,
+            // They build forms: the bar lists every form, drafts included (GET /view-as/forms).
+            drafts: req.user!.viewAs.permissions.some((p) => p === "forms.manage" || p === "apps.develop"),
+          }
+        : null,
       canViewAs: canViewAs(req.user!) || Boolean(req.user!.viewAs),
     });
   })
@@ -279,6 +287,25 @@ authRouter.get(
       take: 30,
     });
     res.json(people.map(({ sites, ...p }) => ({ ...p, roleName: roleFor(p.roleKey).name, sites: sites.map((s) => s.site.code) })));
+  })
+);
+
+/**
+ * Every form on the site, drafts included, for whoever is viewing as someone and builds forms: a draft isn't
+ * in the catalog, so this is the way to open one as the person (it opens as it would for them, if it may).
+ */
+authRouter.get(
+  "/view-as/forms",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const me = viewerOf(req);
+    if (!me.permissions.some((p) => p === "forms.manage" || p === "apps.develop")) throw forbidden("Only people who build forms can open drafts.");
+    const forms = await prisma.builtForm.findMany({
+      where: { status: { not: "archived" } },
+      select: { kind: true, slug: true, title: true, status: true, liveVersion: true },
+      orderBy: { title: "asc" },
+    });
+    res.json(forms.map(({ liveVersion, ...f }) => ({ ...f, live: liveVersion > 0 })));
   })
 );
 
