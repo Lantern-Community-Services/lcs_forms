@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,11 @@ export function BuiltFormEntryPage() {
         </Button>
         <Button variant="secondary" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
         {data.isAdmin && !editing && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Edit</Button>}
+        {data.canArchive && (
+          <Button variant="secondary" onClick={() => act(() => fillApi.archive(slug, !entry.archivedAt, [id]), entry.archivedAt ? "Brought back from the archive." : "Archived. It's hidden from the entries list now.")}>
+            {entry.archivedAt ? <><ArchiveRestore className="h-4 w-4" /> Bring back</> : <><Archive className="h-4 w-4" /> Archive</>}
+          </Button>
+        )}
         {entry.status === "active" && data.canVoid && <Button variant="outlineDanger" onClick={() => setVoiding(true)}>Void</Button>}
         {entry.status === "voided" && data.isAdmin && <Button variant="secondary" onClick={() => act(() => fillApi.restore(slug, id), "Entry restored.")}><RotateCcw className="h-4 w-4" /> Restore</Button>}
         {data.isAdmin && (
@@ -110,6 +115,11 @@ export function BuiltFormEntryPage() {
         {entry.status === "voided" && (
           <p className="mt-3 rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">
             <ToneBadge tone="red">Void</ToneBadge> <span className="ml-1">{entry.voidReason}</span> — {entry.voidedByName}, {formatDateTime(entry.voidedAt)}
+          </p>
+        )}
+        {entry.archivedAt && (
+          <p className="mt-3 rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+            <ToneBadge tone="neutral">Archived</ToneBadge> <span className="ml-1">by {entry.archivedByName}, {formatDateTime(entry.archivedAt)}</span>
           </p>
         )}
         {entry.updatedByName && <p className="mt-2 text-micro text-muted">Last edited by {entry.updatedByName}, {formatDateTime(entry.updatedAt)}</p>}
