@@ -60,11 +60,57 @@ export interface DoneValue {
   emailed?: boolean;
 }
 
+/**
+ * One thing on a follow-up's checklist, ticked off on its own (HR's Separation:
+ * "Laptop collected", "ETO account deactivated"), so everyone can see what's
+ * been done, by whom and when. The label may hold the entry's answers as
+ * {field_id} tags ("Delegate access given to {delegate_to}").
+ */
+export const checkItemSchema = z
+  .object({
+    id: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "a checklist item's id is lower-case letters, digits and _, starting with a letter (e.g. laptop)"),
+    label: z.string().trim().min(1).max(160),
+    /** A line under it. */
+    help: z.string().trim().max(200).optional(),
+    /** Only on entries whose answer to this field is one of these (choice values; for a multi-choice field, any of them). */
+    when: z
+      .object({
+        field: z.string().trim().min(1).max(64),
+        values: z.array(z.string().trim().min(1).max(200)).min(1).max(50),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type CheckItem = z.infer<typeof checkItemSchema>;
+
+/** A checklist item ticked off on an entry, as kept on it. */
+export interface CheckTick {
+  id: string;
+  label: string;
+  doneAt: string;
+  doneByName: string;
+}
+
+/** A checklist item as it stands on one entry: its label filled in, and whether it's been ticked. */
+export interface CheckState {
+  id: string;
+  label: string;
+  help?: string;
+  done: { at: string; byName: string } | null;
+}
+
 export const followUpSchema = z
   .object({
     enabled: z.boolean().default(false),
     /** Who it's for: they can mark it done, and are reminded. Same recipient kinds as a route. */
     doers: z.array(recipientSchema).max(50).default([]),
+    /** The things to tick off one by one. When the last is ticked, the entry is done (unless there are done fields to fill in). */
+    checklist: z.array(checkItemSchema).max(25).default([]),
+    /** Also told as each item is ticked off (when tellEachItem) and when it's all done, besides whoever filed it. */
+    alsoTell: z.array(recipientSchema).max(50).default([]),
+    /** Tell whoever filed it (when tellSubmitter) and alsoTell as each checklist item is ticked off, not only at the end. */
+    tellEachItem: z.boolean().default(true),
     /** Remind them this many days after it was filed, and again every as many days; null: never. */
     remindAfterDays: z.number().int().min(1).max(60).nullable().default(3),
     /** Stop after this many reminders. */
@@ -99,7 +145,7 @@ export type FollowUpSettings = z.infer<typeof followUpSchema>;
 export const followUpTopicKey = (formId: string, which: "reminder" | "done") => `followup:${formId}:${which}`;
 export const FOLLOW_UP_RULE: TypeRule = { inApp: true, email: true, emailWhen: null, choice: "required" };
 
-const DEFAULTS: FollowUpSettings = { enabled: false, doers: [], remindAfterDays: 3, maxReminders: 3, tellSubmitter: true, doneFields: [] };
+const DEFAULTS: FollowUpSettings = { enabled: false, doers: [], checklist: [], alsoTell: [], tellEachItem: true, remindAfterDays: 3, maxReminders: 3, tellSubmitter: true, doneFields: [] };
 
 export interface FollowUpView extends FollowUpSettings {
   /** Entries still open now. */
@@ -133,7 +179,11 @@ export async function saveFollowUp(form: BuiltForm, input: unknown, actor: Actor
   if (p.data.doneFields.some((f) => f.type === "password") && !p.data.tellSubmitter) {
     throw badRequest("A password field is emailed to whoever filed the entry and never kept, so turn on telling them when it's done.");
   }
+  const items = p.data.checklist.map((c) => c.id);
+  const itemTwice = items.find((id, i) => items.indexOf(id) !== i);
+  if (itemTwice) throw badRequest(`Two checklist items are called "${itemTwice}": give each its own id.`);
   if (p.data.doers.length) await checkRoutes(form, [asRoute(p.data)]);
+  if (p.data.alsoTell.length) await checkRoutes(form, [{ ...asRoute({ doers: p.data.alsoTell }), id: "follow-up-tell", name: "Follow-up: also told" }]);
   await prisma.formRecord.upsert({
     where: { formId_collection_docId: { formId: form.id, collection: COLLECTION, docId: DOC } },
     create: { formId: form.id, collection: COLLECTION, docId: DOC, data: JSON.stringify(p.data), updatedByName: actor.name.slice(0, 255) },
@@ -163,6 +213,64 @@ async function doersOf(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEnt
   if (!s.doers.length) return [];
   const [plan] = await planRoutes(form, [asRoute(s)], { event: ENTRY_CREATED, title: form.title, site: await siteOf(entry.siteId) });
   return plan?.people ?? [];
+}
+
+/** The people also told about an entry's follow-up (at its site), besides whoever filed it. */
+async function alsoTellOf(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEntry, "siteId">) {
+  if (!s.alsoTell.length) return [];
+  const [plan] = await planRoutes(form, [asRoute({ doers: s.alsoTell })], { event: ENTRY_CREATED, title: form.title, site: await siteOf(entry.siteId) });
+  return plan?.people ?? [];
+}
+
+/** The checklist items ticked off on an entry, or none. */
+export function parseChecks(raw: string | null | undefined): CheckTick[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((x): x is CheckTick => Boolean(x && typeof x === "object" && typeof (x as CheckTick).id === "string" && typeof (x as CheckTick).doneAt === "string")) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Whether an entry's answer is one of these values (any of them, for a multi-choice answer). */
+function answerIsOneOf(raw: unknown, values: string[]): boolean {
+  const want = new Set(values.map((v) => v.toLowerCase()));
+  const one = (x: unknown): boolean => {
+    if (x == null) return false;
+    if (typeof x === "string" || typeof x === "number" || typeof x === "boolean") return want.has(String(x).toLowerCase());
+    if (typeof x === "object" && "value" in (x as object)) return one((x as { value: unknown }).value);
+    return false;
+  };
+  return Array.isArray(raw) ? raw.some(one) : one(raw);
+}
+
+/**
+ * The checklist as it stands on one entry: the items its answers call for
+ * (their {tags} filled in from those answers), each ticked or not. A ticked
+ * item that's since been taken off the checklist still shows, so nothing done goes missing.
+ */
+export function checklistFor(s: Pick<FollowUpSettings, "checklist">, entry: Pick<FormEntry, "data" | "followUpChecks">): CheckState[] {
+  const ticks = parseChecks(entry.followUpChecks);
+  if (!s.checklist.length && !ticks.length) return [];
+  const answers = JSON.parse(entry.data) as Record<string, unknown>;
+  const tags: Record<string, string> = {};
+  for (const [k, v] of Object.entries(answers)) tags[k] = answerText(v);
+  const out: CheckState[] = [];
+  for (const c of s.checklist) {
+    const tick = ticks.find((t) => t.id === c.id);
+    if (c.when && !answerIsOneOf(answers[c.when.field], c.when.values) && !tick) continue;
+    const label = fillReply(c.label, tags).replace(/\s+/g, " ").trim() || c.label;
+    out.push({ id: c.id, label, help: c.help, done: tick ? { at: tick.doneAt, byName: tick.doneByName } : null });
+  }
+  for (const t of ticks) if (!out.some((c) => c.id === t.id)) out.push({ id: t.id, label: t.label, done: { at: t.doneAt, byName: t.doneByName } });
+  return out;
+}
+
+const tickedText = (c: CheckState) => (c.done ? `Done by ${c.done.byName}, ${stampOf(c.done.at)}` : "Not done");
+/** A time as people at Lantern read it. */
+function stampOf(iso: string) {
+  return new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 /** Whether the entry's follow-up is this person's to do (Admins' override left out): for their Records. */
@@ -261,6 +369,13 @@ export async function setFollowUp(
   if (!input.done && entry.followUp === "open") throw badRequest("It's already open.");
 
   const s = await loadFollowUp(form);
+  const checklist = checklistFor(s, entry);
+  if (input.done) {
+    const left = checklist.filter((c) => !c.done);
+    if (left.length) throw badRequest(`Tick ${left.length === 1 ? "this" : "these"} off first: ${left.map((c) => c.label).join("; ")}.`);
+  }
+  // Each item with who did it and when, in the "it's done" emails.
+  const checkFields = checklist.map((c) => ({ label: c.label, value: tickedText(c) }));
   const done = input.done ? readDoneValues(s.doneFields, input.values) : { errors: [] as string[], kept: [] as DoneValue[], secrets: new Map<string, string>() };
   if (done.errors.length) throw badRequest(done.errors.join(" "));
 
@@ -290,12 +405,15 @@ export async function setFollowUp(
     const subject = (s.reply?.subject ? fillReply(s.reply.subject, base) : "").replace(/\s+/g, " ").trim().slice(0, 200) || `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
     const message = s.reply?.message ? fillReply(s.reply.message, withSecrets) : null;
     // Without a message of their own, the done fields are listed (a password too, in this email only).
-    const fields = message
-      ? []
-      : [
-          ...done.kept.map((v) => ({ label: v.label, value: v.emailed ? done.secrets.get(v.id) ?? "" : v.value ?? "" })),
-          ...(note ? [{ label: "Note", value: note }] : []),
-        ];
+    const fields = [
+      ...(message
+        ? []
+        : [
+            ...done.kept.map((v) => ({ label: v.label, value: v.emailed ? done.secrets.get(v.id) ?? "" : v.value ?? "" })),
+            ...(note ? [{ label: "Note", value: note }] : []),
+          ]),
+      ...checkFields,
+    ];
     try {
       await sendLogged({
         to: [filer.email],
@@ -340,11 +458,19 @@ export async function setFollowUp(
     },
   });
 
+  // Worded by the "Follow-up done" template (Admin → Notifications → Templates).
+  const fallback = `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
+  const w =
+    input.done && (tell || s.alsoTell.length)
+      ? await templateByKey(FOLLOW_UP_DONE_TEMPLATE).then((t) => (t ? messageWording(t, messageTags({ form: form.title, title: fallback, site: site?.name }), fallback) : null))
+      : null;
+  const doneFields = [
+    { label: "Done by", value: actor.name },
+    ...(note ? [{ label: "What was done", value: note }] : []),
+    ...done.kept.filter((v) => v.value).map((v) => ({ label: v.label, value: v.value! })),
+    ...checkFields,
+  ];
   if (tell) {
-    // Worded by the "Follow-up done" template (Admin → Notifications → Templates).
-    const fallback = `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
-    const t = await templateByKey(FOLLOW_UP_DONE_TEMPLATE);
-    const w = t ? messageWording(t, messageTags({ form: form.title, title: fallback, site: site?.name }), fallback) : null;
     await notify({
       to: { users: [entry.createdById!] },
       type: "forms.entry",
@@ -364,15 +490,90 @@ export async function setFollowUp(
             heading: w?.heading,
             intro: w?.intro,
             buttonLabel: w?.buttonLabel,
-            fields: [
-              { label: "Done by", value: actor.name },
-              ...(note ? [{ label: "What was done", value: note }] : []),
-              ...done.kept.filter((v) => v.value).map((v) => ({ label: v.label, value: v.value! })),
-            ],
+            fields: doneFields,
           },
     }).catch((err) => console.error(`[follow-up] couldn't tell the submitter of ${entry.id}:`, err));
   }
+  if (input.done && s.alsoTell.length) {
+    // The people also told (HR and IT on a Separation), besides whoever filed it and whoever did it.
+    const others = (await alsoTellOf(form, s, entry)).filter((p) => p.id !== actor.userId && !(tell && p.id === entry.createdById));
+    if (others.length) {
+      await notify({
+        to: { users: others.map((p) => p.id) },
+        type: "forms.entry",
+        title: w?.subject ?? fallback,
+        body: `Filed by ${entry.createdByName}. ${note ? `${actor.name}: ${note}` : `${actor.name} marked it done.`}`,
+        link: entryPath(form, entry.id),
+        source: `form:${form.slug}`,
+        sourceLabel: form.title,
+        formId: form.id,
+        topic: { key: followUpTopicKey(form.id, "done"), rule: FOLLOW_UP_RULE },
+        urgent: w?.urgent,
+        email: { whatToDo: w?.whatToDo ?? null, heading: w?.heading, intro: w?.intro, buttonLabel: w?.buttonLabel, fields: [{ label: "Filed by", value: entry.createdByName }, ...doneFields] },
+      }).catch((err) => console.error(`[follow-up] couldn't tell the people also told about ${entry.id}:`, err));
+    }
+  }
   return updated;
+}
+
+/**
+ * Tick one checklist item off on an entry, or untick it. Whoever filed it and
+ * the people also told hear as each one is ticked (when tellEachItem). Ticking
+ * the last one marks the entry done, unless the doers have done fields to fill in.
+ */
+export async function setFollowUpItem(form: BuiltForm, entry: FormEntry, actor: { userId: string | null; name: string }, input: { item: string; done: boolean }) {
+  if (!entry.followUp) throw badRequest("This entry isn't tracked for follow-up. Turn follow-up on for the form; it applies to entries saved after that.");
+  if (entry.followUp === "done") throw badRequest("It's already done. Open it again to change the checklist.");
+  const s = await loadFollowUp(form);
+  const item = checklistFor(s, entry).find((c) => c.id === input.item);
+  if (!item) throw badRequest(`This entry's checklist has no item "${input.item}".`);
+  if (input.done && item.done) throw badRequest(`Already ticked off, by ${item.done.byName}.`);
+  if (!input.done && !item.done) throw badRequest("It isn't ticked off.");
+
+  const ticks = parseChecks(entry.followUpChecks).filter((t) => t.id !== item.id);
+  if (input.done) ticks.push({ id: item.id, label: item.label, doneAt: new Date().toISOString(), doneByName: actor.name.slice(0, 255) });
+  const followUpChecks = ticks.length ? JSON.stringify(ticks) : null;
+  // Only if nobody else changed the checklist meanwhile, so two people ticking at once don't undo each other.
+  const saved = await prisma.formEntry.updateMany({ where: { id: entry.id, followUp: "open", followUpChecks: entry.followUpChecks }, data: { followUpChecks } });
+  if (!saved.count) throw badRequest("Someone else just changed this checklist. Reload the page and try again.");
+  await prisma.formEntryNote.create({
+    data: { entryId: entry.id, kind: "system", authorName: "System", body: `${input.done ? "Ticked off" : "Unticked"}: ${item.label} (${actor.name})`.slice(0, 2000) },
+  });
+
+  const now = { ...entry, followUpChecks };
+  const after = checklistFor(s, now);
+  const left = after.filter((c) => !c.done);
+  // The last one ticked: it's done, and everyone hears that instead.
+  if (input.done && !left.length && !s.doneFields.some((f) => f.required || f.type === "password")) {
+    return setFollowUp(form, now, actor, { done: true });
+  }
+
+  if (input.done && s.tellEachItem) {
+    const filer = s.tellSubmitter && entry.createdById && entry.createdById !== actor.userId ? entry.createdById : null;
+    const others = (await alsoTellOf(form, s, entry)).map((p) => p.id).filter((id) => id !== actor.userId);
+    const users = [...new Set([...(filer ? [filer] : []), ...others])];
+    if (users.length) {
+      const site = await siteOf(entry.siteId);
+      const progress = `${after.length - left.length} of ${after.length} done`;
+      await notify({
+        to: { users },
+        type: "forms.entry",
+        title: `Done: ${item.label}`.slice(0, 200),
+        body: `${form.title}${site ? ` at ${site.name}` : ""}, filed by ${entry.createdByName}. ${actor.name} ticked it off (${progress}).`,
+        link: entryPath(form, entry.id),
+        source: `form:${form.slug}`,
+        sourceLabel: form.title,
+        formId: form.id,
+        topic: { key: followUpTopicKey(form.id, "done"), rule: FOLLOW_UP_RULE },
+        email: {
+          heading: `Done: ${item.label}`.slice(0, 200),
+          intro: `${actor.name} ticked this off on ${form.title}, filed by ${entry.createdByName}.`,
+          fields: [{ label: "Checklist", value: progress }, ...after.map((c) => ({ label: c.label, value: tickedText(c) }))],
+        },
+      }).catch((err) => console.error(`[follow-up] couldn't tell anyone about ${item.id} on ${entry.id}:`, err));
+    }
+  }
+  return prisma.formEntry.findUniqueOrThrow({ where: { id: entry.id } });
 }
 
 /** Throws unless this person may mark the entry done or reopen it. */
@@ -416,6 +617,7 @@ export async function runFollowUpReminders(now = new Date()): Promise<number> {
       if (!people.length) continue;
       const days = Math.max(1, Math.floor((now.getTime() - e.createdAt.getTime()) / DAY));
       const site = await siteOf(e.siteId);
+      const left = checklistFor(s, e).filter((c) => !c.done);
       // Worded by the "Reminder" template; the follow-up's own What to do comes first.
       const fallback = `Reminder: ${form.title}${site ? ` at ${site.name}` : ""} is still open`;
       const w = reminder ? messageWording(reminder, messageTags({ form: form.title, title: fallback, site: site?.name }), fallback) : null;
@@ -439,6 +641,7 @@ export async function runFollowUpReminders(now = new Date()): Promise<number> {
             { label: "Filed by", value: e.createdByName },
             { label: "Open for", value: `${days} day${days === 1 ? "" : "s"}` },
             { label: "Reminder", value: `${e.followUpReminders + 1} of ${s.maxReminders}` },
+            ...(left.length ? [{ label: "Still to do", value: left.map((c) => c.label).join("\n") }] : []),
           ],
         },
       }).catch((err) => console.error(`[follow-up] reminder for ${e.id} failed:`, err));

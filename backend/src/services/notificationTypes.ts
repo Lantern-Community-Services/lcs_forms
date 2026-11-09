@@ -128,7 +128,7 @@ async function routingOf(forms: Pick<BuiltForm, "id" | "kind">[]) {
     ? await prisma.formRecord.findMany({ where: { formId: { in: ids }, OR: [{ collection: "__routing", docId: "routes" }, { collection: FOLLOW_UP, docId: "settings" }] }, select: { formId: true, collection: true, data: true } })
     : [];
   const routes = new Map<string, Route[]>();
-  const followUps = new Map<string, { doers: Recipient[]; tellSubmitter: boolean }>();
+  const followUps = new Map<string, { doers: Recipient[]; alsoTell: Recipient[]; tellSubmitter: boolean }>();
   for (const r of records) {
     let data: unknown;
     try {
@@ -144,7 +144,7 @@ async function routingOf(forms: Pick<BuiltForm, "id" | "kind">[]) {
       routes.set(r.formId, list);
     } else {
       const p = followUpSchema.safeParse(data);
-      if (p.success && p.data.enabled) followUps.set(r.formId, { doers: p.data.doers, tellSubmitter: p.data.tellSubmitter });
+      if (p.success && p.data.enabled) followUps.set(r.formId, { doers: p.data.doers, alsoTell: p.data.alsoTell, tellSubmitter: p.data.tellSubmitter });
     }
   }
   // A code form nobody has saved routing for uses its form.json defaults.
@@ -238,7 +238,7 @@ export async function prefsFor(viewer: Viewer): Promise<PrefsView> {
     for (const which of ["reminder", "done"] as const) {
       const key = followUpTopicKey(f.id, which);
       const sent = sentOf((x) => x.topic === key);
-      const could = fu && (which === "reminder" ? couldReach(fu.doers, undefined, person, canUse) : fu.tellSubmitter && canUse);
+      const could = fu && (which === "reminder" ? couldReach(fu.doers, undefined, person, canUse) : canUse && (fu.tellSubmitter || couldReach(fu.alsoTell, undefined, person, canUse)));
       if (!could && !sent && !has(key)) continue;
       rows.push(
         row(
