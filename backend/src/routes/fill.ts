@@ -7,7 +7,7 @@ import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
 import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
-import { canFollowUp, loadFollowUp, requireFollowUp, setFollowUp } from "../services/followUp.js";
+import { canFollowUp, checklistFor, loadFollowUp, requireFollowUp, setFollowUp, setFollowUpItem } from "../services/followUp.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
@@ -244,6 +244,7 @@ fillRouter.get(
   asyncHandler(async (req, res) => {
     const { form, doc: liveOrDraft, reach } = await readable(req);
     const entry = await entryIn(req, form, reach);
+    const follow = entry.followUp ? await loadFollowUp(form) : null;
     const [doc, notes, sites, neighbours] = await Promise.all([
       docForEntry(form, entry.formVersion),
       prisma.formEntryNote.findMany({ where: { entryId: entry.id }, orderBy: { createdAt: "asc" } }),
@@ -263,7 +264,9 @@ fillRouter.get(
       // Whether this person can mark the entry's follow-up done (or reopen it).
       canFollowUp: await canFollowUp(form, req.user, entry),
       // What they fill in when they mark it done.
-      followUpFields: entry.followUp ? (await loadFollowUp(form)).doneFields : [],
+      followUpFields: follow?.doneFields ?? [],
+      // The things to tick off one by one, as they stand on this entry.
+      followUpChecklist: follow ? checklistFor(follow, entry) : [],
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
       isAdmin: isFormAdmin(req.user),
     });
@@ -311,6 +314,20 @@ fillRouter.post(
     const entry = await entryIn(req, form, reach);
     await requireFollowUp(form, req.user, entry);
     const updated = await setFollowUp(form, entry, { userId: req.user!.userId, name: req.user!.name }, body);
+    const sites = await siteNames();
+    res.json(entryRow({ ...updated, site: updated.siteId ? sites.get(updated.siteId) ?? null : null }));
+  })
+);
+
+/** Tick one of an entry's follow-up checklist items off, or untick it. Its people and Admins only. */
+fillRouter.post(
+  "/:slug/entries/:id/follow-up/items",
+  asyncHandler(async (req, res) => {
+    const body = z.object({ item: z.string().min(1).max(40), done: z.boolean() }).parse(req.body);
+    const { form, reach } = await readable(req);
+    const entry = await entryIn(req, form, reach);
+    await requireFollowUp(form, req.user, entry);
+    const updated = await setFollowUpItem(form, entry, { userId: req.user!.userId, name: req.user!.name }, body);
     const sites = await siteNames();
     res.json(entryRow({ ...updated, site: updated.siteId ? sites.get(updated.siteId) ?? null : null }));
   })

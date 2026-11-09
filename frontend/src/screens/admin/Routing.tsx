@@ -21,7 +21,7 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useSites } from "@/lib/queries";
 import type { Site } from "@/lib/types";
-import type { DoneField, DoneFieldType } from "@/lib/builder";
+import type { CheckItem, DoneField, DoneFieldType } from "@/lib/builder";
 import { cn, errorMessage, formatDateTime, relativeTime } from "@/lib/utils";
 import { listWords, templateOptions, useEmailTemplates, type TemplateKind } from "@/lib/emailTemplates";
 
@@ -297,7 +297,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
         );
       })}
 
-      {data.form.kind === "basic" && <FollowUpSection formId={id} roles={data.roles} sites={siteList} />}
+      {data.form.kind === "basic" && <FollowUpSection formId={id} roles={data.roles} sites={siteList} fields={data.events.find((e) => e.id === "entry.created")?.fields ?? []} />}
 
       <ReportsSection formId={id} emailFields={data.emailFields} roles={data.roles} sites={siteList} />
 
@@ -1088,6 +1088,9 @@ function EmailPreviewDialog({ preview, onClose }: { preview: EmailPreview; onClo
 interface FollowUp {
   enabled: boolean;
   doers: Recipient[];
+  checklist: CheckItem[];
+  alsoTell: Recipient[];
+  tellEachItem: boolean;
   remindAfterDays: number | null;
   maxReminders: number;
   tellSubmitter: boolean;
@@ -1148,7 +1151,7 @@ const NEW_ACCOUNT: Pick<FollowUp, "doneFields" | "reply" | "tellSubmitter"> = {
  * (with what they did), whoever filed it is told, and the people it's for are
  * reminded until then. Saved on its own.
  */
-function FollowUpSection({ formId, roles, sites }: { formId: string; roles: RoutingView["roles"]; sites: Site[] }) {
+function FollowUpSection({ formId, roles, sites, fields }: { formId: string; roles: RoutingView["roles"]; sites: Site[]; fields: NonNullable<RoutingEvent["fields"]> }) {
   const qc = useQueryClient();
   const toast = useToast();
   const key = ["routing", formId, "follow-up"];
@@ -1156,15 +1159,22 @@ function FollowUpSection({ formId, roles, sites }: { formId: string; roles: Rout
   const [f, setF] = useState<FollowUp | null>(null);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<null | "person" | "role" | "group" | "title">(null);
+  // Whose list the picker adds to: the doers, or the people also told.
+  const [pickFor, setPickFor] = useState<"doers" | "alsoTell">("doers");
   useEffect(() => {
-    if (data) setF(data);
+    if (data) setF({ ...data, checklist: data.checklist ?? [], alsoTell: data.alsoTell ?? [], tellEachItem: data.tellEachItem ?? true });
   }, [data]);
   if (!data || !f) return null;
   const strip = ({ open: _o, ...x }: FollowUp & { updatedAt?: unknown; updatedByName?: unknown }) => {
     const { updatedAt: _a, updatedByName: _b, ...rest } = x;
     return rest;
   };
-  const dirty = JSON.stringify(strip(f)) !== JSON.stringify(strip(data));
+  const dirty = JSON.stringify(strip(f)) !== JSON.stringify(strip({ ...data, checklist: data.checklist ?? [], alsoTell: data.alsoTell ?? [], tellEachItem: data.tellEachItem ?? true }));
+  const addTo = (rs: Recipient[]) => set({ [pickFor]: [...f[pickFor], ...rs] });
+  const pick = (target: "doers" | "alsoTell", kind: "person" | "role" | "group" | "title") => {
+    setPickFor(target);
+    setPicking(kind);
+  };
   const set = (patch: Partial<FollowUp>) => setF({ ...f, ...patch });
   const siteName = (code: string) => sites.find((s) => s.code === code)?.name ?? code;
 
@@ -1208,13 +1218,42 @@ function FollowUpSection({ formId, roles, sites }: { formId: string; roles: Rout
                   <Button variant="ghost" size="sm" className="mt-1"><Plus className="h-4 w-4" /> Add people</Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onSelect={() => setPicking("person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setPicking("role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setPicking("group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setPicking("title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("doers", "person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("doers", "role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("doers", "group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("doers", "title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <p className="mt-1 text-[12px] text-muted">They can mark entries done and get the reminders. Admins always can.</p>
+            </Row>
+            <Row label="Checklist">
+              <ChecklistEditor items={f.checklist} saved={(data.checklist ?? []).map((c) => c.id)} fields={fields} onChange={(checklist) => set({ checklist })} />
+            </Row>
+            <Row label="Also tell">
+              <ul className="divide-y divide-hairline rounded-input border border-hairline">
+                {f.alsoTell.map((t, i) => (
+                  <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ alsoTell: next ? f.alsoTell.map((x, j) => (j === i ? next : x)) : f.alsoTell.filter((_, j) => j !== i) })} />
+                ))}
+                {!f.alsoTell.length && <li className="px-3 py-2 text-[13px] text-muted">Only whoever filed it.</li>}
+              </ul>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="mt-1"><Plus className="h-4 w-4" /> Add people</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onSelect={() => pick("alsoTell", "person")}><User className="h-4 w-4" /> Someone by name or email</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("alsoTell", "role")}><Users className="h-4 w-4" /> Everyone with a role</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("alsoTell", "group")}><UsersRound className="h-4 w-4" /> Everyone in a group</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => pick("alsoTell", "title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <p className="mt-1 text-[12px] text-muted">Told when it's done, with each item and who did it, besides whoever filed it.</p>
+              {f.checklist.length > 0 && (
+                <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
+                  <Switch checked={f.tellEachItem} onCheckedChange={(v) => set({ tellEachItem: v })} />
+                  Tell them as each item is ticked off, too
+                </label>
+              )}
             </Row>
             <Row label="Reminders">
               <div className="flex flex-wrap items-center gap-2">
@@ -1282,10 +1321,10 @@ function FollowUpSection({ formId, roles, sites }: { formId: string; roles: Rout
           <Button onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save follow-up"}</Button>
         </div>
       )}
-      <PersonDialog open={picking === "person"} sites={sites} taken={f.doers} onClose={() => setPicking(null)} onAdd={(r) => set({ doers: [...f.doers, r] })} />
-      <RoleDialog open={picking === "role"} roles={roles} onClose={() => setPicking(null)} onAdd={(r) => set({ doers: [...f.doers, r] })} />
-      {picking === "group" && <TeamDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
-      {picking === "title" && <PositionDialog taken={f.doers} onClose={() => setPicking(null)} onAdd={(rs) => set({ doers: [...f.doers, ...rs] })} />}
+      <PersonDialog open={picking === "person"} sites={sites} taken={f[pickFor]} onClose={() => setPicking(null)} onAdd={(r) => addTo([r])} />
+      <RoleDialog open={picking === "role"} roles={roles} onClose={() => setPicking(null)} onAdd={(r) => addTo([r])} />
+      {picking === "group" && <TeamDialog taken={f[pickFor]} onClose={() => setPicking(null)} onAdd={(rs) => addTo(rs)} />}
+      {picking === "title" && <PositionDialog taken={f[pickFor]} onClose={() => setPicking(null)} onAdd={(rs) => addTo(rs)} />}
     </section>
   );
 }
@@ -1333,6 +1372,81 @@ function DoneFieldsEditor({ fields, saved, onChange, onPreset }: { fields: DoneF
       </div>
       <p className="mt-1 text-[12px] text-muted">
         Kept on the entry and shown in its entries and exports, so you can see the account that was made. A password is emailed to whoever filed it once and never kept.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The things the doers tick off one by one. An item can be only for entries
+ * with a certain answer ("Laptop collected" when they had a laptop), and its
+ * label can hold answers as {field_id} tags. An item keeps its id once saved.
+ */
+function ChecklistEditor({ items, saved, fields, onChange }: { items: CheckItem[]; saved: string[]; fields: NonNullable<RoutingEvent["fields"]>; onChange: (c: CheckItem[]) => void }) {
+  const choiceFields = fields.filter((x) => x.choices?.length);
+  const put = (i: number, patch: Partial<CheckItem>) =>
+    onChange(
+      items.map((c, j) => {
+        if (j !== i) return c;
+        const next = { ...c, ...patch };
+        if (patch.label !== undefined && !saved.includes(c.id)) next.id = doneId(patch.label.replace(/\{[^}]*\}/g, ""), items.filter((_, k) => k !== i).map((x) => x.id));
+        if (!next.when) delete next.when;
+        return next;
+      })
+    );
+  return (
+    <div className="max-w-[720px]">
+      {items.length > 0 && (
+        <ul className="mb-2 divide-y divide-hairline rounded-input border border-hairline">
+          {items.map((c, i) => {
+            const field = choiceFields.find((x) => x.id === c.when?.field);
+            return (
+              <li key={i} className="grid gap-2 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input value={c.label} onChange={(e) => put(i, { label: e.target.value })} maxLength={160} placeholder="e.g. Laptop collected" aria-label="Item" className="min-w-[200px] flex-1" />
+                  <Button variant="ghost" size="sm" aria-label="Remove" onClick={() => onChange(items.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+                  <span>Only when</span>
+                  <Select
+                    value={c.when?.field ?? ""}
+                    onChange={(e) => put(i, { when: e.target.value ? { field: e.target.value, values: [] } : undefined })}
+                    aria-label="Only when"
+                    className="w-[260px]"
+                    options={[{ value: "", label: "Always" }, ...choiceFields.map((x) => ({ value: x.id, label: x.label }))]}
+                  />
+                  {field && (
+                    <>
+                      <span>is</span>
+                      <div className="flex flex-wrap gap-1">
+                        {field.choices!.map((v) => {
+                          const on = c.when!.values.includes(v);
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => put(i, { when: { field: field.id, values: on ? c.when!.values.filter((x) => x !== v) : [...c.when!.values, v] } })}
+                              className={cn("rounded-full border px-2 py-0.5 text-[12px]", on ? "border-navy bg-navy text-white" : "border-hairline text-ink hover:border-ink")}
+                            >
+                              {v}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {c.when && !c.when.values.length && <p className="text-[12px] text-status-redText">Pick at least one answer, or set it back to Always.</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <Button variant="ghost" size="sm" disabled={items.length >= 25} onClick={() => onChange([...items, { id: doneId("item", items.map((x) => x.id)), label: "" }])}>
+        <Plus className="h-4 w-4" /> Add an item
+      </Button>
+      <p className="mt-1 text-[12px] text-muted">
+        Each is ticked off on its own and kept with who did it and when. Ticking the last one marks the entry done (unless there are required fields to fill in). Use the form's answers in a label as tags, e.g. {"{delegate_to}"}.
       </p>
     </div>
   );
