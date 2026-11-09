@@ -363,6 +363,75 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
   );
 
   tool(
+    "update_follow_up",
+    "Change part of a basic form's follow-up and keep the rest (set_follow_up replaces all of it). Any setting set_follow_up takes, given here, replaces that one setting. Or edit lists in place: addChecklist / removeChecklist (item ids) and updateChecklist ({ id, ...changes }) for the checklist; addAlsoTell / removeAlsoTell and addDoers / removeDoers (match a person by email, a group by group id, a role by role, a title by title); updateDoneFields ({ id, ...changes }, e.g. { id: \"username\", defaultValue: \"{employee_name.first}.{employee_name.last}@lanterncommunity.org\" }; null removes a key). Returns the follow-up as saved.",
+    {
+      form: formRef,
+      enabled: z.boolean().optional(),
+      doers: z.array(recipient).optional(),
+      remindAfterDays: z.number().int().min(1).max(60).nullable().optional(),
+      maxReminders: z.number().int().min(1).max(10).optional(),
+      tellSubmitter: z.boolean().optional(),
+      whatToDo: z.string().optional(),
+      doneFields: z.array(doneFieldSchema).max(15).optional(),
+      checklist: z.array(checkItemSchema).max(25).optional(),
+      alsoTell: z.array(recipient).max(50).optional(),
+      tellEachItem: z.boolean().optional(),
+      reply: z.object({ subject: z.string().max(200).optional(), message: z.string().max(4000).optional() }).nullable().optional(),
+      addChecklist: z.array(checkItemSchema).max(25).optional(),
+      updateChecklist: z.array(z.record(z.unknown())).max(25).optional(),
+      removeChecklist: z.array(z.string()).max(25).optional(),
+      updateDoneFields: z.array(z.record(z.unknown())).max(15).optional(),
+      addAlsoTell: z.array(recipient).max(50).optional(),
+      removeAlsoTell: z.array(z.string()).max(50).optional(),
+      addDoers: z.array(recipient).max(50).optional(),
+      removeDoers: z.array(z.string()).max(50).optional(),
+    },
+    async ({ form, addChecklist, updateChecklist, removeChecklist, updateDoneFields, addAlsoTell, removeAlsoTell, addDoers, removeDoers, ...replace }) => {
+      need("forms:build");
+      const f = await routingForm(form);
+      const { updatedAt: _a, updatedByName: _b, ...current } = await loadFollowUp(f);
+      const next: Record<string, unknown> = { ...current };
+      for (const [k, v] of Object.entries(replace)) if (v !== undefined) next[k] = v === null ? undefined : v;
+
+      // A recipient's key, for removing it: a person's email, a group's id, a role, a title, or the kind itself.
+      const keyOf = (r: Record<string, unknown>) => String(r.email ?? r.group ?? r.role ?? r.title ?? r.field ?? r.kind ?? "").toLowerCase();
+      const editList = (list: Record<string, unknown>[], add?: Record<string, unknown>[], remove?: string[]) => {
+        const gone = new Set((remove ?? []).map((x) => x.toLowerCase()));
+        const kept = list.filter((r) => !gone.has(keyOf(r)));
+        for (const r of add ?? []) if (!kept.some((x) => keyOf(x) === keyOf(r) && x.kind === r.kind)) kept.push(r);
+        return kept;
+      };
+      if (addAlsoTell || removeAlsoTell) next.alsoTell = editList((next.alsoTell as Record<string, unknown>[]) ?? [], addAlsoTell, removeAlsoTell);
+      if (addDoers || removeDoers) next.doers = editList((next.doers as Record<string, unknown>[]) ?? [], addDoers, removeDoers);
+
+      // Merge changes into list items by id; a key set to null is removed.
+      const patchById = (list: Record<string, unknown>[], changes: Record<string, unknown>[] | undefined, what: string) => {
+        for (const c of changes ?? []) {
+          const i = list.findIndex((x) => x.id === c.id);
+          if (i < 0) throw new HttpError(400, `This follow-up has no ${what} "${String(c.id)}".`);
+          const merged: Record<string, unknown> = { ...list[i] };
+          for (const [k, v] of Object.entries(c)) if (k !== "id") (v === null ? delete merged[k] : (merged[k] = v));
+          list[i] = merged;
+        }
+        return list;
+      };
+      let checklist = [...((next.checklist as Record<string, unknown>[]) ?? [])];
+      if (removeChecklist?.length) checklist = checklist.filter((c) => !removeChecklist.includes(String(c.id)));
+      checklist = patchById(checklist, updateChecklist, "checklist item");
+      for (const c of addChecklist ?? []) {
+        if (checklist.some((x) => x.id === c.id)) throw new HttpError(400, `The checklist already has an item "${c.id}": use updateChecklist to change it.`);
+        checklist.push(c);
+      }
+      next.checklist = checklist;
+      next.doneFields = patchById([...((next.doneFields as Record<string, unknown>[]) ?? [])], updateDoneFields, "done field");
+
+      return saveFollowUp(f, next, actor);
+    },
+    { destructiveHint: true }
+  );
+
+  tool(
     "list_follow_ups",
     "A form's entries by follow-up: still open (default) or done, oldest first, with who filed them, when, and (when done) who did it and their note. Entry answers aren't included: use get_entry.",
     { form: formRef, status: z.enum(["open", "done"]).optional(), limit: z.number().int().min(1).max(200).optional() },
