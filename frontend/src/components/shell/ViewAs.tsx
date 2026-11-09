@@ -1,6 +1,7 @@
 import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, UserCog } from "lucide-react";
+import { Eye, FileText, UserCog } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -104,6 +105,49 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
   );
 }
 
+type FormRow = { kind: "basic" | "code"; slug: string; title: string; status: string; live: boolean };
+
+/**
+ * Every form on the site, drafts included, to open as the person being viewed. A draft isn't in their
+ * catalog (nobody but its builders can find it), so this is how to try one out as them.
+ */
+function ViewAsForms({ open, onOpenChange, name }: { open: boolean; onOpenChange: (open: boolean) => void; name: string }) {
+  const [q, setQ] = useState("");
+  const { data, isLoading } = useQuery({ queryKey: ["view-as", "forms"], queryFn: () => api.get<FormRow[]>("/auth/view-as/forms"), enabled: open });
+  const needle = q.trim().toLowerCase();
+  const shown = (data ?? []).filter((f) => !needle || f.title.toLowerCase().includes(needle) || f.slug.includes(needle));
+  const href = (f: FormRow) => (f.kind === "code" ? `/apps/${f.slug}${f.live ? "" : "?draft=1"}` : `/f/${f.slug}`);
+  return (
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange} title={`Open a form as ${name}`}>
+      <div className="flex flex-col gap-3">
+        <p className="text-[13px] text-muted">Drafts included. A form opens as it would for {name}: if it isn't open to them, it says so.</p>
+        <SearchInput autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Form name" aria-label="Search forms" />
+        {isLoading ? (
+          <LoadingState />
+        ) : !shown.length ? (
+          <p className="px-1 py-4 text-center text-[13px] text-muted">No form matches.</p>
+        ) : (
+          <ul className="-mx-1 flex max-h-[50vh] flex-col overflow-y-auto">
+            {shown.map((f) => (
+              <li key={`${f.kind}:${f.slug}`}>
+                <Link
+                  to={href(f)}
+                  onClick={() => onOpenChange(false)}
+                  className="flex min-h-[44px] w-full items-center gap-3 rounded-input px-2 py-2 text-left hover:bg-rowhover"
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{f.title}</span>
+                  {!f.live && <span className="rounded-pill bg-status-violetBg px-2 py-0.5 text-micro font-bold text-status-violetText">Draft</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </ResponsiveDialog>
+  );
+}
+
 /** Profile: the way in, for whoever may view as others (not shown while they already are: the bar does that). */
 export function ViewAsCard({ delay }: { delay?: string }) {
   const { user } = useAuth();
@@ -128,6 +172,7 @@ export function ViewAsBar({ top }: { top: boolean }) {
   const { user } = useAuth();
   const toast = useToast();
   const [picking, setPicking] = useState(false);
+  const [forms, setForms] = useState(false);
   const [busy, setBusy] = useState(false);
   if (!user?.viewAs) return null;
 
@@ -172,10 +217,12 @@ export function ViewAsBar({ top }: { top: boolean }) {
       </span>
       <span className="flex items-center gap-1">
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => void toggleActing()}>{acting ? "View only" : "Act as them"}</Button>
+        {user.viewAs.drafts && <Button variant="ghost" size="sm" disabled={busy} onClick={() => setForms(true)}>Forms</Button>}
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => setPicking(true)}>Switch</Button>
         <Button variant="secondary" size="sm" disabled={busy} onClick={() => void stop()}>Stop viewing</Button>
       </span>
       <ViewAsPicker open={picking} onOpenChange={setPicking} />
+      {user.viewAs.drafts && <ViewAsForms open={forms} onOpenChange={setForms} name={user.name} />}
     </div>
   );
 }
