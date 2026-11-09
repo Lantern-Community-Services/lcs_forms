@@ -377,7 +377,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
           autoComplete="off"
           spellCheck={false}
           value={shown}
-          placeholder={f.placeholder ?? "first.last"}
+          placeholder={f.placeholder ?? "username"}
           maxLength={f.maxLength}
           onChange={(e) => {
             const v = e.target.value.trim();
