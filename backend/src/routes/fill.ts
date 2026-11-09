@@ -11,7 +11,7 @@ import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
-  canSeeEntry, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
+  canSeeEntry, canArchiveEntries, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
   entryScope, inOrder, liveDoc, NEWEST, saveUpload, sortedEntryIds, submitEntry, updateEntry, type EntryFilter, type EntrySort,
 } from "../forms/entries.js";
 
@@ -166,6 +166,7 @@ function filterOf(req: Request): EntryFilter {
     starred: q.starred === "1",
     site: typeof q.site === "string" && q.site ? q.site : undefined,
     followUp: q.followUp === "open" || q.followUp === "done" ? q.followUp : undefined,
+    archived: q.archived === "only" || q.archived === "all" ? q.archived : "hide",
     ids,
   };
 }
@@ -210,6 +211,7 @@ fillRouter.get(
         .map((g) => ({ id: g.siteId!, name: sites.get(g.siteId!)!.name, count: g._count._all }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       canVoid: canVoidEntries(form, doc, req.user),
+      canArchive: canArchiveEntries(form, doc, req.user, reach),
       isAdmin: isFormAdmin(req.user),
       followUp: follow.enabled,
       // all: every entry; site: their sites' and their own; own: their own and the ones they were told about.
@@ -269,6 +271,7 @@ fillRouter.get(
       // The things to tick off one by one, as they stand on this entry.
       followUpChecklist: follow ? checklistFor(follow, entry) : [],
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
+      canArchive: canArchiveEntries(form, liveOrDraft, req.user, reach),
       isAdmin: isFormAdmin(req.user),
     });
   })
@@ -317,6 +320,30 @@ fillRouter.post(
     const updated = await setFollowUp(form, entry, { userId: req.user!.userId, name: req.user!.name }, body);
     const sites = await siteNames();
     res.json(entryRow({ ...updated, site: updated.siteId ? sites.get(updated.siteId) ?? null : null }));
+  })
+);
+
+/**
+ * Archive entries (put dealt-with ones away) or bring them back: the ticked
+ * ones (ids in the body), or every one the filters match. Admins, people who
+ * can void, and anyone who sees every entry of the form.
+ */
+fillRouter.post(
+  "/:slug/entries-archive",
+  asyncHandler(async (req, res) => {
+    const { archived } = z.object({ archived: z.boolean(), ids: z.array(z.string().max(64)).max(1000).optional() }).parse(req.body);
+    const { form, doc, reach } = await readable(req);
+    if (!canArchiveEntries(form, doc, req.user, reach)) throw forbidden("You can't archive this form's entries.");
+    const filter = filterOf(req);
+    // Archiving acts on what isn't archived yet, bringing back on what is, whatever the list was showing.
+    const where = { AND: [entryWhere(form, req.user, { ...filter, archived: archived ? "hide" : "only" }), await visibleWhere(form, req.user, reach)] };
+    const rows = await prisma.formEntry.findMany({ where, select: { id: true }, take: 5000 });
+    if (!rows.length) return res.json({ count: 0 });
+    const ids = rows.map((r) => r.id);
+    const by = req.user!.name.slice(0, 255);
+    await prisma.formEntry.updateMany({ where: { id: { in: ids } }, data: archived ? { archivedAt: new Date(), archivedByName: by } : { archivedAt: null, archivedByName: null } });
+    await prisma.formEntryNote.createMany({ data: ids.map((entryId) => ({ entryId, kind: "system", authorName: by, body: archived ? "Archived." : "Brought back from the archive." })) });
+    res.json({ count: ids.length });
   })
 );
 

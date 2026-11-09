@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, Loader2, MessageSquare, Sheet as SheetIcon, SlidersHorizontal, Star, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, Loader2, MessageSquare, Sheet as SheetIcon, SlidersHorizontal, Star, X } from "lucide-react";
 import { Page } from "@/components/shell/AppShell";
 import { BUILT_FORM_HEADER_WIDTH, BuiltFormHeader } from "./FormHeader";
 import { Card } from "@/components/ui/card";
@@ -74,6 +75,10 @@ export function BuiltFormEntriesPage() {
   const [status, setStatus] = useState<Status>("active");
   const [starred, setStarred] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUp>("");
+  // Archived entries: hidden unless asked for.
+  const [archived, setArchived] = useState<"hide" | "only" | "all">("hide");
+  const [archiving, setArchiving] = useState(false);
+  const qc = useQueryClient();
   const [sort, setSort] = useState<Sort>(NEWEST);
   const [page, setPage] = useState(0);
   // Ticked entries (kept across pages), or every entry the filters match.
@@ -90,12 +95,13 @@ export function BuiltFormEntriesPage() {
     if (site) p.set("site", site);
     if (starred) p.set("starred", "1");
     if (followUp) p.set("followUp", followUp);
+    if (archived !== "hide") p.set("archived", archived);
     if (sort.key !== NEWEST.key || sort.dir !== NEWEST.dir) {
       p.set("sort", sort.key);
       p.set("dir", sort.dir);
     }
     return p.toString();
-  }, [q, from, to, site, status, starred, followUp, sort]);
+  }, [q, from, to, site, status, starred, followUp, archived, sort]);
   const qs = `${filterQs}&take=${PAGE}&skip=${page * PAGE}`;
   const { data, isLoading, error } = useEntries(slug, qs);
 
@@ -133,13 +139,14 @@ export function BuiltFormEntriesPage() {
     return opts;
   }, [hasSites, columns, sort]);
 
-  const moreCount = (status !== "active" ? 1 : 0) + (starred ? 1 : 0) + (followUp ? 1 : 0);
+  const moreCount = (status !== "active" ? 1 : 0) + (starred ? 1 : 0) + (followUp ? 1 : 0) + (archived !== "hide" ? 1 : 0);
   const chips: { key: string; label: string; clear: () => void }[] = [];
   if (range !== "any") chips.push({ key: "range", label: range === "custom" ? `${from || "…"} – ${to || "…"}` : RANGES.find((r) => r.value === range)!.label, clear: () => setRange("any") });
   if (site) chips.push({ key: "site", label: siteOptions.find((s) => s.id === site)?.name ?? "Site", clear: () => setSite("") });
   if (status !== "active") chips.push({ key: "status", label: status === "voided" ? "Voided only" : "Active and voided", clear: () => setStatus("active") });
   if (followUp) chips.push({ key: "followUp", label: followUp === "open" ? "Follow-up open" : "Follow-up done", clear: () => setFollowUp("") });
   if (starred) chips.push({ key: "starred", label: "Starred", clear: () => setStarred(false) });
+  if (archived !== "hide") chips.push({ key: "archived", label: archived === "only" ? "Archived only" : "With archived", clear: () => setArchived("hide") });
   const filtered = Boolean(q.trim()) || chips.length > 0;
   function clearAll() {
     setQ("");
@@ -150,6 +157,7 @@ export function BuiltFormEntriesPage() {
     setStatus("active");
     setStarred(false);
     setFollowUp("");
+    setArchived("hide");
   }
 
   function sortBy(key: string) {
@@ -196,6 +204,21 @@ export function BuiltFormEntriesPage() {
   function clearSelection() {
     setSelected(new Set());
     setAllMatching(false);
+  }
+
+  /** Archive what's ticked (or every match), or bring archived ones back. */
+  async function archiveChosen(on: boolean) {
+    setArchiving(true);
+    try {
+      const out = await fillApi.archive(slug, on, allMatching ? undefined : [...selected], filterQs);
+      clearSelection();
+      await qc.invalidateQueries({ queryKey: ["fill", slug] });
+      toast(out.count ? `${on ? "Archived" : "Brought back"} ${out.count.toLocaleString()} entr${out.count === 1 ? "y" : "ies"}.` : on ? "Those are archived already." : "None of those are archived.");
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't change that."), "error");
+    } finally {
+      setArchiving(false);
+    }
   }
 
   async function exportAs(format: Format) {
@@ -316,6 +339,13 @@ export function BuiltFormEntriesPage() {
               </>
             )}
             <DropdownMenuSeparator />
+            <DropdownMenuLabel>Archived</DropdownMenuLabel>
+            {([["hide", "Hide archived"], ["only", "Archived only"], ["all", "Show them too"]] as const).map(([v, label]) => (
+              <DropdownMenuCheckboxItem key={v} checked={archived === v} onCheckedChange={() => setArchived(v)}>
+                <Check className={cn("h-4 w-4", archived === v ? "text-accent" : "invisible")} /> {label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem checked={starred} onCheckedChange={(on) => setStarred(on === true)}>
               <Check className={cn("h-4 w-4", starred ? "text-accent" : "invisible")} /> Starred only
             </DropdownMenuCheckboxItem>
@@ -360,6 +390,20 @@ export function BuiltFormEntriesPage() {
           <p className="min-w-0 flex-1 text-[13.5px] text-muted">
             {`${total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${total === 1 ? "y" : "ies"}${filtered ? " match" : ""}${data.reach === "own" ? " · yours, and any you were told about" : data.reach === "site" ? " · your sites' and your own" : ""}`}
           </p>
+        )}
+        {chosen > 0 && data.canArchive && (
+          <>
+            {archived !== "only" && (
+              <Button variant="secondary" disabled={archiving} onClick={() => void archiveChosen(true)}>
+                <Archive className="h-4 w-4" /> Archive
+              </Button>
+            )}
+            {archived !== "hide" && (
+              <Button variant="secondary" disabled={archiving} onClick={() => void archiveChosen(false)}>
+                <ArchiveRestore className="h-4 w-4" /> Bring back
+              </Button>
+            )}
+          </>
         )}
         {exportMenu}
       </div>
@@ -408,6 +452,7 @@ export function BuiltFormEntriesPage() {
                       })}
                       <td className="whitespace-nowrap px-3 py-2.5 text-right text-muted">
                         {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
+                        {e.archivedAt && <span className="ml-2"><ToneBadge tone="neutral">Archived</ToneBadge></span>}
                         {e.followUp && <span className="ml-2"><ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge></span>}
                         {(e.noteCount ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 text-micro"><MessageSquare className="h-3.5 w-3.5" />{e.noteCount}</span>}
                       </td>
@@ -430,6 +475,7 @@ export function BuiltFormEntriesPage() {
                       {e.starred && <Star className="h-3.5 w-3.5 fill-[#f5a524] text-[#f5a524]" />}
                       <span className="flex-1 truncate text-[14px] font-semibold text-ink">{columns[0] ? formatValue(columns[0], e.values[columns[0].id]) || "—" : e.createdByName}</span>
                       {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
+                      {e.archivedAt && <ToneBadge tone="neutral">Archived</ToneBadge>}
                       {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge>}
                     </div>
                     <p className="mt-0.5 text-micro text-muted">{formatDateTime(e.createdAt)} · {e.createdByName}{e.site ? ` · ${e.site.name}` : ""}</p>

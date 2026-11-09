@@ -136,6 +136,15 @@ export function canReadEntries(form: BuiltForm, doc: FormDoc, user: Viewer): boo
   return entryReachOf(form, doc, user) === "all";
 }
 
+/**
+ * Whether this person may archive entries (put dealt-with ones away) and bring
+ * them back: Admins, people who can void, and anyone who sees every entry of
+ * the form (HR and IT on the HR forms).
+ */
+export function canArchiveEntries(form: BuiltForm, doc: FormDoc, user: Viewer, reach: "all" | "site" | "own") {
+  return Boolean(user) && (isFormAdmin(user) || canVoidEntries(form, doc, user) || reach === "all");
+}
+
 export function canVoidEntries(form: BuiltForm, doc: FormDoc, user: Viewer) {
   return canReadEntries(form, doc, user) && Boolean(user && (user.permissions.includes("entries.void") || isFormAdmin(user)));
 }
@@ -507,6 +516,8 @@ export interface EntryFilter {
   site?: string;
   /** Follow-up: still open, or done. */
   followUp?: "open" | "done";
+  /** Archived entries: hidden (the entries list's default), only them, or all. Left out: no filter. */
+  archived?: "hide" | "only" | "all";
   /** Only these entries (the ones ticked on the Entries screen). */
   ids?: string[];
 }
@@ -527,6 +538,8 @@ export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): 
   const and: Prisma.FormEntryWhereInput[] = [{ formId: form.id }, entryScope(user)];
   if (filter.status !== "all") and.push({ status: filter.status ?? "active" });
   if (filter.starred) and.push({ starred: true });
+  if (filter.archived === "hide") and.push({ archivedAt: null });
+  else if (filter.archived === "only") and.push({ archivedAt: { not: null } });
   if (filter.from) and.push({ createdAt: { gte: nyDayStart(filter.from) } });
   if (filter.to) and.push({ createdAt: { lt: new Date(nyDayStart(filter.to).getTime() + 86_400_000) } });
   if (filter.site) and.push({ siteId: filter.site });
@@ -628,6 +641,8 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
     voidedAt: e.voidedAt,
     voidedByName: e.voidedByName,
     voidReason: e.voidReason,
+    archivedAt: e.archivedAt,
+    archivedByName: e.archivedByName,
     followUp: e.followUp
       ? {
           status: e.followUp,

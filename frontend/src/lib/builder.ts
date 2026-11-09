@@ -113,6 +113,9 @@ export interface EntryRow {
   voidedAt: string | null;
   voidedByName: string | null;
   voidReason: string | null;
+  /** Archived: dealt with and put away (hidden from the list unless asked for). */
+  archivedAt?: string | null;
+  archivedByName?: string | null;
   /** Follow-up (backend services/followUp.ts): null when the form doesn't track it. */
   followUp: {
     status: "open" | "done";
@@ -137,6 +140,8 @@ export interface EntryList {
   /** The Site filter's choices: sites with an entry under the other filters. */
   sites?: { id: string; name: string; count: number }[];
   canVoid: boolean;
+  /** This person can archive entries and bring them back. */
+  canArchive?: boolean;
   isAdmin: boolean;
   /** The form tracks follow-ups. */
   followUp: boolean;
@@ -160,6 +165,8 @@ export interface EntryDetail {
   newerId: string | null;
   olderId: string | null;
   canVoid: boolean;
+  /** This person can archive the entry and bring it back. */
+  canArchive?: boolean;
   isAdmin: boolean;
   /** This person can mark the follow-up done or reopen it. */
   canFollowUp: boolean;
@@ -302,6 +309,8 @@ export const fillApi = {
   updateEntry: (slug: string, id: string, values: Values) => api.patch(`/f/${slug}/entries/${id}`, { values }),
   void: (slug: string, id: string, reason: string) => api.post(`/f/${slug}/entries/${id}/void`, { reason }),
   restore: (slug: string, id: string) => api.post(`/f/${slug}/entries/${id}/void`, { restore: true }),
+  /** Archive entries (or bring them back): these ids, or with none every one the filters (qs) match. */
+  archive: (slug: string, archived: boolean, ids?: string[], qs = "") => api.post<{ count: number }>(`/f/${slug}/entries-archive${qs ? `?${qs}` : ""}`, { archived, ...(ids ? { ids } : {}) }),
   star: (slug: string, id: string, starred: boolean) => api.post(`/f/${slug}/entries/${id}/star`, { starred }),
   note: (slug: string, id: string, body: string) => api.post<EntryNote>(`/f/${slug}/entries/${id}/notes`, { body }),
   /** Mark the entry's follow-up done (with what was done), or open it again. */

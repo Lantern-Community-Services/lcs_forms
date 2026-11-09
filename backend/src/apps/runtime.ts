@@ -208,7 +208,7 @@ export function entryOut(e: FormEntry, sites: Sites, fields?: string[]) {
 /** Every FormEntry column but `data`. */
 const ENTRY_META = {
   id: true, formId: true, formVersion: true, siteId: true, source: true, status: true, occurredAt: true, tenantId: true, overrideReason: true,
-  clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, deviceKind: true, fillSeconds: true, voidedAt: true, voidedByName: true, voidReason: true,
+  clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, deviceKind: true, fillSeconds: true, voidedAt: true, voidedByName: true, voidReason: true, archivedAt: true, archivedByName: true,
   starred: true, updatedByName: true, createdAt: true, updatedAt: true,
   followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpChecks: true, followUpRemindedAt: true, followUpReminders: true,
   shareLinkId: true, sharedById: true, sharedByName: true,
