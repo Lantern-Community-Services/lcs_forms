@@ -199,18 +199,19 @@ fillRouter.get(
       prisma.formEntry.groupBy({ by: ["siteId"], where: { AND: [entryWhere(form, req.user, { ...filter, site: undefined }), visible] }, _count: { _all: true } }),
     ]);
     const rows = inOrder(ids, ids.length ? await prisma.formEntry.findMany({ where: { id: { in: ids } }, include: { _count: { select: { notes: true } } } }) : []);
+    const follow = await loadFollowUp(form);
     res.json({
       form: { id: form.id, slug: form.slug, title: form.title, status: form.status, version: form.liveVersion },
       doc,
       total,
-      items: rows.map((e) => entryRow({ ...e, site: e.siteId ? sites.get(e.siteId) ?? null : null })),
+      items: rows.map((e) => entryRow({ ...e, site: e.siteId ? sites.get(e.siteId) ?? null : null }, follow)),
       sites: bySite
         .filter((g) => g.siteId && sites.has(g.siteId))
         .map((g) => ({ id: g.siteId!, name: sites.get(g.siteId!)!.name, count: g._count._all }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       canVoid: canVoidEntries(form, doc, req.user),
       isAdmin: isFormAdmin(req.user),
-      followUp: (await loadFollowUp(form)).enabled,
+      followUp: follow.enabled,
       // all: every entry; site: their sites' and their own; own: their own and the ones they were told about.
       reach,
     });

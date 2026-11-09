@@ -217,9 +217,14 @@ async function doersOf(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEnt
 
 /** The people also told about an entry's follow-up (at its site), besides whoever filed it. */
 async function alsoTellOf(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEntry, "siteId">) {
-  if (!s.alsoTell.length) return [];
+  return (await alsoTellPlan(form, s, entry)).people;
+}
+
+/** Everyone also told: account holders (told in the app and by email), and addresses with no account (emailed only). */
+async function alsoTellPlan(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEntry, "siteId">) {
+  if (!s.alsoTell.length) return { people: [] as { id: string; name: string; email: string }[], emails: [] as string[] };
   const [plan] = await planRoutes(form, [asRoute({ doers: s.alsoTell })], { event: ENTRY_CREATED, title: form.title, site: await siteOf(entry.siteId) });
-  return plan?.people ?? [];
+  return { people: plan?.people ?? [], emails: plan?.emails ?? [] };
 }
 
 /** The checklist items ticked off on an entry, or none. */
@@ -265,6 +270,12 @@ export function checklistFor(s: Pick<FollowUpSettings, "checklist">, entry: Pick
   }
   for (const t of ticks) if (!out.some((c) => c.id === t.id)) out.push({ id: t.id, label: t.label, done: { at: t.doneAt, byName: t.doneByName } });
   return out;
+}
+
+/** How many of an entry's checklist items are ticked, of how many; nothing when it has no checklist. */
+export function checklistCount(s: Pick<FollowUpSettings, "checklist">, entry: Pick<FormEntry, "data" | "followUpChecks">): { checked?: number; checkTotal?: number } {
+  const c = checklistFor(s, entry);
+  return c.length ? { checked: c.filter((x) => x.done).length, checkTotal: c.length } : {};
 }
 
 const tickedText = (c: CheckState) => (c.done ? `Done by ${c.done.byName}, ${stampOf(c.done.at)}` : "Not done");
@@ -393,16 +404,24 @@ export async function setFollowUp(
     if (!mailConfigured()) throw badRequest("Email isn't set up on this server, so the password can't be sent. Leave it blank and give it to them another way.");
   }
 
-  let replied = false;
-  if (filer && reachable && (s.reply?.message || done.secrets.size)) {
+  // The reply's {tags}: the entry's answers, what was filled in, and who did it. Never a password.
+  const base: Record<string, string> = {};
+  if (input.done) {
     const answers = JSON.parse(entry.data) as Record<string, unknown>;
-    const base: Record<string, string> = {};
     for (const [k, v] of Object.entries(answers)) base[k] = answerText(v);
     Object.assign(base, { done_by: actor.name, filed_by: entry.createdByName, form: form.title, site: site?.name ?? "", note: note ?? "" });
     for (const v of done.kept) if (v.value) base[v.id] = v.value;
+  }
+  const replySubject = (s.reply?.subject ? fillReply(s.reply.subject, base) : "").replace(/\s+/g, " ").trim().slice(0, 200) || `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
+  // The people also told get the same words, unless they'd carry a password (then they get the usual notice).
+  const passwordTags = s.doneFields.filter((f) => f.type === "password").map((f) => `{${f.id}}`);
+  const shareReply = Boolean(s.reply?.message && !passwordTags.some((t) => `${s.reply?.subject ?? ""} ${s.reply?.message ?? ""}`.includes(t)));
+
+  let replied = false;
+  if (filer && reachable && (s.reply?.message || done.secrets.size)) {
     // A password goes in the message, never the subject (subjects are logged).
     const withSecrets: Record<string, string> = { ...base, ...Object.fromEntries(done.secrets) };
-    const subject = (s.reply?.subject ? fillReply(s.reply.subject, base) : "").replace(/\s+/g, " ").trim().slice(0, 200) || `Done: ${form.title}${site ? ` at ${site.name}` : ""}`;
+    const subject = replySubject;
     const message = s.reply?.message ? fillReply(s.reply.message, withSecrets) : null;
     // Without a message of their own, the done fields are listed (a password too, in this email only).
     const fields = [
@@ -496,8 +515,45 @@ export async function setFollowUp(
   }
   if (input.done && s.alsoTell.length) {
     // The people also told (HR and IT on a Separation), besides whoever filed it and whoever did it.
-    const others = (await alsoTellOf(form, s, entry)).filter((p) => p.id !== actor.userId && !(tell && p.id === entry.createdById));
-    if (others.length) {
+    const plan = await alsoTellPlan(form, s, entry);
+    const others = plan.people.filter((p) => p.id !== actor.userId && !(tell && p.id === entry.createdById));
+    const message = shareReply ? fillReply(s.reply!.message!, base) : null;
+    const link = { label: "Open it in Lantern Forms", url: `${appBaseUrl}${entryPath(form, entry.id)}` };
+    // In the doers' own words ("Termination processed: …"), to Lantern addresses only: they carry answers.
+    // Addresses with no account (HR's shared inbox) get it either way, as nobody else would tell them.
+    const sendTo = [...(message ? others.map((p) => p.email) : []), ...plan.emails].filter((a, i, all) => all.indexOf(a) === i);
+    for (const to of sendTo) {
+      const inside = isInternalAddress(to);
+      await sendLogged({
+        to: [to],
+        subject: message && inside ? replySubject : w?.subject ?? fallback,
+        kind: "notification",
+        formId: form.id,
+        withAnswers: inside,
+        html: brandedEmail({
+          kicker: form.title,
+          heading: message && inside ? replySubject : w?.heading ?? w?.subject ?? fallback,
+          intro: message && inside ? null : `${actor.name} marked it done.`,
+          message: inside ? message : null,
+          fields: inside ? [{ label: "Filed by", value: entry.createdByName }, ...doneFields] : [],
+          button: link,
+        }),
+      }).catch((err) => console.error(`[follow-up] couldn't email ${to} about ${entry.id}:`, err));
+    }
+    if (others.length && message) {
+      // Their email has gone: this one is the bell only.
+      await notify({
+        to: { users: others.map((p) => p.id) },
+        type: "forms.entry",
+        title: replySubject,
+        body: `Filed by ${entry.createdByName}. ${actor.name} marked it done.`,
+        link: entryPath(form, entry.id),
+        source: `form:${form.slug}`,
+        sourceLabel: form.title,
+        formId: form.id,
+        topic: { key: followUpTopicKey(form.id, "done"), rule: { inApp: true, email: false, emailWhen: null, choice: "locked" } },
+      }).catch((err) => console.error(`[follow-up] couldn't tell the people also told about ${entry.id}:`, err));
+    } else if (others.length) {
       await notify({
         to: { users: others.map((p) => p.id) },
         type: "forms.entry",
