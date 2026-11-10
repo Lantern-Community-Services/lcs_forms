@@ -659,8 +659,8 @@ type Sharing = { id: string; role: string; isRemovable?: boolean; emailAddress?:
 export let lastCalendarLock: { at: string; mailboxes: { mailbox: string; changed: string[]; problems: string[] }[] } | null = null;
 
 /**
- * Keep the shared mailboxes' calendars read-only for people: the app is the only
- * thing that writes them, so anything changed there would be overwritten (or
+ * Keep the shared mailboxes' calendars read-only for people (apart from anyone in
+ * OUTLOOK_CALENDAR_EDITORS for that mailbox): the app is the main thing that writes them, so anything changed there would be overwritten (or
  * left wrong). Anyone the calendar is shared with, or delegated to, with a role
  * that can edit is turned down to "read": they still see every event. Graph
  * can't see mailbox-level Full Access (an Exchange permission, not calendar
@@ -670,12 +670,15 @@ export async function lockMailboxCalendars(mailboxes = env.outlookMailboxes) {
   const out: { mailbox: string; changed: string[]; problems: string[] }[] = [];
   for (const m of mailboxes) {
     const who = mailboxWho(m.mailbox);
+    const editors = env.outlookCalendarEditors[m.mailbox] ?? [];
     const changed: string[] = [];
     const problems: string[] = [];
     try {
       const list = await graph<{ value: Sharing[] }>(who, "GET", "/calendar/calendarPermissions");
       for (const p of list?.value ?? []) {
         if (!EDIT_ROLES.has(p.role)) continue;
+        // Allowed to edit this calendar (OUTLOOK_CALENDAR_EDITORS): left as they are.
+        if (p.emailAddress?.address && editors.includes(p.emailAddress.address.toLowerCase())) continue;
         const name = p.emailAddress?.address || p.emailAddress?.name || "Someone";
         const one = `/calendar/calendarPermissions/${encodeURIComponent(p.id)}`;
         try {

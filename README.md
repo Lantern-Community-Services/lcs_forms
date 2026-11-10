@@ -712,7 +712,11 @@ listed mailboxes. Nobody signs in as the mailbox, and it stays a shared mailbox 
   calendar's sharing through Graph and turns anyone who can edit (write, delegate, custom; the
   "My Organization" default too) down to **read**. They still see every event. `POST
   /api/calendar/outlook/run` does it now; the status shows what it last changed under
-  `sharedMailboxes.readOnly`. **Full Access** to the mailbox is an Exchange permission, not
+  `sharedMailboxes.readOnly`. Someone who should be able to edit a calendar (say, to add their own
+  items) goes in `OUTLOOK_CALENDAR_EDITORS="lcs_sh_transportation@lanterncommunity.org=ccasey@lanterncommunity.org"`
+  (`mailbox=person|person`, comma-separated per mailbox) and keeps the edit access they're given in
+  Exchange. Events the app made are still the app's: an edit to one is overwritten at its next change.
+  **Full Access** to the mailbox is an Exchange permission, not
   calendar sharing, so Graph can't see or change it: anyone with it can still edit. IT removes it
   (below) and people see the calendar through sharing instead.
 - **How.** The same queue (`outlookSync.ts`, `CalendarMailboxCopy`), so the same 15-second settle,
