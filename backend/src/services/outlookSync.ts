@@ -299,7 +299,10 @@ export async function syncEvent(id: string): Promise<void> {
   const namedIds = new Set(named.map((p) => p.userId));
   const people = [...following.filter((p) => !namedIds.has(p.userId)), ...named];
   // Who could send it: whoever its form asked for (in order), the last person to change it, then whoever made it.
-  const senders = [...new Set([...jsonList(ev.sendFromIds).filter((x): x is string => typeof x === "string"), ev.updatedById, ev.createdById].filter((x): x is string => Boolean(x)))];
+  // A form that names who sends it (sendFrom) gets only them: its events are changed by whoever's
+  // action touched them (a requester, an approver), and that mustn't make them the organizer.
+  const namedSenders = jsonList(ev.sendFromIds).filter((x): x is string => typeof x === "string");
+  const senders = [...new Set((namedSenders.length ? namedSenders : [ev.updatedById, ev.createdById]).filter((x): x is string => Boolean(x)))];
   const holders = await withGraphToken([...people.map((p) => p.userId), ...senders, ...(ev.outlookOrganizerId ? [ev.outlookOrganizerId] : [])]);
 
   // The organizer: whoever's calendar already holds the meeting.
@@ -358,8 +361,13 @@ export async function syncEvent(id: string): Promise<void> {
   // meeting itself changed, not when a quiet copy did.
   // The Teams link isn't in either: it comes back from Outlook, it isn't sent.
   const meetingHash = needMeeting ? sha1({ organizerId, meeting, body, exceptions }) : "none";
-  const hash = `${meetingHash}|${sha1({ meetingHash, quietKey, fallback: [...fallback], category: ev.category?.name, exceptions, body })}`;
-  const [sentMeetingHash] = (ev.outlookHash ?? "").split("|");
+  // A third fingerprint, the meeting without its attendees: when only who's invited
+  // changed, Outlook is sent just the attendees, and Exchange then emails only the
+  // people added or removed (any other change emails every attendee "updated").
+  const { attendees: _attendees, ...withoutPeople } = meeting;
+  const coreHash = needMeeting ? sha1({ organizerId, meeting: withoutPeople, body, exceptions }) : "none";
+  const hash = `${meetingHash}|${sha1({ meetingHash, quietKey, fallback: [...fallback], category: ev.category?.name, exceptions, body })}|${coreHash}`;
+  const [sentMeetingHash, , sentCoreHash] = (ev.outlookHash ?? "").split("|");
 
   // Unchanged: nothing to send. One still missing the Teams link it asked for is
   // sent again, but only once the organizer can host Teams meetings; before
@@ -398,8 +406,11 @@ export async function syncEvent(id: string): Promise<void> {
       ({ id: outlookId, joinUrl } = await create());
     } else {
       try {
+        // Only who's invited changed (same organizer, same everything else): send just that.
+        const onlyPeople = Boolean(sentCoreHash) && sentCoreHash === coreHash && !retryTeams;
         // A Teams meeting's body holds its join details, which a new body would wipe out.
-        const updated = await graph<Created>(sender, "PATCH", item(outlookId), joinUrl || ev.teamsMeeting ? meeting : { ...meeting, body });
+        const change = onlyPeople ? { attendees: meeting.attendees } : joinUrl || ev.teamsMeeting ? meeting : { ...meeting, body };
+        const updated = await graph<Created>(sender, "PATCH", item(outlookId), change);
         joinUrl = updated?.onlineMeeting?.joinUrl ?? joinUrl;
       } catch (e) {
         if (!(e instanceof GraphError && e.status === 404)) throw e;
