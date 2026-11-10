@@ -988,9 +988,12 @@ function SuggestInput({ id, value, placeholder, maxLength, disabled, invalid, on
   // Titles that start with what's typed come first, then ones that contain it.
   const matches = useMemo(() => {
     if (!q) return titles.slice(0, 50);
+    // Initials, leaving out small words: "Assistant Program Director" → apd, "Vice President of Operations" → vpo.
+    const initials = (t: string) => t.toLowerCase().split(/[^a-z]+/).filter((w) => w && !["of", "and", "the", "for", "to"].includes(w)).map((w) => w[0]).join("");
     const starts = titles.filter((t) => t.toLowerCase().startsWith(q));
-    const has = titles.filter((t) => !t.toLowerCase().startsWith(q) && t.toLowerCase().includes(q));
-    return [...starts, ...has].slice(0, 50);
+    const byInitials = /^[a-z]{2,6}$/.test(q) ? titles.filter((t) => !starts.includes(t) && initials(t).startsWith(q)) : [];
+    const has = titles.filter((t) => !starts.includes(t) && !byInitials.includes(t) && t.toLowerCase().includes(q));
+    return [...starts, ...byInitials, ...has].slice(0, 50);
   }, [titles, q]);
   const exact = titles.some((t) => t.toLowerCase() === q);
   const pick = (t: string) => {
