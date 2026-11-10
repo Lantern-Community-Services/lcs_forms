@@ -127,7 +127,8 @@ authRouter.get(
         email: identity.email,
         entraObjectId: identity.oid || null,
         identityProvider: identity.idp ?? "microsoft",
-        ...(identity.profileLoaded ? { title: identity.jobTitle } : {}),
+        // Microsoft's job title when it has one; otherwise the one an admin gave them stays.
+        ...(identity.profileLoaded && identity.jobTitle ? { title: identity.jobTitle } : {}),
       };
 
       if (listedSuper && (!user || !user.globalAdmin || user.roleKey !== "admin" || user.status !== "active")) {

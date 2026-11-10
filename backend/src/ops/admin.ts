@@ -167,7 +167,7 @@ export const adminOps = [
 
   defineOp({
     name: "update_person",
-    description: "Change someone's role, sites, status (active, invited, denied, deactivated), name, calendar switch (Admin keys only) or roster switch (\"Can manage the roster\"). Admins and Super Admins can't be changed through a key. Requests are approved with approve_person, not here.",
+    description: "Change someone's role, sites, status (active, invited, denied, deactivated), name, job title, calendar switch (Admin keys only) or roster switch (\"Can manage the roster\"). Admins and Super Admins can't be changed through a key. Requests are approved with approve_person, not here.",
     scope: "people:manage",
     as: "creator",
     http: { method: "PATCH", path: "/people/:id" },
@@ -177,6 +177,7 @@ export const adminOps = [
       status: z.enum(["active", "invited", "denied", "deactivated"]).optional(),
       siteIds: z.array(z.string()).optional().describe("The sites they have (replaces them); giving a requested site settles that request"),
       name: z.string().max(120).optional(),
+      title: z.string().max(120).nullable().optional().describe("Job title (e.g. Assistant Program Director). Their Microsoft profile's replaces it when they sign in, if it has one"),
       calendarEditor: z.boolean().optional(),
       rosterEditor: z.boolean().optional().describe("Can manage the roster (add, edit, keep, remove, restore residents) whatever their role"),
     },
