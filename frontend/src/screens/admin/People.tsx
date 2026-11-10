@@ -76,7 +76,7 @@ type Draft = {
   id?: string;
   name: string;
   email: string;
-  /** Job title from Microsoft. Shown, never edited here. */
+  /** Job title: Microsoft's replaces it when they sign in, if their profile has one. */
   title?: string | null;
   roleKey: string;
   status: UserStatus;
@@ -189,8 +189,9 @@ export function AdminPeople() {
       const roster = draft.canEditRole && !draft.isSelf ? { rosterEditor: draft.rosterEditor } : {};
       // View as: a Super Admin's to give an Admin. Leaving Admin drops it on the server.
       const viewAs = managesAdmins && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" ? { viewAsEnabled: draft.viewAsEnabled } : {};
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...calendar, ...roster, ...viewAs });
-      else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...calendar });
+      const title = { title: draft.title?.trim() || null };
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...(draft.canEditRole && !draft.superAdmin ? title : {}), ...calendar, ...roster, ...viewAs });
+      else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...title, ...calendar });
       toast(draft.id ? "Saved." : `Added ${draft.email.trim()}. Their name and title fill in when they first sign in.`);
       // A new account lands in Pending; show it there.
       if (!draft.id) setTab("pending");
@@ -326,6 +327,11 @@ export function AdminPeople() {
               {!draft.id && (
                 <Field label="Work email" hint="Their name and job title come from Microsoft when they first sign in. Until then they're pending, but you can already give them a role and sites, and pick them as an approver.">
                   <Input type="email" autoFocus value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="name@lanterncommunity.org" />
+                </Field>
+              )}
+              {!draft.superAdmin && (draft.canEditRole || !draft.id) && (
+                <Field label="Job title" hint="Spelled out in full (Assistant Program Director, not APD): it puts them in their team's groups. Their Microsoft profile's title replaces it when they sign in, if it has one.">
+                  <Input value={draft.title ?? ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} maxLength={120} placeholder="e.g. Assistant Program Director" />
                 </Field>
               )}
               {draft.id && draft.status === "invited" && (

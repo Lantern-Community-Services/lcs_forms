@@ -626,7 +626,8 @@ Events go into each person's **own** Outlook calendar. The app is still where ev
 changed; Outlook is told about each change (one way: edits made in Outlook aren't brought back).
 Nobody sets anything up in Outlook.
 
-**The app has no Outlook access of its own.** Everything is written with one person's own Microsoft
+**The app has no Outlook access of its own** (apart from the shared mailbox calendars below,
+which Exchange fences to those mailboxes). Everything else is written with one person's own Microsoft
 sign-in: delegated **Calendars.ReadWrite** + **offline_access** on the app registration, consented
 for the organization, so nobody sees a consent screen. Each Microsoft sign-in keeps that person's
 refresh token, encrypted with `TOKEN_ENCRYPTION_KEY` (`UserGraphToken`, `services/graphTokens.ts`),
@@ -686,6 +687,76 @@ random bytes, base64; Key Vault in Azure). That's all: it's on whenever Microsof
 configured, and each person's calendar starts working at their next Microsoft sign-in.
 `OUTLOOK_SYNC=false` turns it off, and then sign-in asks for identity only (for an app
 registration without that consent). No mailbox, Exchange setup or application permission is needed.
+
+### Shared mailbox calendars
+
+Shared mailboxes a team uses as a calendar (`lcs_events@`, `lcs_sh_transportation@`) can get the
+calendar's events too. These are the one place the app writes to Outlook **with its own access**
+(client credentials on the same app registration), and Exchange limits that access to just the
+listed mailboxes. Nobody signs in as the mailbox, and it stays a shared mailbox (no licence).
+
+- **Which events.** `OUTLOOK_MAILBOXES` pairs each mailbox with a feed:
+  `lcs_events@lanterncommunity.org=all,lcs_sh_transportation@lanterncommunity.org=transportation`.
+  A feed **`all`** mailbox gets every event people can see on the calendar (every-site and site
+  events; not a form's event that only invites people by name, like the weekly review). Any other
+  feed gets the events a code form tags with it (`ctx.calendar.form` `feeds`): Event Requests tags
+  every request with rides `transportation`.
+- **What's in them.** Title, times, place, category name, the repeat rule and changed or cancelled
+  days, the **description**, a link back here and the Teams link. (Unlike personal invites, these
+  are the team's working calendar, so they carry the description.) An event still waiting on
+  approval goes in as **Tentative**, titled "Needs approval: …", and becomes Busy once approved.
+  Declined, cancelled and deleted events are removed. One way only: changes made in the mailbox
+  aren't brought back, and are overwritten at the next change here.
+- **Read-only for people.** The app is the only thing that writes these calendars (an edit made in
+  Outlook would be overwritten or left wrong), so at start and every 6 hours it reads each
+  calendar's sharing through Graph and turns anyone who can edit (write, delegate, custom; the
+  "My Organization" default too) down to **read**. They still see every event. `POST
+  /api/calendar/outlook/run` does it now; the status shows what it last changed under
+  `sharedMailboxes.readOnly`. **Full Access** to the mailbox is an Exchange permission, not
+  calendar sharing, so Graph can't see or change it: anyone with it can still edit. IT removes it
+  (below) and people see the calendar through sharing instead.
+- **How.** The same queue (`outlookSync.ts`, `CalendarMailboxCopy`), so the same 15-second settle,
+  5-minute retries and only-its-own-items rule (the `org.lanterncommunity.forms` extension). When
+  the mailboxes are set up, every upcoming event is checked at start so they fill up. Admins see
+  each mailbox's count and any failures under `sharedMailboxes` in `GET /api/calendar/outlook/status`.
+
+**Setting it up (IT, once).** In Exchange Online PowerShell, as an Exchange admin (Organization
+Management). Don't add a Calendars permission to the app registration in Entra: that grant would
+reach every mailbox.
+
+```powershell
+Connect-ExchangeOnline
+# 1. A mail-enabled security group holding only the mailboxes the app may write to.
+New-DistributionGroup -Name "Lantern Forms calendars" -Type Security -PrimarySmtpAddress lantern-forms-calendars@lanterncommunity.org
+Add-DistributionGroupMember "Lantern Forms calendars" -Member lcs_events@lanterncommunity.org
+Add-DistributionGroupMember "Lantern Forms calendars" -Member lcs_sh_transportation@lanterncommunity.org
+Set-DistributionGroup "Lantern Forms calendars" -HiddenFromAddressListsEnabled $true
+# 2. Point Exchange at the app's service principal (Entra > Enterprise applications > the app:
+#    Application ID and Object ID, not the App registrations page's IDs).
+New-ServicePrincipal -AppId <Application ID> -ObjectId <Object ID> -DisplayName "Lantern Forms"
+# 3. Calendar read/write, only on that group's mailboxes.
+New-ManagementRoleAssignment -Name "Lantern Forms calendars" -Role "Application Calendars.ReadWrite" -App <Application ID> -RecipientGroupScope "Lantern Forms calendars"
+# 4. Check: InScope True for the mailboxes, False for anyone else's.
+Test-ServicePrincipalAuthorization -Identity <Application ID> -Resource lcs_events@lanterncommunity.org
+Test-ServicePrincipalAuthorization -Identity <Application ID> -Resource someone.else@lanterncommunity.org
+```
+
+Then set `OUTLOOK_MAILBOXES` on the backend and restart it. To add a mailbox later: add it to the
+group and to `OUTLOOK_MAILBOXES`.
+
+**Read-only (IT, once).** Full Access lets someone edit whatever the calendar's sharing says. Take it
+away and let everyone read the calendar through sharing (the app then keeps that at read):
+
+```powershell
+# Who has Full Access now (besides the system's own entries):
+Get-MailboxPermission lcs_events@lanterncommunity.org | Where-Object { $_.User -notlike "NT AUTHORITY*" -and $_.IsInherited -eq $false }
+# Remove it, per person (repeat for lcs_sh_transportation@):
+Remove-MailboxPermission lcs_events@lanterncommunity.org -User someone@lanterncommunity.org -AccessRights FullAccess -InheritanceType All -Confirm:$false
+# Let the whole organization read the calendar (or Add-MailboxFolderPermission ... -User <group> -AccessRights Reviewer for some people only):
+Set-MailboxFolderPermission lcs_events@lanterncommunity.org:\Calendar -User Default -AccessRights Reviewer
+```
+
+People then add it in Outlook with **Add calendar → From directory** (it's no longer auto-mapped).
 
 ## Notifications
 

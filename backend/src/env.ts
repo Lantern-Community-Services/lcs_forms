@@ -57,6 +57,22 @@ function trustProxy(value: string | undefined): number | false {
   return n;
 }
 
+/** OUTLOOK_MAILBOXES: "mailbox=feed" pairs, comma-separated (a mailbox with no feed gets "all"). */
+export interface SharedMailbox {
+  mailbox: string;
+  feed: string;
+}
+function parseMailboxes(value: string): SharedMailbox[] {
+  const out: SharedMailbox[] = [];
+  for (const part of value.split(",").map((x) => x.trim()).filter(Boolean)) {
+    const [mailbox, feed] = part.split("=").map((x) => x.trim());
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mailbox ?? "")) throw new Error(`OUTLOOK_MAILBOXES: "${part}" doesn't start with an email address.`);
+    if (feed !== undefined && !/^[a-z0-9_-]{1,40}$/i.test(feed)) throw new Error(`OUTLOOK_MAILBOXES: the feed in "${part}" must be letters, numbers, - or _.`);
+    out.push({ mailbox: mailbox.toLowerCase(), feed: (feed || "all").toLowerCase() });
+  }
+  return out;
+}
+
 export const env = {
   /** The commit this image was built from (GIT_SHA, 12 characters), or "" outside the pipeline. */
   commit: (process.env.GIT_SHA ?? "").trim().slice(0, 12),
@@ -130,6 +146,16 @@ export const env = {
    * configured and tokens can be stored; OUTLOOK_SYNC=false turns it off.
    */
   outlookSync: (process.env.OUTLOOK_SYNC ?? "true").toLowerCase() !== "false",
+
+  /**
+   * Shared mailboxes whose calendars get the calendar's events (services/outlookSync.ts),
+   * written with the app's own access (client credentials), which Exchange's RBAC for
+   * Applications fences to just these mailboxes. "mailbox=feed" pairs, comma-separated:
+   * feed "all" gets every event people can see on the calendar; any other name gets the
+   * events a code form tags with that feed (ctx.calendar.form `feeds`). Empty = off.
+   * e.g. OUTLOOK_MAILBOXES="lcs_events@lanterncommunity.org=all,lcs_sh_transportation@lanterncommunity.org=transportation"
+   */
+  outlookMailboxes: parseMailboxes(process.env.OUTLOOK_MAILBOXES ?? ""),
 
   /**
    * Backup of every built form to a GitHub repository (services/formBackup.ts).

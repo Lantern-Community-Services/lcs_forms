@@ -17,7 +17,7 @@ import { queueEmail } from "./email.js";
 import { routeFromApp, sendNotification } from "./notify.js";
 import { entryInput, routeQuietly } from "../services/routing.js";
 import type { Request } from "express";
-import { createEvent, deleteEvent, eventInput, formEvents, inviteesSchema, loadOccurrences, scopeSchema, setEventPending, setEventPeople, updateEvent, type FormOwner } from "../services/calendar.js";
+import { createEvent, deleteEvent, eventInput, feedsSchema, formEvents, inviteesSchema, loadOccurrences, scopeSchema, setEventPending, setEventPeople, updateEvent, type FormOwner } from "../services/calendar.js";
 import { noteCalendarChange } from "../services/outlookSync.js";
 import { OFFICE, formIncludesOffice, isOffice, notOffice } from "../services/officeSites.js";
 import { roleFor } from "../services/permissions.js";
@@ -737,11 +737,12 @@ async function senderIds(list: unknown): Promise<string[]> {
   return [...new Set(ids)];
 }
 
-/** The invitees / sendFrom a create or update gave (each left out when not given). */
-async function formEventPeople(o: any): Promise<Pick<FormOwner, "invitees" | "sendFrom">> {
-  const out: Pick<FormOwner, "invitees" | "sendFrom"> = {};
+/** The invitees / sendFrom / feeds a create or update gave (each left out when not given). */
+async function formEventPeople(o: any): Promise<Pick<FormOwner, "invitees" | "sendFrom" | "feeds">> {
+  const out: Pick<FormOwner, "invitees" | "sendFrom" | "feeds"> = {};
   if (o?.invitees !== undefined) out.invitees = o.invitees === null ? null : inviteesSchema.parse(o.invitees);
   if (o?.sendFrom !== undefined) out.sendFrom = o.sendFrom === null ? null : await senderIds(o.sendFrom);
+  if (o?.feeds !== undefined) out.feeds = o.feeds === null ? null : feedsSchema.parse(o.feeds);
   return out;
 }
 
@@ -768,7 +769,7 @@ async function formCalendar(app: LoadedApp, user: CurrentUser | null, op: string
       const pending = pendingOpt(change.pending);
       const people = await formEventPeople(change);
       if (!change.event) {
-        if (pending === undefined && !Object.keys(people).length) throw new Error("Give the event (and scope/date), pending, invitees or sendFrom.");
+        if (pending === undefined && !Object.keys(people).length) throw new Error("Give the event (and scope/date), pending, invitees, sendFrom or feeds.");
         if (Object.keys(people).length) await setEventPeople(req, String(args.id), owner(people));
         if (pending !== undefined) await setEventPending(req, String(args.id), pending, owner());
         return { id: String(args.id) };

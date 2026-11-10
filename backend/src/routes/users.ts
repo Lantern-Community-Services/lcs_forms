@@ -201,6 +201,8 @@ usersRouter.patch(
         status: z.enum(["active", "invited", "denied", "deactivated"]).optional(),
         siteIds: z.array(z.string()).optional(),
         name: z.string().trim().min(1).max(120).optional(),
+        /** Job title. Their Microsoft profile's replaces it when they sign in, if it has one. */
+        title: z.string().trim().max(120).nullable().optional(),
         calendarEditor: z.boolean().optional(),
         rosterEditor: z.boolean().optional(),
         viewAsEnabled: z.boolean().optional(),
@@ -242,6 +244,7 @@ usersRouter.patch(
         (body.roleKey && body.roleKey !== before.roleKey) ||
         (body.status && body.status !== before.status) ||
         (body.name && body.name !== before.name) ||
+        (body.title !== undefined && (body.title || null) !== before.title) ||
         rosterChange;
       if (touchesPerson && !theirs.every((id) => mine.includes(id))) {
         throw forbidden("This person also works at a site you don't manage. You can change which of your sites they're on, but an Admin has to change their role or status.");
@@ -272,6 +275,7 @@ usersRouter.patch(
           roleKey: body.roleKey,
           status: body.status,
           name: body.name,
+          title: body.title === undefined ? undefined : body.title || null,
           calendarEditor: calendarChange ? body.calendarEditor : undefined,
           rosterEditor: rosterChange ? body.rosterEditor : undefined,
           viewAsEnabled: dropsViewAs ? false : viewAsChange ? body.viewAsEnabled : undefined,
@@ -283,6 +287,7 @@ usersRouter.patch(
       body.roleKey && body.roleKey !== before.roleKey ? `role → ${roleFor(body.roleKey).name}` : null,
       body.status && body.status !== before.status ? `status → ${body.status}` : null,
       body.siteIds ? `sites → ${body.siteIds.length || "none"}` : null,
+      body.title !== undefined && (body.title || null) !== before.title ? `job title → ${body.title || "none"}` : null,
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
       rosterChange ? `roster management ${body.rosterEditor ? "on" : "off"}` : null,
       dropsViewAs ? "View as off (no longer an Admin)" : viewAsChange ? `View as ${body.viewAsEnabled ? "on" : "off"}` : null,
