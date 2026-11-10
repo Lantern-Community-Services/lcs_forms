@@ -34,9 +34,13 @@ export function actorOf(req: Request): Actor {
   return { id: null, name: "System", ...from };
 }
 
-/** The request's address and browser, for an Actor built by hand (sign-in). */
+/**
+ * The request's address and browser, for an Actor built by hand (sign-in).
+ * Code forms' server code calls the calendar with a stand-in request that has
+ * only `user` (no headers, no ip), so neither may be assumed.
+ */
 export function fromRequest(req: Request): Pick<Actor, "ip" | "userAgent"> {
-  return { ip: cleanIp(req.ip), userAgent: String(req.headers["user-agent"] ?? "").slice(0, 300) || null };
+  return { ip: cleanIp(req.ip), userAgent: String(req.headers?.["user-agent"] ?? "").slice(0, 300) || null };
 }
 
 /** { field: [before, after] } for the fields that actually changed. */
