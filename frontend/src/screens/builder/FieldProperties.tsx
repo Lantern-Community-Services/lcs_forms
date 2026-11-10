@@ -176,7 +176,10 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
       {f.type === "consent" && <Row label="Agreement text (HTML)"><Textarea value={f.consentText ?? ""} onChange={(e) => set({ consentText: e.target.value })} /></Row>}
 
       {f.type === "name" && (
-        <PartsPicker label="Parts" all={NAME_PARTS} value={f.nameParts ?? ["first", "last"]} onChange={(v) => set({ nameParts: v as Field["nameParts"] })} />
+        <>
+          <PartsPicker label="Parts" all={NAME_PARTS} value={f.nameParts ?? ["first", "last"]} onChange={(v) => set({ nameParts: v as Field["nameParts"] })} />
+          <Toggle label="A staff member's name: may go in emails to Lantern addresses (never a resident's)" checked={Boolean(f.inEmails)} onChange={(v) => set({ inEmails: v || undefined })} />
+        </>
       )}
       {f.type === "address" && (
         <PartsPicker label="Parts" all={ADDRESS_PARTS} value={f.addressParts ?? ["line1", "line2", "city", "state", "zip"]} onChange={(v) => set({ addressParts: v as Field["addressParts"] })} />

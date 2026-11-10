@@ -368,6 +368,8 @@ function FieldControl(props: FieldProps & { inputId: string }) {
   if (f.type === "email" && f.suffix?.startsWith("@")) {
     const domain = f.suffix;
     const shown = text.toLowerCase().endsWith(domain.toLowerCase()) ? text.slice(0, -domain.length) : text;
+    // A whole outside address (helpdesk@progressny.com): the Lantern domain isn't shown beside it.
+    const outside = shown.includes("@");
     return (
       <div className="flex items-center gap-1.5">
         <Input
@@ -387,7 +389,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
           disabled={disabled}
           className={cn("min-h-[44px] min-w-0 flex-1 md:min-h-9", invalid)}
         />
-        <span className="shrink-0 text-[14px] text-muted">{domain}</span>
+        {!outside && <span className="shrink-0 text-[14px] text-muted">{domain}</span>}
       </div>
     );
   }
