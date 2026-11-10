@@ -1469,6 +1469,7 @@ interface Report {
   hour: number;
   split: "all" | "site";
   includeEmpty: boolean;
+  stillOpen?: boolean;
   fields: string[];
   to: Recipient[];
   whatToDo?: string;
@@ -1633,6 +1634,10 @@ function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPrev
           <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
             <Switch checked={report.includeEmpty} onCheckedChange={(v) => set({ includeEmpty: v })} />
             Send it even when there were no entries
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
+            <Switch checked={report.stillOpen ?? false} onCheckedChange={(v) => set({ stillOpen: v })} />
+            Keep listing older entries still pending follow-up, until they're done
           </label>
         </Row>
         <Row label="Send to">

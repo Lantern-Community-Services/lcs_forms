@@ -65,6 +65,8 @@ const baseField = z.object({
   allowOther: z.boolean().optional(),
   /** A text box that offers a list as people type: "job_titles". */
   suggest: z.enum(["job_titles"]).optional(),
+  /** name: a staff member's name may go in emails to Lantern addresses. */
+  inEmails: z.boolean().optional(),
   columns: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   maxSelections: z.number().int().min(1).optional(),
   statements: z.array(choice).max(200).optional(),

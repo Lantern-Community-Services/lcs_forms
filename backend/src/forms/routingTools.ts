@@ -255,7 +255,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "save_email_report",
-    "Add a weekly summary report to a form, or change one (pass its id): the past 7 days' entries, emailed on a day (0 Sunday … 6 Saturday) and hour (0-23, New York time) to the same kinds of recipients as a route. split \"all\" sends one report for every site; \"site\" one per site, each to that site's people. fields are the table's columns (get_email_settings emailFields), shown to Lantern addresses only; anyone else gets the count and a button. includeEmpty sends a \"nothing this week\" email too.",
+    "Add a weekly summary report to a form, or change one (pass its id): the past 7 days' entries, emailed on a day (0 Sunday … 6 Saturday) and hour (0-23, New York time) to the same kinds of recipients as a route. split \"all\" sends one report for every site; \"site\" one per site, each to that site's people. fields are the table's columns (get_email_settings emailFields), shown to Lantern addresses only; anyone else gets the count and a button. includeEmpty sends a \"nothing this week\" email too. stillOpen also lists older entries whose follow-up is still pending, until they're marked done (with the _followup column: Done or Pending).",
     {
       form: formRef,
       id: z.string().optional().describe("Keep a report's id to change it; omit to add one"),
@@ -265,6 +265,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       hour: z.number().int().min(0).max(23),
       split: z.enum(["all", "site"]).optional(),
       includeEmpty: z.boolean().optional(),
+      stillOpen: z.boolean().optional().describe("Also list older entries still pending follow-up, until they're done"),
       fields: z.array(z.string()).optional(),
       to: z.array(recipient).describe("Who gets it: the same recipient kinds as a route"),
       template: z.string().optional().describe(`A report template's key (get_email_settings templates, kind "report"; "${DEFAULT_REPORT_TEMPLATE}" is the standard one): its subject, heading and What to do. Omit for the report's own whatToDo.`),

@@ -112,6 +112,8 @@ export interface Field {
   allowOther?: boolean;
   /** A text box that offers a list as people type, and still takes anything else: "job_titles" (every job title in the system). */
   suggest?: "job_titles";
+  /** name: a staff member's name (not a resident's) may go in emails to Lantern addresses, like other answers. */
+  inEmails?: boolean;
   /** radio / checkbox: lay choices out in columns. */
   columns?: 1 | 2 | 3;
   /** checkbox / multiselect: at most this many picked. */
@@ -410,6 +412,9 @@ export interface FieldTypeInfo {
  */
 export const EMAIL_FIELD_TYPES: FieldType[] = ["text", "number", "date", "time", "select", "radio", "checkbox", "multiselect", "consent", "rating", "slider", "calculation", "site"];
 
+/** May this field's answer go in an email? Its type allows it, or it's a staff name marked inEmails. */
+export const canEmailField = (f: Pick<Field, "type" | "inEmails">) => EMAIL_FIELD_TYPES.includes(f.type) || (f.type === "name" && f.inEmails === true);
+
 export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "text", label: "Single line", group: "Standard", input: true, value: "string", description: "One line of text. minLength, maxLength, pattern. suggest \"job_titles\": offers every job title in the system as they type; a new one can still be typed." },
   { type: "textarea", label: "Paragraph", group: "Standard", input: true, value: "string", description: "Several lines of text. rows, maxLength." },
@@ -426,7 +431,7 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "checkbox", label: "Checkboxes", group: "Choices", input: true, choices: true, value: "string[]", description: "Tick any number. allowOther, columns, maxSelections." },
   { type: "consent", label: "Consent", group: "Choices", input: true, value: "boolean", description: "A single 'I agree' tick box. consentText." },
   { type: "likert", label: "Likert / matrix", group: "Choices", input: true, choices: true, value: "{ [rowValue]: columnValue }", description: "Several statements (`statements`) rated on one scale (choices)." },
-  { type: "name", label: "Name", group: "Advanced", input: true, value: "{ prefix?, first, middle?, last, suffix? }", description: "A person's name in parts. nameParts." },
+  { type: "name", label: "Name", group: "Advanced", input: true, value: "{ prefix?, first, middle?, last, suffix? }", description: "A person's name in parts. nameParts. inEmails: true lets a staff member's name (never a resident's) go in emails to Lantern addresses." },
   { type: "address", label: "Address", group: "Advanced", input: true, value: "{ line1, line2?, city, state, zip, country? }", description: "A postal address. addressParts." },
   { type: "file", label: "File upload", group: "Advanced", input: true, value: "[{ id, name, size, mime }]", description: "Upload files. accept, maxFiles, maxSizeMb (max 50; photos are shrunk on the device and not held to it)." },
   { type: "signature", label: "Signature", group: "Advanced", input: true, value: "PNG data URL", description: "Sign with a finger, mouse or pen." },
@@ -1345,7 +1350,7 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
     (n.fields ?? []).forEach((id, j) => {
       const f = doc.fields.find((x) => x.id === id);
       if (!f) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `There's no field "${id}" on this form.` });
-      else if (!EMAIL_FIELD_TYPES.includes(f.type)) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `“${f.label || id}” can't go in an email: ${f.type} answers stay behind sign-in.` });
+      else if (!canEmailField(f)) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `“${f.label || id}” can't go in an email: ${f.type} answers stay behind sign-in.` });
     });
     if (n.enabled && n.kind === "email" && !n.to) problems.push({ path: `settings.notifications[${i}].to`, message: "An email notification needs a To address." });
     if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length && !n.groups?.length && !n.titles?.length) {
