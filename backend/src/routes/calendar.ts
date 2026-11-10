@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
-import { mailboxesConfigured, markUpcomingDirty, meetingProvidersFor, outlookConfigured, runQueue } from "../services/outlookSync.js";
+import { lastCalendarLock, lockMailboxCalendars, mailboxesConfigured, markUpcomingDirty, meetingProvidersFor, outlookConfigured, runQueue } from "../services/outlookSync.js";
 import { withGraphToken } from "../services/graphTokens.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
@@ -283,6 +283,8 @@ calendarRouter.get(
         enabled: mailboxesConfigured(),
         mailboxes: env.outlookMailboxes.map((m) => ({ ...m, events: mailboxCopies.find((c) => c.mailbox === m.mailbox)?._count._all ?? 0 })),
         failing: mailboxFailing.map((f) => ({ eventId: f.eventId, title: f.event.title, mailbox: f.mailbox, error: f.error })),
+        // The last read-only check of their calendars: who was turned down to read, and anything it couldn't change.
+        readOnly: lastCalendarLock,
       },
     });
   })
@@ -294,6 +296,7 @@ calendarRouter.post(
   MANAGE,
   asyncHandler(async (_req, res) => {
     await markUpcomingDirty();
-    res.json(await runQueue());
+    const readOnly = mailboxesConfigured() ? await lockMailboxCalendars() : null;
+    res.json({ ...(await runQueue()), readOnly });
   })
 );

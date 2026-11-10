@@ -650,6 +650,63 @@ export async function syncMailboxes(id: string): Promise<void> {
   if (problems.length) throw new Error(problems.length === 1 ? problems[0] : `${problems.length} shared-calendar problems. First: ${problems[0]}`);
 }
 
+/** Calendar sharing roles that can change events. Anyone holding one is turned down to "read". */
+const EDIT_ROLES = new Set(["write", "delegateWithoutPrivateEventAccess", "delegateWithPrivateEventAccess", "custom"]);
+
+type Sharing = { id: string; role: string; isRemovable?: boolean; emailAddress?: { address?: string | null; name?: string | null } };
+
+/** What the last read-only check found, for the Admin status page. */
+export let lastCalendarLock: { at: string; mailboxes: { mailbox: string; changed: string[]; problems: string[] }[] } | null = null;
+
+/**
+ * Keep the shared mailboxes' calendars read-only for people: the app is the only
+ * thing that writes them, so anything changed there would be overwritten (or
+ * left wrong). Anyone the calendar is shared with, or delegated to, with a role
+ * that can edit is turned down to "read": they still see every event. Graph
+ * can't see mailbox-level Full Access (an Exchange permission, not calendar
+ * sharing): IT removes that (README "Shared mailbox calendars").
+ */
+export async function lockMailboxCalendars(mailboxes = env.outlookMailboxes) {
+  const out: { mailbox: string; changed: string[]; problems: string[] }[] = [];
+  for (const m of mailboxes) {
+    const who = mailboxWho(m.mailbox);
+    const changed: string[] = [];
+    const problems: string[] = [];
+    try {
+      const list = await graph<{ value: Sharing[] }>(who, "GET", "/calendar/calendarPermissions");
+      for (const p of list?.value ?? []) {
+        if (!EDIT_ROLES.has(p.role)) continue;
+        const name = p.emailAddress?.address || p.emailAddress?.name || "Someone";
+        const one = `/calendar/calendarPermissions/${encodeURIComponent(p.id)}`;
+        try {
+          await graph(who, "PATCH", one, { role: "read" });
+          changed.push(`${name}: ${p.role} → read`);
+        } catch (e) {
+          // Some roles (a delegate's, "custom") can't be switched in place: share it again, read-only.
+          if (!p.isRemovable || !p.emailAddress?.address) {
+            problems.push(`${name} (${p.role}): ${e instanceof Error ? e.message : String(e)}`);
+            continue;
+          }
+          try {
+            await graph(who, "DELETE", one);
+            await graph(who, "POST", "/calendar/calendarPermissions", { emailAddress: { address: p.emailAddress.address, name: p.emailAddress.name ?? p.emailAddress.address }, role: "read" });
+            changed.push(`${name}: ${p.role} → read (shared again)`);
+          } catch (e2) {
+            problems.push(`${name} (${p.role}): ${e2 instanceof Error ? e2.message : String(e2)}`);
+          }
+        }
+      }
+    } catch (e) {
+      problems.push(e instanceof Error ? e.message : String(e));
+    }
+    if (changed.length) console.log(`[outlook] ${m.mailbox}: calendar made read-only for ${changed.join("; ")}`);
+    if (problems.length) console.error(`[outlook] ${m.mailbox}: couldn't make the calendar read-only: ${problems.join("; ")}`);
+    out.push({ mailbox: m.mailbox, changed, problems });
+  }
+  lastCalendarLock = { at: new Date().toISOString(), mailboxes: out };
+  return out;
+}
+
 const saveMailboxCopy = (eventId: string, mailbox: string, data: { outlookEventId?: string | null; hash?: string | null; error?: string | null }) =>
   prisma.calendarMailboxCopy.upsert({ where: { eventId_mailbox: { eventId, mailbox } }, create: { eventId, mailbox, ...data }, update: data });
 
@@ -844,10 +901,16 @@ export async function runQueue(): Promise<{ sent: number; failed: number; waitin
 /** On boot: send what's waiting, retry failures every few minutes, re-check invite lists a few times a day. */
 export function startOutlookSync() {
   if (!outlookConfigured() && !mailboxesConfigured()) return false;
-  // Shared mailboxes: every upcoming event is checked once at start, so a mailbox just added fills up.
-  if (mailboxesConfigured()) void markUpcomingDirty();
-  else kick(5_000);
+  // Shared mailboxes: every upcoming event is checked once at start, so a mailbox just added fills up,
+  // and their calendars are kept read-only for people (now, and with every re-check).
+  if (mailboxesConfigured()) {
+    void markUpcomingDirty();
+    void lockMailboxCalendars().catch(() => {});
+  } else kick(5_000);
   setInterval(() => void runQueue(), RETRY_MS).unref();
-  setInterval(() => void markUpcomingDirty(), RECHECK_MS).unref();
+  setInterval(() => {
+    void markUpcomingDirty();
+    if (mailboxesConfigured()) void lockMailboxCalendars().catch(() => {});
+  }, RECHECK_MS).unref();
   return true;
 }
