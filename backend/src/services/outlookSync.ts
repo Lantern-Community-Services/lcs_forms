@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { prisma } from "../prisma.js";
-import { appBaseUrl } from "../env.js";
+import { appBaseUrl, env, ssoConfigured } from "../env.js";
 import { roleFor } from "./permissions.js";
 import { NoGraphToken, graphAccessTokenFor, graphTokensEnabled, useTokensForTests, withGraphToken } from "./graphTokens.js";
+import { graphToken as appGraphToken } from "./mailer.js";
 import { addDays, toGraphRecurrence, type Recurrence } from "../calendar/recurrence.js";
 
 /**
@@ -17,8 +18,8 @@ import { addDays, toGraphRecurrence, type Recurrence } from "../calendar/recurre
  *   - or quietly: a copy is written straight into their own calendar
  *     (CalendarCopy), no email, with their reminder and free/busy choices.
  *
- * The app has no Outlook access of its own. Everything is written with one
- * person's own delegated Microsoft sign-in (Calendars.ReadWrite, kept by
+ * People's calendars are never written with the app's own access. Everything
+ * there is written with one person's own delegated Microsoft sign-in (Calendars.ReadWrite, kept by
  * services/graphTokens.ts), into that person's own calendar:
  *   - The organizer is whoever last changed the event when its meeting is first
  *     sent (or who made it). The meeting lives in their calendar and stays
@@ -35,6 +36,14 @@ import { addDays, toGraphRecurrence, type Recurrence } from "../calendar/recurre
  * Invites and copies carry a link to the event here, and the Teams link,
  * nothing else: no description, no form contents. This app stays the place
  * events are made and changed; Outlook only hears about it (one way).
+ *
+ * Shared mailboxes (OUTLOOK_MAILBOXES, e.g. a team's events calendar) get a
+ * copy too, written with the app's own access, which Exchange's RBAC for
+ * Applications fences to those mailboxes alone (CalendarMailboxCopy): a feed
+ * "all" mailbox gets every event people can see on the calendar, others the
+ * events a code form tags with their feed. Unlike personal invites these carry
+ * the description, and requests still waiting on approval go in as Tentative,
+ * "Needs approval: ...".
  *
  * Writes mark the event `outlookDirty`; a queue in this process sends it a few
  * seconds later (long enough for an Undo to cancel itself out), retries what
@@ -54,6 +63,8 @@ const RETRY_MS = 5 * 60_000;
 const RECHECK_MS = 6 * 60 * 60_000;
 
 export const outlookConfigured = () => graphTokensEnabled();
+/** Shared mailboxes to keep up to date: OUTLOOK_MAILBOXES, and the app's own Microsoft credentials. */
+export const mailboxesConfigured = () => env.outlookMailboxes.length > 0 && (forceConfigured || ssoConfigured);
 
 // ── Talking to Graph (swappable for scripts that test without a tenant) ───
 
@@ -66,6 +77,8 @@ export function useGraphForTests(f: typeof fetch, tokens: (userId: string) => Pr
   forceConfigured = true;
 }
 const configured = () => forceConfigured || outlookConfigured();
+/** Anything to send at all: people's calendars or shared mailboxes. */
+const anyConfigured = () => configured() || mailboxesConfigured();
 
 class GraphError extends Error {
   constructor(public status: number, message: string) {
@@ -73,10 +86,22 @@ class GraphError extends Error {
   }
 }
 
-/** Graph, as this person, on their own mailbox (/me). Throws NoGraphToken if they have no sign-in to use. */
-async function graph<T = any>(userId: string, method: string, path: string, body?: unknown): Promise<T | null> {
-  const token = await graphAccessTokenFor(userId);
-  const res = await graphFetch(`${GRAPH}/me${path}`, {
+/** Who a Graph call acts as: a person (user id, their own mailbox), or "mailbox:<address>" (a shared mailbox, as the app). */
+const MAILBOX = "mailbox:";
+const isMailbox = (who: string) => who.startsWith(MAILBOX);
+const mailboxWho = (address: string) => `${MAILBOX}${address}`;
+
+/**
+ * Graph on one calendar: a person's own (/me, with their sign-in; throws
+ * NoGraphToken if there's none to use), or a shared mailbox's (/users/<address>,
+ * with the app's own access).
+ */
+async function graph<T = any>(who: string, method: string, path: string, body?: unknown): Promise<T | null> {
+  const mailbox = isMailbox(who);
+  // Test scripts hand out every token, the app's included (useGraphForTests).
+  const token = mailbox && !forceConfigured ? await appGraphToken() : await graphAccessTokenFor(who);
+  const base = mailbox ? `${GRAPH}/users/${encodeURIComponent(who.slice(MAILBOX.length))}` : `${GRAPH}/me`;
+  const res = await graphFetch(`${base}${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: `outlook.timezone="${TZ}"` },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -524,6 +549,110 @@ export async function syncEvent(id: string): Promise<void> {
   if (waiting) console.log(`[outlook] event ${id}: ${waiting} quiet ${waiting === 1 ? "copy waits" : "copies wait"} for their owner to sign in again.`);
 }
 
+// ── Shared mailboxes ─────────────────────────────────────────────────────
+
+/**
+ * The shared mailboxes that should have this event: a feed "all" one when people
+ * can see it on the calendar (every site, or some sites; not a form's event that
+ * only invites people by name), and any other when the event is tagged with its feed.
+ */
+export function mailboxesFor(ev: { allSites: boolean; sites: unknown[]; feeds: string | null }, mailboxes = env.outlookMailboxes) {
+  const feeds = jsonList(ev.feeds).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase());
+  const seen = ev.allSites || ev.sites.length > 0;
+  return mailboxes.filter((m) => (m.feed === "all" ? seen : feeds.includes(m.feed)));
+}
+
+/** A shared mailbox's copy: the title (marked while it waits on approval), times, place, the description and a link. */
+export function mailboxCopyOf(ev: SyncRow, recurrence: unknown) {
+  return {
+    subject: ev.pending ? `Needs approval: ${ev.title}` : ev.title,
+    ...timesOf(ev),
+    location: { displayName: ev.location ?? "" },
+    recurrence,
+    body: { contentType: "HTML", content: mailboxBodyHtml(ev) },
+    isReminderOn: false,
+    // Waiting on approval: tentative, so it reads as not settled yet.
+    showAs: ev.pending ? "tentative" : ev.allDay ? "free" : "busy",
+    categories: ev.category ? [ev.category.name] : [],
+  };
+}
+
+/** A shared calendar is the team's working copy, so it carries the description (personal invites don't). */
+function mailboxBodyHtml(ev: SyncRow) {
+  const text = (ev.description ?? "").trim();
+  return [
+    ev.pending ? `<p><strong>Needs approval.</strong> Not confirmed until every approval is in.</p>` : "",
+    text ? `<p>${esc(text).replace(/\r?\n/g, "<br>")}</p>` : "",
+    ev.teamsJoinUrl ? `<p><a href="${esc(ev.teamsJoinUrl)}"><strong>Join the Teams meeting</strong></a></p>` : "",
+    bodyHtml(ev),
+  ].join("");
+}
+
+/**
+ * Bring the shared mailboxes in line with one event: write or update the copy in
+ * each mailbox that should have it, and remove it from any that shouldn't any
+ * more. Throws when one failed (the event stays marked, and is tried again).
+ */
+export async function syncMailboxes(id: string): Promise<void> {
+  const ev = await loadRow(id);
+  if (!ev) return;
+  const copies = await prisma.calendarMailboxCopy.findMany({ where: { eventId: id } });
+  let targets = mailboxesFor(ev);
+  let recurrence = null;
+  const problems: string[] = [];
+  if (ev.recurrence) {
+    const mapped = toGraphRecurrence(ev.startDate, JSON.parse(ev.recurrence) as Recurrence);
+    if (mapped.ok) recurrence = mapped.value;
+    // Can't go to Outlook as it is (the editor already says why): any copies come out, as for people's calendars.
+    else targets = [];
+  }
+  const exceptions = ev.exceptions.map((x) => ({ d: x.originalDate, c: x.cancelled, t: x.title, l: x.location, s: [x.allDay, x.startDate, x.startTime, x.endDate, x.endTime] }));
+  const copy = mailboxCopyOf(ev, recurrence);
+  const hash = sha1({ copy, exceptions });
+
+  for (const m of targets) {
+    const who = mailboxWho(m.mailbox);
+    const row = copies.find((c) => c.mailbox === m.mailbox);
+    if (row?.outlookEventId && row.hash === hash && !row.error) continue;
+    try {
+      let outlookId = row?.outlookEventId ?? null;
+      if (outlookId && (await ownership(who, outlookId)) !== "ours") outlookId = null; // deleted in Outlook: write it again
+      if (outlookId) {
+        try {
+          await graph(who, "PATCH", item(outlookId), copy);
+        } catch (e) {
+          if (!(e instanceof GraphError && e.status === 404)) throw e;
+          outlookId = null;
+        }
+      }
+      if (!outlookId) outlookId = (await graph<{ id: string }>(who, "POST", "/events", { ...copy, ...tagFor(id) }))!.id;
+      // The id first, so a failure on the days below can't make a second copy.
+      await saveMailboxCopy(id, m.mailbox, { outlookEventId: outlookId, hash: null, error: null });
+      if (recurrence) await applyExceptions(who, outlookId, ev, false);
+      await saveMailboxCopy(id, m.mailbox, { hash });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      problems.push(`${m.mailbox}: ${message}`);
+      await saveMailboxCopy(id, m.mailbox, { error: message });
+    }
+  }
+
+  // Mailboxes that shouldn't have it any more (its feed or sites changed, or it can't go to Outlook).
+  for (const c of copies) {
+    if (targets.some((m) => m.mailbox === c.mailbox)) continue;
+    try {
+      if (c.outlookEventId) await deleteItem(mailboxWho(c.mailbox), c.outlookEventId);
+      await prisma.calendarMailboxCopy.delete({ where: { id: c.id } });
+    } catch (e) {
+      problems.push(`${c.mailbox}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  if (problems.length) throw new Error(problems.length === 1 ? problems[0] : `${problems.length} shared-calendar problems. First: ${problems[0]}`);
+}
+
+const saveMailboxCopy = (eventId: string, mailbox: string, data: { outlookEventId?: string | null; hash?: string | null; error?: string | null }) =>
+  prisma.calendarMailboxCopy.upsert({ where: { eventId_mailbox: { eventId, mailbox } }, create: { eventId, mailbox, ...data }, update: data });
+
 async function teamsMissing(organizerId: string | null) {
   return `In Outlook, but without a Teams link: ${await nameOf(organizerId)}, whose Outlook sent it, can't host Teams meetings (Teams not in their license, or the Outlook add-in is off in their Teams meeting policy). It's tried again automatically.`;
 }
@@ -609,6 +738,9 @@ export async function queueOutlookCancel(ev: { id: string; outlookEventId: strin
   if (ev.outlookEventId && ev.outlookOrganizerId) await toTrash(ev.outlookOrganizerId, true, ev.outlookEventId, ev.title);
   const copies = await prisma.calendarCopy.findMany({ where: { eventId: ev.id, outlookEventId: { not: null } } });
   if (copies.length) await prisma.calendarOutlookTrash.createMany({ data: copies.map((c) => ({ ownerId: c.userId, meeting: false, outlookEventId: c.outlookEventId!, title: ev.title })) });
+  // Shared mailboxes' copies: removed with the app's own access.
+  const inMailboxes = await prisma.calendarMailboxCopy.findMany({ where: { eventId: ev.id, outlookEventId: { not: null } } });
+  if (inMailboxes.length) await prisma.calendarOutlookTrash.createMany({ data: inMailboxes.map((c) => ({ ownerId: mailboxWho(c.mailbox), meeting: false, outlookEventId: c.outlookEventId!, title: ev.title })) });
   kick();
 }
 
@@ -635,7 +767,7 @@ let timer: NodeJS.Timeout | null = null;
 let running: Promise<void> | null = null;
 
 function kick(delay = SETTLE_MS) {
-  if (!configured()) return;
+  if (!anyConfigured()) return;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
@@ -645,19 +777,22 @@ function kick(delay = SETTLE_MS) {
 
 /** Send everything waiting, one at a time. Safe to call while it's already going. */
 export async function runQueue(): Promise<{ sent: number; failed: number; waiting: number }> {
-  if (!configured()) return { sent: 0, failed: 0, waiting: 0 };
+  if (!anyConfigured()) return { sent: 0, failed: 0, waiting: 0 };
   while (running) await running;
   let sent = 0;
   let failed = 0;
   let waiting = 0;
   running = (async () => {
     const trash = await prisma.calendarOutlookTrash.findMany({ orderBy: { createdAt: "asc" } });
-    const owners = await withGraphToken(trash.map((t) => t.ownerId));
+    const owners = await withGraphToken(trash.filter((t) => !isMailbox(t.ownerId)).map((t) => t.ownerId));
+    // A shared mailbox's copy goes with the app's own access, while that's set up.
+    if (mailboxesConfigured()) for (const t of trash) if (isMailbox(t.ownerId)) owners.add(t.ownerId);
     for (const t of trash) {
       if (!owners.has(t.ownerId)) {
         // Only its owner's own sign-in can remove it.
         waiting++;
-        if (!t.error) await prisma.calendarOutlookTrash.update({ where: { id: t.id }, data: { error: `Waiting for ${await nameOf(t.ownerId)} to sign in to Lantern Forms again.` } });
+        const why = isMailbox(t.ownerId) ? "Waiting for the shared mailboxes (OUTLOOK_MAILBOXES) to be set up again." : `Waiting for ${await nameOf(t.ownerId)} to sign in to Lantern Forms again.`;
+        if (!t.error) await prisma.calendarOutlookTrash.update({ where: { id: t.id }, data: { error: why } });
         continue;
       }
       try {
@@ -671,15 +806,31 @@ export async function runQueue(): Promise<{ sent: number; failed: number; waitin
     }
     const dirty = await prisma.calendarEvent.findMany({ where: { outlookDirty: true }, select: { id: true }, orderBy: { updatedAt: "asc" } });
     for (const { id } of dirty) {
-      try {
-        await syncEvent(id);
-        sent++;
-      } catch (e) {
-        failed++;
-        const message = e instanceof NoGraphToken ? `${await nameOf(e.userId)} ${e.message}. It's tried again.` : e instanceof Error ? e.message : String(e);
-        console.error(`[outlook] event ${id}: ${message}`);
-        await prisma.calendarEvent.update({ where: { id }, data: { outlookError: message } }).catch(() => {});
+      let ok = true;
+      if (configured()) {
+        try {
+          await syncEvent(id);
+        } catch (e) {
+          ok = false;
+          const message = e instanceof NoGraphToken ? `${await nameOf(e.userId)} ${e.message}. It's tried again.` : e instanceof Error ? e.message : String(e);
+          console.error(`[outlook] event ${id}: ${message}`);
+          await prisma.calendarEvent.update({ where: { id }, data: { outlookError: message } }).catch(() => {});
+        }
       }
+      if (mailboxesConfigured()) {
+        try {
+          await syncMailboxes(id);
+          // Only the shared mailboxes are on: nothing else will mark it sent.
+          if (ok && !configured()) await prisma.calendarEvent.updateMany({ where: { id }, data: { outlookDirty: false } });
+        } catch (e) {
+          ok = false;
+          console.error(`[outlook] event ${id}, shared calendars: ${e instanceof Error ? e.message : String(e)}`);
+          // Stays marked, so the next run tries again (the copy keeps the error).
+          await prisma.calendarEvent.updateMany({ where: { id }, data: { outlookDirty: true } }).catch(() => {});
+        }
+      }
+      if (ok) sent++;
+      else failed++;
     }
   })();
   try {
@@ -692,8 +843,10 @@ export async function runQueue(): Promise<{ sent: number; failed: number; waitin
 
 /** On boot: send what's waiting, retry failures every few minutes, re-check invite lists a few times a day. */
 export function startOutlookSync() {
-  if (!outlookConfigured()) return false;
-  kick(5_000);
+  if (!outlookConfigured() && !mailboxesConfigured()) return false;
+  // Shared mailboxes: every upcoming event is checked once at start, so a mailbox just added fills up.
+  if (mailboxesConfigured()) void markUpcomingDirty();
+  else kick(5_000);
   setInterval(() => void runQueue(), RETRY_MS).unref();
   setInterval(() => void markUpcomingDirty(), RECHECK_MS).unref();
   return true;

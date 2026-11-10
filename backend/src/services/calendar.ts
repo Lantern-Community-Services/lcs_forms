@@ -247,6 +247,24 @@ export interface FormOwner {
   invitees?: Invitee[] | null;
   /** User ids to send it from, in order (null clears them); omit to leave them. */
   sendFrom?: string[] | null;
+  /** Shared-mailbox feeds it goes to (OUTLOOK_MAILBOXES), e.g. ["transportation"] (null clears them); omit to leave them. */
+  feeds?: string[] | null;
+}
+
+/** Feed names: short words, lower case, no repeats. */
+export const feedsSchema = z
+  .array(z.string().trim().toLowerCase().regex(/^[a-z0-9_-]{1,40}$/, "A feed is a short name: letters, numbers, - or _."))
+  .max(10, "Up to 10 feeds.")
+  .transform((list) => [...new Set(list)]);
+
+export function parseFeeds(text: string | null | undefined): string[] {
+  if (!text) return [];
+  try {
+    const list = JSON.parse(text);
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export interface Invitee {
@@ -262,10 +280,11 @@ export const inviteesSchema = z
     return list.filter((p) => !seen.has(p.email) && seen.add(p.email)).map((p): Invitee => ({ email: p.email, name: p.name || p.email }));
   });
 
-/** The invitees and senders as stored, for create/update data. */
+/** The invitees, senders and feeds as stored, for create/update data. */
 const ownerPeople = (owner: FormOwner) => ({
   ...(owner.invitees === undefined ? {} : { invitees: owner.invitees?.length ? JSON.stringify(owner.invitees) : null }),
   ...(owner.sendFrom === undefined ? {} : { sendFromIds: owner.sendFrom?.length ? JSON.stringify(owner.sendFrom) : null }),
+  ...(owner.feeds === undefined ? {} : { feeds: owner.feeds?.length ? JSON.stringify(owner.feeds) : null }),
 });
 
 export function parseInvitees(text: string | null | undefined): Invitee[] {
@@ -574,7 +593,7 @@ async function updateFollowing(req: Request, ev: SeriesRow, rule: Recurrence, da
   const next = await prisma.$transaction(async (tx) => {
     await tx.calendarEvent.update({ where: { id: ev.id }, data: { ...truncate(ev, rule, date), updatedById: req.user?.userId ?? null, updatedByName: req.user?.name ?? "A form" } });
     const created = await tx.calendarEvent.create({
-      data: { ...data, invitees: ev.invitees, sendFromIds: ev.sendFromIds, createdById: req.user?.userId ?? null, createdByName: req.user?.name ?? "A form", sites: { create: siteIds.map((siteId) => ({ siteId })) } },
+      data: { ...data, invitees: ev.invitees, sendFromIds: ev.sendFromIds, feeds: ev.feeds, createdById: req.user?.userId ?? null, createdByName: req.user?.name ?? "A form", sites: { create: siteIds.map((siteId) => ({ siteId })) } },
     });
     await tx.calendarException.updateMany({ where: { id: { in: carried } }, data: { eventId: created.id } });
     await tx.calendarException.deleteMany({ where: { id: { in: dropped } } });
@@ -692,7 +711,12 @@ export async function setEventPeople(req: Request, id: string, owner: FormOwner)
   await audit({
     actor: actorOf(req),
     action: "calendar.event_updated",
-    summary: owner.invitees === undefined ? `Changed who "${ev.title}" is sent from` : `Changed who's invited to "${ev.title}" (${owner.invitees?.length ?? 0})`,
+    summary:
+      owner.invitees !== undefined
+        ? `Changed who's invited to "${ev.title}" (${owner.invitees?.length ?? 0})`
+        : owner.sendFrom !== undefined
+          ? `Changed who "${ev.title}" is sent from`
+          : `Changed the shared calendars "${ev.title}" goes to`,
     changes: { eventId: id, invitees: owner.invitees?.length ?? undefined },
   });
   await noteCalendarChange([id]);
@@ -720,6 +744,7 @@ export async function formEvents(formId: string, ref?: string | null) {
     repeats: Boolean(ev.recurrence),
     sites: ev.sites.map((x) => ({ code: x.site.code, name: x.site.name })),
     invitees: parseInvitees(ev.invitees),
+    feeds: parseFeeds(ev.feeds),
     teamsJoinUrl: ev.teamsJoinUrl,
     outlook: { sent: Boolean(ev.outlookEventId), waiting: ev.outlookDirty, problem: ev.outlookError },
   }));

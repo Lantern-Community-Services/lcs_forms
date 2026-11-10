@@ -293,6 +293,9 @@ model CalendarEvent {
   /// Who the form would like it sent from (JSON user ids, in order), tried
   /// before whoever changed it last (ctx.calendar.form `sendFrom`).
   sendFromIds   String?           @db.NVarChar(Max)
+  /// Shared-mailbox feeds the form puts it in (JSON names, ctx.calendar.form `feeds`):
+  /// each mailbox in OUTLOOK_MAILBOXES with that feed gets it (e.g. "transportation").
+  feeds         String?           @db.NVarChar(Max)
   /// The day it first happens, and the day its last occurrence ends, so a
   /// month's events are an indexed range query. lastDate null = repeats forever.
   firstDate     String            @db.NVarChar(255)
@@ -309,6 +312,7 @@ model CalendarEvent {
   sites      CalendarEventSite[]
   exceptions CalendarException[]
   copies     CalendarCopy[]
+  mailboxCopies CalendarMailboxCopy[]
 
   // ── Outlook (services/outlookSync.ts) ──
   /// The person whose Outlook calendar holds the meeting (its organizer), once sent.
@@ -372,12 +376,29 @@ model CalendarCopy {
   @@unique([eventId, userId])
 }
 
+/// An event's copy in a shared mailbox's calendar (OUTLOOK_MAILBOXES), written with
+/// the app's own access. See services/outlookSync.ts.
+model CalendarMailboxCopy {
+  id             String        @id @default(cuid()) @db.NVarChar(64)
+  event          CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId        String        @db.NVarChar(64)
+  /// The shared mailbox's address.
+  mailbox        String        @db.NVarChar(255)
+  outlookEventId String?       @db.NVarChar(512)
+  /// What was last written, hashed.
+  hash           String?       @db.NVarChar(64)
+  error          String?       @db.NVarChar(Max)
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([eventId, mailbox])
+}
+
 /// An Outlook meeting (or a quiet copy) still to be removed, after its event was
 /// deleted here. Removed with its owner's own token; waits until they have one.
 model CalendarOutlookTrash {
   id             String   @id @default(cuid()) @db.NVarChar(64)
-  /// Whose calendar it's in (User id).
-  ownerId        String   @db.NVarChar(64)
+  /// Whose calendar it's in (User id), or "mailbox:<address>" for a shared mailbox's copy.
+  ownerId        String   @db.NVarChar(320)
   /// True: the organizer's meeting (cancelled, so invitees hear). False: a
   /// quiet copy (just deleted).
   meeting        Boolean
