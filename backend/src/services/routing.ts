@@ -4,7 +4,7 @@ import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { badRequest, notFound } from "../http.js";
-import { EMAIL_FIELD_TYPES, conditionPasses, formatValue, isInputField, type FormDoc, type Values } from "../forms/engine.js";
+import { canEmailField, conditionPasses, formatValue, isInputField, type FormDoc, type Values } from "../forms/engine.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { checkTemplateKeys, messageTags, messageWording, templateByKey, type Wording } from "./emailTemplates.js";
 import { ENTRY_CREATED, routeSchema, type Recipient, type Route, type RoutingEvent } from "../forms/routingSchema.js";
@@ -148,8 +148,8 @@ const BUILT_IN_EMAIL_FIELDS: EmailField[] = [
 
 /**
  * The answers a route, rule or report may put in an email. A basic form
- * offers its fields of the types in EMAIL_FIELD_TYPES (never a resident, a
- * name, contact details, a signature, a file or a paragraph); a code form
+ * offers its fields of the types in EMAIL_FIELD_TYPES, and staff names marked
+ * inEmails (never a resident, another name, contact details, a signature, a file or a paragraph); a code form
  * offers the values its entry.created event declares with a fixed list of
  * choices, since free values there could hold anything.
  */
@@ -161,7 +161,7 @@ export function emailableFields(form: BuiltForm, manifest?: Known): EmailField[]
   return [
     ...BUILT_IN_EMAIL_FIELDS,
     ...basicDoc(form)
-      .fields.filter((f) => EMAIL_FIELD_TYPES.includes(f.type))
+      .fields.filter((f) => canEmailField(f))
       .map((f) => ({ id: f.id, label: (f.label || f.id).slice(0, 80) })),
   ];
 }
@@ -197,7 +197,7 @@ export function emailValues(
     if (id === "_site") value = ctx.site?.name ?? "";
     else if (id === "_date") value = nyWhen(ctx.createdAt ?? new Date());
     else if (id === "_by") value = ctx.byName ?? "";
-    else if (id === "_followup") value = ctx.followUp === "done" ? "Done" : ctx.followUp === "open" ? "Open" : "";
+    else if (id === "_followup") value = ctx.followUp === "done" ? "Done" : ctx.followUp === "open" ? "Pending" : "";
     else if (doc) {
       const f = doc.fields.find((x) => x.id === id);
       value = f ? formatValue(f, ctx.data[id]) : "";

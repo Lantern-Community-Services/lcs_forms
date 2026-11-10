@@ -46,6 +46,8 @@ export const reportSchema = z
     split: z.enum(["all", "site"]).default("all"),
     /** Send even when there were no entries (a "nothing this week" email). */
     includeEmpty: z.boolean().default(false),
+    /** Also list older entries whose follow-up is still pending, until they're marked done. */
+    stillOpen: z.boolean().default(false),
     /** The table's columns: ids from emailableFields. */
     fields: z.array(z.string().trim().min(1).max(64)).max(12).default([]),
     to: z.array(recipientSchema).min(1, "A report needs someone to send it to.").max(50),
@@ -190,7 +192,13 @@ export interface ReportEmail {
 export async function buildReport(form: BuiltForm, report: Report, now = new Date()): Promise<{ emails: ReportEmail[]; notes: string[] }> {
   const since = new Date(now.getTime() - WEEK);
   const entries = await prisma.formEntry.findMany({
-    where: { formId: form.id, status: "active", source: { not: "preview" }, createdAt: { gte: since, lt: now } },
+    where: {
+      formId: form.id,
+      status: "active",
+      source: { not: "preview" },
+      archivedAt: null,
+      OR: [{ createdAt: { gte: since, lt: now } }, ...(report.stillOpen ? [{ createdAt: { lt: since }, followUp: "open" }] : [])],
+    },
     orderBy: { createdAt: "asc" },
     select: { data: true, siteId: true, createdAt: true, createdByName: true, followUp: true },
   });
@@ -233,9 +241,10 @@ export async function buildReport(form: BuiltForm, report: Report, now = new Dat
     });
     const count = g.rows.length;
     const open = g.rows.filter((e) => e.followUp === "open").length;
+    const older = g.rows.filter((e) => e.createdAt < since).length;
     const tags = { form: form.title, report: report.name, site: g.label, count: String(count), date: nyDate(now) };
     const countLine = count
-      ? `Entries submitted in the past 7 days: ${count}${g.rows.some((e) => e.followUp) ? ` (${open} still open)` : ""}`
+      ? `Entries submitted in the past 7 days: ${count - older}${older ? `, and ${older} from before still pending` : ""}${g.rows.some((e) => e.followUp) ? ` (${open} pending, ${count - open} done)` : ""}`
       : `No entries were submitted for ${g.label} in the past 7 days.`;
     const subject = (fillTags(t?.subject, tags, { line: true, max: 200 }) ?? `${report.name} - ${g.label} - ${nyDate(now)}`).slice(0, 200);
     const heading = fillTags(t?.heading, tags, { line: true, max: 200 }) ?? `${report.name}: ${g.label}`;
