@@ -734,6 +734,8 @@ declare module "@lcs/server" {
     sites: { code: string; name: string }[];
     /** People it invites by name (create/update `invitees`). */
     invitees: { email: string; name: string }[];
+    /** The shared-calendar feeds it's in (create/update `feeds`). */
+    feeds: string[];
     /** The Teams link, once Outlook has made it (teamsMeeting events). */
     teamsJoinUrl: string | null;
     /** Where it stands in Outlook: sent (the meeting exists), waiting to be sent, or why it can't be. */
@@ -745,12 +747,17 @@ declare module "@lcs/server" {
    * `invitees` get the Outlook invite (an email from Exchange) whatever their calendar choices;
    * an event with no siteIds reaches only them (and shows on the calendar to Admins only).
    * `sendFrom` (user ids or emails, in order) is whose Outlook sends it: the first of them who
-   * has signed in to Lantern Forms with Microsoft, else whoever changed it last. Once sent,
-   * the meeting stays with that person. null clears either; leave one out to keep it.
+   * has signed in to Lantern Forms with Microsoft (only them, once given). Once sent, the
+   * meeting stays with that person.
+   * `feeds` puts it in the shared Outlook calendars set up for those feeds (the server's
+   * OUTLOOK_MAILBOXES, e.g. "transportation"), besides the one for every event; pending
+   * events go there as Tentative, "Needs approval: ...". An unknown feed does nothing.
+   * null clears any of them; leave one out to keep it.
    */
   export interface FormEventPeople {
     invitees?: { email: string; name?: string }[] | null;
     sendFrom?: string[] | null;
+    feeds?: string[] | null;
   }
 
   /** A member of staff, from ctx.directory. */

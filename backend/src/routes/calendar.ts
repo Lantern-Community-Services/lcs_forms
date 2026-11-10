@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { env } from "../env.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
-import { markUpcomingDirty, meetingProvidersFor, outlookConfigured, runQueue } from "../services/outlookSync.js";
+import { lastCalendarLock, lockMailboxCalendars, mailboxesConfigured, markUpcomingDirty, meetingProvidersFor, outlookConfigured, runQueue } from "../services/outlookSync.js";
 import { withGraphToken } from "../services/graphTokens.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
@@ -256,13 +257,15 @@ calendarRouter.get(
   "/outlook/status",
   MANAGE,
   asyncHandler(async (req, res) => {
-    const [waiting, failing, sent, people, signedIn, trash] = await Promise.all([
+    const [waiting, failing, sent, people, signedIn, trash, mailboxCopies, mailboxFailing] = await Promise.all([
       prisma.calendarEvent.count({ where: { outlookDirty: true } }),
       prisma.calendarEvent.findMany({ where: { outlookError: { not: null } }, select: { id: true, title: true, outlookError: true }, take: 20 }),
       prisma.calendarEvent.count({ where: { outlookEventId: { not: null } } }),
       prisma.user.count({ where: { status: "active", calendarSyncSetAt: { not: null }, OR: [{ calendarSyncEverySite: true }, { calendarFollows: { some: {} } }] } }),
       prisma.userGraphToken.count(),
       prisma.calendarOutlookTrash.count(),
+      prisma.calendarMailboxCopy.groupBy({ by: ["mailbox"], where: { outlookEventId: { not: null } }, _count: { _all: true } }),
+      prisma.calendarMailboxCopy.findMany({ where: { error: { not: null } }, select: { eventId: true, mailbox: true, error: true, event: { select: { title: true } } }, take: 20 }),
     ]);
     // Can the person asking host Teams meetings from their own Outlook (as an organizer would)?
     const mine = (await withGraphToken([req.user!.userId])).has(req.user!.userId)
@@ -275,6 +278,14 @@ calendarRouter.get(
       // ["teamsForBusiness"] when your Outlook can host Teams meetings; null when the app has no sign-in of yours.
       myMeetingProviders: mine,
       waiting, sent, people, cancelsWaiting: trash, failing,
+      // Shared mailboxes (OUTLOOK_MAILBOXES): which feed each gets, how many events are in it, and what's failing.
+      sharedMailboxes: {
+        enabled: mailboxesConfigured(),
+        mailboxes: env.outlookMailboxes.map((m) => ({ ...m, events: mailboxCopies.find((c) => c.mailbox === m.mailbox)?._count._all ?? 0 })),
+        failing: mailboxFailing.map((f) => ({ eventId: f.eventId, title: f.event.title, mailbox: f.mailbox, error: f.error })),
+        // The last read-only check of their calendars: who was turned down to read, and anything it couldn't change.
+        readOnly: lastCalendarLock,
+      },
     });
   })
 );
@@ -285,6 +296,7 @@ calendarRouter.post(
   MANAGE,
   asyncHandler(async (_req, res) => {
     await markUpcomingDirty();
-    res.json(await runQueue());
+    const readOnly = mailboxesConfigured() ? await lockMailboxCalendars() : null;
+    res.json({ ...(await runQueue()), readOnly });
   })
 );
