@@ -57,6 +57,19 @@ function trustProxy(value: string | undefined): number | false {
   return n;
 }
 
+/** OUTLOOK_CALENDAR_EDITORS: mailbox → the addresses allowed to keep edit access to its calendar. */
+function parseEditors(value: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const isEmail = (x: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x);
+  for (const part of value.split(",").map((x) => x.trim()).filter(Boolean)) {
+    const [mailbox, people = ""] = part.split("=").map((x) => x.trim());
+    const list = people.split("|").map((x) => x.trim().toLowerCase()).filter(Boolean);
+    if (!isEmail(mailbox ?? "") || !list.length || !list.every(isEmail)) throw new Error(`OUTLOOK_CALENDAR_EDITORS: "${part}" should be mailbox=person|person (email addresses).`);
+    out[mailbox.toLowerCase()] = [...new Set([...(out[mailbox.toLowerCase()] ?? []), ...list])];
+  }
+  return out;
+}
+
 /** OUTLOOK_MAILBOXES: "mailbox=feed" pairs, comma-separated (a mailbox with no feed gets "all"). */
 export interface SharedMailbox {
   mailbox: string;
@@ -156,6 +169,13 @@ export const env = {
    * e.g. OUTLOOK_MAILBOXES="lcs_events@lanterncommunity.org=all,lcs_sh_transportation@lanterncommunity.org=transportation"
    */
   outlookMailboxes: parseMailboxes(process.env.OUTLOOK_MAILBOXES ?? ""),
+
+  /**
+   * People who may keep edit access to a shared mailbox's calendar (the app turns everyone
+   * else down to read): "mailbox=person|person" pairs, comma-separated.
+   * e.g. OUTLOOK_CALENDAR_EDITORS="lcs_sh_transportation@lanterncommunity.org=ccasey@lanterncommunity.org"
+   */
+  outlookCalendarEditors: parseEditors(process.env.OUTLOOK_CALENDAR_EDITORS ?? ""),
 
   /**
    * Backup of every built form to a GitHub repository (services/formBackup.ts).
