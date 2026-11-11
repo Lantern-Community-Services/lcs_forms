@@ -31,6 +31,7 @@ import { routingRouter } from "./routes/routing.js";
 import { emailRouter } from "./routes/emailTemplates.js";
 import { shareRouter } from "./routes/share.js";
 import { appShareRouter } from "./routes/appShare.js";
+import { appInboundRouter } from "./routes/appInbound.js";
 import { groupsRouter } from "./routes/groups.js";
 import { oauthDiscoveryRouter, oauthRouter } from "./oauth/router.js";
 
@@ -140,6 +141,8 @@ export function createApp() {
   // A code form filled in through a share link, not signed in (routes/appShare.ts).
   app.use("/api/s", submitLimiter);
   app.post("/api/s/:token/entries", express.json({ limit: "5mb" }));
+  // Another system posting what was filed there to a code form (routes/appInbound.ts); tokens are unguessable.
+  app.use("/api/hooks", submitLimiter);
   // A key's calls may carry imported entries with their photos (import_entries):
   // the larger body only when a key is sent; the key itself is checked after.
   const keyed = express.json({ limit: "25mb" });
@@ -171,6 +174,7 @@ export function createApp() {
   app.use("/api/f", fillRouter);
   app.use("/api/apps", appsRouter);
   app.use("/api/s", appShareRouter);
+  app.use("/api/hooks", appInboundRouter);
   app.use("/api/devlog", devlogRouter);
   // Connecting Claude: sign-in for the MCP server below (oauth/).
   app.use("/api/oauth", authLimiter, oauthRouter);
