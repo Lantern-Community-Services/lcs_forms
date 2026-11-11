@@ -34,6 +34,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "home": { "action": "home", "roles": ["site_manager"] },          // cards on the Forms home (see below)
   "email": { "to": ["vendor@example.com", "@partner.org"] },        // who server code may email besides Lantern addresses
   "schedule": [{ "action": "digest", "at": "08:00", "on": "weekdays" }, { "action": "monthly", "at": "08:00", "on": "monthly", "day": 3 }],
+  "inbound": { "gravity-forms": { "action": "fromGravityForms" } },   // another system POSTs what's filed there (see below)
   "tutorial": { "steps": [{ "page": "record", "target": "meal-picker", "action": "click", "title": "Pick the meal" }] }  // see below
 }
 entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
@@ -148,6 +149,12 @@ Admins and developers pass every role check.
   "day"), as nobody: ctx.user is null and args is { scheduled: true, day }. Check args.scheduled, read across everyone
   (ctx.db, ctx.directory), and email or notify. Only the published form runs them; a run missed while the server was down happens
   later that day. Test one with MCP run_action (also as nobody).
+- Inbound hooks: form.json "inbound" names a server action for each hook. An Admin makes its address with MCP
+  inbound_hook (do: "create"; shown once) and pastes it into the other system's webhook (e.g. a Gravity Forms
+  Webhooks feed, all fields, JSON). Each POST runs the action as nobody with args { hook, body }; return
+  { externalId, data, site?, tenantId?, occurredAt?, createdByName? } (or an array, or null / { ignore: "why" }).
+  It's saved like import_code_entries: data as given, beforeCreate/afterCreate don't run, nobody is notified,
+  and the same externalId is never saved twice. inbound_hook do: "status" shows counts and the last error.
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
   (MCP save_catalog_card), not in a code form.
 - Tutorial: form.json "tutorial" walks someone through the form the first time they open it, one highlighted element

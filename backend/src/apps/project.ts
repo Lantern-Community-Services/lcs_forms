@@ -119,6 +119,17 @@ export const manifestSchema = z.object({
     )
     .max(10)
     .optional(),
+  /**
+   * Inbound hooks: another system (e.g. the old Gravity Forms site's Webhooks add-on) POSTs to an address an
+   * Admin makes with the MCP tool inbound_hook. The named server action gets { hook, body } as nobody
+   * (ctx.user null) and returns the entry to save — { externalId, data, site?, tenantId?, occurredAt?,
+   * createdByName? } or an array — or null / { ignore: "why" }. Saved like import_code_entries: as given,
+   * nobody notified, the same externalId never twice (apps/inbound.ts).
+   */
+  inbound: z
+    .record(z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "An inbound hook's name is lowercase letters, digits and dashes."), z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/) }).strict())
+    .refine((r) => Object.keys(r).length <= 5, "At most 5 inbound hooks.")
+    .optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
   email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
   /**

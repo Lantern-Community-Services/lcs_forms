@@ -13,6 +13,8 @@ import { APP_GUIDE } from "./guide.js";
 import { DESIGN_BRIEF } from "./designBrief.js";
 import { buildProject } from "./compile.js";
 import { createEntry, entryOut, findCodeForm, loadApp, runAction } from "./runtime.js";
+import { importEntries, importedEntry } from "./importEntries.js";
+import { createInboundToken, inboundStatus, revokeInboundToken } from "./inbound.js";
 import { createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, patchFiles, publishProject, restoreProjectVersion, versionFiles } from "./service.js";
 import { componentVersionFiles, deleteComponent, getComponent, listComponents, saveComponent } from "./components.js";
 
@@ -226,19 +228,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     "Migrate entries from an old system (e.g. a Gravity Forms export) into a code form's live entries, saved exactly as given: the form's beforeCreate/afterCreate don't run, so nobody is notified and nothing is routed. Shape `data` the way the form's own server code saves it. Each entry needs an externalId (e.g. \"gf20:36541\"); one already imported into this form is skipped, so a batch can be sent again safely. Up to 500 a call, all or nothing: any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin. Pass confirm: true to save.",
     {
       form: ref,
-      entries: z
-        .array(
-          z.object({
-            externalId: z.string().min(1).max(200),
-            data: z.record(z.unknown()),
-            site: z.string().optional().describe("Site code"),
-            tenantId: z.string().optional().describe("Roster id of the resident it's about"),
-            occurredAt: z.string().optional().describe("ISO time it happened"),
-            createdByName: z.string().max(255).optional().describe("Who filed it in the old system"),
-          })
-        )
-        .min(1)
-        .max(500),
+      entries: z.array(importedEntry).min(1).max(500),
       dryRun: z.boolean().optional(),
       confirm: z.boolean().optional(),
     },
@@ -249,47 +239,36 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
       if (!dryRun && confirm !== true) throw new HttpError(400, "This saves entries to the live form without running its rules. Pass confirm: true (or dryRun: true to check first).");
       const row = await findCodeForm(form);
+      const r = await importEntries(row, entries, { dryRun });
+      if (r.problems.length || dryRun) return { ...r, ids: undefined, dryRun: Boolean(dryRun) };
+      if (r.saved) await audit({ actor, action: "apps.entriesImported", summary: `Imported ${r.saved} entries into “${row.title}”`, changes: { form: row.slug, count: r.saved, skipped: r.skipped.length } });
+      return { saved: r.saved, skipped: r.skipped, problems: [] };
+    },
+    { destructiveHint: true }
+  );
 
-      const problems: { externalId: string; problem: string }[] = [];
-      const seen = new Set<string>();
-      for (const e of entries) {
-        if (seen.has(e.externalId)) problems.push({ externalId: e.externalId, problem: "Sent twice in this batch." });
-        seen.add(e.externalId);
-        if (e.occurredAt && Number.isNaN(Date.parse(e.occurredAt))) problems.push({ externalId: e.externalId, problem: `occurredAt "${e.occurredAt}" isn't a date.` });
-        if (JSON.stringify(e.data).length > 200_000) problems.push({ externalId: e.externalId, problem: "data is over 200 KB." });
+  tool(
+    "inbound_hook",
+    "A code form's inbound hooks (form.json \"inbound\"): an address another system — e.g. a Gravity Forms Webhooks feed — POSTs to whenever something is filed there; the hook's server action turns the body into an entry, saved like import_code_entries (nobody notified, the same externalId never twice). do: \"status\" lists the hooks and how they've been doing; \"create\" makes a new address for `name` (shown once — any old address for it stops working); \"revoke\" turns it off. create/revoke need confirm: true and an Admin's key.",
+    { form: ref, do: z.enum(["status", "create", "revoke"]), name: z.string().max(40).optional(), confirm: z.boolean().optional() },
+    async ({ form, do: op, name, confirm }) => {
+      need("apps:build");
+      const row = await findCodeForm(form);
+      if (op === "status") return { hooks: await inboundStatus(row) };
+      if (!name) throw new HttpError(400, "Say which hook (name).");
+      const creator = key.createdById ? await prisma.user.findUnique({ where: { id: key.createdById } }) : null;
+      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can manage inbound hooks.");
+      if (confirm !== true) throw new HttpError(400, op === "create" ? "This makes a live address that adds entries to the form. Pass confirm: true." : "This turns the address off. Pass confirm: true.");
+      if (op === "revoke") {
+        const done = await revokeInboundToken(row.id, name);
+        if (done) await audit({ actor, action: "apps.inboundRevoked", summary: `Turned off inbound hook “${name}” on “${row.title}”`, changes: { form: row.slug, hook: name } });
+        return { revoked: done };
       }
-      const codes = [...new Set(entries.map((e) => e.site).filter((s): s is string => Boolean(s)))];
-      const sites = new Map((await prisma.site.findMany({ where: { code: { in: codes } }, select: { id: true, code: true } })).map((s) => [s.code, s.id]));
-      const tenantIds = [...new Set(entries.map((e) => e.tenantId).filter((t): t is string => Boolean(t)))];
-      const tenants = new Map((await prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, siteId: true } })).map((t) => [t.id, t.siteId]));
-      for (const e of entries) {
-        if (e.site && !sites.has(e.site)) problems.push({ externalId: e.externalId, problem: `No site with code "${e.site}".` });
-        if (e.tenantId && !tenants.has(e.tenantId)) problems.push({ externalId: e.externalId, problem: `No resident with id "${e.tenantId}".` });
-      }
-
-      const clientIdOf = (externalId: string) => `import:${externalId}`;
-      const existing = new Set(
-        (await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: entries.map((e) => clientIdOf(e.externalId)) } }, select: { clientId: true } })).map((x) => x.clientId)
-      );
-      const fresh = entries.filter((e) => !existing.has(clientIdOf(e.externalId)));
-      const skipped = entries.filter((e) => existing.has(clientIdOf(e.externalId))).map((e) => e.externalId);
-      if (problems.length || dryRun) return { saved: 0, wouldSave: problems.length ? 0 : fresh.length, skipped, problems, dryRun: Boolean(dryRun) };
-
-      await prisma.formEntry.createMany({
-        data: fresh.map((e) => ({
-          formId: row.id,
-          formVersion: row.liveVersion,
-          data: JSON.stringify(e.data),
-          siteId: e.site ? sites.get(e.site)! : null,
-          tenantId: e.tenantId ?? null,
-          occurredAt: e.occurredAt ? new Date(e.occurredAt) : new Date(),
-          source: "import",
-          clientId: clientIdOf(e.externalId),
-          createdByName: e.createdByName?.trim() || "Imported",
-        })),
-      });
-      if (fresh.length) await audit({ actor, action: "apps.entriesImported", summary: `Imported ${fresh.length} entries into “${row.title}”`, changes: { form: row.slug, count: fresh.length, skipped: skipped.length } });
-      return { saved: fresh.length, skipped, problems: [] };
+      const declared = (await inboundStatus(row)).find((h) => h.name === name);
+      if (!declared?.published) throw new HttpError(400, `The published form has no inbound hook "${name}". Add it to form.json "inbound" and publish first.`);
+      const out = await createInboundToken(row.id, name, actor.name);
+      await audit({ actor, action: "apps.inboundCreated", summary: `Made an address for inbound hook “${name}” on “${row.title}”`, changes: { form: row.slug, hook: name } });
+      return { ...out, note: "Shown once. Anyone with this address can add entries through the hook's action, so keep it out of chats and tickets." };
     },
     { destructiveHint: true }
   );
