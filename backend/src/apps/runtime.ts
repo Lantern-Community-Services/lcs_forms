@@ -12,7 +12,7 @@ import { runInSandbox, type SandboxResult } from "./sandbox.js";
 import { DEFAULT_ENTRY_READERS, readManifest, roleAllowed, type Files, type Manifest } from "./project.js";
 import * as time from "./time.js";
 import { appBaseUrl } from "../env.js";
-import { attachFiles, filesToAttach } from "./files.js";
+import { keepAppFiles, attachFiles, filesToAttach } from "./files.js";
 import { queueEmail } from "./email.js";
 import { routeFromApp, sendNotification } from "./notify.js";
 import { entryInput, routeQuietly } from "../services/routing.js";
@@ -1003,6 +1003,9 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         if (f.size > 600_000) throw new Error("That file is too big to read here (600 KB max).");
         return `data:${f.mime};base64,${(await fileBytes(f)).toString("base64")}`;
       }
+      case "files.keep":
+        // Uploads a draft holds (apps/files.ts keepAppFiles): kept past the day-old sweep, readable by the form's people.
+        return keepAppFiles(app, args?.ids);
       case "calendar.form.list":
       case "calendar.form.create":
       case "calendar.form.update":

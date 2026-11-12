@@ -1039,6 +1039,13 @@ declare module "@lcs/server" {
     /** This form's own files: read one back as a data: URL (600 KB at most) — e.g. a signature another form keeps inline. */
     files: {
       read(ref: import("@lcs/sdk").FileRef | string): string;
+      /**
+       * Keep uploads that a draft (or any record not yet saved as an entry) holds: an upload that isn't on an
+       * entry is normally deleted after a day and only its uploader can see it. Kept ones last 180 days, and
+       * anyone who can open this form can see them and save them on an entry — so a coworker can pick up the
+       * draft. Call it when the draft saves, with the files in it. Returns how many were newly kept.
+       */
+      keep(refs: (import("@lcs/sdk").FileRef | string)[]): number;
     };
     /** Entries this form asked other forms to make (db.form(slug).entries.create), by the entry they came from. */
     jobs: {

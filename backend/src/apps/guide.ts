@@ -70,6 +70,9 @@ Admins and developers pass every role check.
   files.choose() from a tap. Photos are shrunk to 1600px JPEG and work offline (they upload ahead of the entry).
 - Previews: <FilePreview file={ref} /> shows any upload as an image — photos as they are, PDFs page by page (the
   frame can't embed a PDF, so the app renders it). files.preview(ref, { page }) gives the image if you need your own UI.
+- Drafts with uploads: an upload not saved on an entry is deleted after a day and only its uploader can see it. If a
+  draft (a collection doc) holds files, call ctx.files.keep(refs) in the server action that saves it: kept files last
+  180 days and anyone who can open the form can see and file them.
 - Receipts: ai.readReceipt(fileRef, { codes, from, to }) reads an uploaded receipt photo or PDF with Claude (date, store,
   total, what was bought, a suggested code from your list). Show ai.available() first (false when the site has no
   key, or for share-link guests). Use it to fill rows the person then checks; never save a reading unseen.
