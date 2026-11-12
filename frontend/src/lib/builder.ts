@@ -174,6 +174,8 @@ export interface EntryDetail {
   followUpFields?: DoneField[];
   /** The things to tick off one by one, as they stand on this entry. */
   followUpChecklist?: CheckState[];
+  /** Marked done before and opened again: marking it done again tells nobody unless tellAgain. */
+  followUpDoneBefore?: boolean;
 }
 
 /** A follow-up checklist item on one entry (backend services/followUp.ts). */
@@ -182,6 +184,8 @@ export interface CheckState {
   label: string;
   help?: string;
   done: { at: string; byName: string } | null;
+  /** Taken off this entry's list: not needed for this person. */
+  removed?: { at: string; byName: string } | null;
 }
 
 /** A follow-up checklist item as set up on the form. */
@@ -314,9 +318,10 @@ export const fillApi = {
   star: (slug: string, id: string, starred: boolean) => api.post(`/f/${slug}/entries/${id}/star`, { starred }),
   note: (slug: string, id: string, body: string) => api.post<EntryNote>(`/f/${slug}/entries/${id}/notes`, { body }),
   /** Mark the entry's follow-up done (with what was done), or open it again. */
-  followUp: (slug: string, id: string, done: boolean, note?: string, values?: Record<string, string>) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note, values }),
-  /** Tick one of the follow-up's checklist items off, or untick it. */
-  followUpItem: (slug: string, id: string, item: string, done: boolean) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up/items`, { item, done }),
+  followUp: (slug: string, id: string, done: boolean, note?: string, values?: Record<string, string>, tellAgain?: boolean) =>
+    api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note, values, tellAgain }),
+  /** Tick one of the follow-up's checklist items off, or untick it; or take it off this entry's list (removed), or put it back. */
+  followUpItem: (slug: string, id: string, item: string, change: { done: boolean } | { removed: boolean }) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up/items`, { item, ...change }),
   remove: (slug: string, id: string) => api.delete(`/f/${slug}/entries/${id}`),
   /** What the filters match, or just `ids` (the ticked entries) within them. */
   exportFile: (slug: string, qs: string, format: "csv" | "xlsx" | "pdf", ids?: string[]) =>

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, MinusCircle, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/label";
 import { ToneBadge } from "@/components/ui/badge";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
@@ -143,8 +144,15 @@ export function BuiltFormEntryPage() {
           canDo={data.canFollowUp}
           fields={data.followUpFields ?? []}
           checklist={data.followUpChecklist ?? []}
-          onTick={(item, done) => act(() => fillApi.followUpItem(slug, id, item, done), done ? "Ticked off. They've been told." : "Unticked.")}
-          onDone={(done, text, values) => act(() => fillApi.followUp(slug, id, done, text, values), done ? "Marked done. Whoever filed it has been told." : "Opened again.")}
+          doneBefore={Boolean(data.followUpDoneBefore)}
+          onTick={(item, done) => act(() => fillApi.followUpItem(slug, id, item, { done }), done ? "Ticked off." : "Unticked.")}
+          onRemove={(item, removed) => act(() => fillApi.followUpItem(slug, id, item, { removed }), removed ? "Taken off the list for this person." : "Put back on the list.")}
+          onDone={(done, text, values, tellAgain) =>
+            act(
+              () => fillApi.followUp(slug, id, done, text, values, tellAgain),
+              !done ? "Opened again." : data.followUpDoneBefore && !tellAgain ? "Marked done again. Nobody was emailed." : "Marked done. Whoever filed it has been told."
+            )
+          }
         />
       )}
 
@@ -191,41 +199,54 @@ function FollowUpPanel({
   canDo,
   fields,
   checklist,
+  doneBefore,
   onTick,
+  onRemove,
   onDone,
 }: {
   entry: EntryDetail["entry"];
   canDo: boolean;
   fields: DoneField[];
   checklist: CheckState[];
+  doneBefore: boolean;
   onTick: (item: string, done: boolean) => Promise<boolean>;
-  onDone: (done: boolean, note?: string, values?: Record<string, string>) => Promise<boolean>;
+  onRemove: (item: string, removed: boolean) => Promise<boolean>;
+  onDone: (done: boolean, note?: string, values?: Record<string, string>, tellAgain?: boolean) => Promise<boolean>;
 }) {
   const [text, setText] = useState("");
+  // Done before and opened again: nobody hears about it a second time unless this is ticked.
+  const [tellAgain, setTellAgain] = useState(false);
+  const quiet = doneBefore && !tellAgain;
+  // Quietly, nothing is emailed, so there's no password to send.
+  const shown = quiet ? fields.filter((d) => d.type !== "password") : fields;
   // Each box starts with what the follow-up fills in for this entry (Onboarding: first.last@lanterncommunity.org).
   const starts = () => Object.fromEntries(fields.filter((d) => d.prefill).map((d) => [d.id, d.prefill!]));
   const [values, setValues] = useState<Record<string, string>>(starts);
   const [busy, setBusy] = useState(false);
   const f = entry.followUp!;
-  const left = checklist.filter((c) => !c.done);
-  const tick = async (c: CheckState) => {
+  const counted = checklist.filter((c) => !c.removed);
+  const left = counted.filter((c) => !c.done);
+  const busyWhile = async (go: () => Promise<boolean>) => {
     setBusy(true);
     try {
-      await onTick(c.id, !c.done);
+      await go();
     } finally {
       setBusy(false);
     }
   };
-  const missing = fields.filter((d) => d.required && !values[d.id]?.trim());
-  const hasPassword = fields.some((d) => d.type === "password" && values[d.id]?.trim());
+  const tick = (c: CheckState) => busyWhile(() => onTick(c.id, !c.done));
+  const remove = (c: CheckState) => busyWhile(() => onRemove(c.id, !c.removed));
+  const missing = shown.filter((d) => d.required && !values[d.id]?.trim());
+  const hasPassword = shown.some((d) => d.type === "password" && values[d.id]?.trim());
   const run = async (done: boolean) => {
     setBusy(true);
     try {
-      const filled = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim()));
+      const filled = Object.fromEntries(Object.entries(values).filter(([k, v]) => v.trim() && shown.some((d) => d.id === k)));
       // Kept until it works, so a failed send loses nothing they typed.
-      if (await onDone(done, text.trim() || undefined, done && fields.length ? filled : undefined)) {
+      if (await onDone(done, text.trim() || undefined, done && shown.length ? filled : undefined, done && doneBefore ? tellAgain : undefined)) {
         setText("");
         setValues({});
+        setTellAgain(false);
       }
     } finally {
       setBusy(false);
@@ -237,7 +258,7 @@ function FollowUpPanel({
         {f.status === "open" ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
         <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up: {f.status === "open" ? "open" : "done"}</p>
         {f.status === "open" && f.reminders > 0 && <span className="text-micro text-muted">· {f.reminders} reminder{f.reminders === 1 ? "" : "s"} sent</span>}
-        {checklist.length > 0 && <span className="ml-auto text-[12.5px] font-semibold text-muted">{checklist.length - left.length} of {checklist.length} done</span>}
+        {counted.length > 0 && <span className="ml-auto text-[12.5px] font-semibold text-muted">{counted.length - left.length} of {counted.length} done</span>}
       </div>
       {checklist.length > 0 && (
         <ul className="mb-3 divide-y divide-hairline rounded-input border border-hairline">
@@ -250,20 +271,33 @@ function FollowUpPanel({
                   role="checkbox"
                   aria-checked={Boolean(c.done)}
                   aria-label={c.label}
-                  disabled={!can || busy}
+                  disabled={!can || busy || Boolean(c.removed)}
                   onClick={() => void tick(c)}
                   className={cn("mt-0.5 shrink-0 rounded-full", can ? "cursor-pointer hover:opacity-80" : "cursor-default")}
                 >
-                  {c.done ? <CheckCircle2 className="h-5 w-5 text-status-greenText" /> : <Circle className="h-5 w-5 text-muted" />}
+                  {c.done ? <CheckCircle2 className="h-5 w-5 text-status-greenText" /> : c.removed ? <MinusCircle className="h-5 w-5 text-muted" /> : <Circle className="h-5 w-5 text-muted" />}
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className={cn("text-[13.5px] text-ink", c.done && "text-muted line-through decoration-hairline")}>{c.label}</p>
+                  <p className={cn("text-[13.5px] text-ink", (c.done || c.removed) && "text-muted line-through decoration-hairline")}>{c.label}</p>
                   {c.done ? (
                     <p className="text-micro text-muted">Done by {c.done.byName}, {formatDateTime(c.done.at)}</p>
+                  ) : c.removed ? (
+                    <p className="text-micro text-muted">Not needed: taken off by {c.removed.byName}, {formatDateTime(c.removed.at)}</p>
                   ) : (
                     c.help && <p className="text-micro text-muted">{c.help}</p>
                   )}
                 </div>
+                {can && !c.done && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void remove(c)}
+                    className="shrink-0 rounded-input px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-subtle hover:text-ink"
+                    title={c.removed ? "Put it back on this person's list" : "Not needed for this person: take it off the list"}
+                  >
+                    {c.removed ? "Put back" : "Remove"}
+                  </button>
+                )}
               </li>
             );
           })}
@@ -297,12 +331,25 @@ function FollowUpPanel({
         <>
           <p className="mb-3 text-[13px] text-muted">
             {checklist.length
-              ? `Tick each item off as it's done; ${entry.createdByName} is told. ${fields.some((d) => d.required || d.type === "password") ? "Then fill this in." : "Ticking the last one marks it done."}`
-              : `When it's done, fill this in. ${entry.createdByName} is told.`}
+              ? `Tick each item off as it's done, or remove one this person doesn't need. ${fields.some((d) => d.required || d.type === "password") ? "Then fill this in." : "Ticking the last one marks it done."}`
+              : quiet
+                ? "When it's done, fill this in."
+                : `When it's done, fill this in. ${entry.createdByName} is told.`}
           </p>
-          {fields.length > 0 && (
+          {doneBefore && (
+            <label className="mb-3 flex items-start gap-2.5 rounded-input bg-subtle px-3 py-2.5 text-[13px] text-ink">
+              <Checkbox className="mt-0.5" checked={tellAgain} onCheckedChange={(v) => setTellAgain(v === true)} />
+              <span>
+                <span className="font-semibold">Email {entry.createdByName} and everyone told again</span>
+                <span className="block text-micro text-muted">
+                  It was marked done before, so they've already heard. Tick this only if something changed, like a corrected username or a new password.
+                </span>
+              </span>
+            </label>
+          )}
+          {shown.length > 0 && (
             <div className="mb-3 grid gap-3 sm:grid-cols-2">
-              {fields.map((d) => {
+              {shown.map((d) => {
                 const set = (v: string) => setValues((x) => ({ ...x, [d.id]: v }));
                 const label = `${d.label}${d.required ? "" : " (optional)"}`;
                 const hint = d.type === "password" ? `Emailed to ${entry.createdByName} once. Lantern Forms doesn't keep it.` : d.help;
@@ -330,7 +377,7 @@ function FollowUpPanel({
               })}
             </div>
           )}
-          <Field label={fields.length ? "Anything else (optional)" : undefined}>
+          <Field label={shown.length ? "Anything else (optional)" : undefined}>
             <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="e.g. Accounts created, laptop handed over at orientation." className="min-h-[64px]" />
           </Field>
           <div className="mt-2 flex items-center justify-end gap-3">

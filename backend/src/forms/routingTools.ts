@@ -456,14 +456,14 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "mark_follow_up",
-    "Mark an entry's follow-up done, with a note of what was done and its done fields (values: { fieldId: answer }; see get_follow_up), or open it again with done: false. Whoever filed it is told. A password done field is emailed to them once and never kept; if that email can't go, nothing is saved. Acts as this key (the admin who made it).",
-    { form: formRef, entryId: z.string(), done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional() },
-    async ({ form, entryId, done, note, values }) => {
+    "Mark an entry's follow-up done, with a note of what was done and its done fields (values: { fieldId: answer }; see get_follow_up), or open it again with done: false. Whoever filed it is told. A password done field is emailed to them once and never kept; if that email can't go, nothing is saved. Marked done again after being opened again, nobody is emailed a second time (and no password is sent) unless tellAgain: true, e.g. for a corrected username or a new password. Acts as this key (the admin who made it).",
+    { form: formRef, entryId: z.string(), done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional(), tellAgain: z.boolean().optional() },
+    async ({ form, entryId, done, note, values, tellAgain }) => {
       need("entries:manage");
       const f = await routingForm(form);
       const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id } });
       if (!entry) throw new HttpError(404, "That form has no such entry.");
-      const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note, values });
+      const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note, values, tellAgain });
       return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, note: out.followUpNote, doneValues: parseDoneValues(out.followUpValues) };
     },
     { destructiveHint: true }
@@ -471,14 +471,20 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "tick_follow_up_item",
-    "Tick one of an entry's follow-up checklist items off (done: true) or untick it (done: false); see list_follow_ups for each entry's checklist and item ids. Kept with who did it and when. Whoever filed it and the follow-up's alsoTell people are told as each is ticked (tellEachItem); ticking the last one marks the entry done and tells them so. Acts as this key (the admin who made it).",
-    { form: formRef, entryId: z.string(), item: z.string().max(40), done: z.boolean() },
-    async ({ form, entryId, item, done }) => {
+    "Tick one of an entry's follow-up checklist items off (done: true) or untick it (done: false); see list_follow_ups for each entry's checklist and item ids. Kept with who did it and when. Whoever filed it and the follow-up's alsoTell people are told as each is ticked (tellEachItem); ticking the last one marks the entry done and tells them so. Or, instead of done, removed: true takes an item that doesn't apply to this person (no laptop to collect) off this entry's list, so it isn't waited on or reminded about; removed: false puts it back. Acts as this key (the admin who made it).",
+    {
+      form: formRef,
+      entryId: z.string(),
+      item: z.string().max(40),
+      done: z.boolean().optional().describe("Tick it off (true) or untick it (false)"),
+      removed: z.boolean().optional().describe("Instead of done: take it off this entry's list (true) or put it back (false)"),
+    },
+    async ({ form, entryId, item, done, removed }) => {
       need("entries:manage");
       const f = await routingForm(form);
       const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id } });
       if (!entry) throw new HttpError(404, "That form has no such entry.");
-      const out = await setFollowUpItem(f, entry, { userId: null, name: actor.name }, { item, done });
+      const out = await setFollowUpItem(f, entry, { userId: null, name: actor.name }, { item, done, removed });
       return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, checklist: checklistFor(await loadFollowUp(f), out) };
     },
     { destructiveHint: true }
