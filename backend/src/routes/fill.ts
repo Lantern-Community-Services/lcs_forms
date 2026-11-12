@@ -7,7 +7,7 @@ import { deleteFiles, fileBytes } from "../services/fileStore.js";
 import { HttpError, asyncHandler, badRequest, forbidden, notFound, unauthorized } from "../http.js";
 import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
-import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp, setFollowUp, setFollowUpItem } from "../services/followUp.js";
+import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp, setFollowUp, setFollowUpItem, wasDoneBefore } from "../services/followUp.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
@@ -270,6 +270,8 @@ fillRouter.get(
       followUpFields: follow ? doneFieldsFor(follow, entry) : [],
       // The things to tick off one by one, as they stand on this entry.
       followUpChecklist: follow ? checklistFor(follow, entry) : [],
+      // Marked done before and opened again: marking it done again tells nobody unless they ask to.
+      followUpDoneBefore: entry.followUp === "open" ? await wasDoneBefore(entry.id) : false,
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
       canArchive: canArchiveEntries(form, liveOrDraft, req.user, reach),
       isAdmin: isFormAdmin(req.user),
@@ -313,7 +315,7 @@ fillRouter.post(
 fillRouter.post(
   "/:slug/entries/:id/follow-up",
   asyncHandler(async (req, res) => {
-    const body = z.object({ done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional() }).parse(req.body);
+    const body = z.object({ done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional(), tellAgain: z.boolean().optional() }).parse(req.body);
     const { form, reach } = await readable(req);
     const entry = await entryIn(req, form, reach);
     await requireFollowUp(form, req.user, entry);
@@ -351,7 +353,7 @@ fillRouter.post(
 fillRouter.post(
   "/:slug/entries/:id/follow-up/items",
   asyncHandler(async (req, res) => {
-    const body = z.object({ item: z.string().min(1).max(40), done: z.boolean() }).parse(req.body);
+    const body = z.object({ item: z.string().min(1).max(40), done: z.boolean().optional(), removed: z.boolean().optional() }).parse(req.body);
     const { form, reach } = await readable(req);
     const entry = await entryIn(req, form, reach);
     await requireFollowUp(form, req.user, entry);
