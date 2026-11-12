@@ -34,6 +34,7 @@ import { BuiltFormPreviewPage } from "./screens/builtforms/PreviewPage";
 import { AppHostPage } from "./apps/AppHostPage";
 import { CalendarPage } from "./screens/calendar/CalendarPage";
 import { ConnectClaudePage } from "./screens/ConnectClaude";
+import { landingPath } from "./lib/types";
 
 /*
  * Admin's screens are their own downloads, fetched the first time an Admin
@@ -156,11 +157,10 @@ function PeopleFrame() {
  */
 function HomeRedirect() {
   const { user, can } = useAuth();
-  const saved = user?.defaultLandingPage;
-  const chosen = !saved || saved === "/forms" ? "/home" : saved;
+  const chosen = landingPath(user?.defaultLandingPage);
   // Review is only for people who can act on it; anyone else saved on it lands on the Residents tab.
   const allowed = chosen === "/roster/review" && !can("roster.archive") ? "/roster" : chosen;
-  return <Navigate to={allowed === "/home" || can("roster.view") ? allowed : "/home"} replace />;
+  return <Navigate to={!allowed.startsWith("/roster") || can("roster.view") ? allowed : "/home"} replace />;
 }
 
 /** The review queue, for people who can act on it; anyone else (a bookmark, an old link) gets the roster. */

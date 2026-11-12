@@ -18,7 +18,11 @@ export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
 // "/forms" was Home's address before /home; still accepted, and read as Home.
-const LANDING = ["/home", "/forms", "/roster", "/roster/review", "/roster/overview"] as const;
+// The All forms page is saved as "/forms/all" for that reason.
+const LANDING = [
+  "/home", "/forms", "/forms/all", "/calendar",
+  "/roster", "/roster/review", "/roster/attendance", "/roster/activity", "/roster/overview",
+] as const;
 
 /** The signed-in person's own preferences — the Profile screen. */
 usersRouter.patch(
