@@ -166,7 +166,10 @@ globalThis.__makeCtx = (base) => ({
     },
   },
   directory: (q) => __h("directory", { q: q || {} }),
-  files: { read: (ref) => __h("files.read", typeof ref === "string" ? { fileId: ref } : { ref }) },
+  files: {
+    read: (ref) => __h("files.read", typeof ref === "string" ? { fileId: ref } : { ref }),
+    keep: (refs) => __h("files.keep", { ids: Array.isArray(refs) ? refs : [] }),
+  },
   jobs: { list: (entryId) => __h("jobs.list", { entryId }), retry: (id, override) => __h("jobs.retry", { id, override }) },
   time: __time,
   log: (...a) => __log(a.map(__fmt).join(" ")),
