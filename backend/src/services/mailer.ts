@@ -97,22 +97,96 @@ export async function sentEmails(opts: { formId?: string; limit?: number; before
   });
 }
 
+/**
+ * Sends at once from this server. Exchange takes only a few requests at a time
+ * from one mailbox ("MailboxConcurrency"); past that it holds or refuses them,
+ * which showed up as 10-second timeouts whenever a busy minute (an onboarding
+ * request to 20 people, a deploy) sent everything together (2026-11-12).
+ */
+const MAX_PARALLEL = 2;
+/** How long one Graph call may take: a held request can take well over 10 seconds and still go. */
+const SEND_TIMEOUT_MS = 30_000;
+/** Tries for one email when Graph is busy (429, 5xx, a timeout); a bad address or request isn't tried again. */
+const SEND_TRIES = 2;
+/** The longest a Retry-After is waited for here; anything longer is left to the caller's own retries. */
+const MAX_WAIT_MS = 30_000;
+
+let active = 0;
+const waiting: (() => void)[] = [];
+
+async function inLane<T>(go: () => Promise<T>): Promise<T> {
+  if (active >= MAX_PARALLEL) await new Promise<void>((resolve) => waiting.push(resolve));
+  active++;
+  try {
+    return await go();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** An error from one Graph call, saying whether trying again later could work, and how long Graph asked us to wait. */
+class SendError extends Error {
+  constructor(message: string, readonly transient: boolean, readonly waitMs?: number) {
+    super(message);
+  }
+}
+
+/** Retry-After as milliseconds: seconds, or an HTTP date. */
+function retryAfterMs(h: string | null): number | undefined {
+  if (!h) return undefined;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(h);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+}
+
+async function graphSend(opts: { to: string[]; subject: string; html: string; replyTo?: string }) {
+  const token = await graphToken();
+  let res: Response;
+  try {
+    res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(env.mailFrom)}/sendMail`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      body: JSON.stringify({
+        message: {
+          subject: opts.subject,
+          body: { contentType: "HTML", content: opts.html },
+          toRecipients: opts.to.map((address) => ({ emailAddress: { address } })),
+          ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
+        },
+        saveToSentItems: false,
+      }),
+    });
+  } catch (err) {
+    // A timeout or a dropped connection: Graph may be holding it, so it's worth another go.
+    throw new SendError(err instanceof Error ? err.message : String(err), true);
+  }
+  if (res.ok) return;
+  const transient = res.status === 429 || res.status >= 500;
+  throw new SendError(`Graph sendMail answered ${res.status}: ${(await res.text()).slice(0, 300)}`, transient, retryAfterMs(res.headers.get("retry-after")));
+}
+
+/**
+ * Send one email through Graph: at most MAX_PARALLEL at a time from this
+ * server, and once more after a short wait when Graph is busy (honouring its
+ * Retry-After). Throws when it still couldn't go; the error says which try.
+ */
 export async function sendMail(opts: { to: string[]; subject: string; html: string; replyTo?: string }): Promise<void> {
   if (!mailConfigured()) throw new Error("Email isn't set up on this server (MAIL_FROM).");
-  const token = await graphToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(env.mailFrom)}/sendMail`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(10_000),
-    body: JSON.stringify({
-      message: {
-        subject: opts.subject,
-        body: { contentType: "HTML", content: opts.html },
-        toRecipients: opts.to.map((address) => ({ emailAddress: { address } })),
-        ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
-      },
-      saveToSentItems: false,
-    }),
-  });
-  if (!res.ok) throw new Error(`Graph sendMail answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await inLane(() => graphSend(opts));
+    } catch (err) {
+      const e = err instanceof SendError ? err : new SendError(err instanceof Error ? err.message : String(err), false);
+      const wait = e.waitMs ?? 2_000 * attempt;
+      if (!e.transient || attempt >= SEND_TRIES || wait > MAX_WAIT_MS) throw new Error(attempt > 1 ? `${e.message} (after ${attempt} tries)` : e.message);
+      console.warn(`[mail] ${e.message}; trying again in ${Math.round(wait / 1000)}s`);
+      // Out of the lane while it waits, so other emails keep going.
+      await sleep(wait);
+    }
+  }
 }
