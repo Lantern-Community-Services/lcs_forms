@@ -19,6 +19,7 @@ import {
 } from "../apps/runtime.js";
 import { readAppFile, uploadAppFile } from "../apps/files.js";
 import { fileBytes } from "../services/fileStore.js";
+import { allowReading, readReceipt, ReceiptError, receiptReaderReady } from "../services/receiptReader.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { noteActionFailure } from "../services/devlog.js";
 import {
@@ -233,6 +234,8 @@ appsRouter.get(
       offlineActions: app.manifest.offline?.actions ?? [],
       // The client picks this person's steps (tutorialStepsFor); roles aren't secret.
       tutorial: app.manifest.tutorial ?? null,
+      // Optional platform features this site has switched on.
+      ai: { receipts: receiptReaderReady() },
     });
   })
 );
@@ -320,6 +323,37 @@ appsRouter.get(
     // Uploaded content is shown as a file, never as a page of this site.
     res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
     res.type(inline ? file.mime : "application/octet-stream").send(await fileBytes(file));
+  })
+);
+
+/**
+ * Read one of the form's uploaded files as a receipt with Claude (ai.readReceipt): date, store, total,
+ * what was bought and a suggested program code from the page's list. Only files this person can read.
+ */
+appsRouter.post(
+  "/:slug/ai/receipt",
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        fileId: z.string().min(1).max(60),
+        codes: z.array(z.object({ code: z.string().max(40), label: z.string().max(200) })).max(300).optional(),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      })
+      .parse(req.body);
+    if (!receiptReaderReady()) return res.status(503).json({ error: "Receipt reading isn't set up on this site yet." });
+    const app = await appFor(req);
+    requireOpen(app, req.user!);
+    if (!allowReading(req.user!.userId)) return res.status(429).json({ error: "That's a lot of receipts in an hour. Wait a little, then try again." });
+    const file = await readAppFile(app, req.user!, body.fileId, (entryId) => getEntry(app, req.user!, entryId));
+    try {
+      const reading = await readReceipt({ bytes: await fileBytes(file), mime: file.mime, name: file.name }, { codes: body.codes, from: body.from, to: body.to });
+      res.json(reading);
+    } catch (e) {
+      if (e instanceof ReceiptError) return res.status(e.status).json({ error: e.message });
+      console.error("[receipt] failed", e);
+      res.status(502).json({ error: "The receipt couldn't be read just now. Try again, or fill the row in by hand." });
+    }
   })
 );
 

@@ -206,6 +206,8 @@ export function AppFrame({
       online: isOnline(),
       today: nyDay(),
       device: l.device,
+      // Off for share-link guests: the reading is billed to the site and needs a signed-in person.
+      ai: { receipts: Boolean(l.runtime.ai?.receipts) && !shareToken },
     };
   };
 
@@ -396,6 +398,10 @@ export function AppFrame({
       "collections.get": async (name: string, id: string) => runtimeApi.doc(slug, draft, name, id),
       "collections.put": async (name: string, id: string | null, data: unknown) => runtimeApi.put(slug, draft, name, id, data),
       "collections.remove": async (name: string, id: string) => runtimeApi.remove(slug, draft, name, id),
+      "ai.readReceipt": async (body: { fileId: string; codes?: { code: string; label: string }[]; from?: string; to?: string }) => {
+        if (!latest.current.runtime.ai?.receipts) throw new Error("Receipt reading isn't set up on this site yet.");
+        return runtimeApi.readReceipt(slug, draft, { fileId: String(body?.fileId ?? ""), codes: body?.codes, from: body?.from, to: body?.to });
+      },
       "actions.call": async (name: string, args: unknown) => {
         // form.json offline.actions: ones that only read. Their last answer is
         // kept, and given back when there's no connection.
