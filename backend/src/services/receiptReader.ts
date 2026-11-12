@@ -94,7 +94,11 @@ export async function readReceipt(file: { bytes: Buffer; mime: string; name: str
     throw new ReceiptError("Only photos (JPEG, PNG, WebP) and PDFs can be read. iPhone HEIC photos need to be taken with the in-app camera or saved as JPEG.");
   }
 
-  const codes = (hints.codes ?? []).filter((c) => c && typeof c.code === "string" && c.code.trim()).slice(0, 300);
+  // Sorted so every request with the same list sends the same bytes (the cached prefix below).
+  const codes = (hints.codes ?? [])
+    .filter((c) => c && typeof c.code === "string" && c.code.trim())
+    .slice(0, 300)
+    .sort((a, b) => a.code.localeCompare(b.code));
   const codeList = codes.length ? codes.map((c) => `${c.code} — ${String(c.label ?? "").slice(0, 120)}`).join("\n") : "(none given)";
   const period = hints.from && hints.to ? `Expected period: ${hints.from} to ${hints.to}.` : "";
 
@@ -104,12 +108,17 @@ export async function readReceipt(file: { bytes: Buffer; mime: string; name: str
     // If the model declines (a rare false positive on a receipt), the API retries on its default fallback.
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system: SYSTEM,
+    // The instructions and the code list are the same for every receipt: cached, so after the first
+    // reading in a batch they're billed at a twentieth of the price. Only the receipt and the answer vary.
+    system: [
+      { type: "text", text: SYSTEM },
+      { type: "text", text: `Program codes to choose from:\n${codeList}`, cache_control: { type: "ephemeral" } },
+    ],
     output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA(codes.map((c) => c.code)) } },
     messages: [
       {
         role: "user",
-        content: [media, { type: "text", text: `${period}\nProgram codes to choose from:\n${codeList}\n\nRead this receipt (file "${file.name.slice(0, 120)}").` }],
+        content: [media, { type: "text", text: `${period}\nRead this receipt (file "${file.name.slice(0, 120)}").`.trim() }],
       },
     ],
   });
@@ -125,7 +134,7 @@ export async function readReceipt(file: { bytes: Buffer; mime: string; name: str
   }
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(out.date ?? "")) ? out.date : "";
   const total = Number.isFinite(Number(out.total)) && Number(out.total) > 0 ? Math.round(Number(out.total) * 100) / 100 : 0;
-  console.log(`[receipt] read ${mime} ${file.bytes.length}B with ${response.model}: in ${response.usage.input_tokens}, out ${response.usage.output_tokens}`);
+  console.log(`[receipt] read ${mime} ${file.bytes.length}B with ${response.model}: in ${response.usage.input_tokens}, cached ${response.usage.cache_read_input_tokens ?? 0}, cache write ${response.usage.cache_creation_input_tokens ?? 0}, out ${response.usage.output_tokens}`);
   return {
     isReceipt: out.isReceipt !== false,
     date,
