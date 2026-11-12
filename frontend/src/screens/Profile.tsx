@@ -112,10 +112,14 @@ export function ProfilePage() {
 
   const landingOptions = [
     { value: "/home", label: "Home" },
+    { value: "/forms/all", label: "All forms" },
+    { value: "/calendar", label: "Calendar" },
     ...(can("roster.view")
       ? [
           { value: "/roster", label: "Roster · Residents" },
           ...(can("roster.archive") ? [{ value: "/roster/review", label: "Roster · Review" }] : []),
+          { value: "/roster/attendance", label: "Roster · Attendance" },
+          { value: "/roster/activity", label: "Roster · Activity" },
           { value: "/roster/overview", label: "Roster · Overview" },
         ]
       : []),
@@ -179,53 +183,7 @@ export function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "70ms" }}>
-        <div className="mb-4 flex min-h-4 items-center justify-between gap-3">
-          <p className="kicker">Preferences</p>
-          <p className={`text-micro ${preferenceStatus === "error" ? "text-danger" : "text-muted"}`} aria-live="polite">
-            {preferenceStatus === "saving" ? "Saving…" : preferenceStatus === "saved" ? "Saved" : preferenceStatus === "error" ? "Save failed" : "Changes save automatically"}
-          </p>
-        </div>
-        <Field label="Default landing page" className="mt-2">
-          <Select value={landing} onChange={(e) => changeLanding(e.target.value)} options={landingOptions} disabled={preferenceStatus === "saving"} />
-        </Field>
-      </Card>
-
-      <NotificationSettings delay="80ms" />
-
-      <ClaudeProfileCard delay="82ms" />
-
-      <ViewAsCard delay="83ms" />
-
-      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "84ms" }}>
-        <p className="kicker">Tutorials</p>
-        <p className="mt-1 text-[13px] text-muted">
-          The welcome tour shows you around the site. Forms can have their own tutorial too, the first time you open them.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={() => navigate("/home?tour=site")}>
-            <Compass className="h-4 w-4" /> Take the tour
-          </Button>
-          <Button variant="secondary" onClick={() => void showFormTutorialsAgain()} disabled={resetting}>
-            <RotateCcw className="h-4 w-4" /> Show form tutorials again
-          </Button>
-        </div>
-      </Card>
-
-      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "88ms" }}>
-        <p className="kicker">Offline</p>
-        <SnapshotSummary className="mt-2" />
-        {canAddToHomeScreen() && (
-          <div className="mt-4">
-            <p className="mb-3 text-[13px] text-muted">You're using Lantern Forms in a browser tab. Added to your Home Screen, it keeps offline work safer.</p>
-            <Button variant="secondary" onClick={openHomeScreenHelp}>
-              <SquarePlus className="h-4 w-4" /> Add to Home Screen
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "105ms" }}>
+      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "52ms" }}>
         <p className="kicker">Appearance</p>
         <p className="mt-1 text-[13px] text-muted">Themes change the application chrome and accent colors only. Your profile color stays personal.</p>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -250,6 +208,53 @@ export function ProfilePage() {
           </label>
         </div>
       </Card>
+
+      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "70ms" }}>
+        <div className="flex min-h-4 items-center justify-between gap-3">
+          <p className="kicker">Default landing page</p>
+          <p className={`text-micro ${preferenceStatus === "error" ? "text-danger" : "text-muted"}`} aria-live="polite">
+            {preferenceStatus === "saving" ? "Saving…" : preferenceStatus === "saved" ? "Saved" : preferenceStatus === "error" ? "Save failed" : "Changes save automatically"}
+          </p>
+        </div>
+        <p className="mt-1 text-[13px] text-muted">The page Lantern Forms opens on.</p>
+        <div className="mt-3">
+          <Select value={landing} onChange={(e) => changeLanding(e.target.value)} options={landingOptions} disabled={preferenceStatus === "saving"} aria-label="Default landing page" />
+        </div>
+      </Card>
+
+      <NotificationSettings delay="80ms" />
+
+      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "82ms" }}>
+        <p className="kicker">Tutorials</p>
+        <p className="mt-1 text-[13px] text-muted">
+          The welcome tour shows you around the site. Forms can have their own tutorial too, the first time you open them.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => navigate("/home?tour=site")}>
+            <Compass className="h-4 w-4" /> Take the tour
+          </Button>
+          <Button variant="secondary" onClick={() => void showFormTutorialsAgain()} disabled={resetting}>
+            <RotateCcw className="h-4 w-4" /> Show form tutorials again
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "84ms" }}>
+        <p className="kicker">Offline</p>
+        <SnapshotSummary className="mt-2" />
+        {canAddToHomeScreen() && (
+          <div className="mt-4">
+            <p className="mb-3 text-[13px] text-muted">You're using Lantern Forms in a browser tab. Added to your Home Screen, it keeps offline work safer.</p>
+            <Button variant="secondary" onClick={openHomeScreenHelp}>
+              <SquarePlus className="h-4 w-4" /> Add to Home Screen
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <ClaudeProfileCard delay="86ms" />
+
+      <ViewAsCard delay="88ms" />
 
       {/* Phone: the button takes the full width above its explanation, because
           side by side at 402px the sentence gets two words a line. Desktop keeps

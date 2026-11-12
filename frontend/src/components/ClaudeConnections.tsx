@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/misc";
@@ -74,18 +74,6 @@ function ConnectionList({ all }: { all: boolean }) {
 
 /** Profile: how to connect, what to ask, and your connections. */
 export function ClaudeProfileCard({ delay }: { delay?: string }) {
-  const toast = useToast();
-  const address = `${typeof window === "undefined" ? "" : window.location.origin}/api/mcp`;
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(address);
-      toast("Copied.");
-    } catch {
-      toast("Couldn't copy. Select the address and copy it instead.", "error");
-    }
-  }
-
   return (
     <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: delay }}>
       <p className="kicker flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Claude</p>
@@ -101,11 +89,6 @@ export function ClaudeProfileCard({ delay }: { delay?: string }) {
       <ul className="mt-1 list-disc pl-5 text-[13px] text-ink">
         {EXAMPLES.map((e) => <li key={e}>{e}</li>)}
       </ul>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-micro text-muted">
-        <span>Not listed in Claude? The connector address is</span>
-        <code className="rounded bg-subtle2 px-1.5 py-0.5 text-ink">{address}</code>
-        <Button size="sm" variant="ghost" onClick={() => void copy()} aria-label="Copy the connector address"><Copy className="h-3.5 w-3.5" /></Button>
-      </div>
       <ConnectionList all={false} />
     </Card>
   );

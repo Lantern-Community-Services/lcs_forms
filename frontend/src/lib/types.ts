@@ -28,7 +28,21 @@ export type PermissionKey =
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 /** "/forms" is Home saved before Home moved to /home; it's read as Home. */
-export type LandingPage = "/home" | "/forms" | "/roster" | "/roster/review" | "/roster/overview";
+/**
+ * A landing page as saved. "/forms" is Home's old address (everyone's default),
+ * so the All forms page is saved as "/forms/all"; landingPath() turns a saved
+ * value into the address to open.
+ */
+export type LandingPage =
+  | "/home" | "/forms" | "/forms/all" | "/calendar"
+  | "/roster" | "/roster/review" | "/roster/attendance" | "/roster/activity" | "/roster/overview";
+
+/** The address a saved landing page opens ("/forms" meant Home; "/forms/all" is the All forms page). */
+export function landingPath(saved: string | null | undefined): string {
+  if (!saved || saved === "/forms") return "/home";
+  if (saved === "/forms/all") return "/forms";
+  return saved;
+}
 
 export interface SiteRef {
   id: string;
