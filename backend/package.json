@@ -26,6 +26,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@azure/identity": "^4.13.3",
     "@azure/monitor-opentelemetry": "^1.20.1",
     "@azure/msal-node": "^5.6.0",

@@ -49,6 +49,8 @@ export interface AppRuntime {
   share?: { sharedBy: string; expiresAt: string | null; sites: { id: string; code: string; name: string; siteType: string; latitude: number | null; longitude: number | null; geofenceMeters: number | null }[] };
   /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */
   offlineActions?: string[];
+  /** Optional platform features switched on for this site (ai.available() in the SDK). */
+  ai?: { receipts: boolean };
   /** form.json "tutorial": the guided tutorial, all of it (lib/tour/formTours.ts picks this person's steps). */
   tutorial?: FormTutorial | null;
 }
@@ -225,6 +227,17 @@ export const runtimeApi = {
   put: (slug: string, draft: boolean, name: string, id: string | null, data: unknown) =>
     api.put(`/apps/${slug}/collections/${encodeURIComponent(name)}${id ? `/${encodeURIComponent(id)}` : ""}${q(draft)}`, { data }),
   remove: (slug: string, draft: boolean, name: string, id: string) => api.delete(`/apps/${slug}/collections/${encodeURIComponent(name)}/${encodeURIComponent(id)}${q(draft)}`),
+  readReceipt: async (slug: string, draft: boolean, body: { fileId: string; codes?: { code: string; label: string }[]; from?: string; to?: string }) => {
+    const res = await fetch(`${API_BASE}/apps/${slug}/ai/receipt${q(draft)}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, out?.error ?? res.statusText);
+    return out as unknown;
+  },
   action: async (slug: string, draft: boolean, name: string, args: unknown) => {
     const res = await fetch(`${API_BASE}/apps/${slug}/actions/${encodeURIComponent(name)}${q(draft)}`, {
       method: "POST",

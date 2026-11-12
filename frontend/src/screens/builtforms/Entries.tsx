@@ -268,12 +268,13 @@ export function BuiltFormEntriesPage() {
     </DropdownMenu>
   );
 
-  const SortHead = ({ k, children, className }: { k: string; children: React.ReactNode; className?: string }) => {
+  // An answer's heading may wrap onto two lines, so a long question doesn't widen the table.
+  const SortHead = ({ k, children, className, wrap }: { k: string; children: React.ReactNode; className?: string; wrap?: boolean }) => {
     const on = sort.key === k;
     return (
-      <th className={cn("px-3 py-2.5", className)} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
-        <button type="button" onClick={() => sortBy(k)} className={cn("inline-flex max-w-full items-center gap-1 uppercase tracking-[0.04em] hover:text-ink", on && "text-ink")}>
-          <span className="truncate">{children}</span>
+      <th className={cn("px-3 py-2.5", !wrap && "whitespace-nowrap", className)} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+        <button type="button" onClick={() => sortBy(k)} className={cn("inline-flex max-w-full items-center gap-1 text-left uppercase tracking-[0.04em] hover:text-ink", on && "text-ink")}>
+          <span className={wrap ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate"}>{children}</span>
           {on && (sort.dir === "asc" ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)}
         </button>
       </th>
@@ -426,8 +427,12 @@ export function BuiltFormEntriesPage() {
                   <SortHead k="createdAt">Submitted</SortHead>
                   <SortHead k="by">By</SortHead>
                   {hasSites && <SortHead k="site">Site</SortHead>}
-                  {columns.map((c) => <SortHead key={c.id} k={`field:${c.id}`} className="max-w-[220px]">{c.label || c.id}</SortHead>)}
-                  {doneColumns.map((c) => <th key={`done:${c.id}`} className="max-w-[220px] truncate px-3 py-2.5" title="Filled in when the follow-up was marked done">{c.label}</th>)}
+                  {columns.map((c) => <SortHead key={c.id} k={`field:${c.id}`} wrap>{c.label || c.id}</SortHead>)}
+                  {doneColumns.map((c) => (
+                    <th key={`done:${c.id}`} className="px-3 py-2.5" title="Filled in when the follow-up was marked done">
+                      <span className="line-clamp-2 [overflow-wrap:anywhere]">{c.label}</span>
+                    </th>
+                  ))}
                   <th className="px-3 py-2.5" />
                 </tr>
               </thead>
@@ -445,11 +450,8 @@ export function BuiltFormEntriesPage() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-ink">{e.createdByName}</td>
                       {hasSites && <td className="whitespace-nowrap px-3 py-2.5 text-ink">{e.site?.name ?? "—"}</td>}
-                      {columns.map((c) => <td key={c.id} className="max-w-[240px] truncate px-3 py-2.5 text-ink">{formatValue(c, e.values[c.id]) || <span className="text-muted">—</span>}</td>)}
-                      {doneColumns.map((c) => {
-                        const v = e.followUp?.values?.find((x) => x.id === c.id)?.value;
-                        return <td key={`done:${c.id}`} className="max-w-[240px] truncate px-3 py-2.5 text-ink">{v || <span className="text-muted">—</span>}</td>;
-                      })}
+                      {columns.map((c) => <AnswerCell key={c.id} value={formatValue(c, e.values[c.id])} />)}
+                      {doneColumns.map((c) => <AnswerCell key={`done:${c.id}`} value={e.followUp?.values?.find((x) => x.id === c.id)?.value} />)}
                       <td className="whitespace-nowrap px-3 py-2.5 text-right text-muted">
                         {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
                         {e.archivedAt && <span className="ml-2"><ToneBadge tone="neutral">Archived</ToneBadge></span>}
@@ -501,6 +503,19 @@ export function BuiltFormEntriesPage() {
       )}
     </Page>
     </>
+  );
+}
+
+/**
+ * One answer in the entries table: up to two lines, long words (an email
+ * address) broken anywhere, so the table fits the page instead of scrolling
+ * sideways. Longer than two lines ends in "…", with the whole answer on hover.
+ */
+function AnswerCell({ value }: { value: string | null | undefined }) {
+  return (
+    <td className="min-w-[7rem] px-3 py-2.5 text-ink">
+      {value ? <span className="line-clamp-2 [overflow-wrap:anywhere]" title={value}>{value}</span> : <span className="text-muted">—</span>}
+    </td>
   );
 }
 

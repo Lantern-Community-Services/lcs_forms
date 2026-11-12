@@ -17,6 +17,7 @@ interface AppContext {
   online: boolean;
   today: string;
   device: Device;
+  ai?: { receipts?: boolean };
 }
 
 export interface Device {
@@ -161,6 +162,12 @@ export const collections = {
 
 export const actions = {
   call: (name: string, args?: Json) => call("actions.call", name, args ?? null),
+};
+
+export const ai = {
+  available: () => Boolean(ctx?.ai?.receipts),
+  readReceipt: (file: FileRef, opts?: { codes?: { code: string; label: string }[]; from?: string; to?: string }) =>
+    call("ai.readReceipt", { fileId: file?.fileId, ...(opts ?? {}) }),
 };
 
 export const local = {

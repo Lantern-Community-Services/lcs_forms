@@ -107,6 +107,16 @@ export const env = {
   tokenEncryptionKey: (process.env.TOKEN_ENCRYPTION_KEY ?? "").trim(),
 
   /**
+   * Claude, for reading receipts in code forms (ai.readReceipt; services/receiptReader.ts).
+   *   ANTHROPIC_API_KEY   an Anthropic API key (an App Service setting in Azure); unset turns the feature off
+   *   RECEIPT_MODEL       the model, default claude-opus-5-5
+   */
+  anthropic: {
+    apiKey: (process.env.ANTHROPIC_API_KEY ?? "").trim(),
+    receiptModel: (process.env.RECEIPT_MODEL ?? "").trim() || "claude-opus-5-5",
+  },
+
+  /**
    * Where uploaded files (File fields, code forms' photos and signatures) are
    * kept: Azure Blob Storage when either of these is set, otherwise the
    * database (local development). See services/fileStore.ts.
