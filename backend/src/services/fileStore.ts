@@ -119,7 +119,14 @@ let lastSweep = 0;
 export async function sweepUnattachedFiles(): Promise<number> {
   if (Date.now() - lastSweep < 10 * 60_000) return 0;
   lastSweep = Date.now();
-  return deleteFiles({ entryId: null, createdAt: { lt: new Date(Date.now() - 86_400_000) } }).catch((err) => {
+  // Uploads never put on an entry go after a day; ones a form keeps for a draft (apps/files.ts, "keep:") after 180 days.
+  return deleteFiles({
+    entryId: null,
+    OR: [
+      { NOT: { fieldId: { startsWith: "keep:" } }, createdAt: { lt: new Date(Date.now() - 86_400_000) } },
+      { fieldId: { startsWith: "keep:" }, createdAt: { lt: new Date(Date.now() - 180 * 86_400_000) } },
+    ],
+  }).catch((err) => {
     console.error("[files] sweeping unattached files failed:", err);
     return 0;
   });
