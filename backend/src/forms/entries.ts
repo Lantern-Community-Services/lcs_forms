@@ -762,7 +762,7 @@ export async function exportEntries(
           e.followUpNote ?? "",
           ...[...doneCols.keys()].map((id) => dv.find((x) => x.id === id)?.value ?? ""),
           // Each item, ticked or not, with who did it and when.
-          ...(checked && follow && e.followUp ? [checklistFor(follow, e).map((c) => `${c.done ? "[x]" : "[ ]"} ${c.label}${c.done ? ` (${c.done.byName}, ${stamp(new Date(c.done.at))})` : ""}`).join("; ")] : checked ? [""] : []),
+          ...(checked && follow && e.followUp ? [checklistFor(follow, e).map((c) => `${c.done ? "[x]" : c.removed ? "[-]" : "[ ]"} ${c.label}${c.done ? ` (${c.done.byName}, ${stamp(new Date(c.done.at))})` : c.removed ? ` (not needed, ${c.removed.byName})` : ""}`).join("; ")] : checked ? [""] : []),
         ]
       : [];
     return [e.id, stamp(e.createdAt), e.createdByName, e.siteId ? sites.get(e.siteId) ?? "" : "", ...cols.map((c) => c.get(v)), ...followCells, e.status, e.voidReason ?? "", deviceLabel(e.deviceKind), fillMinutes(e.fillSeconds)];
@@ -857,7 +857,7 @@ async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string,
       if (e.followUpNote) blocks.push({ type: "fields", fields: [{ label: "What was done", value: e.followUpNote.slice(0, 8000), width: 1 }] });
       for (const v of done) blocks.push({ type: "fields", fields: [{ label: v.label.slice(0, 120), value: String(v.value).slice(0, 8000), width: 1 }] });
       for (const c of follow ? checklistFor(follow, e) : []) {
-        blocks.push({ type: "fields", fields: [{ label: c.label.slice(0, 120), value: c.done ? `Done by ${c.done.byName}, ${stamp(new Date(c.done.at))}` : "Not done", width: 1 }] });
+        blocks.push({ type: "fields", fields: [{ label: c.label.slice(0, 120), value: c.done ? `Done by ${c.done.byName}, ${stamp(new Date(c.done.at))}` : c.removed ? `Not needed (taken off by ${c.removed.byName})` : "Not done", width: 1 }] });
       }
     }
     if (!blocks.length) blocks.push({ type: "note", text: "No answers were filled in." });
