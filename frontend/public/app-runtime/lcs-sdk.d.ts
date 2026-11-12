@@ -471,6 +471,41 @@ declare module "@lcs/sdk" {
     download(ref: FileRef, filename?: string): Promise<void>;
   };
 
+  /** What ai.readReceipt read off a receipt. Always show it for the person to check before it's saved. */
+  export interface ReceiptReading {
+    /** false: the file isn't a receipt or invoice (notes says what it is). */
+    isReceipt: boolean;
+    /** "YYYY-MM-DD", or "" when it couldn't be read. */
+    date: string;
+    vendor: string;
+    /** The total paid, in dollars; 0 when it couldn't be read. */
+    total: number;
+    /** A short "what was bought". */
+    items: string;
+    /** One of the codes you passed, or "" when none fits. */
+    code: string;
+    confidence: "high" | "medium" | "low";
+    /** Anything to double-check (a tip, a refund, two receipts in one photo), or "". */
+    notes: string;
+    /** The Claude model that read it. */
+    model: string;
+  }
+
+  /**
+   * Claude, run by the site (needs ANTHROPIC_API_KEY on the API; check ai.available() and hide the
+   * button when it's false). Files must be ones this person uploaded or can read.
+   */
+  export const ai: {
+    /** Is receipt reading switched on for this site? */
+    available(): boolean;
+    /**
+     * Read an uploaded receipt (JPEG/PNG/WebP photo or PDF): date, store, total, what was bought, and a
+     * suggested code from `codes`. Takes a few seconds; read several at once with Promise.all (a few at a
+     * time). Throws with a plain message when it can't (not set up, not a supported file, too many).
+     */
+    readReceipt(file: FileRef, opts?: { codes?: { code: string; label: string }[]; from?: string; to?: string }): Promise<ReceiptReading>;
+  };
+
   /** files.url as a hook: undefined while loading. */
   export function useFileUrl(ref: FileRef | string | null | undefined): string | undefined;
 
