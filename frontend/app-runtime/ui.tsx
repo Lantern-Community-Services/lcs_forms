@@ -23,9 +23,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SignaturePad } from "@/components/attendance/SignaturePad";
 import { DateRangeBar as AppDateRangeBar, PRESETS, presetRange, type Preset } from "@/components/charts/DateRange";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Camera, FileText, Paperclip, X } from "lucide-react";
-import { dates, device, entries, files, useApp, useData, useFileUrl, type FileRef } from "./sdk";
+import { dates, device, entries, files, useApp, useData, useFilePreview, useFileUrl, type FileRef } from "./sdk";
 import { distanceMeters, formatDistance } from "@/lib/location";
 
 export function Page({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -166,6 +166,41 @@ export function Photo({ file, alt, className, onClick }: { file: FileRef | strin
   const url = useFileUrl(file);
   if (!url) return <div className={cn("animate-pulse rounded-input bg-rowhover", className)} aria-label="Loading photo" />;
   return <img src={url} alt={alt ?? (typeof file === "object" && file ? file.name : "Photo")} className={cn("rounded-input object-cover", className)} onClick={onClick} />;
+}
+
+/**
+ * Any uploaded file shown as an image: a photo as it is, a PDF page by page (arrows when there's more than
+ * one). Files with no preview show their name and a download button.
+ */
+export function FilePreview({ file, className, imgClassName }: { file: FileRef | null | undefined; className?: string; imgClassName?: string }) {
+  const [page, setPage] = useState(1);
+  const { preview, error, loading } = useFilePreview(file, page);
+  useEffect(() => setPage(1), [file?.fileId]);
+  if (!file) return null;
+  if (error)
+    return (
+      <div className={cn("flex flex-col items-center justify-center gap-2 rounded-input border border-hairline bg-sidebar p-4 text-center text-[13px] text-muted", className)}>
+        <span className="font-semibold text-ink">{file.name}</span>
+        <span>{error}</span>
+        <Button variant="secondary" size="sm" onClick={() => void files.download(file)}>Download</Button>
+      </div>
+    );
+  return (
+    <div className={cn("relative overflow-hidden rounded-input border border-hairline bg-sidebar", className)}>
+      {preview ? (
+        <img src={preview.url} alt={file.name} className={cn("block w-full object-contain", loading && "opacity-60", imgClassName)} />
+      ) : (
+        <div className="aspect-[3/4] w-full animate-pulse bg-rowhover" aria-label="Loading preview" />
+      )}
+      {preview && preview.pages > 1 && (
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-surface/90 py-1.5 text-[12px] font-semibold text-ink">
+          <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rowhover disabled:opacity-40">‹</button>
+          Page {preview.page} of {preview.pages}
+          <button type="button" aria-label="Next page" disabled={page >= preview.pages} onClick={() => setPage((p) => Math.min(preview.pages, p + 1))} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rowhover disabled:opacity-40">›</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**

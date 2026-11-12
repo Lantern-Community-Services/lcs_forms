@@ -1,4 +1,5 @@
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
+import { previewFile } from "./filePreview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, API_BASE, ApiError } from "@/lib/api";
@@ -30,7 +31,7 @@ import { attachFrame, frameLoaded, fromFrame, startTutorialFromFrame, tourActive
 
 /** What a page opened through a share link may ask for. Everything else is refused. */
 const GUEST_CALLS = new Set([
-  "app.navigate", "app.setParams", "app.toast", "roster.sites", "entries.create", "files.upload", "files.read", "device.takePhoto", "device.location",
+  "app.navigate", "app.setParams", "app.toast", "roster.sites", "entries.create", "files.upload", "files.read", "files.preview", "device.takePhoto", "device.location",
   "local.get", "local.set", "local.remove", "actions.call", "queue.status", "tutorial.active",
 ]);
 
@@ -372,6 +373,9 @@ export function AppFrame({
         return storeFile(new Blob([f.data], { type: f.mime || "application/octet-stream" }), String(f.name || "file").slice(0, 200), f.label, f.shrink !== false);
       },
       "files.read": async (fileId: string) => asDataUrl((await fileBlob(String(fileId))).blob),
+      // An image of the file the frame can show (a PDF page drawn here: the frame can't embed documents).
+      "files.preview": async (fileId: string, opts?: { page?: number; width?: number }) =>
+        previewFile(`${slug}/${String(fileId)}`, async () => (await fileBlob(String(fileId))).blob, opts ?? {}),
       "files.download": async (fileId: string, filename?: string) => {
         const { blob, name } = await fileBlob(String(fileId));
         const url = URL.createObjectURL(blob);

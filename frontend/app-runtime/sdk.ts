@@ -238,7 +238,36 @@ export const files = {
     return p;
   },
   download: (ref: FileRef, filename?: string) => call<void>("files.download", ref.fileId, filename ?? ref.name),
+  /** An image of the file to show: a photo as it is, a PDF page rendered (page 1 unless asked). */
+  preview: (ref: FileRef | string, opts?: { page?: number; width?: number }) =>
+    call<FilePreviewImage>("files.preview", typeof ref === "string" ? ref : ref.fileId, opts ?? {}),
 };
+
+export interface FilePreviewImage {
+  url: string;
+  page: number;
+  pages: number;
+  kind: "image" | "pdf";
+}
+
+/** files.preview as a hook: { preview } once ready, { error } if the file can't be shown. */
+export function useFilePreview(ref: FileRef | string | null | undefined, page = 1): { preview?: FilePreviewImage; error?: string; loading: boolean } {
+  const id = !ref ? null : typeof ref === "string" ? ref : ref.fileId;
+  const [state, setState] = useState<{ preview?: FilePreviewImage; error?: string; loading: boolean }>({ loading: Boolean(id) });
+  useEffect(() => {
+    if (!id) return setState({ loading: false });
+    let live = true;
+    setState((s) => ({ preview: s.preview, loading: true }));
+    files.preview(id, { page }).then(
+      (p) => live && setState({ preview: p, loading: false }),
+      (e) => live && setState({ error: e instanceof Error ? e.message : String(e), loading: false }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [id, page]);
+  return state;
+}
 
 /** files.url as a hook: undefined while loading. */
 export function useFileUrl(ref: FileRef | string | null | undefined): string | undefined {
