@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { currentDeviceKind } from "@/lib/device";
+import { landingPath } from "@/lib/types";
 import { useTour } from "./TourProvider";
 import { seenVersion, useTutorialProgress } from "./progress";
 import { buildSiteTour, siteTourKey, SITE_TOUR_VERSION } from "./siteTour";
@@ -39,7 +40,7 @@ export function SiteTourStarter() {
     }
     if (ran || !isSuccess || !data.welcomeTour || window.self !== window.top) return;
     // Home, or the landing page they chose ("/forms" is Home's old address).
-    const landing = user.defaultLandingPage && user.defaultLandingPage !== "/forms" ? user.defaultLandingPage : "/home";
+    const landing = landingPath(user.defaultLandingPage);
     if (pathname !== "/home" && pathname !== landing) return;
     if (seenVersion(data, user.id, siteTourKey(device)) >= SITE_TOUR_VERSION) return;
     // Let the home screen draw first.
