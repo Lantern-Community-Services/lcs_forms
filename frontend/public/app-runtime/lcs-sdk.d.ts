@@ -469,7 +469,24 @@ declare module "@lcs/sdk" {
     url(ref: FileRef | string): Promise<string>;
     /** Hand the person the file to save. */
     download(ref: FileRef, filename?: string): Promise<void>;
+    /**
+     * An image of the file to show in an <img>: a photo as it is, a PDF page rendered by the app (page 1 unless
+     * you ask; width in pixels, default 1100). Throws a plain message for files with no preview (HEIC, Office).
+     * Most pages want <FilePreview file={ref} /> from @lcs/ui instead.
+     */
+    preview(ref: FileRef | string, opts?: { page?: number; width?: number }): Promise<FilePreviewImage>;
   };
+
+  export interface FilePreviewImage {
+    /** An image data: URL. */
+    url: string;
+    page: number;
+    pages: number;
+    kind: "image" | "pdf";
+  }
+
+  /** files.preview as a hook (re-renders on page change). */
+  export function useFilePreview(ref: FileRef | string | null | undefined, page?: number): { preview?: FilePreviewImage; error?: string; loading: boolean };
 
   /** What ai.readReceipt read off a receipt. Always show it for the person to check before it's saved. */
   export interface ReceiptReading {
@@ -602,6 +619,8 @@ declare module "@lcs/ui" {
   export function FileInput(props: { value: import("@lcs/sdk").FileRef[]; onChange: (v: import("@lcs/sdk").FileRef[]) => void; accept?: string; max?: number; label?: string; fileLabel?: string; disabled?: boolean; className?: string }): React.JSX.Element;
   /** One file as a row (name, size); tap downloads it. */
   export function FileChip(props: { file: import("@lcs/sdk").FileRef; onRemove?: () => void }): React.JSX.Element;
+  /** Any uploaded file as an image: photos as they are, PDFs page by page (arrows when there's more than one); otherwise its name and Download. */
+  export function FilePreview(props: { file: import("@lcs/sdk").FileRef | null | undefined; className?: string; imgClassName?: string }): React.JSX.Element | null;
   export function DropdownMenu(props: { trigger: React.ReactNode; items: ({ label: string; onSelect: () => void; danger?: boolean } | "separator")[]; align?: "start" | "end" }): React.JSX.Element;
   export interface SignaturePadHandle { clear(): void; toDataURL(): string | null; isEmpty(): boolean }
   export const SignaturePad: React.ForwardRefExoticComponent<{ className?: string; onChangeEmpty?: (empty: boolean) => void } & React.RefAttributes<SignaturePadHandle>>;

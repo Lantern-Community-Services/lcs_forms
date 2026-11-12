@@ -68,6 +68,8 @@ Admins and developers pass every role check.
   live preview plus "Choose a photo" — and gives FileRefs. Put them anywhere in an entry's data; every { fileId }
   is attached when the entry saves. Show one with <Photo file={ref} />. Files: <FileInput accept=".pdf" />, or
   files.choose() from a tap. Photos are shrunk to 1600px JPEG and work offline (they upload ahead of the entry).
+- Previews: <FilePreview file={ref} /> shows any upload as an image — photos as they are, PDFs page by page (the
+  frame can't embed a PDF, so the app renders it). files.preview(ref, { page }) gives the image if you need your own UI.
 - Receipts: ai.readReceipt(fileRef, { codes, from, to }) reads an uploaded receipt photo or PDF with Claude (date, store,
   total, what was bought, a suggested code from your list). Show ai.available() first (false when the site has no
   key, or for share-link guests). Use it to fill rows the person then checks; never save a reading unseen.
