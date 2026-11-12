@@ -487,7 +487,27 @@ export const urgentUnreadCount = (userId: string) => prisma.notification.count({
 // ── Email ────────────────────────────────────────────────────────────────
 
 const TICK_MS = 30_000;
-const MAX_TRIES = 3;
+/** Tries for one email; an urgent one (an incident) gets more before it's given up on. */
+const MAX_TRIES = 5;
+const MAX_TRIES_URGENT = 7;
+/**
+ * How long a failed email waits before its next try, by how many it's had.
+ * Spread out so a few busy minutes at Microsoft don't use them all up: three
+ * tries 30 seconds apart lost an urgent incident email on 2026-11-12.
+ */
+const RETRY_AFTER_MS = [0, 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
+const retryWait = (tries: number) => RETRY_AFTER_MS[Math.min(tries, RETRY_AFTER_MS.length - 1)];
+
+/** Pending emails whose wait since their last try is over (a new one has had no tries). */
+function dueNow(now = Date.now()) {
+  return RETRY_AFTER_MS.map((wait, tries) =>
+    tries === 0
+      ? { emailTries: 0 }
+      : tries === RETRY_AFTER_MS.length - 1
+        ? { emailTries: { gte: tries }, updatedAt: { lt: new Date(now - wait) } }
+        : { emailTries: tries, updatedAt: { lt: new Date(now - wait) } }
+  );
+}
 let timer: NodeJS.Timeout | null = null;
 let running = false;
 let lastCleanup = 0;
@@ -510,8 +530,8 @@ async function sendOne(n: Notification & { user: { email: string; status: string
     await prisma.notification.update({ where: { id: n.id }, data: { emailStatus: "sent", emailedAt: new Date(), emailError: null } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const final = (err as { final?: boolean }).final || n.emailTries + 1 >= MAX_TRIES;
-    console.error(`[notifications] email ${n.id} to ${n.user.email} failed${final ? "" : " (will retry)"}:`, message);
+    const final = (err as { final?: boolean }).final || n.emailTries + 1 >= (n.urgent ? MAX_TRIES_URGENT : MAX_TRIES);
+    console.error(`[notifications] email ${n.id} to ${n.user.email} failed${final ? "" : ` (will retry in ${Math.round(retryWait(n.emailTries + 1) / 60_000)} min)`}:`, message);
     await prisma.notification.update({ where: { id: n.id }, data: { emailStatus: final ? (mailConfigured() ? "failed" : "skipped") : "pending", emailError: message.slice(0, 2000) } });
   }
 }
@@ -601,8 +621,9 @@ export async function runNotificationMail(): Promise<number> {
   try {
     while (tried.length < 500) {
       const batch = await prisma.notification.findMany({
-        where: { emailStatus: "pending", ...(tried.length ? { id: { notIn: tried } } : {}) },
-        orderBy: { createdAt: "asc" },
+        where: { emailStatus: "pending", OR: dueNow(), ...(tried.length ? { id: { notIn: tried } } : {}) },
+        // Urgent ones first (an incident shouldn't wait behind a busy minute), then oldest first.
+        orderBy: [{ urgent: "desc" }, { createdAt: "asc" }],
         take: 20,
         include: { user: { select: { email: true, status: true } } },
       });
