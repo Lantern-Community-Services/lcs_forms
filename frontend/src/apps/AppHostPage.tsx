@@ -16,6 +16,7 @@ import { AppFrame, type ConsoleLine } from "./AppFrame";
 import { useAppRuntime, type PageWidth } from "./api";
 import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { onQueueChange, queueStatus, type QueueStatus } from "./queue";
+import { ExportEntriesButton } from "./ExportEntries";
 
 /**
  * The form's Notifications tab: its routing (who's told about what), for
@@ -129,6 +130,9 @@ export function AppHostPage() {
               <Link to={`/f/${slug}/share`} className={headerLinkClass} title="Your link and QR code: people without an account can fill this form in">
                 <QrCode className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Share link</span>
               </Link>
+            )}
+            {!draft && !locked && !runtime.user.guest && (
+              <ExportEntriesButton slug={slug} title={runtime.form.title} canReadAll={Boolean(runtime.canReadAll)} paper={Boolean(runtime.paperExport)} />
             )}
             {!draft && !locked && <LockFormButton base={`/apps/${slug}`} title={runtime.form.title} />}
             {runtime.canEdit && canOpenEditor && !locked && (

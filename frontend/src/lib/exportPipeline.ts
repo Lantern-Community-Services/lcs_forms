@@ -23,7 +23,14 @@ async function fetchFile(url: string): Promise<{ blob: Blob; name: string }> {
     }
     throw new ApiError(res.status, msg);
   }
-  const name = /filename="?([^"]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "export";
+  const cd = res.headers.get("content-disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1];
+  let name = /filename="?([^";]+)"?/.exec(cd)?.[1] ?? "export";
+  try {
+    if (utf8) name = decodeURIComponent(utf8);
+  } catch {
+    // keep the plain name
+  }
   return { blob: await res.blob(), name };
 }
 

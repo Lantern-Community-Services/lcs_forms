@@ -13,7 +13,8 @@ const SIGNATURE = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
 
 const docField = z.object({
   label: text(120).default(""),
-  value: text(8000).default(""),
+  // Windows line breaks (text pasted into the old forms) would print as a stray glyph.
+  value: text(8000).default("").transform((v) => v.replace(/\r\n?/g, "\n")),
   /** Share of the row (the row's widths are relative to each other). */
   width: z.number().min(1).max(100).default(1),
   /** A signature or other image (PNG or JPEG data: URL), drawn inside the box. */

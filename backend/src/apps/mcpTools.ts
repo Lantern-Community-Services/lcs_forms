@@ -15,6 +15,7 @@ import { buildProject } from "./compile.js";
 import { createEntry, entryOut, findCodeForm, loadApp, runAction } from "./runtime.js";
 import { importEntries, importedEntry } from "./importEntries.js";
 import { createInboundToken, inboundStatus, revokeInboundToken } from "./inbound.js";
+import { COUNT_ENTRIES_HELP, EXPORT_ENTRIES_HELP, countEntriesShape, countEntriesTool, exportEntries, exportEntriesShape } from "../ops/exportTools.js";
 import { createProject, draftFiles, duplicateProject, exportProject, importProject, listProjects, patchFiles, publishProject, restoreProjectVersion, versionFiles } from "./service.js";
 import { componentVersionFiles, deleteComponent, getComponent, listComponents, saveComponent } from "./components.js";
 
@@ -222,6 +223,17 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     },
     { readOnlyHint: true }
   );
+
+  // As the admin who made the key. The link also opens with this key (Bearer) if it reads entries at every site.
+  tool("export_entries_file", EXPORT_ENTRIES_HELP, exportEntriesShape, async (a) => {
+    need("entries:read");
+    return exportEntries(principal, a);
+  }, { readOnlyHint: true });
+
+  tool("count_entries", COUNT_ENTRIES_HELP, countEntriesShape, async (a) => {
+    need("entries:read");
+    return countEntriesTool(principal, a);
+  }, { readOnlyHint: true });
 
   tool(
     "import_code_entries",

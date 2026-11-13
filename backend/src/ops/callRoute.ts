@@ -21,6 +21,8 @@ export interface CallFrom {
 export interface RouteResult {
   status: number;
   body: unknown;
+  /** A file the route sent (an export): its bytes, with the headers it set. */
+  file?: { bytes: Buffer; type: string | undefined; disposition: string | undefined };
 }
 
 /**
@@ -64,10 +66,15 @@ export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUs
       header: (name: string) => headers[name.toLowerCase()],
     };
     let done = false;
+    let sent: Buffer | null = null;
     const finish = (body: unknown) => {
       if (done) return;
       done = true;
-      resolve({ status: res.statusCode, body });
+      resolve({
+        status: res.statusCode,
+        body,
+        ...(sent ? { file: { bytes: sent, type: resHeaders["content-type"] as string | undefined, disposition: resHeaders["content-disposition"] as string | undefined } } : {}),
+      });
     };
     const resHeaders: Record<string, unknown> = {};
     const res = {
@@ -98,10 +105,17 @@ export function callRoute(router: Router, call: RouteCall, as: { user: CurrentUs
       get: (field: string) => resHeaders[field.toLowerCase()],
       getHeader: (field: string) => resHeaders[field.toLowerCase()],
       vary: () => res,
-      type: () => res,
+      type: (t: string) => {
+        resHeaders["content-type"] = t;
+        return res;
+      },
       attachment: () => res,
       json: (body: unknown) => (finish(body), res),
-      send: (body: unknown) => (finish(Buffer.isBuffer(body) ? { bytes: body.length } : body), res),
+      send: (body: unknown) => {
+        if (Buffer.isBuffer(body)) sent = body;
+        finish(Buffer.isBuffer(body) ? { bytes: body.length } : body);
+        return res;
+      },
       end: (body?: unknown) => (finish(body ?? null), res),
       on: () => res,
       once: () => res,
