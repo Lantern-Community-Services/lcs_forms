@@ -4,7 +4,8 @@ import { prisma } from "../prisma.js";
 import { badRequest, forbidden } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { ENTRY_CREATED, recipientSchema, type Route } from "../forms/routingSchema.js";
-import { checkRoutes, planRoutes } from "./routing.js";
+import { aboutValues, checkRoutes, planRoutes } from "./routing.js";
+import type { Values } from "../forms/engine.js";
 import { notify, type TypeRule } from "./notifications.js";
 import { FOLLOW_UP_DONE_TEMPLATE, REMINDER_TEMPLATE, messageTags, messageWording, templateByKey } from "./emailTemplates.js";
 import { audit, type Actor } from "./audit.js";
@@ -235,9 +236,10 @@ async function alsoTellOf(form: BuiltForm, s: FollowUpSettings, entry: Pick<Form
 
 /** Everyone also told: account holders (told in the app and by email), and addresses with no account (emailed only). */
 async function alsoTellPlan(form: BuiltForm, s: FollowUpSettings, entry: Pick<FormEntry, "siteId">) {
-  if (!s.alsoTell.length) return { people: [] as { id: string; name: string; email: string }[], emails: [] as string[] };
+  if (!s.alsoTell.length) return { people: [] as { id: string; name: string; email: string }[], emails: [] as string[], trusted: [] as string[] };
   const [plan] = await planRoutes(form, [asRoute({ doers: s.alsoTell })], { event: ENTRY_CREATED, title: form.title, site: await siteOf(entry.siteId) });
-  return { people: plan?.people ?? [], emails: plan?.emails ?? [] };
+  // trusted: outside addresses marked details: true (a partner helpdesk), sent what was done, like a route's answers.
+  return { people: plan?.people ?? [], emails: plan?.emails ?? [], trusted: plan?.trusted ?? [] };
 }
 
 /** The checklist items ticked off on an entry, or none. */
@@ -580,23 +582,28 @@ export async function setFollowUp(
     const others = plan.people.filter((p) => p.id !== actor.userId && !(tell && p.id === entry.createdById));
     const message = shareReply ? fillReply(s.reply!.message!, base) : null;
     const link = { label: "Open it in Lantern Forms", url: `${appBaseUrl}${entryPath(form, entry.id)}` };
+    // Which person it's about (the new hire), so a helpdesk ticket made from it can be matched.
+    const about = aboutValues(form, JSON.parse(entry.data) as Values);
     // In the doers' own words ("Termination processed: …"), to Lantern addresses only: they carry answers.
     // Addresses with no account (HR's shared inbox) get it either way, as nobody else would tell them.
     const sendTo = [...(message ? others.map((p) => p.email) : []), ...plan.emails].filter((a, i, all) => all.indexOf(a) === i);
     for (const to of sendTo) {
       const inside = isInternalAddress(to);
+      // A trusted outside address (PTSI) gets what was done (the new username), but never the
+      // doers' reply: it carries the temporary password, which only goes to Lantern addresses.
+      const trusted = !inside && plan.trusted.includes(to);
       await sendLogged({
         to: [to],
         subject: message && inside ? replySubject : w?.subject ?? fallback,
         kind: "notification",
         formId: form.id,
-        withAnswers: inside,
+        withAnswers: inside || trusted,
         html: brandedEmail({
           kicker: form.title,
           heading: message && inside ? replySubject : w?.heading ?? w?.subject ?? fallback,
           intro: message && inside ? null : `${actor.name} marked it done.`,
           message: inside ? message : null,
-          fields: inside ? [{ label: "Filed by", value: entry.createdByName }, ...doneFields] : [],
+          fields: inside || trusted ? [...about, { label: "Filed by", value: entry.createdByName }, ...doneFields] : [],
           button: link,
         }),
       }).catch((err) => console.error(`[follow-up] couldn't email ${to} about ${entry.id}:`, err));
@@ -626,7 +633,7 @@ export async function setFollowUp(
         formId: form.id,
         topic: { key: followUpTopicKey(form.id, "done"), rule: FOLLOW_UP_RULE },
         urgent: w?.urgent,
-        email: { whatToDo: w?.whatToDo ?? null, heading: w?.heading, intro: w?.intro, buttonLabel: w?.buttonLabel, fields: [{ label: "Filed by", value: entry.createdByName }, ...doneFields] },
+        email: { whatToDo: w?.whatToDo ?? null, heading: w?.heading, intro: w?.intro, buttonLabel: w?.buttonLabel, fields: [...about, { label: "Filed by", value: entry.createdByName }, ...doneFields] },
       }).catch((err) => console.error(`[follow-up] couldn't tell the people also told about ${entry.id}:`, err));
     }
   }

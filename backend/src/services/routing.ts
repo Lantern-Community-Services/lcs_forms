@@ -211,6 +211,19 @@ export function emailValues(
   return out;
 }
 
+/**
+ * Who an entry is about, for an email that has no chosen answers of its own (a
+ * follow-up's done notice): a basic form's staff names marked inEmails, e.g. the
+ * new hire on Employee Onboarding. Never a resident: only inEmails names qualify.
+ */
+export function aboutValues(form: BuiltForm, data: Values): { label: string; value: string }[] {
+  if (form.kind === "code") return [];
+  const ids = basicDoc(form)
+    .fields.filter((f) => f.type === "name" && f.inEmails === true)
+    .map((f) => f.id);
+  return emailValues(form, ids, { data });
+}
+
 /** The name of whoever filed it, for "Submitted by". */
 async function nameOf(userId: string | null | undefined) {
   if (!userId) return null;
