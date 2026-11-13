@@ -273,7 +273,7 @@ async function findEntriesWith(formId: string, args: { where: Prisma.FormEntryWh
   return rows.map((r) => ({ ...r, data: data.get(r.id) ?? "{}" }));
 }
 
-function dateWhere(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
+export function dateWhere(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
   if (!from && !to) return undefined;
   const w: Prisma.DateTimeFilter = {};
   try {

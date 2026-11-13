@@ -24,6 +24,12 @@ export class HttpError extends Error {
   }
 }
 
+/** A Content-Disposition header for a file whose name may hold any character: a plain fallback and the UTF-8 name. */
+export function contentDisposition(type: "inline" | "attachment", name: string) {
+  const plain = name.replace(/[^\x20-\x7e]/g, "-").replace(/["\\]/g, "");
+  return `${type}; filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 export const notFound = (msg = "Not found") => new HttpError(404, msg);
 export const badRequest = (msg = "Bad request", details?: unknown) =>
   new HttpError(400, msg, details);

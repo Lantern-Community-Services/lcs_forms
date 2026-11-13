@@ -45,6 +45,10 @@ export interface AppRuntime {
   canEdit: boolean;
   /** form.json "shareLink": employees can share it by link (/f/<slug>/share), filled in without signing in. */
   shareable?: boolean;
+  /** Sees everyone's entries (else only their own), from the form's "Who sees entries". */
+  canReadAll?: boolean;
+  /** form.json "pdf": exports lay each entry out as its paper form. */
+  paperExport?: boolean;
   /** Opened through a share link, not signed in (shareApi): whose link, and the sites it covers. */
   share?: { sharedBy: string; expiresAt: string | null; sites: { id: string; code: string; name: string; siteType: string; latitude: number | null; longitude: number | null; geofenceMeters: number | null }[] };
   /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */

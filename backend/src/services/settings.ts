@@ -43,7 +43,8 @@ export async function getSetting(key: SettingKey): Promise<string> {
 }
 
 export async function getAllSettings(): Promise<Record<SettingKey, string>> {
-  const rows = await prisma.setting.findMany();
+  // Only the known keys: the table also holds other rows (download links' files, services/exportLinks.ts).
+  const rows = await prisma.setting.findMany({ where: { key: { in: Object.keys(SETTING_DEFAULTS) } } });
   const out = { ...SETTING_DEFAULTS } as Record<SettingKey, string>;
   for (const r of rows) if (r.key in out) out[r.key as SettingKey] = r.value;
   return out;

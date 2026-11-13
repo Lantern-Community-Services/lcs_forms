@@ -1,10 +1,11 @@
 import { PART_RECEIVED, wholeBody } from "../services/uploadChunks.js";
 import express, { Router, type Request } from "express";
 import { z } from "zod";
-import { asyncHandler, badRequest, forbidden } from "../http.js";
+import { asyncHandler, badRequest, contentDisposition, forbidden } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { buildExport, exportSpec } from "../apps/exports.js";
+import { exportCodeEntries, exportQueryOf } from "../apps/entryExport.js";
 import { deleteForm, listVersions, setCatalog, setFormStatus } from "../forms/service.js";
 import { buildProject } from "../apps/compile.js";
 import { checkFiles, type Files, type Manifest } from "../apps/project.js";
@@ -231,6 +232,8 @@ appsRouter.get(
       shareable: Boolean(app.manifest.shareLink) && !app.draft,
       // Sees everyone's entries (else only their own): from the form's "Who sees entries".
       canReadAll: a.readAll,
+      // The header's Export button (apps/entryExport.ts): the form lays entries out as their paper form.
+      paperExport: Boolean(app.manifest.pdf?.action),
       offlineActions: app.manifest.offline?.actions ?? [],
       // The client picks this person's steps (tutorialStepsFor); roles aren't secret.
       tutorial: app.manifest.tutorial ?? null,
@@ -354,6 +357,30 @@ appsRouter.post(
       console.error("[receipt] failed", e);
       res.status(502).json({ error: "The receipt couldn't be read just now. Try again, or fill the row in by hand." });
     }
+  })
+);
+
+/**
+ * The form's entries as a CSV, Excel or PDF file, without code in the form: the Export button in its
+ * header, and Claude's export_entries (apps/entryExport.ts). ?format=csv|xlsx|pdf plus the filters
+ * (from, to, site, search, resident, ids, mine, includeVoided); inline=1 for printing.
+ */
+appsRouter.get(
+  "/:slug/entries-export",
+  asyncHandler(async (req, res) => {
+    const app = await appFor(req);
+    const q = exportQueryOf(req.query as Record<string, unknown>);
+    const file = await exportCodeEntries(app, req.user!, q);
+    const printing = req.query.inline === "1";
+    await audit({
+      actor: actorOf(req),
+      action: "apps.exported",
+      summary: `${printing ? "Printed" : `Exported ${q.format.toUpperCase()} of`} entries from code form “${app.manifest.title}”`,
+      changes: { format: q.format, from: q.from, to: q.to, site: q.site, search: q.search ? "(text)" : undefined, resident: q.resident, ids: q.ids?.length, mine: q.mine || undefined },
+    });
+    res.setHeader("Content-Disposition", contentDisposition(printing && q.format === "pdf" ? "inline" : "attachment", file.filename));
+    res.setHeader("Cache-Control", "no-store");
+    res.type(file.mime).send(file.body);
   })
 );
 
