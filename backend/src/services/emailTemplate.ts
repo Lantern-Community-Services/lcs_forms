@@ -5,7 +5,7 @@ import { currentLook, type EmailLook } from "./emailLook.js";
  * The one layout every email from the site uses, modelled on the Lantern
  * Power Automate emails (the weekly Unit Inspection report): a navy band with
  * "Lantern Community Services" and what it's about, a thin light-blue stripe,
- * a heading, what the reader needs to do, a short table of answers, a button
+ * a heading, what the reader needs to do, the answers a line each, a button
  * into the site, and a footer saying it's automated.
  *
  * The name in the band, the colors, a logo and the footer are the organization's
@@ -89,15 +89,18 @@ export function brandedEmail(p: EmailParts, look: EmailLook = currentLook()): st
 
   if (p.message) out.push(`<p style="margin:0 0 18px;font-size:14px;color:${INK}">${text(p.message)}</p>`);
 
+  // One line per answer ("Label: value"), not a two-column table: a helpdesk that
+  // turns email into a ticket (PTSI's) flattened the table into one run-on line,
+  // while a paragraph each stays a line of its own there and reads the same in Outlook.
   if (p.fields?.length) {
-    out.push(`<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 18px;width:100%">`);
+    out.push(`<div style="margin:0 0 18px">`);
     for (const f of p.fields) {
       out.push(
-        `<tr><td style="padding:6px 12px 6px 0;color:${FAINT};font-size:13px;white-space:nowrap;vertical-align:top;border-bottom:1px solid ${LINE}">${esc(f.label)}</td>` +
-          `<td style="padding:6px 0;font-size:14px;color:${INK};vertical-align:top;border-bottom:1px solid ${LINE}">${text(f.value)}</td></tr>`
+        `<p style="margin:0;padding:6px 0;font-size:14px;color:${INK};border-bottom:1px solid ${LINE}">` +
+          `<span style="color:${FAINT};font-size:13px">${esc(f.label)}:</span> ${text(f.value)}</p>`
       );
     }
-    out.push(`</table>`);
+    out.push(`</div>`);
   }
 
   if (p.table) {
