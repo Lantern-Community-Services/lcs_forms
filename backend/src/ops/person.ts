@@ -11,6 +11,8 @@ import { fillRouter } from "../routes/fill.js";
 import { appsRouter } from "../routes/apps.js";
 import { sitesRouter } from "../routes/sites.js";
 import { callRouteOk, type RouteCall } from "./callRoute.js";
+import { loadLiveApp } from "../apps/runtime.js";
+import { createPdfLink, pdfFilter, MAX_PDF_ENTRIES } from "../apps/entryPdf.js";
 import { OPS } from "./index.js";
 import { SCOPE_GRANTS } from "./principal.js";
 import { flag, int, type Op, type OpContext } from "./registry.js";
@@ -75,7 +77,7 @@ function kindOf(url: string): { kind: "basic" | "code" | "link"; slug?: string }
 }
 
 /** Defined below for people; a shared operation of the same name (list_sites needs sites.manage) gives way. */
-const OWN_TOOLS = ["whoami", "list_sites", "list_forms", "get_form", "list_entries", "get_entry", "list_code_entries", "get_code_entry"];
+const OWN_TOOLS = ["whoami", "list_sites", "list_forms", "get_form", "list_entries", "get_entry", "list_code_entries", "get_code_entry", "export_pdf"];
 
 export const PERSON_INSTRUCTIONS = (user: CurrentUser) =>
   `You are connected to Lantern Forms (${appBaseUrl}), Lantern Community Services' forms and roster site, as ${user.name} (${user.roleName}). ` +
@@ -177,7 +179,7 @@ export function registerPersonTools(tool: ToolRegistrar, user: CurrentUser, gran
 
   tool(
     "list_code_entries",
-    "A code form's (custom app's) entries this person can read, newest first: 100 by default, up to 2000 (page on with offset). Filter by date (from/to), site code(s), resident (tenantId), status or text. fields picks which data keys to return (default all). Some code forms only show a person their own entries: pass mine: true.",
+    "A code form's (custom app's) entries this person can read, newest first: 100 by default, up to 2000 (page on with offset). Filter by date (from/to), site code(s), resident (tenantId), status or text. fields picks which data keys to return (default all). Some code forms only show a person their own entries: pass mine: true. For one resident's entries, use tenantId and also search their name: entries imported from the old systems often aren't linked to the roster.",
     {
       form: slug,
       from: z.string().optional().describe("YYYY-MM-DD"),
@@ -218,6 +220,14 @@ export function registerPersonTools(tool: ToolRegistrar, user: CurrentUser, gran
     "One entry of a code form.",
     { form: slug, id: z.string() },
     async ({ form, id }) => route(appsRouter, { method: "GET", path: `/${enc(form)}/entries/${enc(id)}` }),
+    ro
+  );
+
+  tool(
+    "export_pdf",
+    `A code form's entries as ONE PDF, each laid out like its paper form on its own page — for "send me copies of every incident report about Randy". Pick them by ids (from list_code_entries) or by a filter: resident (roster id from list_residents — also catches older entries that only name them), search, site, from/to. Up to ${MAX_PDF_ENTRIES}, oldest first. The form's own rules decide what goes in: only what this person may see. Returns a link that opens for this person only, signed in to Lantern Forms, for an hour: give it to them to open (you can't fetch it). Works for forms whose form.json has a "pdf" action; others say so.`,
+    { form: slug, ...pdfFilter, title: z.string().max(160).optional().describe("The PDF's title, e.g. \"Incident reports — Randy Woods (#610)\"."), filename: z.string().max(120).optional() },
+    async ({ form, title, filename, ...f }) => createPdfLink(await loadLiveApp(form), user, f, { title, filename }),
     ro
   );
 

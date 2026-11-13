@@ -35,6 +35,7 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "email": { "to": ["vendor@example.com", "@partner.org"] },        // who server code may email besides Lantern addresses
   "schedule": [{ "action": "digest", "at": "08:00", "on": "weekdays" }, { "action": "monthly", "at": "08:00", "on": "monthly", "day": 3 }],
   "inbound": { "gravity-forms": { "action": "fromGravityForms" } },   // another system POSTs what's filed there (see below)
+  "pdf": { "action": "printDocuments" },                            // entries as PDFs for Claude / the MCP, without a page (see below)
   "tutorial": { "steps": [{ "page": "record", "target": "meal-picker", "action": "click", "title": "Pick the meal" }] }  // see below
 }
 entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
@@ -163,6 +164,11 @@ Admins and developers pass every role check.
   { externalId, data, site?, tenantId?, occurredAt?, createdByName? } (or an array, or null / { ignore: "why" }).
   It's saved like import_code_entries: data as given, beforeCreate/afterCreate don't run, nobody is notified,
   and the same externalId is never saved twice. inbound_hook do: "status" shows counts and the last error.
+- Entries as PDFs (Claude's export_pdf, MCP export_code_entries_pdf): form.json "pdf" names a server action run AS THE
+  PERSON asking with args { ids } (at most 40 a call, in print order; the platform calls it in batches). Return
+  { documents: [...], title?, filename? }: one paper-form document per entry they may see (the same documents
+  app.print takes), skipping the rest — the platform passes on only ids, so this action is what keeps entries private.
+  Share the layout with the page's Print button by building documents in lib/ and calling it from both.
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
   (MCP save_catalog_card), not in a code form.
 - Tutorial: form.json "tutorial" walks someone through the form the first time they open it, one highlighted element

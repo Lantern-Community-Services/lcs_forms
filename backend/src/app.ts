@@ -21,6 +21,7 @@ import { builderRouter } from "./routes/builder.js";
 import { fillRouter } from "./routes/fill.js";
 import { handleMcp } from "./forms/mcp.js";
 import { appsRouter } from "./routes/apps.js";
+import { entryPdfRouter } from "./routes/entryPdf.js";
 import { homeRouter } from "./routes/home.js";
 import { calendarRouter } from "./routes/calendar.js";
 import { devlogRouter } from "./routes/devlog.js";
@@ -173,6 +174,8 @@ export function createApp() {
   app.use("/api/builder", builderRouter);
   app.use("/api/f", fillRouter);
   app.use("/api/apps", appsRouter);
+  // A PDF of entries Claude asked for, opened by the person who asked (apps/entryPdf.ts).
+  app.use("/api/pdf", formsLimiter, entryPdfRouter);
   app.use("/api/s", appShareRouter);
   app.use("/api/hooks", appInboundRouter);
   app.use("/api/devlog", devlogRouter);
