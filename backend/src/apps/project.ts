@@ -131,10 +131,11 @@ export const manifestSchema = z.object({
     .refine((r) => Object.keys(r).length <= 5, "At most 5 inbound hooks.")
     .optional(),
   /**
-   * Entries as PDFs, without opening a page (apps/entryPdf.ts): Claude's export_pdf and the key's
-   * export_code_entries_pdf. The named server action is run as the person with { ids } and returns
-   * { documents: [...paper-form documents, as app.print's spec.documents], title?, filename? } — only the
-   * entries that person may see, one document each, in the order given. The platform renders one PDF.
+   * Entries as their paper form (apps/entryExport.ts): the Export button, Claude's export_entries and the key's
+   * export_entries_file. The named server action is run as the person with { ids } and returns
+   * { documents: [...paper-form documents, as app.print's spec.documents, each with its entryId], title? } —
+   * only the entries that person may see, one each, in the order given. The platform draws the PDF, and
+   * Excel / CSV get a column per box. Without it, exports flatten each entry's saved data.
    */
   pdf: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/) }).strict().optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */

@@ -11,8 +11,10 @@ import { fillRouter } from "../routes/fill.js";
 import { appsRouter } from "../routes/apps.js";
 import { sitesRouter } from "../routes/sites.js";
 import { callRouteOk, type RouteCall } from "./callRoute.js";
-import { loadLiveApp } from "../apps/runtime.js";
-import { createPdfLink, pdfFilter, MAX_PDF_ENTRIES } from "../apps/entryPdf.js";
+import {
+  COUNT_ENTRIES_HELP, EXPORT_ATTENDANCE_HELP, EXPORT_ENTRIES_HELP, EXPORT_ROSTER_HELP,
+  countEntriesShape, countEntriesTool, exportAttendance, exportAttendanceShape, exportEntries, exportEntriesShape, exportRoster, exportRosterShape,
+} from "./exportTools.js";
 import { OPS } from "./index.js";
 import { SCOPE_GRANTS } from "./principal.js";
 import { flag, int, type Op, type OpContext } from "./registry.js";
@@ -77,13 +79,14 @@ function kindOf(url: string): { kind: "basic" | "code" | "link"; slug?: string }
 }
 
 /** Defined below for people; a shared operation of the same name (list_sites needs sites.manage) gives way. */
-const OWN_TOOLS = ["whoami", "list_sites", "list_forms", "get_form", "list_entries", "get_entry", "list_code_entries", "get_code_entry", "export_pdf"];
+const OWN_TOOLS = ["whoami", "list_sites", "list_forms", "get_form", "list_entries", "get_entry", "list_code_entries", "get_code_entry", "export_entries", "count_entries", "export_roster", "export_attendance"];
 
 export const PERSON_INSTRUCTIONS = (user: CurrentUser) =>
   `You are connected to Lantern Forms (${appBaseUrl}), Lantern Community Services' forms and roster site, as ${user.name} (${user.roleName}). ` +
   "You can read, not change: what you see is exactly what they can see on the site — their forms, the entries they're allowed to read, residents and attendance at their sites, and the calendar. " +
   "Start with whoami and list_forms. Basic forms: get_form for the fields, then list_entries (paged: take/skip). Code forms (custom apps like Hot Foods or incident reports): list_code_entries. " +
-  "For a report, page through every entry in the date range before counting, say which dates, sites and filters you used, and don't paste residents' personal details where a count or a name will do. " +
+  "For numbers (how many, by site, by month, by type), use count_entries rather than paging through entries. For a file — copies of reports as one PDF, a spreadsheet of entries, the roster, attendance — use export_entries, export_roster or export_attendance: each gives a link only this person can open, signed in, for an hour; give them the link. " +
+  "For a report, say which dates, sites and filters you used, and don't paste residents' personal details where a count or a name will do. " +
   "If something they ask for is refused, they don't have access to it on the site either; say so rather than guessing.";
 
 export function registerPersonTools(tool: ToolRegistrar, user: CurrentUser, grant: ResolvedGrant) {
@@ -223,13 +226,12 @@ export function registerPersonTools(tool: ToolRegistrar, user: CurrentUser, gran
     ro
   );
 
-  tool(
-    "export_pdf",
-    `A code form's entries as ONE PDF, each laid out like its paper form on its own page — for "send me copies of every incident report about Randy". Pick them by ids (from list_code_entries) or by a filter: resident (roster id from list_residents — also catches older entries that only name them), search, site, from/to. Up to ${MAX_PDF_ENTRIES}, oldest first. The form's own rules decide what goes in: only what this person may see. Returns a link that opens for this person only, signed in to Lantern Forms, for an hour: give it to them to open (you can't fetch it). Works for forms whose form.json has a "pdf" action; others say so.`,
-    { form: slug, ...pdfFilter, title: z.string().max(160).optional().describe("The PDF's title, e.g. \"Incident reports — Randy Woods (#610)\"."), filename: z.string().max(120).optional() },
-    async ({ form, title, filename, ...f }) => createPdfLink(await loadLiveApp(form), user, f, { title, filename }),
-    ro
-  );
+  tool("export_entries", EXPORT_ENTRIES_HELP, exportEntriesShape, async (a) => exportEntries(user, a), ro);
+  tool("count_entries", COUNT_ENTRIES_HELP, countEntriesShape, async (a) => countEntriesTool(user, a), ro);
+  if (user.permissions.includes("roster.view")) {
+    tool("export_roster", EXPORT_ROSTER_HELP, exportRosterShape, async (a) => exportRoster(user, a), ro);
+    tool("export_attendance", EXPORT_ATTENDANCE_HELP, exportAttendanceShape, async (a) => exportAttendance(user, a), ro);
+  }
 
   // The shared read operations — residents, attendance, sites, calendar, audit… — that this person's role allows.
   for (const op of OPS) {
