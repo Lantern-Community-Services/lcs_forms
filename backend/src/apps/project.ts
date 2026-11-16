@@ -124,10 +124,12 @@ export const manifestSchema = z.object({
    * Admin makes with the MCP tool inbound_hook. The named server action gets { hook, body } as nobody
    * (ctx.user null) and returns the entry to save — { externalId, data, site?, tenantId?, occurredAt?,
    * createdByName? } or an array — or null / { ignore: "why" }. Saved like import_code_entries: as given,
-   * nobody notified, the same externalId never twice (apps/inbound.ts).
+   * the same externalId never twice (apps/inbound.ts). Nobody is notified unless the hook says "notify": true;
+   * then each entry it saves runs the form's afterCreate (as nobody) and its "entry.created" routes, as if
+   * it were filed here — for when the old system's own emails are being turned off.
    */
   inbound: z
-    .record(z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "An inbound hook's name is lowercase letters, digits and dashes."), z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/) }).strict())
+    .record(z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "An inbound hook's name is lowercase letters, digits and dashes."), z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/), notify: z.boolean().optional() }).strict())
     .refine((r) => Object.keys(r).length <= 5, "At most 5 inbound hooks.")
     .optional(),
   /**

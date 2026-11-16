@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
-import { loadApp, runAction } from "./runtime.js";
+import { afterImport, loadApp, runAction } from "./runtime.js";
 import { readManifest, type Files } from "./project.js";
 import { importEntries, importedEntry, type ImportResult } from "./importEntries.js";
 
@@ -13,7 +13,9 @@ import { importEntries, importedEntry, type ImportResult } from "./importEntries
  * action turns the posted body into entries for this form (or null to ignore
  * it), run as nobody (ctx.user null, args { hook, body }), and they're saved
  * the way import_code_entries saves them (apps/importEntries.ts): as given,
- * nobody notified, the same externalId never twice.
+ * the same externalId never twice. A hook with "notify": true then runs each
+ * new entry through the form's afterCreate and routing (runtime.afterImport),
+ * as if filed here; without it nobody is notified.
  *
  * Only a hash of each token is kept, in FormRecord's private "__inbound"
  * collection (one doc per hook name), with a few counts for the admin.
@@ -112,7 +114,8 @@ export async function receiveInbound(token: string, body: unknown): Promise<Inbo
 
   const form = await prisma.builtForm.findUnique({ where: { id: hook.record.formId } });
   if (!form || form.kind !== "code" || form.status !== "published") return fail(409, "The form isn't published.");
-  const action = publishedManifest(form)?.inbound?.[name]?.action;
+  const declared = publishedManifest(form)?.inbound?.[name];
+  const action = declared?.action;
   if (!action) return fail(409, `The published form has no inbound hook "${name}".`);
 
   const app = await loadApp(form, false);
@@ -130,6 +133,12 @@ export async function receiveInbound(token: string, body: unknown): Promise<Inbo
 
   const out = await importEntries(form, parsed.data);
   if (out.problems.length) return fail(422, out.problems.map((p) => `${p.externalId}: ${p.problem}`).join("; "));
+  if (declared?.notify && out.saved && out.ids) {
+    const saved = await prisma.formEntry.findMany({ where: { id: { in: Object.values(out.ids) } }, orderBy: { occurredAt: "asc" } });
+    // After answering would be nicer for the sender, but a resend is skipped (same externalId), so a
+    // crash between saving and telling would lose the notice for good: tell first, then answer.
+    await afterImport(app, saved);
+  }
   await note(hook.record.id, (d) => ({
     ...d,
     lastAt: now(),

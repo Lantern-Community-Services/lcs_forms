@@ -162,8 +162,10 @@ Admins and developers pass every role check.
   inbound_hook (do: "create"; shown once) and pastes it into the other system's webhook (e.g. a Gravity Forms
   Webhooks feed, all fields, JSON). Each POST runs the action as nobody with args { hook, body }; return
   { externalId, data, site?, tenantId?, occurredAt?, createdByName? } (or an array, or null / { ignore: "why" }).
-  It's saved like import_code_entries: data as given, beforeCreate/afterCreate don't run, nobody is notified,
-  and the same externalId is never saved twice. inbound_hook do: "status" shows counts and the last error.
+  It's saved like import_code_entries: data as given, beforeCreate doesn't run, and the same externalId is never
+  saved twice. Nobody is notified unless the hook has "notify": true — then each saved entry runs afterCreate (as
+  nobody: ctx.user null) and the form's "entry.created" routes, as if filed here; afterCreate can tell an import by
+  entry.data (it's what your action returned). inbound_hook do: "status" shows counts and the last error.
 - Exporting entries needs no code: every code form has an Export button in its header (CSV, Excel, PDF; dates and site),
   and Claude's export_entries makes the same files. Without "pdf" they flatten each entry's saved data (a column per
   key) and only people the form's entries.read lets read everyone's get everyone's — others get their own.
