@@ -484,6 +484,24 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
   return { status: "saved", entry: user?.guest ? guestReceipt(entry) : out, logs };
 }
 
+/**
+ * Entries another system put in (an inbound hook with "notify": true): what createEntry does after saving,
+ * as nobody — the form's afterCreate, then its "entry.created" routes. Never throws; problems are logged.
+ */
+export async function afterImport(app: LoadedApp, entries: FormEntry[]) {
+  if (app.draft || !entries.length) return;
+  const sites = await siteMap();
+  for (const entry of entries) {
+    if (app.build.server) {
+      const r = await runHook(app, null, "afterCreate", entryOut(entry, sites)).catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      if (!r.ok) console.error(`[apps] ${app.form.slug} afterCreate for imported ${entry.id} failed:`, r.error);
+    }
+    await entryInput(app.form, entry)
+      .then((i) => routeQuietly(app.form, i, { id: null, name: entry.createdByName }, app.manifest))
+      .catch((err: unknown) => console.error(`[apps] routing imported ${entry.id} failed:`, err));
+  }
+}
+
 /** All a guest gets back for their entry: that it's in, and when. Nothing they wrote, nothing the server added. */
 function guestReceipt(e: FormEntry) {
   return { id: "", data: {}, createdAt: e.createdAt.toISOString(), status: e.status } as unknown as ReturnType<typeof entryOut>;
