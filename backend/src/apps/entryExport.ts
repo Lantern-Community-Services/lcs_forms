@@ -1,11 +1,12 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { HttpError } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { buildExport } from "./exports.js";
 import { exportDocument, type ExportDocument } from "./exportDocuments.js";
 import { access, dateWhere, runAction, type LoadedApp } from "./runtime.js";
+import type { ExportFilterSetting } from "./exportSettings.js";
 
 /**
  * Every code form's entries as CSV, Excel or PDF, with no code in the form:
@@ -41,6 +42,8 @@ export interface ExportQuery {
   /** Only entries this person filed. */
   mine?: boolean;
   title?: string;
+  /** form.json export.filters, by id: the values picked (a check filter: true). Others are ignored. */
+  filters?: Record<string, string[] | boolean>;
 }
 
 /** For tools: which entries, by ids or a filter. */
@@ -71,7 +74,56 @@ export function exportQueryOf(q: Record<string, unknown>): ExportQuery {
     includeVoided: q.includeVoided === "1" || q.includeVoided === "true",
     mine: q.mine === "1" || q.mine === "true",
     title: str("title", 160),
+    filters: filtersOf(str("filters", 4000)),
   };
+}
+
+/** ?filters={"priority":["1","2"],"followUp":true} — anything malformed is dropped. */
+function filtersOf(raw: string | undefined): ExportQuery["filters"] {
+  if (!raw) return undefined;
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const out: Record<string, string[] | boolean> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 8)) {
+    if (!/^[a-z][a-zA-Z0-9]{0,29}$/.test(k)) continue;
+    if (x === true) out[k] = true;
+    else if (typeof x === "string" && x) out[k] = [x.slice(0, 100)];
+    else if (Array.isArray(x)) {
+      const vals = x.filter((s): s is string => typeof s === "string" && s.length > 0).map((s) => s.slice(0, 100)).slice(0, 60);
+      if (vals.length) out[k] = vals;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * The ids of this form's entries that pass the form's own export filters (form.json export.filters), or
+ * null when none is in use. Only filters the form declares count, so the paths queried are the form's.
+ * A field holding an array passes when any of its items matches.
+ */
+async function filteredIds(app: LoadedApp, q: ExportQuery): Promise<Set<string> | null> {
+  const declared = new Map((app.manifest.export?.filters ?? []).map((f) => [f.id, f] as [string, ExportFilterSetting]));
+  const conds: Prisma.Sql[] = [];
+  for (const [id, val] of Object.entries(q.filters ?? {})) {
+    const f = declared.get(id);
+    if (!f) continue;
+    const path = `$.${f.field}`;
+    if (f.type === "check") {
+      if (val === true) conds.push(Prisma.sql`JSON_VALUE(data, ${path}) = 'true'`);
+      continue;
+    }
+    const vals = Array.isArray(val) ? val.filter((v) => f.options?.some((o) => o.value === v)) : [];
+    if (!vals.length) continue;
+    conds.push(Prisma.sql`(JSON_VALUE(data, ${path}) IN (${Prisma.join(vals)}) OR EXISTS (SELECT 1 FROM OPENJSON(JSON_QUERY(data, ${path})) j WHERE j.[value] IN (${Prisma.join(vals)})))`);
+  }
+  if (!conds.length) return null;
+  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM FormEntry WHERE formId = ${app.form.id} AND ISJSON(data) = 1 AND ${Prisma.join(conds, " AND ")}`;
+  return new Set(rows.map((r) => r.id));
 }
 
 type Row = { id: string; occurredAt: Date; siteId: string | null; createdById: string | null; createdByName: string; status: string };
@@ -89,6 +141,10 @@ async function pick(app: LoadedApp, user: CurrentUser, q: ExportQuery, max: numb
   }
   const occurred = dateWhere(q.from, q.to);
   if (occurred) and.push({ occurredAt: occurred });
+  const only = await filteredIds(app, q);
+  if (only && !only.size) return { rows: [], more: false };
+  // A handful: ask for just those. Many: read the light columns of the rest and keep theirs.
+  if (only && only.size <= 1000) and.push({ id: { in: [...only] } });
   if (q.search) and.push({ data: { contains: q.search } });
   if (q.resident) {
     const t = await prisma.tenant.findUnique({ where: { id: q.resident }, select: { id: true, firstName: true, lastName: true, preferredName: true, siteId: true } });
@@ -99,9 +155,10 @@ async function pick(app: LoadedApp, user: CurrentUser, q: ExportQuery, max: numb
   let rows: Row[] = await prisma.formEntry.findMany({
     where: { AND: and },
     orderBy: { occurredAt: "asc" },
-    take: max + 1,
+    take: only && only.size > 1000 ? 200_000 : max + 1,
     select: { id: true, occurredAt: true, siteId: true, createdById: true, createdByName: true, status: true },
   });
+  if (only && only.size > 1000) rows = rows.filter((r) => only.has(r.id));
   if (q.ids?.length) {
     const byId = new Map(rows.map((r) => [r.id, r]));
     rows = [...new Set(q.ids)].map((id) => byId.get(id)).filter((r): r is Row => Boolean(r));

@@ -166,9 +166,21 @@ Admins and developers pass every role check.
   saved twice. Nobody is notified unless the hook has "notify": true — then each saved entry runs afterCreate (as
   nobody: ctx.user null) and the form's "entry.created" routes, as if filed here; afterCreate can tell an import by
   entry.data (it's what your action returned). inbound_hook do: "status" shows counts and the last error.
-- Exporting entries takes one line: app.exportEntries({ from, to, sites }) opens the app's Export dialog (CSV, Excel, PDF;
-  dates and any sites, starting from what the page passes). Put it in the Entries page's Export menu: ExportControls
-  (@lcs/components/ExportControls) adds it when given entries={{ from, to, sites }}. Claude's export_entries makes the same files. Without "pdf" they flatten each entry's saved data (a column per
+- Exporting entries takes one line: app.exportEntries({ from, to, sites, mine, search, voided, filters }) opens the app's
+  Export dialog (CSV, Excel, PDF), starting from the filters the list page has picked. Wire it to the list page's Export
+  button: <ExportControls entries={{ ... }} /> (@lcs/components/ExportControls) opens it straight away. Claude's
+  export_entries makes the same files.
+  form.json "export" decides what the dialog offers (all optional; left out: dates from the last 30 days, sites,
+  "Only entries I filed", PDF / Excel / CSV and Print):
+    { "title": "Export incidents", "note": "One page per report.", "formats": ["pdf", "xlsx"], "print": false,
+      "dates": { "label": "Date of the incident", "default": "90d" } (or false: every date; default 7d|30d|90d|month|year|all),
+      "sites": true, "mine": true, "search": true (a "Containing" box), "voided": true ("Include voided entries"),
+      "filters": [ { "id": "priority", "label": "Priority", "field": "priority", "type": "multi",
+                     "options": [{ "value": "1", "label": "P1" }, { "value": "2", "label": "P2" }], "default": [] },
+                   { "id": "followUp", "label": "Needs follow-up", "field": "review.open", "type": "check" } ] }
+  A filter reads the entry's saved data at "field" (a dot path; a number or true is matched as text, "1" / "true";
+  an array there matches when any item does). type: "select" (one option or any), "multi" (any ticked), "check"
+  (the field is true). At most 8 filters. The page passes its own picks as filters: { priority: ["1"], followUp: true }. Without "pdf" they flatten each entry's saved data (a column per
   key) and only people the form's entries.read lets read everyone's get everyone's — others get their own.
   form.json "pdf" makes them better: it names a server action run AS THE PERSON with args { ids } (at most 40 a call,
   in order; the platform calls it in batches). Return { documents: [...], title? }: one paper-form document per entry

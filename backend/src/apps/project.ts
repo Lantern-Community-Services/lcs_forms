@@ -2,6 +2,7 @@ import { z } from "zod";
 import { lintTutorial } from "../forms/engine.js";
 import { tutorialSchema } from "../tutorials/schema.js";
 import { manifestRoutingSchema } from "../forms/routingSchema.js";
+import { exportSettings } from "./exportSettings.js";
 
 /**
  * A code form's project: a map of file paths to source text, with form.json as
@@ -140,6 +141,12 @@ export const manifestSchema = z.object({
    * Excel / CSV get a column per box. Without it, exports flatten each entry's saved data.
    */
   pdf: z.object({ action: z.string().regex(/^[A-Za-z_$][\w$]{0,63}$/) }).strict().optional(),
+  /**
+   * The Export dialog (app.exportEntries, apps/entryExport.ts): what it offers. Leave out for the defaults —
+   * dates (last 30 days), sites, "Only entries I filed", PDF / Excel / CSV and Print. Each filter here is
+   * also sent by the page (app.exportEntries({ filters: { [id]: value } })) to start from what it shows.
+   */
+  export: exportSettings.optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
   email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
   /**

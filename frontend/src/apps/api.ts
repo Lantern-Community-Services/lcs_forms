@@ -49,6 +49,8 @@ export interface AppRuntime {
   canReadAll?: boolean;
   /** form.json "pdf": exports lay each entry out as its paper form. */
   paperExport?: boolean;
+  /** form.json "export": what the Export dialog offers (apps/ExportEntries.tsx). */
+  exportSettings?: ExportSettings | null;
   /** Opened through a share link, not signed in (shareApi): whose link, and the sites it covers. */
   share?: { sharedBy: string; expiresAt: string | null; sites: { id: string; code: string; name: string; siteType: string; latitude: number | null; longitude: number | null; geofenceMeters: number | null }[] };
   /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */
@@ -254,3 +256,17 @@ export const runtimeApi = {
     return body as { value: unknown; logs?: string[] };
   },
 };
+
+/** form.json "export" (backend/src/apps/exportSettings.ts). */
+export interface ExportSettings {
+  title?: string;
+  note?: string;
+  formats?: ("pdf" | "xlsx" | "csv")[];
+  print?: boolean;
+  dates?: false | { label?: string; default?: "7d" | "30d" | "90d" | "month" | "year" | "all" };
+  sites?: boolean;
+  mine?: boolean;
+  search?: boolean;
+  voided?: boolean;
+  filters?: { id: string; label: string; field: string; type: "select" | "multi" | "check"; options?: { value: string; label: string }[]; default?: string | string[] | boolean }[];
+}
