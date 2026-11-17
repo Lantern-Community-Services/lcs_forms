@@ -6,6 +6,9 @@ import { api, API_BASE, ApiError } from "@/lib/api";
 import { isOnline, onConnectivityChange, storeAnswer, storedAnswer } from "@/lib/offline";
 import { loadTenants } from "@/lib/rosterStore";
 import { useToast } from "@/components/ui/toast";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import type { Site, Tenant } from "@/lib/types";
 import { runtimeApi, shareApi, submitAppEntry, type AppRuntime } from "./api";
 import { entryDeviceKind, forcedDevice } from "@/lib/device";
@@ -166,6 +169,8 @@ export function AppFrame({
   const cameraDone = useRef<((f: File | null) => void) | null>(null);
   // app.exportEntries(): the entries export dialog, starting from what the page passed.
   const [exportPreset, setExportPreset] = useState<ExportPreset | null>(null);
+  // app.openLink(): the link to offer as a button when the browser blocked the new tab.
+  const [linkPrompt, setLinkPrompt] = useState<string | null>(null);
   const [baseError, setBaseError] = useState(false);
   useEffect(() => {
     runtimeAssets().then(setBase, () => setBaseError(true));
@@ -289,6 +294,17 @@ export function AppFrame({
       "app.toast": async (message: string, tone: "success" | "error") => toast(String(message).slice(0, 300), tone === "error" ? "error" : "success"),
       "app.openApp": async (path: string) => {
         if (typeof path === "string" && path.startsWith("/") && !path.startsWith("//")) navigate(path);
+      },
+      // An outside page form.json "links" allows, in a new tab. The tap in the frame usually lets the tab
+      // open; when the browser blocks it anyway, our own Open button (a real link) does it.
+      "app.openLink": async (url: string) => {
+        const links = latest.current.runtime.links ?? [];
+        if (typeof url !== "string" || !/^https:\/\//i.test(url) || !links.some((l) => url.startsWith(l))) {
+          throw new Error(`This form can't open "${String(url).slice(0, 200)}": add it to form.json "links".`);
+        }
+        const w = window.open(url, "_blank");
+        if (w) w.opener = null;
+        else setLinkPrompt(url);
       },
       "app.download": async (filename: string, content: string, opts: { mime?: string; base64?: boolean }) => {
         const data = opts?.base64 ? Uint8Array.from(atob(content), (c) => c.charCodeAt(0)) : content;
@@ -553,6 +569,17 @@ export function AppFrame({
         preset={exportPreset ?? undefined}
       />
     )}
+    <Dialog open={linkPrompt !== null} onOpenChange={(o) => !o && setLinkPrompt(null)}>
+      <DialogContent>
+        <DialogHeader title="Open in a new tab" subtitle={linkPrompt ? new URL(linkPrompt).host : undefined} />
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => setLinkPrompt(null)}>Cancel</Button>
+          <a href={linkPrompt ?? undefined} target="_blank" rel="noopener noreferrer" onClick={() => setLinkPrompt(null)} className={buttonVariants()}>
+            <ExternalLink className="h-4 w-4" /> Open
+          </a>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <iframe
       ref={ref}
       key={`${runtime.hash}:${key}`}

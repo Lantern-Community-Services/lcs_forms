@@ -236,6 +236,8 @@ appsRouter.get(
       paperExport: Boolean(app.manifest.pdf?.action),
       exportSettings: app.manifest.export ?? null,
       offlineActions: app.manifest.offline?.actions ?? [],
+      // form.json "links": the outside pages app.openLink may open.
+      links: app.manifest.links ?? [],
       // The client picks this person's steps (tutorialStepsFor); roles aren't secret.
       tutorial: app.manifest.tutorial ?? null,
       // Optional platform features this site has switched on.
