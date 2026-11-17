@@ -102,13 +102,14 @@ declare module "@lcs/sdk" {
     export(spec: ExportSpec): Promise<void>;
     /**
      * Open the app's Export dialog for this form's entries: every entry (not just the loaded page) as a PDF
-     * (each entry as its paper form when form.json has "pdf", else as labelled boxes), Excel or CSV, with
-     * the person's own choice of dates and sites. Start it from what the Entries page is showing:
-     * from / to as YYYY-MM-DD ("" = no limit), sites as site codes (empty = all their sites), mine = only
-     * entries they filed. Put it in the Entries page's Export menu (@lcs/components/ExportControls does,
-     * given `entries`). Not on a share link or in the editor's preview.
+     * (each entry as its paper form when form.json has "pdf", else as labelled boxes), Excel or CSV. What the
+     * dialog offers is form.json "export" (dates, sites, mine, search, voided, the form's own filters,
+     * formats, print). Start it from what the list page has picked: from / to as YYYY-MM-DD ("" = no limit),
+     * sites as site codes (empty = all their sites), mine, search, voided, and filters by export.filters id
+     * (a value or values; true for a check filter). Wire it to the page's Export button
+     * (@lcs/components/ExportControls does, given `entries`). Not on a share link or in the editor's preview.
      */
-    exportEntries(preset?: { from?: string; to?: string; sites?: string[]; mine?: boolean }): Promise<void>;
+    exportEntries(preset?: { from?: string; to?: string; sites?: string[]; mine?: boolean; search?: string; voided?: boolean; filters?: Record<string, string | string[] | boolean> }): Promise<void>;
     /** Open another part of the Lantern app (e.g. "/tenants/<id>") in the main window. */
     openApp(path: string): void;
   };
