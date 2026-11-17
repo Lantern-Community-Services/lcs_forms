@@ -144,6 +144,8 @@ export function createApp() {
   app.post("/api/s/:token/entries", express.json({ limit: "5mb" }));
   // Another system posting what was filed there to a code form (routes/appInbound.ts); tokens are unguessable.
   app.use("/api/hooks", submitLimiter);
+  // Old Gravity Forms entries can carry photos inline (several MB); apps/inbound.ts drops the big ones.
+  app.post("/api/hooks/:token", express.json({ limit: "15mb" }));
   // A key's calls may carry imported entries with their photos (import_entries):
   // the larger body only when a key is sent; the key itself is checked after.
   const keyed = express.json({ limit: "25mb" });
