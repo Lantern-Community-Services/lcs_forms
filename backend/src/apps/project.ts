@@ -147,6 +147,11 @@ export const manifestSchema = z.object({
    * also sent by the page (app.exportEntries({ filters: { [id]: value } })) to start from what it shows.
    */
   export: exportSettings.optional(),
+  /**
+   * Outside pages the form may open in a new tab with app.openLink(url): https:// addresses. A link opens
+   * only when it starts with one of these (e.g. the old Gravity Forms page this form stands in for).
+   */
+  links: z.array(z.string().trim().url().startsWith("https://", "A link must start with https://").max(500)).max(20).optional(),
   /** Who server code may email besides Lantern addresses: full addresses or "@domain". */
   email: z.object({ to: z.array(z.string().trim().min(3).max(200)).max(50).optional() }).strict().optional(),
   /**

@@ -112,6 +112,12 @@ declare module "@lcs/sdk" {
     exportEntries(preset?: { from?: string; to?: string; sites?: string[]; mine?: boolean; search?: string; voided?: boolean; filters?: Record<string, string | string[] | boolean> }): Promise<void>;
     /** Open another part of the Lantern app (e.g. "/tenants/<id>") in the main window. */
     openApp(path: string): void;
+    /**
+     * Open an outside page (e.g. the old Gravity Forms page this form stands in for) in a new tab. Only
+     * https:// links starting with one of form.json "links" open; others are refused. Call it from a tap
+     * (a button's onClick): if the browser blocks the new tab, the app shows its own "Open" button instead.
+     */
+    openLink(url: string): void;
   };
 
   export interface ExportSpec {

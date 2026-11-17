@@ -110,6 +110,7 @@ export const app = {
   /** The host's Export dialog for this form's entries (form.json "export"), starting from the page's filters. */
   exportEntries: (preset?: { from?: string; to?: string; sites?: string[]; mine?: boolean; search?: string; voided?: boolean; filters?: Record<string, string | string[] | boolean> }) => call<void>("app.exportEntries", preset ?? {}),
   openApp: (path: string) => void call("app.openApp", path),
+  openLink: (url: string) => void call("app.openLink", url),
 };
 
 export const roster = {

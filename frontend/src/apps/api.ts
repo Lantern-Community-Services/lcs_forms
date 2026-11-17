@@ -53,6 +53,8 @@ export interface AppRuntime {
   exportSettings?: ExportSettings | null;
   /** Opened through a share link, not signed in (shareApi): whose link, and the sites it covers. */
   share?: { sharedBy: string; expiresAt: string | null; sites: { id: string; code: string; name: string; siteType: string; latitude: number | null; longitude: number | null; geofenceMeters: number | null }[] };
+  /** form.json "links": outside pages (https:// prefixes) app.openLink may open in a new tab. */
+  links?: string[];
   /** form.json offline.actions: read-only actions whose last answer is kept for use with no connection. */
   offlineActions?: string[];
   /** Optional platform features switched on for this site (ai.available() in the SDK). */
