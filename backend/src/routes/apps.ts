@@ -232,8 +232,9 @@ appsRouter.get(
       shareable: Boolean(app.manifest.shareLink) && !app.draft,
       // Sees everyone's entries (else only their own): from the form's "Who sees entries".
       canReadAll: a.readAll,
-      // The header's Export button (apps/entryExport.ts): the form lays entries out as their paper form.
+      // The Export dialog (apps/entryExport.ts): the form lays entries out as their paper form, and what it offers.
       paperExport: Boolean(app.manifest.pdf?.action),
+      exportSettings: app.manifest.export ?? null,
       offlineActions: app.manifest.offline?.actions ?? [],
       // The client picks this person's steps (tutorialStepsFor); roles aren't secret.
       tutorial: app.manifest.tutorial ?? null,
@@ -376,7 +377,7 @@ appsRouter.get(
       actor: actorOf(req),
       action: "apps.exported",
       summary: `${printing ? "Printed" : `Exported ${q.format.toUpperCase()} of`} entries from code form “${app.manifest.title}”`,
-      changes: { format: q.format, from: q.from, to: q.to, site: q.site, search: q.search ? "(text)" : undefined, resident: q.resident, ids: q.ids?.length, mine: q.mine || undefined },
+      changes: { format: q.format, from: q.from, to: q.to, site: q.site, search: q.search ? "(text)" : undefined, resident: q.resident, ids: q.ids?.length, mine: q.mine || undefined, voided: q.includeVoided || undefined, filters: q.filters },
     });
     res.setHeader("Content-Disposition", contentDisposition(printing && q.format === "pdf" ? "inline" : "attachment", file.filename));
     res.setHeader("Cache-Control", "no-store");

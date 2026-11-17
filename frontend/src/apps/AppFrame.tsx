@@ -547,6 +547,7 @@ export function AppFrame({
         title={runtime.form.title}
         canReadAll={Boolean(runtime.canReadAll)}
         paper={Boolean(runtime.paperExport)}
+        settings={runtime.exportSettings}
         open={exportPreset !== null}
         onOpenChange={(o) => !o && setExportPreset(null)}
         preset={exportPreset ?? undefined}
