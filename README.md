@@ -471,7 +471,7 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   entries into a live code form as given, without its rules or notifications; idempotent by
   `externalId`), `inbound_hook` (Admin keys only: an address another system — e.g. a Gravity Forms
   Webhooks feed — POSTs to; the form's form.json "inbound" action converts each post, saved like
-  `import_code_entries`), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
+  `import_code_entries`, or with `"notify": true` also run through the form's `afterCreate` and routing), collection read/write — and catalog tools (scope `forms:build`): `list_catalog`,
   `add_to_catalog`, `save_catalog_card` (links to forms elsewhere), `delete_catalog_card`,
   `save_catalog_category`.
 - **Import / export:** a code form exports as one `.lcsapp.json` (code, optionally with its data).
