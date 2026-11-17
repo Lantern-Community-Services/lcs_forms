@@ -99,6 +99,15 @@ declare module "@lcs/sdk" {
      * first one). Up to 12 tables and 20,000 rows each. Every export is recorded in the audit log.
      */
     export(spec: ExportSpec): Promise<void>;
+    /**
+     * Open the app's Export dialog for this form's entries: every entry (not just the loaded page) as a PDF
+     * (each entry as its paper form when form.json has "pdf", else as labelled boxes), Excel or CSV, with
+     * the person's own choice of dates and sites. Start it from what the Entries page is showing:
+     * from / to as YYYY-MM-DD ("" = no limit), sites as site codes (empty = all their sites), mine = only
+     * entries they filed. Put it in the Entries page's Export menu (@lcs/components/ExportControls does,
+     * given `entries`). Not on a share link or in the editor's preview.
+     */
+    exportEntries(preset?: { from?: string; to?: string; sites?: string[]; mine?: boolean }): Promise<void>;
     /** Open another part of the Lantern app (e.g. "/tenants/<id>") in the main window. */
     openApp(path: string): void;
   };

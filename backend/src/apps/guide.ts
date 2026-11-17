@@ -164,8 +164,9 @@ Admins and developers pass every role check.
   { externalId, data, site?, tenantId?, occurredAt?, createdByName? } (or an array, or null / { ignore: "why" }).
   It's saved like import_code_entries: data as given, beforeCreate/afterCreate don't run, nobody is notified,
   and the same externalId is never saved twice. inbound_hook do: "status" shows counts and the last error.
-- Exporting entries needs no code: every code form has an Export button in its header (CSV, Excel, PDF; dates and site),
-  and Claude's export_entries makes the same files. Without "pdf" they flatten each entry's saved data (a column per
+- Exporting entries takes one line: app.exportEntries({ from, to, sites }) opens the app's Export dialog (CSV, Excel, PDF;
+  dates and any sites, starting from what the page passes). Put it in the Entries page's Export menu: ExportControls
+  (@lcs/components/ExportControls) adds it when given entries={{ from, to, sites }}. Claude's export_entries makes the same files. Without "pdf" they flatten each entry's saved data (a column per
   key) and only people the form's entries.read lets read everyone's get everyone's — others get their own.
   form.json "pdf" makes them better: it names a server action run AS THE PERSON with args { ids } (at most 40 a call,
   in order; the platform calls it in batches). Return { documents: [...], title? }: one paper-form document per entry
