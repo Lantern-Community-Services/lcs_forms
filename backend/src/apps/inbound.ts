@@ -96,6 +96,21 @@ async function note(recordId: string, change: (d: InboundDoc) => InboundDoc) {
   await prisma.formRecord.update({ where: { id: recordId }, data: { data: JSON.stringify(change(JSON.parse(r.data) as InboundDoc)) } });
 }
 
+/** An inline file (a data: URL) longer than this is cut out of a posted body before the form's code sees it. */
+export const MAX_INLINE_FILE = 200_000;
+const BIG_INLINE = new RegExp(`data:[\\w.+-]+/[\\w.+-]+;base64,[A-Za-z0-9+/=]{${MAX_INLINE_FILE},}`, "g");
+
+/**
+ * The posted body with every inline file over MAX_INLINE_FILE characters replaced by "" — also inside
+ * string values that hold JSON (a Gravity Forms field keeps its photos that way). An entry can't hold
+ * one that big anyway (200 KB of data), and the sandbox shouldn't parse megabytes it will throw away.
+ */
+export function dropBigInlineFiles(body: unknown): unknown {
+  const text = JSON.stringify(body ?? null);
+  if (text.length <= MAX_INLINE_FILE) return body ?? null;
+  return JSON.parse(text.replace(BIG_INLINE, ""));
+}
+
 export interface InboundOutcome {
   status: number;
   body: { saved: number; skipped: number; ignored?: string; ids?: Record<string, string>; problems?: ImportResult["problems"]; error?: string };
@@ -119,7 +134,7 @@ export async function receiveInbound(token: string, body: unknown): Promise<Inbo
   if (!action) return fail(409, `The published form has no inbound hook "${name}".`);
 
   const app = await loadApp(form, false);
-  const r = await runAction(app, null, action, { hook: name, body: body ?? null });
+  const r = await runAction(app, null, action, { hook: name, body: dropBigInlineFiles(body) });
   if (!r.ok) return fail(r.userError ? 400 : 500, r.error ?? "The form's server code failed.");
 
   const value = r.value as unknown;
