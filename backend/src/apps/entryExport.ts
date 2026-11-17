@@ -9,7 +9,7 @@ import { access, dateWhere, runAction, type LoadedApp } from "./runtime.js";
 
 /**
  * Every code form's entries as CSV, Excel or PDF, with no code in the form:
- * the Export button in the form's header and Claude's export_entries
+ * the Export dialog a form's Entries page opens (app.exportEntries) and Claude's export_entries
  * (GET /api/apps/:slug/entries-export).
  *
  * Two ways in:

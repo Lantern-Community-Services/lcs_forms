@@ -107,6 +107,8 @@ export const app = {
   print: (spec?: Json): Promise<void> => (spec ? call<void>("app.print", spec) : Promise.resolve(window.print())),
   /** Build an Excel, PDF or CSV file on the server from tables (and headline numbers) and hand it over. */
   export: (spec: Json) => call<void>("app.export", spec),
+  /** The host's Export dialog for this form's entries, starting from the page's dates and sites. */
+  exportEntries: (preset?: { from?: string; to?: string; sites?: string[]; mine?: boolean }) => call<void>("app.exportEntries", preset ?? {}),
   openApp: (path: string) => void call("app.openApp", path),
 };
 
