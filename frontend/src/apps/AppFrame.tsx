@@ -12,6 +12,7 @@ import { entryDeviceKind, forcedDevice } from "@/lib/device";
 import { mobileBrowser, printPdf } from "@/lib/exportPipeline";
 import { discard, enqueue, localFile, onQueueChange, queueStatus, retryFailed, saveLocalFile } from "./queue";
 import { CameraCapture, shrinkImage, type CameraRequest } from "./CameraCapture";
+import { ExportEntriesDialog, readPreset, type ExportPreset } from "./ExportEntries";
 import { attachFrame, frameLoaded, fromFrame, startTutorialFromFrame, tourActive, type FrameCommand, type FrameReport } from "@/lib/tour/frameBridge";
 
 /**
@@ -163,6 +164,8 @@ export function AppFrame({
   // device.takePhoto(): the camera dialog, and who's waiting on it.
   const [camera, setCamera] = useState<CameraRequest | null>(null);
   const cameraDone = useRef<((f: File | null) => void) | null>(null);
+  // app.exportEntries(): the entries export dialog, starting from what the page passed.
+  const [exportPreset, setExportPreset] = useState<ExportPreset | null>(null);
   const [baseError, setBaseError] = useState(false);
   useEffect(() => {
     runtimeAssets().then(setBase, () => setBaseError(true));
@@ -308,6 +311,11 @@ export function AppFrame({
       // The page's PDF (charts redrawn for paper) in the browser's print dialog, as the
       // app's own reports print. A phone or iPad opens the PDF instead (its share sheet
       // has Print): the tab is opened now, while the tap still counts, and filled after.
+      // The host's entries export (PDF / Excel / CSV of every entry, as paper forms when the form has them).
+      "app.exportEntries": async (preset: unknown) => {
+        if (draft) throw new Error("Exporting entries works on the published form, not the preview.");
+        setExportPreset(readPreset(preset));
+      },
       "app.print": async (spec: Record<string, unknown>) => {
         const tab = mobileBrowser() ? window.open("", "_blank") : null;
         try {
@@ -533,6 +541,17 @@ export function AppFrame({
   return (
     <>
     <CameraCapture request={camera} onDone={(f) => cameraDone.current?.(f)} />
+    {!shareToken && (
+      <ExportEntriesDialog
+        slug={slug}
+        title={runtime.form.title}
+        canReadAll={Boolean(runtime.canReadAll)}
+        paper={Boolean(runtime.paperExport)}
+        open={exportPreset !== null}
+        onOpenChange={(o) => !o && setExportPreset(null)}
+        preset={exportPreset ?? undefined}
+      />
+    )}
     <iframe
       ref={ref}
       key={`${runtime.hash}:${key}`}
