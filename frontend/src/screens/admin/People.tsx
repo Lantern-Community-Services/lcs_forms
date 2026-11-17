@@ -177,7 +177,8 @@ export function AdminPeople() {
   const needle = search.trim().toLowerCase();
   const shown = (users ?? [])
     .filter((u) => inTab(u, tab))
-    .filter((u) => !needle || [u.name, u.email, u.title ?? ""].some((v) => v.toLowerCase().includes(needle)))
+    // Also by site: the ones they're assigned to, and the ones a request is asking for.
+    .filter((u) => !needle || [u.name, u.email, u.title ?? "", ...u.sites.map((s) => s.name), ...u.requestedSites.map((s) => s.name)].some((v) => v.toLowerCase().includes(needle)))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   async function save() {
@@ -269,7 +270,7 @@ export function AdminPeople() {
         </div>
         <div className="relative w-full sm:ml-auto sm:w-[240px]">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, title" className="pl-8" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, title, site" className="pl-8" />
         </div>
       </div>
       {isLoading ? <LoadingState /> : (
