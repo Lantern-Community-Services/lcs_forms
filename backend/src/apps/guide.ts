@@ -189,7 +189,9 @@ Admins and developers pass every role check.
   and people who can't read every entry can still export the ones the form shows them. Build the documents in lib/
   and call it from the page's Print button too.
 - Other parts of the app: app.openApp("/calendar"), roster.open(id). Links to forms elsewhere go on the Forms catalog
-  (MCP save_catalog_card), not in a code form.
+  (MCP save_catalog_card). A code form that stands in for an outside form (a Form tab with an Open button, its
+  entries copied in by an inbound hook) opens it with app.openLink(url), from a button's onClick. List the address
+  in form.json "links": ["https://forms.example.org/the-form/"]; a link opens only when it starts with one of those.
 - Tutorial: form.json "tutorial" walks someone through the form the first time they open it, one highlighted element
   at a time with the rest of the screen locked. Mark elements in the pages with data-tour="name" and point steps at
   them ({ "page": "record", "target": "name", "action": "next" | "click" | "fill" }); "tabs", "tab:<page id>" and "help"
