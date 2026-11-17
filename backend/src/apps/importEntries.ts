@@ -26,11 +26,18 @@ export interface ImportResult {
   problems: { externalId: string; problem: string }[];
   /** The ids of the entries just saved, by externalId. */
   ids?: Record<string, string>;
+  /** With update: entries already imported that were changed (or would be, on a dry run). */
+  updated?: number;
 }
 
 const clientIdOf = (externalId: string) => `import:${externalId}`;
 
-export async function importEntries(row: BuiltForm, entries: ImportedEntry[], opts: { dryRun?: boolean } = {}): Promise<ImportResult> {
+/**
+ * opts.update: an entry this form already imported under the same externalId gets this one's data, site,
+ * resident, time and filer instead of being skipped (to fix an import, e.g. sites found later). Its id,
+ * status (voided stays voided), notes and files are kept.
+ */
+export async function importEntries(row: BuiltForm, entries: ImportedEntry[], opts: { dryRun?: boolean; update?: boolean } = {}): Promise<ImportResult> {
   const problems: { externalId: string; problem: string }[] = [];
   const seen = new Set<string>();
   for (const e of entries) {
@@ -48,12 +55,29 @@ export async function importEntries(row: BuiltForm, entries: ImportedEntry[], op
     if (e.tenantId && !tenants.has(e.tenantId)) problems.push({ externalId: e.externalId, problem: `No resident with id "${e.tenantId}".` });
   }
 
-  const existing = new Set(
-    (await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: entries.map((e) => clientIdOf(e.externalId)) } }, select: { clientId: true } })).map((x) => x.clientId)
-  );
+  const found = await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: entries.map((e) => clientIdOf(e.externalId)) } }, select: { id: true, clientId: true } });
+  const existing = new Map(found.map((x) => [x.clientId, x.id]));
   const fresh = entries.filter((e) => !existing.has(clientIdOf(e.externalId)));
-  const skipped = entries.filter((e) => existing.has(clientIdOf(e.externalId))).map((e) => e.externalId);
-  if (problems.length || opts.dryRun) return { saved: 0, wouldSave: problems.length ? 0 : fresh.length, skipped, problems };
+  const again = entries.filter((e) => existing.has(clientIdOf(e.externalId)));
+  const skipped = opts.update ? [] : again.map((e) => e.externalId);
+  if (problems.length || opts.dryRun) return { saved: 0, wouldSave: problems.length ? 0 : fresh.length, skipped, problems, ...(opts.update ? { updated: problems.length ? 0 : again.length } : {}) };
+
+  if (opts.update && again.length) {
+    await prisma.$transaction(
+      again.map((e) =>
+        prisma.formEntry.update({
+          where: { id: existing.get(clientIdOf(e.externalId))! },
+          data: {
+            data: JSON.stringify(e.data),
+            siteId: e.site ? sites.get(e.site)! : null,
+            tenantId: e.tenantId ?? null,
+            ...(e.occurredAt ? { occurredAt: new Date(e.occurredAt) } : {}),
+            ...(e.createdByName?.trim() ? { createdByName: e.createdByName.trim() } : {}),
+          },
+        })
+      )
+    );
+  }
 
   await prisma.formEntry.createMany({
     data: fresh.map((e) => ({
@@ -73,5 +97,5 @@ export async function importEntries(row: BuiltForm, entries: ImportedEntry[], op
     const rows = await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: fresh.map((e) => clientIdOf(e.externalId)) } }, select: { id: true, clientId: true } });
     for (const r of rows) if (r.clientId) ids[r.clientId.slice("import:".length)] = r.id;
   }
-  return { saved: fresh.length, skipped, problems: [], ids };
+  return { saved: fresh.length, skipped, problems: [], ids, ...(opts.update ? { updated: again.length } : {}) };
 }
