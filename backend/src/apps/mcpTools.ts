@@ -237,24 +237,26 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
 
   tool(
     "import_code_entries",
-    "Migrate entries from an old system (e.g. a Gravity Forms export) into a code form's live entries, saved exactly as given: the form's beforeCreate/afterCreate don't run, so nobody is notified and nothing is routed. Shape `data` the way the form's own server code saves it. Each entry needs an externalId (e.g. \"gf20:36541\"); one already imported into this form is skipped, so a batch can be sent again safely. Up to 500 a call, all or nothing: any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin. Pass confirm: true to save.",
+    "Migrate entries from an old system (e.g. a Gravity Forms export) into a code form's live entries, saved exactly as given: the form's beforeCreate/afterCreate don't run, so nobody is notified and nothing is routed. Shape `data` the way the form's own server code saves it. Each entry needs an externalId (e.g. \"gf20:36541\"); one already imported into this form is skipped, so a batch can be sent again safely. update: true instead replaces an already-imported entry's data, site, resident, time and filer with what's sent (to fix an earlier import, e.g. sites found later); its id, status, notes and files stay. Up to 500 a call, all or nothing: any problem and none are saved. dryRun checks without saving. The key's creator must be an Admin. Pass confirm: true to save.",
     {
       form: ref,
       entries: z.array(importedEntry).min(1).max(500),
+      update: z.boolean().optional(),
       dryRun: z.boolean().optional(),
       confirm: z.boolean().optional(),
     },
-    async ({ form, entries, dryRun, confirm }) => {
+    async ({ form, entries, update, dryRun, confirm }) => {
       need("entries:manage");
       assertRealDataAllowed("migrating entries from an old system");
       const creator = key.createdById ? await prisma.user.findUnique({ where: { id: key.createdById } }) : null;
       if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
       if (!dryRun && confirm !== true) throw new HttpError(400, "This saves entries to the live form without running its rules. Pass confirm: true (or dryRun: true to check first).");
       const row = await findCodeForm(form);
-      const r = await importEntries(row, entries, { dryRun });
+      const r = await importEntries(row, entries, { dryRun, update });
       if (r.problems.length || dryRun) return { ...r, ids: undefined, dryRun: Boolean(dryRun) };
       if (r.saved) await audit({ actor, action: "apps.entriesImported", summary: `Imported ${r.saved} entries into “${row.title}”`, changes: { form: row.slug, count: r.saved, skipped: r.skipped.length } });
-      return { saved: r.saved, skipped: r.skipped, problems: [] };
+      if (r.updated) await audit({ actor, action: "apps.entriesReimported", summary: `Updated ${r.updated} imported entries of “${row.title}”`, changes: { form: row.slug, count: r.updated } });
+      return { saved: r.saved, ...(update ? { updated: r.updated ?? 0 } : {}), skipped: r.skipped, problems: [] };
     },
     { destructiveHint: true }
   );
