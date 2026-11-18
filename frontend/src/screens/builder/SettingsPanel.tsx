@@ -153,7 +153,7 @@ export function SettingsPanel({
       <Section title="After submitting">
         <div className="inline-flex rounded-input border border-hairline p-0.5">
           {(["message", "redirect"] as const).map((t) => (
-            <button key={t} onClick={() => set({ confirmation: { ...s.confirmation, type: t } })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold", (s.confirmation?.type ?? "message") === t ? "bg-navy text-white" : "text-muted")}>{t === "message" ? "Show a message" : "Go to a page"}</button>
+            <button key={t} onClick={() => set({ confirmation: { ...s.confirmation, type: t } })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold", (s.confirmation?.type ?? "message") === t ? "bg-navy text-navy-fg" : "text-muted")}>{t === "message" ? "Show a message" : "Go to a page"}</button>
           ))}
         </div>
         {(s.confirmation?.type ?? "message") === "message" ? (

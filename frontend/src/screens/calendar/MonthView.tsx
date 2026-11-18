@@ -108,7 +108,7 @@ function WeekRow({
                 aria-label={`Show ${longDay(day)}`}
                 className={cn(
                   "flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[12.5px] font-bold tabular hover:bg-navsel",
-                  day === today ? "bg-navy text-white hover:bg-navy dark:bg-white dark:text-navy" : out ? "text-muted" : "text-ink"
+                  day === today ? "bg-navy text-navy-fg hover:bg-navy dark:bg-white dark:text-navy" : out ? "text-muted" : "text-ink"
                 )}
               >
                 {+day.slice(8, 10) === 1 ? `${monthShort(day)} 1` : +day.slice(8, 10)}
@@ -245,7 +245,7 @@ export function MonthCompact({
                 <span
                   className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-full text-[14px] font-bold tabular",
-                    picked ? "bg-navy text-white dark:bg-white dark:text-navy" : day === today ? "text-accent ring-2 ring-navy/40 dark:text-white dark:ring-white/50" : out ? "text-muted/70" : "text-ink"
+                    picked ? "bg-navy text-navy-fg dark:bg-white dark:text-navy" : day === today ? "text-accent ring-2 ring-navy/40 dark:text-white dark:ring-white/50" : out ? "text-muted/70" : "text-ink"
                   )}
                 >
                   {+day.slice(8, 10)}

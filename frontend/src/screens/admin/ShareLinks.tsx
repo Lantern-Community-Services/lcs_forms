@@ -79,7 +79,7 @@ export function AdminShareLinks() {
         <ol className="mt-3 grid gap-3 md:grid-cols-2">
           {STEPS.map((s, i) => (
             <li key={s.title} className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy text-[12px] font-extrabold text-white">{i + 1}</span>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy text-[12px] font-extrabold text-navy-fg">{i + 1}</span>
               <span className="text-[13.5px] text-ink">
                 <span className="block font-bold">{s.title}</span>
                 <span className="text-muted">{s.body}</span>

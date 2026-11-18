@@ -230,7 +230,7 @@ export function CalendarPage() {
             onClick={() => go({ view: v })}
             className={cn(
               "min-h-[34px] rounded-[5px] px-3 text-[13px] font-semibold transition-colors md:min-h-[30px]",
-              view === v ? "bg-navy text-white dark:bg-navsel" : "text-muted hover:text-ink"
+              view === v ? "bg-navy text-navy-fg dark:bg-navsel" : "text-muted hover:text-ink"
             )}
           >
             {VIEWS[v]}
@@ -486,7 +486,7 @@ function CategoryFilterMenu({ options, hidden, onChange }: { options: FilterOpti
         >
           <Filter className="h-4 w-4" /> Categories
           {off > 0 && (
-            <span className="rounded-pill bg-navy px-1.5 text-[11.5px] font-bold tabular-nums text-white dark:bg-white dark:text-navy">
+            <span className="rounded-pill bg-navy px-1.5 text-[11.5px] font-bold tabular-nums text-navy-fg dark:bg-white dark:text-navy">
               {options.length - off}/{options.length}
             </span>
           )}

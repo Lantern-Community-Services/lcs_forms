@@ -122,7 +122,7 @@ function Toggle({ on, label, onClick, className, title }: { on: boolean; label: 
       onClick={onClick}
       className={cn(
         "flex items-center justify-center border font-bold transition-colors",
-        on ? "border-navy bg-navy text-white dark:border-white dark:bg-white dark:text-navy" : "border-hairline bg-surface text-ink hover:bg-navsel/60",
+        on ? "border-navy bg-navy text-navy-fg dark:border-white dark:bg-white dark:text-navy" : "border-hairline bg-surface text-ink hover:bg-navsel/60",
         className
       )}
     >
