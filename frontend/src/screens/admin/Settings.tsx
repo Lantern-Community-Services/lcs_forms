@@ -41,6 +41,18 @@ export function AdminSettings() {
     }
   }
 
+  async function setClientInfo(on: boolean) {
+    if (on && !window.confirm("Turn on client information? Admins, and anyone you give the \"Can see client information\" switch in People & roles, will see and edit residents' dates of birth, demographics, program and household on their pages.")) return;
+    try {
+      await api.patch("/admin/settings", { clientInfo: on });
+      await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
+      await qc.invalidateQueries({ queryKey: ["roster"] });
+      toast(on ? "Client information is on." : "Client information is off. Nothing was deleted; turning it back on shows it again.");
+    } catch (e) {
+      toast(errorMessage(e, "Could not save."), "error");
+    }
+  }
+
   if (isLoading) return <LoadingState />;
   return (
     <Page className="max-w-[720px]">
@@ -63,6 +75,23 @@ export function AdminSettings() {
           <p className="mt-2">Editing someone's details does not count — correcting a spelling isn't evidence they're still in the building.</p>
         </div>
       </Card>
+      {orgWide && (
+        <Card className="mt-4 p-5">
+          <label className="flex items-start gap-3">
+            <Switch className="mt-0.5" checked={data?.clientInfo === "true"} onCheckedChange={(on) => void setClientInfo(on)} />
+            <span>
+              <span className="block text-[14px] font-semibold text-ink">Client information</span>
+              <span className="mt-0.5 block text-[13px] text-muted">
+                A Client information section on each resident's page — date of birth, Social Security Number, contact,
+                demographics, veteran status, program and funding, case lead, referral, household and move-out, as PlanStreet
+                keeps them. Admins see it; give anyone else the <b className="text-ink">Can see client information</b> switch in
+                People &amp; roles. The SSN shows as its last four digits; only Admins can show the whole number, and each look is logged.
+                Off hides it everywhere without deleting anything.
+              </span>
+            </span>
+          </label>
+        </Card>
+      )}
       {can("sites.manageRules") && <SiteRules orgHours={data?.attentionHours ?? "48"} />}
       {testSite && can("admins.manage") && <ReplaceWithMadeUpData />}
     </Page>

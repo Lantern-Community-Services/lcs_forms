@@ -92,6 +92,7 @@ Admins and developers pass every role check.
   Server code can check edits in beforeUpdate.
 - Roster: roster.sites(), roster.residents(siteCode) (instant, offline), roster.resident(id) (full record and recent
   activity), roster.open(id). Server: ctx.roster.*, and ctx.roster.logActivity(tenantId) to reset a resident's review clock.
+  ctx.roster.clientInfo(id): their client information (DOB/age, demographics, program, case lead, household…; SSN last four only), null when it's off or the person can't see it.
 - Calendar: calendar.events({ from, to }), categories(), create / update / remove with the person's own calendar rights
   (the preview won't write). Server: ctx.calendar.events / categories / create (e.g. from afterCreate).
 - The form's own calendar events: form.json "calendar": { "ownEvents": true } lets server code use ctx.calendar.form

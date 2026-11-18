@@ -7,6 +7,8 @@ import { isSample, sampleCatalog, sampleHome, sampleRoster } from "./tour/sample
 import type {
   ApiKeyRow, AttendanceDetail, CalendarCategory, CalendarEventInput, CalendarOccurrence, CalendarScope, CalendarSeries, OutlookPrefs, OutlookPrefsInput, AttendanceEvent, AuditEvent, DashboardData, FormCatalog, HomeAppCards, HomeData,
   ManagedUser, RoleSummary, Settings, Site, Tenant, TenantDetail, WebhookRow,
+  ClientFieldsMeta,
+  ClientProfileResponse,
 } from "./types";
 
 /**
@@ -97,6 +99,36 @@ export function useAudit(site: string | undefined) {
     placeholderData: (prev) => prev,
   });
 }
+
+// ── Client information ───────────────────────────────────────────────────
+
+/** A resident's client information. Off (setting or permission): never asked for. */
+export function useClientProfile(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["roster", "client", id ?? ""],
+    queryFn: () => api.get<ClientProfileResponse>(`/tenants/${id}/profile`),
+    enabled: Boolean(id) && enabled && !isSample(id ?? ""),
+  });
+}
+
+export function useClientFields(enabled: boolean) {
+  return useQuery({ queryKey: ["meta", "client-fields"], queryFn: () => api.get<ClientFieldsMeta>("/tenants/meta/client-fields"), enabled, staleTime: Infinity });
+}
+
+/** Staff who can be the resident's case lead (people approved for their site). */
+export function useCaseLeadChoices(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["roster", "client", id, "staff"],
+    queryFn: () => api.get<{ id: string; name: string; title: string | null }[]>(`/tenants/${id}/profile/staff`),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export const clientApi = {
+  update: (id: string, body: { version: number; changes: Record<string, unknown> }) => api.patch<ClientProfileResponse>(`/tenants/${id}/profile`, body),
+  revealSsn: (id: string) => api.post<{ ssn: string }>(`/tenants/${id}/profile/ssn`),
+};
 
 export function useArchiveReasons() {
   return useQuery({ queryKey: ["meta", "reasons"], queryFn: () => api.get<string[]>("/tenants/meta/archive-reasons"), staleTime: Infinity });

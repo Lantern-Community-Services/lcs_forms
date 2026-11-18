@@ -167,7 +167,7 @@ export const adminOps = [
 
   defineOp({
     name: "update_person",
-    description: "Change someone's role, sites, status (active, invited, denied, deactivated), name, job title, calendar switch (Admin keys only) or roster switch (\"Can manage the roster\"). Admins and Super Admins can't be changed through a key. Requests are approved with approve_person, not here.",
+    description: "Change someone's role, sites, status (active, invited, denied, deactivated), name, job title, calendar switch (Admin keys only), roster switch (\"Can manage the roster\") or client information switch (Admin keys only). Admins and Super Admins can't be changed through a key. Requests are approved with approve_person, not here.",
     scope: "people:manage",
     as: "creator",
     http: { method: "PATCH", path: "/people/:id" },
@@ -180,8 +180,9 @@ export const adminOps = [
       title: z.string().max(120).nullable().optional().describe("Job title (e.g. Assistant Program Director). Their Microsoft profile's replaces it when they sign in, if it has one"),
       calendarEditor: z.boolean().optional(),
       rosterEditor: z.boolean().optional().describe("Can manage the roster (add, edit, keep, remove, restore residents) whatever their role"),
+      clientInfoAccess: z.boolean().optional().describe("Can see and edit residents' client information (DOB, demographics, program, referral, household) at their sites. Admin keys only"),
     },
-    confirm: (a) => a.roleKey !== undefined || a.status !== undefined || a.siteIds !== undefined || a.calendarEditor !== undefined || a.rosterEditor !== undefined,
+    confirm: (a) => a.roleKey !== undefined || a.status !== undefined || a.siteIds !== undefined || a.calendarEditor !== undefined || a.rosterEditor !== undefined || a.clientInfoAccess !== undefined,
     run: (ctx, { id, ...body }) => ctx.route(usersRouter, { method: "PATCH", path: `/${enc(id)}`, body }),
   }),
 
@@ -231,7 +232,7 @@ export const adminOps = [
   // ── Settings ──
   defineOp({
     name: "get_settings",
-    description: "Org settings: the default review threshold (attentionHours), guest sign-in domains, and undo window. (Every first sign-in is a request now; there is no automatic approval.)",
+    description: "Org settings: the default review threshold (attentionHours), guest sign-in domains, undo window, and whether residents' client information is on (clientInfo). (Every first sign-in is a request now; there is no automatic approval.)",
     scope: "settings:manage",
     as: "creator",
     http: { method: "GET", path: "/settings" },
@@ -250,8 +251,9 @@ export const adminOps = [
       attentionHours: z.number().int().min(1).max(24 * 60).optional(),
       guestDomains: z.array(z.string()).optional().describe("Replaces the whole list"),
       undoSeconds: z.number().int().min(3).max(60).optional(),
+      clientInfo: z.boolean().optional().describe("Residents' client information (the Client information card, its API and tools): true shows it, false hides it (nothing is deleted)"),
     },
-    confirm: (a) => a.guestDomains !== undefined,
+    confirm: (a) => a.guestDomains !== undefined || a.clientInfo !== undefined,
     run: (ctx, a) => ctx.route(adminRouter, { method: "PATCH", path: "/settings", body: a }),
   }),
 

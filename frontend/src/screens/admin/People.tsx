@@ -18,7 +18,7 @@ import { LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { useRoles, useSites, useUsers } from "@/lib/queries";
+import { useRoles, useSettings, useSites, useUsers } from "@/lib/queries";
 import { GROUPS_KEY, groupsApi, personFormsKey, useStaffGroups } from "@/lib/groups";
 import { PersonForms } from "./GroupForms";
 import { startViewAs } from "@/components/shell/ViewAs";
@@ -91,6 +91,8 @@ type Draft = {
   calendarEditor: boolean;
   /** "Can manage the roster": add, edit, keep and remove residents. A Site Manager or Admin changes it. */
   rosterEditor: boolean;
+  /** "Client information": sees and changes residents' client information. Only an Admin changes it. */
+  clientInfoAccess: boolean;
   /** A pending account (never signed in) this viewer may delete. */
   canDelete: boolean;
   /**
@@ -152,6 +154,9 @@ function statusChoices(d: Draft): { value: UserStatus; label: string }[] {
 export function AdminPeople() {
   const { can, user: me } = useAuth();
   const everyone = can("users.manage");
+  // Whether client information is on at all (Admin → Settings): the switch says so when it isn't.
+  const { data: orgSettings } = useSettings(everyone);
+  const clientInfoOn = orgSettings?.clientInfo === "true";
   // Admins are a Super Admin's to make, change or remove; the server refuses anyone else.
   const managesAdmins = can("admins.manage");
   const { data: users, isLoading } = useUsers();
@@ -188,10 +193,12 @@ export function AdminPeople() {
       const calendar = everyone ? { calendarEditor: draft.calendarEditor } : {};
       // The roster switch goes only when this editor may change the person.
       const roster = draft.canEditRole && !draft.isSelf ? { rosterEditor: draft.rosterEditor } : {};
+      // Client information: an Admin's switch, for an existing account that isn't an Admin.
+      const client = everyone && draft.id && draft.roleKey !== "admin" ? { clientInfoAccess: draft.clientInfoAccess } : {};
       // View as: a Super Admin's to give an Admin. Leaving Admin drops it on the server.
       const viewAs = managesAdmins && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" ? { viewAsEnabled: draft.viewAsEnabled } : {};
       const title = { title: draft.title?.trim() || null };
-      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...(draft.canEditRole && !draft.superAdmin ? title : {}), ...calendar, ...roster, ...viewAs });
+      if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...(draft.canEditRole && !draft.superAdmin ? title : {}), ...calendar, ...roster, ...client, ...viewAs });
       else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...title, ...calendar });
       toast(draft.id ? "Saved." : `Added ${draft.email.trim()}. Their name and title fill in when they first sign in.`);
       // A new account lands in Pending; show it there.
@@ -228,6 +235,7 @@ export function AdminPeople() {
       canEditRole: u.canEditRole && (u.roleKey !== "admin" || managesAdmins),
       calendarEditor: Boolean(u.calendarEditor),
       rosterEditor: Boolean(u.rosterEditor),
+      clientInfoAccess: Boolean(u.clientInfoAccess),
       viewAsEnabled: Boolean(u.viewAsEnabled),
       canDelete: u.canDelete,
       superAdmin: Boolean(u.globalAdmin),
@@ -251,7 +259,7 @@ export function AdminPeople() {
           ? "Add someone by work email ahead of time and they sign straight in. Anyone else who signs in can request access; let them in from Requests, with their role and sites."
           : "People at your sites. New people are let in by an Admin; you can change what the people at your sites can do."}
         actions={
-          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, rosterEditor: false, viewAsEnabled: false, canDelete: false, superAdmin: false, isSelf: false })}>
+          <Button onClick={() => setDraft({ name: "", email: "", roleKey: "site_staff", status: "invited", hasSignedIn: false, siteIds: [], otherSites: 0, canEditRole: true, calendarEditor: false, rosterEditor: false, clientInfoAccess: false, viewAsEnabled: false, canDelete: false, superAdmin: false, isSelf: false })}>
             <UserPlus className="h-4 w-4" /> Add person
           </Button>
         }
@@ -300,6 +308,7 @@ export function AdminPeople() {
                     </span>
                     {u.calendarEditor && u.roleKey !== "admin" && <Tag tone="accent" title="Can edit the calendar">Calendar</Tag>}
                     {u.rosterEditor && !MANAGES_ROSTER.includes(u.roleKey) && <Tag tone="accent" title="Can manage the roster">Roster</Tag>}
+                    {u.clientInfoAccess && u.roleKey !== "admin" && <Tag tone="accent" title="Can see and edit client information">Client info</Tag>}
                     {u.viewAsEnabled && u.roleKey === "admin" && !u.globalAdmin && <Tag tone="accent" title="Can view the site as others">View as</Tag>}
                     <span className="hidden text-[13px] text-ink sm:block">{u.role.name}</span>
                     {/* Only Deactivated mixes statuses (denied and deactivated); the other tabs say it already. */}
@@ -396,6 +405,21 @@ export function AdminPeople() {
                   </span>
                   <Switch checked={draft.rosterEditor} disabled={locked} onCheckedChange={(rosterEditor) => setDraft({ ...draft, rosterEditor })} className="mt-0.5" />
                 </label>
+              )}
+              {everyone && draft.id && !draft.superAdmin && draft.roleKey !== "admin" && (
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
+                  <span>
+                    <span className="block text-[13.5px] font-semibold text-ink">Can see client information</span>
+                    <span className="block text-micro text-muted">
+                      See and edit residents' client information at their sites: date of birth, demographics, program and funding, referral, household. The SSN shows as its last four digits. Admins always can.
+                      {!clientInfoOn && " Client information is turned off in Admin → Settings, so this does nothing until it's on."}
+                    </span>
+                  </span>
+                  <Switch checked={draft.clientInfoAccess} onCheckedChange={(clientInfoAccess) => setDraft({ ...draft, clientInfoAccess })} className="mt-0.5" />
+                </label>
+              )}
+              {!everyone && draft.clientInfoAccess && draft.roleKey !== "admin" && (
+                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can see client information at their sites. Only an Admin can change that.</p>
               )}
               {managesAdmins && draft.id && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" && (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">

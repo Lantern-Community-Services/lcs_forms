@@ -24,7 +24,12 @@ export type PermissionKey =
   /** View the site as someone else, read only: Super Admins, and Admins one has let (User.viewAsEnabled). */
   | "users.viewAs"
   /** Admin → Dev log. Admin only. */
-  | "devlog.view";
+  | "devlog.view"
+  /** Residents' client information (date of birth, demographics, program…): Admins, or the "Client information" switch. */
+  | "clients.view"
+  | "clients.edit"
+  /** A resident's whole SSN (each look audited): Admins only. */
+  | "clients.ssn";
 
 export type UserStatus = "active" | "invited" | "requested" | "denied" | "deactivated";
 /** "/forms" is Home saved before Home moved to /home; it's read as Home. */
@@ -77,6 +82,8 @@ export interface User {
   calendarEditor?: boolean;
   /** The "Can manage the roster" switch: roster management whatever their role (Site Managers have it already). */
   rosterEditor?: boolean;
+  /** The "Client information" switch: sees and changes residents' client information at their sites. Only an Admin turns it on. */
+  clientInfoAccess?: boolean;
   /** A Super Admin: an Admin who also makes, changes and removes Admins. Set only by the server (SUPER_ADMINS); the field keeps its first name. */
   globalAdmin?: boolean;
   /** An Admin a Super Admin has let view the site as others (View as). */
@@ -262,6 +269,8 @@ export interface Settings {
   undoSeconds: string;
   /** "false" stops the welcome tour starting by itself (lib/tour/SiteTourStarter.tsx). */
   welcomeTour: string;
+  /** "true": residents' client information is on (the Client information card). Off by default. */
+  clientInfo: string;
   /** The groups whose members see every form and every entry (IT by default). */
   seeEverythingGroupIds?: string[];
 }
@@ -510,3 +519,61 @@ export type OutlookPrefsInput = Pick<OutlookPrefs, "everySite" | "siteIds" | "em
 
 /** Which occurrences a change to a repeating event applies to. */
 export type CalendarScope = "all" | "this" | "following";
+
+// ── Client information (backend services/clientFields.ts) ───────────────
+
+export type ClientFieldType =
+  | "text" | "textarea" | "date" | "select" | "multi" | "year" | "phone" | "email"
+  | "ssn" | "staff" | "resident" | "program" | "contacts";
+
+export interface ClientField {
+  key: string;
+  label: string;
+  type: ClientFieldType;
+  options?: string[];
+  hint?: string;
+  showIf?: { key: string; in: string[] };
+  wide?: boolean;
+  allSites?: boolean;
+  column?: string;
+}
+
+export interface ClientSection {
+  key: string;
+  title: string;
+  description?: string;
+  fields: ClientField[];
+}
+
+export interface ClientFieldsMeta {
+  sections: ClientSection[];
+  programs: { value: string; site: string }[];
+}
+
+export type ContactRow = { name: string; relationship?: string; phone?: string; email?: string };
+export type ClientValue = string | string[] | number | ContactRow[];
+
+export interface ClientPersonRef {
+  id: string;
+  displayName: string;
+  unit: string | null;
+  status: string;
+}
+
+export interface ClientProfile {
+  tenantId: string;
+  /** 0 = nothing saved yet. */
+  version: number;
+  values: Record<string, ClientValue>;
+  ssn: { last4: string; masked: string } | null;
+  age: number | null;
+  caseLead: { id: string; name: string; title: string | null; active: boolean } | null;
+  headOfHousehold: ClientPersonRef | null;
+  householdMembers: (ClientPersonRef & { relationship: string | null })[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export type ClientProfileResponse =
+  | { enabled: false }
+  | { enabled: true; canEdit: boolean; canSeeSsn: boolean; profile: ClientProfile };

@@ -30,6 +30,10 @@ export const API_SCOPES = [
   "roster:write",
   /** Remove residents from the roster and restore them. */
   "roster:archive",
+  /** Read residents' client information (date of birth, demographics, program…; the SSN as its last four). */
+  "clients:read",
+  /** Change residents' client information. */
+  "clients:write",
   /** Import a property-management tenant list (CSV). */
   "roster:import",
   /** The audit log. */
