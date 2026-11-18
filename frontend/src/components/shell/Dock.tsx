@@ -149,7 +149,7 @@ const itemClass = (active: boolean, phone: boolean) =>
   cn(
     "relative flex min-h-[56px] flex-col items-center justify-center gap-[3px] px-1 font-bold transition-colors",
     phone ? "rounded-[18px] text-[10.5px]" : "w-[78px] rounded-[18px] text-[11.5px]",
-    active ? "bg-navy text-white dark:bg-navsel" : "text-muted hover:bg-navsel/60 hover:text-ink"
+    active ? "bg-navy text-navy-fg dark:bg-navsel" : "text-muted hover:bg-navsel/60 hover:text-ink"
   );
 
 function Badge({ count }: { count: number }) {
@@ -391,7 +391,7 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
               aria-pressed={editing}
               className={cn(
                 "flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-bold transition-colors",
-                editing ? "bg-navy text-white dark:bg-accent" : "bg-navsel/70 text-ink"
+                editing ? "bg-navy text-navy-fg dark:bg-accent" : "bg-navsel/70 text-ink"
               )}
             >
               {editing ? "Done" : <><Pin className="h-4 w-4" /> Edit pins</>}
@@ -493,7 +493,7 @@ function Group({ title, Icon, children }: { title: string; Icon?: React.ElementT
     <section>
       <h3 className="mb-2 flex items-center gap-2 text-micro font-extrabold uppercase tracking-[0.04em] text-muted">
         {Icon && (
-          <span className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-navy text-white dark:bg-navsel">
+          <span className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-navy text-navy-fg dark:bg-navsel">
             <Icon className="h-3.5 w-3.5" />
           </span>
         )}
@@ -568,7 +568,7 @@ function AppTile({ form, Icon, lit, count, onPick, editing, pinned, markPinned, 
         onAnimationEnd={() => setRefused(false)}
         className={cn(
           "relative flex h-[58px] w-[58px] items-center justify-center rounded-[16px] transition-colors",
-          lit ? "bg-navy text-white dark:bg-accent" : "bg-navsel text-accent group-hover:bg-navsel/70 group-active:scale-95 dark:text-white",
+          lit ? "bg-navy text-navy-fg dark:bg-accent" : "bg-navsel text-accent group-hover:bg-navsel/70 group-active:scale-95 dark:text-white",
           refused && "pin-refused"
         )}
       >

@@ -112,7 +112,7 @@ export function DevicePreview({
       <div className="flex flex-none flex-wrap items-center gap-1.5 border-b border-hairline bg-surface px-3 py-1.5">
         <div className="inline-flex rounded-input border border-hairline p-0.5">
           {([["phone", "Phone", Smartphone], ["tablet", "iPad", Tablet], ["desktop", "Desktop", Laptop], ["both", "iPad + phone", null]] as const).map(([m, label, Icon]) => (
-            <button key={m} type="button" onClick={() => update({ mode: m })} className={cn("inline-flex items-center gap-1 rounded-[5px] px-2 py-1 text-[12px] font-semibold", s.mode === m ? "bg-navy text-white" : "text-muted hover:text-ink")}>
+            <button key={m} type="button" onClick={() => update({ mode: m })} className={cn("inline-flex items-center gap-1 rounded-[5px] px-2 py-1 text-[12px] font-semibold", s.mode === m ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
               {Icon && <Icon className="h-3.5 w-3.5" />} {label}
             </button>
           ))}

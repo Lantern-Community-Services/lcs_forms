@@ -73,7 +73,7 @@ export function UnreadBubble({ count, urgent = 0, className }: { count: number; 
       className={cn(
         "absolute flex h-[17px] min-w-[17px] items-center justify-center rounded-pill px-1 text-[10px] font-extrabold leading-none ring-2 ring-surface tabular",
         // Red only while something urgent is waiting; the everyday count is navy.
-        urgent > 0 ? "bg-status-redDot text-white" : "bg-navy text-white dark:bg-white dark:text-navy",
+        urgent > 0 ? "bg-status-redDot text-white" : "bg-navy text-navy-fg dark:bg-white dark:text-navy",
         className
       )}
     >

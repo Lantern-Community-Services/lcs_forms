@@ -33,7 +33,7 @@ export function PanelHeader({ title, count, children }: { title: string; count?:
     <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-hairline px-4 py-2.5 xl:px-5">
       <h2 className="flex items-center gap-2 text-[15px] font-heading font-extrabold text-ink xl:text-[16px]">
         {title}
-        {count !== undefined && count > 0 && <span className="rounded-pill bg-navy px-2 py-px text-[11.5px] font-bold text-white">{count}</span>}
+        {count !== undefined && count > 0 && <span className="rounded-pill bg-navy px-2 py-px text-[11.5px] font-bold text-navy-fg">{count}</span>}
       </h2>
       {children}
     </div>
@@ -89,7 +89,7 @@ export function AttentionPanel({ home, loading, failed, compact = false, classNa
                   to={a.href}
                   className={cn(
                     "inline-flex h-9 shrink-0 items-center rounded-input px-4 text-[13px] font-bold",
-                    i === 0 ? "bg-navy text-white hover:bg-navy-700" : "bg-subtle text-accent hover:bg-subtle2 dark:text-white"
+                    i === 0 ? "bg-navy text-navy-fg hover:bg-navy-700" : "bg-subtle text-accent hover:bg-subtle2 dark:text-white"
                   )}
                 >
                   {a.action}
@@ -188,7 +188,7 @@ function ActivityRow({ item, at }: { item: HomeActivityItem; at: Date }) {
       <span
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
-          item.mine ? "bg-navy text-white" : "bg-navsel text-accent dark:text-white"
+          item.mine ? "bg-navy text-navy-fg" : "bg-navsel text-accent dark:text-white"
         )}
         aria-hidden
       >

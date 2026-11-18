@@ -98,7 +98,7 @@ export function DateRangeBar({ from, to, preset, onChange, className }: {
             onClick={() => onChange(presetRange(p.key))}
             className={cn(
               "min-h-[36px] shrink-0 whitespace-nowrap rounded-pill border px-3 text-[13px] font-semibold transition-colors md:min-h-[32px]",
-              preset === p.key ? "border-navy bg-navy text-white dark:border-white dark:bg-white dark:text-[#111]" : "border-hairline bg-surface text-ink hover:border-strongline"
+              preset === p.key ? "border-navy bg-navy text-navy-fg dark:border-white dark:bg-white dark:text-[#111]" : "border-hairline bg-surface text-ink hover:border-strongline"
             )}
           >
             {p.label}

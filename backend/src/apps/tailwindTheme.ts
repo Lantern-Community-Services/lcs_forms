@@ -16,6 +16,9 @@ export const theme: Config["theme"] = {
           DEFAULT: v("--c-brand"),
           600: v("--c-brand-600"),
           700: v("--c-brand-700"),
+          // Text on a bg-navy fill: white, or near-black when a custom theme's
+          // colour is light. Falls back to white where the token isn't set.
+          fg: "rgb(var(--c-on-brand, 255 255 255) / <alpha-value>)",
         },
         // Theme-aware tokens (light/dark values defined in index.css).
         ink: v("--c-ink"),

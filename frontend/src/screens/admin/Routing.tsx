@@ -1073,7 +1073,7 @@ function EmailPreviewDialog({ preview, onClose }: { preview: EmailPreview; onClo
                 role="radio"
                 aria-checked={who === k}
                 onClick={() => setWho(k)}
-                className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", who === k ? "bg-navy text-white" : "text-muted hover:text-ink")}
+                className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", who === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
               >
                 {label}
               </button>
@@ -1433,7 +1433,7 @@ function ChecklistEditor({ items, saved, fields, onChange }: { items: CheckItem[
                               key={v}
                               type="button"
                               onClick={() => put(i, { when: { field: field.id, values: on ? c.when!.values.filter((x) => x !== v) : [...c.when!.values, v] } })}
-                              className={cn("rounded-full border px-2 py-0.5 text-[12px]", on ? "border-navy bg-navy text-white" : "border-hairline text-ink hover:border-ink")}
+                              className={cn("rounded-full border px-2 py-0.5 text-[12px]", on ? "border-navy bg-navy text-navy-fg" : "border-hairline text-ink hover:border-ink")}
                             >
                               {v}
                             </button>

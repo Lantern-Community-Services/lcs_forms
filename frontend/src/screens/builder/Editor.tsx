@@ -806,7 +806,7 @@ function SplitHandle({ containerRef, ratio, onRatio, onResizing }: {
         ))}
       </span>
       {readout && (
-        <span className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 whitespace-nowrap rounded-input bg-navy px-2 py-1 font-mono text-micro text-white shadow-modal">
+        <span className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 whitespace-nowrap rounded-input bg-navy px-2 py-1 font-mono text-micro text-navy-fg shadow-modal">
           {readout.editor} ⟷ {readout.preview}
         </span>
       )}

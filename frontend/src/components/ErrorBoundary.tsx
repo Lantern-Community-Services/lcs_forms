@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="mt-5 flex justify-center gap-2">
             <button
               onClick={() => this.setState({ error: null })}
-              className="h-9 rounded-input bg-navy px-4 text-[13.5px] font-semibold text-white hover:bg-navy-600"
+              className="h-9 rounded-input bg-navy px-4 text-[13.5px] font-semibold text-navy-fg hover:bg-navy-600"
             >
               Try again
             </button>

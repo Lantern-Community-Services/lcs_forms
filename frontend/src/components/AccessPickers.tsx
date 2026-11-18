@@ -22,7 +22,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
           role="radio"
           aria-checked={value === k}
           onClick={() => onChange(k)}
-          className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", value === k ? "bg-navy text-white" : "text-muted hover:text-ink")}
+          className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", value === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
         >
           {label}
         </button>

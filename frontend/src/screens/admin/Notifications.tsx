@@ -550,7 +550,7 @@ function TemplatePreview({ draft, systemKey }: { draft: TemplateDraft; systemKey
         <p className="kicker mr-auto">What it looks like</p>
         <div className="inline-flex rounded-input border border-hairline p-0.5" role="radiogroup" aria-label="Who gets it">
           {([["inside", "A Lantern address"], ["outside", "Anyone else"]] as const).map(([k, label]) => (
-            <button key={k} type="button" role="radio" aria-checked={who === k} onClick={() => setWho(k)} className={cn("rounded-[5px] px-2.5 py-1 text-[12.5px] font-semibold", who === k ? "bg-navy text-white" : "text-muted hover:text-ink")}>
+            <button key={k} type="button" role="radio" aria-checked={who === k} onClick={() => setWho(k)} className={cn("rounded-[5px] px-2.5 py-1 text-[12.5px] font-semibold", who === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
               {label}
             </button>
           ))}

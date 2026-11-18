@@ -81,7 +81,7 @@ export function TimeGrid({
               className="flex flex-col items-center gap-0.5 border-l border-hairline py-1.5 disabled:cursor-default"
             >
               <span className={cn("text-micro font-bold uppercase tracking-[0.04em]", d === today ? "text-accent dark:text-white" : "text-muted")}>{DAY_SHORT[weekdayOf(d)]}</span>
-              <span className={cn("flex h-8 w-8 items-center justify-center rounded-full text-[17px] font-extrabold tabular", d === today ? "bg-navy text-white dark:bg-white dark:text-navy" : "text-ink")}>
+              <span className={cn("flex h-8 w-8 items-center justify-center rounded-full text-[17px] font-extrabold tabular", d === today ? "bg-navy text-navy-fg dark:bg-white dark:text-navy" : "text-ink")}>
                 {+d.slice(8, 10)}
               </span>
             </button>

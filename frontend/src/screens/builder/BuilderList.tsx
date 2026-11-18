@@ -228,7 +228,7 @@ function NewFormDialog({ open, onClose, onCreated, startOutside }: { open: boole
         <DialogBody className="max-h-[70vh] overflow-y-auto">
           <div className="mb-4 inline-flex rounded-input border border-hairline p-0.5">
             {([["template", "Start from a template", Sparkles], ["code", "Write it in code", Code2]] as const).map(([k, label, Icon]) => (
-              <button key={k} onClick={() => setMode(k)} className={cn("inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", mode === k ? "bg-navy text-white" : "text-muted hover:text-ink")}>
+              <button key={k} onClick={() => setMode(k)} className={cn("inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", mode === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
                 <Icon className="h-3.5 w-3.5" /> {label}
               </button>
             ))}
