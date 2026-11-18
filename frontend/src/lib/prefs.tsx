@@ -57,7 +57,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     root.dataset.theme = theme;
     writeStorage("ln.theme", theme);
 
-    if (theme !== "custom" || dark) {
+    if (theme !== "custom") {
       ["--c-brand", "--c-brand-600", "--c-brand-700", "--c-accent", "--c-sidebar", "--c-navsel", "--c-rowhover"].forEach((key) => root.style.removeProperty(key));
       return;
     }
@@ -66,10 +66,12 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--c-brand", color.join(" "));
     root.style.setProperty("--c-brand-600", blend(color, [0, 0, 0], 0.82));
     root.style.setProperty("--c-brand-700", blend(color, [0, 0, 0], 0.65));
-    root.style.setProperty("--c-accent", dark ? blend(color, [255, 255, 255], 0.68) : color.join(" "));
-    root.style.setProperty("--c-sidebar", dark ? blend(color, [15, 19, 30], 0.20) : blend(color, [255, 255, 255], 0.08));
-    root.style.setProperty("--c-navsel", dark ? blend(color, [15, 19, 30], 0.38) : blend(color, [255, 255, 255], 0.19));
-    root.style.setProperty("--c-rowhover", dark ? blend(color, [23, 29, 43], 0.14) : blend(color, [255, 255, 255], 0.06));
+    // Dark versions blend toward the neutral dark page (.dark in index.css), and
+    // the accent goes over halfway to white so even a deep colour reads on it.
+    root.style.setProperty("--c-accent", dark ? blend(color, [255, 255, 255], 0.45) : color.join(" "));
+    root.style.setProperty("--c-sidebar", dark ? blend(color, [5, 5, 5], 0.12) : blend(color, [255, 255, 255], 0.08));
+    root.style.setProperty("--c-navsel", dark ? blend(color, [15, 15, 15], 0.32) : blend(color, [255, 255, 255], 0.19));
+    root.style.setProperty("--c-rowhover", dark ? blend(color, [15, 15, 15], 0.12) : blend(color, [255, 255, 255], 0.06));
     writeStorage("ln.theme.custom", customThemeColor);
   }, [theme, customThemeColor, dark]);
 
