@@ -450,7 +450,7 @@ function Segmented<K extends string>({ value, options, onChange, blocked }: { va
             title={why ?? undefined}
             aria-pressed={value === o.key}
             onClick={() => onChange(o.key)}
-            className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-40", value === o.key ? "bg-navy text-white" : "text-muted hover:text-ink")}
+            className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-40", value === o.key ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
           >
             {o.label}
           </button>

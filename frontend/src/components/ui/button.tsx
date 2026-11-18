@@ -7,7 +7,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-navy text-white hover:bg-navy-600 active:bg-navy-700",
+        // The faint inset edge (a darker shade of the fill) keeps the button's
+        // shape visible when a custom theme's colour is close to the page.
+        primary: "bg-navy text-navy-fg ring-1 ring-inset ring-navy-700/30 hover:bg-navy-600 active:bg-navy-700",
         secondary: "border border-hairline bg-surface text-ink hover:bg-rowhover hover:border-strongline",
         ghost: "text-accent hover:bg-subtle2",
         danger: "bg-status-redText text-white hover:opacity-90",

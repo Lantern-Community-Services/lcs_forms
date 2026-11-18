@@ -318,7 +318,7 @@ export function BuiltFormEntriesPage() {
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" aria-label="More filters">
               <SlidersHorizontal className="h-4 w-4" /> Filters
-              {moreCount > 0 && <span className="ml-0.5 rounded-pill bg-navy px-1.5 text-micro font-bold text-white">{moreCount}</span>}
+              {moreCount > 0 && <span className="ml-0.5 rounded-pill bg-navy px-1.5 text-micro font-bold text-navy-fg">{moreCount}</span>}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[220px]">

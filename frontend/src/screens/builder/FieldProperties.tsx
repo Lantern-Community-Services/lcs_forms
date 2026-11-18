@@ -125,7 +125,7 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
         <Row label="Width">
           <div className="inline-flex rounded-input border border-hairline p-0.5">
             {(["full", "half", "third"] as const).map((w) => (
-              <button key={w} onClick={() => set({ width: w === "full" ? undefined : w })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold capitalize", (f.width ?? "full") === w ? "bg-navy text-white" : "text-muted")}>{w}</button>
+              <button key={w} onClick={() => set({ width: w === "full" ? undefined : w })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold capitalize", (f.width ?? "full") === w ? "bg-navy text-navy-fg" : "text-muted")}>{w}</button>
             ))}
           </div>
         </Row>
@@ -279,7 +279,7 @@ function ChoicesTab({ field: f, set }: { field: Field; set: (p: Partial<Field>) 
           <Row label="Columns">
             <div className="inline-flex rounded-input border border-hairline p-0.5">
               {([1, 2, 3] as const).map((c) => (
-                <button key={c} onClick={() => set({ columns: c === 1 ? undefined : c })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold", (f.columns ?? 1) === c ? "bg-navy text-white" : "text-muted")}>{c}</button>
+                <button key={c} onClick={() => set({ columns: c === 1 ? undefined : c })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold", (f.columns ?? 1) === c ? "bg-navy text-navy-fg" : "text-muted")}>{c}</button>
               ))}
             </div>
           </Row>
@@ -486,7 +486,7 @@ function CodeTab({ field: f, set }: { field: Field; set: (p: Partial<Field>) => 
     <>
       <div className="inline-flex rounded-input border border-hairline p-0.5">
         {(["html", "css", "js"] as const).map((l) => (
-          <button key={l} onClick={() => setLang(l)} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold uppercase", lang === l ? "bg-navy text-white" : "text-muted")}>{l}</button>
+          <button key={l} onClick={() => setLang(l)} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold uppercase", lang === l ? "bg-navy text-navy-fg" : "text-muted")}>{l}</button>
         ))}
       </div>
       <CodeEditor key={lang} language={lang === "js" ? "javascript" : lang} value={code[lang] ?? ""} onChange={(v) => set({ code: { ...code, [lang]: v } })} minHeight={240} />

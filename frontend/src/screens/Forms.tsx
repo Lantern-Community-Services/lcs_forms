@@ -241,7 +241,7 @@ export function PhoneForms({ c, after }: { c: CatalogBrowser; after?: React.Reac
                 onClick={() => setPick(cat.id)}
                 className="enter-up flex min-h-[96px] flex-col items-start gap-2.5 rounded-card border border-hairline bg-surface p-3 text-left active:bg-rowhover"
               >
-                <span className="flex h-9 w-9 items-center justify-center rounded-input bg-navy text-white">
+                <span className="flex h-9 w-9 items-center justify-center rounded-input bg-navy text-navy-fg">
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
                 <span>
@@ -520,7 +520,7 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
   return (
     <section aria-labelledby={`${sectionId(category.id)}-title`} className="enter-up flex w-full flex-col rounded-card border border-hairline bg-surface shadow-card">
       <button type="button" onClick={onOpen} className="group flex items-start gap-3 rounded-t-card border-b border-hairline px-4 pb-3 pt-4 text-left hover:bg-rowhover">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-navy text-white">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-navy text-navy-fg">
           <Icon className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">

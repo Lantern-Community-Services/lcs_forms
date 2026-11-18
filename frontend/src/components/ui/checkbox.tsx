@@ -13,8 +13,8 @@ export const Checkbox = forwardRef<
     className={cn(
       "peer h-4 w-4 shrink-0 rounded-[4px] border border-strongline bg-surface",
       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy",
-      "data-[state=checked]:bg-navy data-[state=checked]:border-navy data-[state=checked]:text-white",
-      "data-[state=indeterminate]:bg-navy data-[state=indeterminate]:border-navy data-[state=indeterminate]:text-white",
+      "data-[state=checked]:bg-navy data-[state=checked]:border-navy data-[state=checked]:text-navy-fg",
+      "data-[state=indeterminate]:bg-navy data-[state=indeterminate]:border-navy data-[state=indeterminate]:text-navy-fg",
       className
     )}
     {...props}
