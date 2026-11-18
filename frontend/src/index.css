@@ -150,6 +150,23 @@ html:not(.dark)[data-theme="forest"] {
   --c-sidebar: 245 250 246; --c-navsel: 215 235 219; --c-rowhover: 248 252 248; --c-accent: 22 101 52;
 }
 
+/* Dark mode is a separate switch, so each theme also has a dark version: the
+   page stays the neutral dark of .dark above, the sidebar and selection pick up
+   a deep tint of the theme, and the accent is lightened to read on dark.
+   Lantern's dark version is .dark itself. */
+html.dark[data-theme="ocean"] {
+  --c-brand: 14 116 144; --c-brand-600: 12 94 117; --c-brand-700: 10 75 93;
+  --c-sidebar: 6 20 24; --c-navsel: 18 56 66; --c-rowhover: 18 30 34; --c-accent: 125 200 222;
+}
+html.dark[data-theme="plum"] {
+  --c-brand: 109 40 115; --c-brand-600: 88 32 93; --c-brand-700: 68 25 72;
+  --c-sidebar: 18 8 19; --c-navsel: 54 28 58; --c-rowhover: 30 22 31; --c-accent: 214 170 220;
+}
+html.dark[data-theme="forest"] {
+  --c-brand: 22 101 52; --c-brand-600: 18 81 42; --c-brand-700: 14 62 32;
+  --c-sidebar: 7 18 11; --c-navsel: 22 52 32; --c-rowhover: 20 30 23; --c-accent: 134 205 156;
+}
+
 html,
 body,
 #root {

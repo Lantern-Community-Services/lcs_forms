@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Compass, LogOut, RotateCcw, SquarePlus } from "lucide-react";
+import { Compass, LogOut, Moon, RotateCcw, SquarePlus, Sun } from "lucide-react";
 import { resetTours } from "@/lib/tour/progress";
 import { MobileBackLink, Page, PageHeader } from "@/components/shell/AppShell";
 import { SnapshotSummary } from "@/components/shell/OfflineBar";
@@ -12,6 +12,7 @@ import { ViewAsCard } from "@/components/shell/ViewAs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Field } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
@@ -27,13 +28,13 @@ const AVATAR_COLORS = [
   "#a16207", "#15803d", "#0f766e", "#6b4f3b",
 ];
 
-const THEMES: { id: ThemeName; label: string; color: string; sidebar: string }[] = [
-  { id: "lantern", label: "Lantern", color: "#2c3453", sidebar: "#fbfcfd" },
-  { id: "ocean", label: "Ocean", color: "#0e7490", sidebar: "#eff9fc" },
-  { id: "plum", label: "Plum", color: "#6d2873", sidebar: "#fbf7fc" },
-  { id: "forest", label: "Forest", color: "#166534", sidebar: "#f5faf6" },
+/** Each theme's thumbnail colours, light and dark (the dark ones match index.css). */
+const THEMES: { id: ThemeName; label: string; color: string; sidebar: string; darkColor: string; darkSidebar: string }[] = [
+  { id: "lantern", label: "Lantern", color: "#2c3453", sidebar: "#fbfcfd", darkColor: "#bccfff", darkSidebar: "#050505" },
+  { id: "ocean", label: "Ocean", color: "#0e7490", sidebar: "#eff9fc", darkColor: "#7dc8de", darkSidebar: "#061418" },
+  { id: "plum", label: "Plum", color: "#6d2873", sidebar: "#fbf7fc", darkColor: "#d6aadc", darkSidebar: "#120813" },
+  { id: "forest", label: "Forest", color: "#166534", sidebar: "#f5faf6", darkColor: "#86cd9c", darkSidebar: "#07120b" },
 ];
-const DARK_THEME = { label: "Dark", color: "#8aa6e0", sidebar: "#121723" };
 
 /** A landing page saved before the roster screens became tabs, in today's terms. */
 function currentLanding(saved: string | undefined): LandingPage {
@@ -101,12 +102,15 @@ export function ProfilePage() {
     void savePreferences({ defaultLandingPage: next }, () => setLanding(previous));
   }
 
-  const lightSwatch = (option: (typeof THEMES)[number]) => (
+  const themeSwatch = (option: (typeof THEMES)[number]) => (
     <ThemeSwatch
       key={option.id}
-      {...option}
-      selected={!dark && theme === option.id}
-      onSelect={() => { setTheme(option.id); setDark(false); }}
+      label={option.label}
+      color={dark ? option.darkColor : option.color}
+      sidebar={dark ? option.darkSidebar : option.sidebar}
+      dark={dark}
+      selected={theme === option.id}
+      onSelect={() => setTheme(option.id)}
     />
   );
 
@@ -186,24 +190,32 @@ export function ProfilePage() {
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "52ms" }}>
         <p className="kicker">Appearance</p>
         <p className="mt-1 text-[13px] text-muted">Themes change the application chrome and accent colors only. Your profile color stays personal.</p>
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {THEMES.slice(0, 1).map(lightSwatch)}
-          <ThemeSwatch {...DARK_THEME} dark selected={dark} onSelect={() => setDark(true)} />
-          {THEMES.slice(1).map(lightSwatch)}
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-card border border-hairline p-3">
+          <label htmlFor="dark-mode" className="cursor-pointer">
+            <span className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+              {dark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              Dark mode
+            </span>
+            <span className="block text-micro text-muted">Works with any theme below.</span>
+          </label>
+          <Switch id="dark-mode" checked={dark} onCheckedChange={setDark} aria-label="Dark mode" />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {THEMES.map(themeSwatch)}
         </div>
         <div
-          className={`mt-3 flex items-center justify-between rounded-card border p-3 ${!dark && theme === "custom" ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
+          className={`mt-3 flex items-center justify-between rounded-card border p-3 ${theme === "custom" ? "border-accent ring-1 ring-accent" : "border-hairline"}`}
           role="button"
           tabIndex={0}
-          onClick={() => { setTheme("custom"); setDark(false); }}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setTheme("custom"); setDark(false); } }}
+          onClick={() => setTheme("custom")}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setTheme("custom"); } }}
         >
           <div className="cursor-pointer">
             <p className="text-[13px] font-semibold text-ink">Custom theme</p>
             <p className="text-micro text-muted">Choose the navigation and accent color.</p>
           </div>
           <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-input border border-hairline" style={{ backgroundColor: customThemeColor }} title="Choose custom theme color">
-            <input type="color" value={customThemeColor} onChange={(event) => { setCustomThemeColor(event.target.value); setTheme("custom"); setDark(false); }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choose custom theme color" />
+            <input type="color" value={customThemeColor} onChange={(event) => { setCustomThemeColor(event.target.value); setTheme("custom"); }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choose custom theme color" />
             <span className="sr-only">Choose custom theme color</span>
           </label>
         </div>
@@ -292,7 +304,7 @@ function ThemeSwatch({ label, color, sidebar, dark = false, selected, onSelect }
     <button
       type="button"
       onClick={onSelect}
-      className={`rounded-card border p-2.5 text-left transition hover:border-strongline ${selected ? "border-navy ring-1 ring-navy" : "border-hairline"}`}
+      className={`rounded-card border p-2.5 text-left transition hover:border-strongline ${selected ? "border-accent ring-1 ring-accent" : "border-hairline"}`}
       aria-pressed={selected}
     >
       <span className={`mb-2 flex h-7 overflow-hidden rounded-input border ${dark ? "border-white/10" : "border-black/5"}`} style={{ backgroundColor: sidebar }}>
