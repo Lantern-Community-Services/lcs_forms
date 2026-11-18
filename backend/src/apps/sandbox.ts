@@ -143,6 +143,7 @@ globalThis.__makeCtx = (base) => ({
     sites: (opts) => __h("roster.sites", { all: Boolean(opts && opts.all) }),
     resident: (id) => __h("roster.resident", { id }),
     residents: (x, opts) => __h("roster.residents", { x, opts: opts || {} }),
+    clientInfo: (id) => __h("roster.clientInfo", { id }),
     logActivity: (tenantId, opts) => __h("roster.logActivity", { tenantId, label: opts && opts.label, occurredAt: opts && opts.occurredAt }),
   },
   email: {

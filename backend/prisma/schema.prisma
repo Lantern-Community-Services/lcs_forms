@@ -121,6 +121,8 @@ model Tenant {
   activities        TenantActivity[]
   audit             AuditEvent[]
   attendanceEntries AttendanceEntry[]
+  /// Client information (services/clientFields.ts). Made on the first save.
+  profile           TenantProfile?
 
   @@index([siteId, status, attentionClockAt])
   @@index([siteId, status, unit])
@@ -149,6 +151,36 @@ model TenantActivity {
 
   @@index([source, externalRef])
   @@index([tenantId, occurredAt])
+}
+
+/// A resident's client information — what PlanStreet keeps on a case: identity,
+/// contact, demographics, veteran status, program and funding, referral, household
+/// and move-out. One per resident, made on the first save. The fields are listed in
+/// services/clientFields.ts: the ones looked up by are columns, the rest are JSON
+/// in `data`. Read only with clients.view, and only while the clientInfo setting is on.
+model TenantProfile {
+  tenantId          String    @id @db.NVarChar(64)
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dateOfBirth       DateTime? @db.Date
+  /// Nine digits. Never sent whole except to clients.ssn (Admins), and each time audited.
+  ssn               String?   @db.NVarChar(9)
+  /// Program (building – funder – population), one of clientFields PROGRAMS.
+  program           String?   @db.NVarChar(255)
+  /// User id of their case lead. Not a relation: a removed user stays named in the audit log.
+  caseLeadId        String?   @db.NVarChar(64)
+  /// Tenant id of their head of household. Null: they are the head, or live alone.
+  headOfHouseholdId String?   @db.NVarChar(64)
+  /// Every other field, as JSON { key: value }.
+  data              String    @default("{}") @db.NVarChar(Max)
+  /// Optimistic concurrency, as on Tenant: every save presents the version it read.
+  version           Int       @default(1)
+  updatedById       String?   @db.NVarChar(64)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([caseLeadId])
+  @@index([headOfHouseholdId])
+  @@index([program])
 }
 
 /// Immutable record of who changed a roster and why.
@@ -737,6 +769,10 @@ model User {
   /// Can manage the roster (add, edit, keep, remove, restore) whatever their
   /// role. Site Managers have this already; they or an Admin switch it on.
   rosterEditor              Boolean                @default(false)
+  /// Can see and edit residents' client information (date of birth, demographics,
+  /// program, referral, household) at their sites, whatever their role. Only an
+  /// Admin turns it on; Admins always can. See permissions.ts CLIENT_INFO.
+  clientInfoAccess          Boolean                @default(false)
   /// Where the person works, chosen on their first sign-in: a JSON list of
   /// site ids and/or "main_office". Shown on their request; not access.
   locations                 String?                @db.NVarChar(Max)

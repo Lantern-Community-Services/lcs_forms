@@ -5,6 +5,8 @@ import { fileBytes } from "../services/fileStore.js";
 import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { displayName, recordActivity } from "../services/roster.js";
+import { profileView } from "../services/clientProfile.js";
+import { clientInfoEnabled } from "../services/settings.js";
 import { canReadEntries as canReadBasicEntries, isDuplicateClientId } from "../forms/entries.js";
 import { readDoc } from "../forms/service.js";
 import { buildProject, type Build } from "./compile.js";
@@ -861,7 +863,7 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
  * duplicate check, who'll be told) and tell people, but never hands out residents or acts as a person.
  */
 const GUEST_BLOCKED = new Set([
-  "roster.resident", "roster.residents", "roster.logActivity", "calendar.create", "calendar.form.create", "calendar.form.update",
+  "roster.resident", "roster.residents", "roster.clientInfo", "roster.logActivity", "calendar.create", "calendar.form.create", "calendar.form.update",
   "calendar.form.remove", "calendar.form.setPending", "entries.update", "entries.create", "jobs.retry", "collections.put", "collections.remove",
 ]);
 
@@ -965,6 +967,15 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         if (!s || !canSite(s.id)) return [];
         const status = args.opts?.includeArchived ? {} : { status: "active" };
         return (await prisma.tenant.findMany({ where: { siteId: s.id, ...status }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] })).map(residentOut);
+      }
+      case "roster.clientInfo": {
+        // A resident's client information, for a person who may see it (services/clientFields.ts):
+        // the setting on, clients.view, and the resident at one of their sites. Never the whole SSN.
+        if (!user || !user.permissions.includes("clients.view") || !(await clientInfoEnabled())) return null;
+        const t = await prisma.tenant.findUnique({ where: { id: String(args.id) }, include: { site: { select: { id: true, code: true, name: true } }, profile: true } });
+        if (!t || !canSite(t.siteId)) return null;
+        const { profile, ...tenant } = t;
+        return profileView(tenant, profile);
       }
       case "roster.logActivity": {
         // Counts as the resident being seen (resets their review clock), like an entry about them does.

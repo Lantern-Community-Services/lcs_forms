@@ -65,6 +65,19 @@ export const PERMISSIONS = [
   "users.viewAs",
   /** Admin → Dev log: response times, errors, memory and the server log. Admin only. */
   "devlog.view",
+  /**
+   * Client information on a resident's page (services/clientFields.ts): date of
+   * birth, demographics, program, referral, household. Read at the person's
+   * sites, alongside roster.view. Admins have it; anyone else gets it (with
+   * clients.edit) from the per-person "Client information" switch
+   * (User.clientInfoAccess), which only an Admin turns on. Nothing at all while
+   * the clientInfo setting is off.
+   */
+  "clients.view",
+  /** Change client information. Comes with clients.view (the same switch). */
+  "clients.edit",
+  /** See a resident's whole Social Security Number (each look is audited). Admins only. */
+  "clients.ssn",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number];
@@ -100,6 +113,13 @@ export const ROSTER_MANAGEMENT: PermissionKey[] = ["roster.edit", "roster.archiv
  * nothing they could do about it. The frontend's twin is can("roster.archive").
  */
 export const reviewsRoster = (permissions: readonly string[]) => permissions.includes("roster.archive");
+
+/**
+ * Client information: see and change it. Admins have both; anyone else gets them
+ * from the per-person switch (User.clientInfoAccess). The whole SSN (clients.ssn)
+ * stays Admin only. See permissionsFor().
+ */
+export const CLIENT_INFO: PermissionKey[] = ["clients.view", "clients.edit"];
 
 /** Most privileged first — the order People & roles lists them in. */
 export const ROLES: RoleDef[] = [
@@ -190,11 +210,12 @@ export function roleFor(key: string): RoleDef {
  */
 export function permissionsFor(
   role: RoleDef,
-  person: { calendarEditor?: boolean | null; rosterEditor?: boolean | null; globalAdmin?: boolean | null; viewAsEnabled?: boolean | null }
+  person: { calendarEditor?: boolean | null; rosterEditor?: boolean | null; clientInfoAccess?: boolean | null; globalAdmin?: boolean | null; viewAsEnabled?: boolean | null }
 ): PermissionKey[] {
   const extra: PermissionKey[] = [];
   if (person.calendarEditor && !role.permissions.includes("calendar.edit")) extra.push("calendar.edit");
   if (person.rosterEditor) for (const p of ROSTER_MANAGEMENT) if (!role.permissions.includes(p)) extra.push(p);
+  if (person.clientInfoAccess) for (const p of CLIENT_INFO) if (!role.permissions.includes(p)) extra.push(p);
   if (person.globalAdmin && role.key === "admin") extra.push("admins.manage", "people.records", "email.templates");
   if ((person.globalAdmin || person.viewAsEnabled) && role.key === "admin") extra.push("users.viewAs");
   return extra.length ? [...role.permissions, ...extra] : role.permissions;

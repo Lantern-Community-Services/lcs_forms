@@ -157,6 +157,7 @@ const userBody = z.object({
 });
 
 const CALENDAR_SWITCH_ADMIN_ONLY = "Only an Admin can change who edits the calendar.";
+const CLIENT_SWITCH_ADMIN_ONLY = "Only an Admin can change who sees client information.";
 
 /**
  * Pre-create (invite) a person: a pending account, so they can be given a role
@@ -209,6 +210,8 @@ usersRouter.patch(
         title: z.string().trim().max(120).nullable().optional(),
         calendarEditor: z.boolean().optional(),
         rosterEditor: z.boolean().optional(),
+        /** "Client information": sees and changes residents' client information (clients.view/edit). Admin only. */
+        clientInfoAccess: z.boolean().optional(),
         viewAsEnabled: z.boolean().optional(),
       })
       .parse(req.body);
@@ -231,6 +234,8 @@ usersRouter.patch(
     if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
     const rosterChange = body.rosterEditor !== undefined && body.rosterEditor !== before.rosterEditor;
     if (rosterChange && before.id === req.user!.userId) throw forbidden(ROSTER_SWITCH_NOT_YOURS);
+    const clientChange = body.clientInfoAccess !== undefined && body.clientInfoAccess !== before.clientInfoAccess;
+    if (clientChange && !managesEveryone(req)) throw forbidden(CLIENT_SWITCH_ADMIN_ONLY);
     // View as is a Super Admin's to hand out, to an Admin only (it never outlives their being one).
     const viewAsChange = body.viewAsEnabled !== undefined && body.viewAsEnabled !== before.viewAsEnabled;
     if (viewAsChange && !managesAdmins(req)) throw forbidden("Only a Super Admin can let someone view the site as others.");
@@ -282,6 +287,7 @@ usersRouter.patch(
           title: body.title === undefined ? undefined : body.title || null,
           calendarEditor: calendarChange ? body.calendarEditor : undefined,
           rosterEditor: rosterChange ? body.rosterEditor : undefined,
+          clientInfoAccess: clientChange ? body.clientInfoAccess : undefined,
           viewAsEnabled: dropsViewAs ? false : viewAsChange ? body.viewAsEnabled : undefined,
         },
         include: SITES_INCLUDE,
@@ -294,6 +300,7 @@ usersRouter.patch(
       body.title !== undefined && (body.title || null) !== before.title ? `job title → ${body.title || "none"}` : null,
       calendarChange ? `calendar editing ${body.calendarEditor ? "on" : "off"}` : null,
       rosterChange ? `roster management ${body.rosterEditor ? "on" : "off"}` : null,
+      clientChange ? `client information ${body.clientInfoAccess ? "on" : "off"}` : null,
       dropsViewAs ? "View as off (no longer an Admin)" : viewAsChange ? `View as ${body.viewAsEnabled ? "on" : "off"}` : null,
     ].filter(Boolean);
     await audit({ actor: actorOf(req), action: "user.updated", summary: `Updated ${user.name}${bits.length ? `: ${bits.join(", ")}` : ""}` });

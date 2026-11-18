@@ -68,7 +68,7 @@ export async function currentUserById(id: string): Promise<CurrentUser | null> {
   const user = await prisma.user.findUnique({
     where: { id },
     select: {
-      id: true, name: true, email: true, status: true, roleKey: true, title: true, calendarEditor: true, rosterEditor: true, globalAdmin: true, viewAsEnabled: true,
+      id: true, name: true, email: true, status: true, roleKey: true, title: true, calendarEditor: true, rosterEditor: true, clientInfoAccess: true, globalAdmin: true, viewAsEnabled: true,
       sites: { where: { approved: true }, select: { siteId: true } },
       groupOverrides: { select: { groupId: true, include: true } },
     },

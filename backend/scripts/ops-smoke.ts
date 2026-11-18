@@ -64,11 +64,12 @@ function registry() {
 
 // ── Who a delegated key acts as ──────────────────────────────────────────
 
-function person(roleKey: string, siteIds: string[] | null, extra: { calendarEditor?: boolean; rosterEditor?: boolean; globalAdmin?: boolean } = {}): CurrentUser {
+function person(roleKey: string, siteIds: string[] | null, extra: { calendarEditor?: boolean; rosterEditor?: boolean; clientInfoAccess?: boolean; globalAdmin?: boolean } = {}): CurrentUser {
   const role = ROLES.find((r) => r.key === roleKey)!;
   return { userId: `u-${roleKey}`, name: `Jane Example (${roleKey})`, email: "jane@example.org", roleKey, roleName: role.name, permissions: permissionsFor(role, extra), siteIds } as CurrentUser;
 }
 const key = (siteId: string | null = null) => ({ name: "smoke", siteId });
+const scopes0 = () => Object.keys(SCOPE_GRANTS) as ApiScope[];
 
 async function principals() {
   const admin = person("admin", null);
@@ -96,6 +97,14 @@ async function principals() {
   check(!delegatedUser(staff, key(), "roster:write").permissions.includes("roster.edit"), "site staff only look at the roster: roster:write gives them no edit");
   check(delegatedUser(rosterStaff, key(), "roster:archive").permissions.includes("roster.archive"), "the roster switch gives site staff roster management");
   check(delegatedUser(staff, key(), "calendar:read").permissions.length === 0, "calendar:read needs no permission");
+  // Client information: Admins, or the per-person switch; the whole SSN stays Admin only and never reaches a key.
+  const clientStaff = person("site_staff", ["s1"], { clientInfoAccess: true });
+  check(!staff.permissions.includes("clients.view") && !manager.permissions.includes("clients.view"), "client information is off for staff and managers without the switch");
+  check(clientStaff.permissions.includes("clients.view") && clientStaff.permissions.includes("clients.edit") && !clientStaff.permissions.includes("clients.ssn"), "the client switch gives view and edit, not the whole SSN");
+  check(admin.permissions.includes("clients.ssn"), "Admins can see the whole SSN");
+  check(!delegatedUser(staff, key(), "clients:read").permissions.includes("clients.view"), "clients:read gives nothing of client information without the switch");
+  check(delegatedUser(clientStaff, key(), "clients:write").permissions.includes("clients.edit"), "clients:write carries the switch's edit");
+  check(scopes0().every((s) => !delegatedUser(superAdmin, key(), s).permissions.includes("clients.ssn")), "no delegated scope grants the whole SSN");
   const scopes: ApiScope[] = Object.keys(SCOPE_GRANTS) as ApiScope[];
   check(scopes.every((s) => !delegatedUser(superAdmin, key(), s).permissions.includes("admins.manage")), "no delegated scope grants admins.manage");
 }

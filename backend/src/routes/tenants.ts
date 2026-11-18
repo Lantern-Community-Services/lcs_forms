@@ -9,7 +9,9 @@ import { resolveSite, sitesInScope } from "../services/siteScope.js";
 import { loadRoster } from "../services/rosterQuery.js";
 import { exportFilename, scopeLabel, toCsv, toPdf, toXlsx, type ExportContext } from "../services/rosterExport.js";
 import { actorOf, audit, auditView, diff } from "../services/audit.js";
-import { attentionHours } from "../services/settings.js";
+import { attentionHours, clientInfoEnabled } from "../services/settings.js";
+import { clientFieldsView, formatSsn } from "../services/clientFields.js";
+import { caseLeadChoices, fieldWords, PROFILE_AUDIT_ACTIONS, profileView, saveProfile } from "../services/clientProfile.js";
 import { clockFrom, cutoff, displayName, isSentToReview, publicTenant, REVIEW_CLOCK, serializeTenant } from "../services/roster.js";
 import { formerNamesAfter, nameHistory, parseFormerNames } from "../services/nameHistory.js";
 import { reviewsRoster } from "../services/permissions.js";
@@ -195,9 +197,15 @@ tenantsRouter.get(
   requirePermission("roster.view"),
   asyncHandler(async (req, res) => {
     const t = await loadTenant(req, req.params.id);
+    // Changes to client information are history only for people who may see it.
+    const seesClientInfo = req.user?.permissions.includes("clients.view") ?? false;
     const [activities, history, names] = await Promise.all([
       prisma.tenantActivity.findMany({ where: { tenantId: t.id }, orderBy: { occurredAt: "desc" }, take: 25 }),
-      prisma.auditEvent.findMany({ where: { tenantId: t.id }, orderBy: { createdAt: "desc" }, take: 40 }),
+      prisma.auditEvent.findMany({
+        where: { tenantId: t.id, ...(seesClientInfo ? {} : { action: { notIn: [...PROFILE_AUDIT_ACTIONS] } }) },
+        orderBy: { createdAt: "desc" },
+        take: 40,
+      }),
       // Every rename, however long ago: History above stops at 40 events.
       nameHistory(t),
     ]);
@@ -207,6 +215,106 @@ tenantsRouter.get(
       history: history.map((h) => auditView(h, req.user?.permissions.includes("audit.view") ?? false)),
       nameHistory: names,
     });
+  })
+);
+
+// ── Client information (services/clientFields.ts) ───────────────────────
+//
+// Needs the clientInfo setting on, clients.view (an Admin, or the per-person
+// "Client information" switch) and, like everything here, the resident's site.
+// A site with it off answers { enabled: false } so the page simply leaves the
+// card out.
+
+async function clientInfoGate(req: Request, need: "clients.view" | "clients.edit" | "clients.ssn") {
+  if (!(await clientInfoEnabled())) throw notFound("Client information is turned off.");
+  if (!req.user?.permissions.includes(need)) throw forbidden();
+}
+
+tenantsRouter.get(
+  "/meta/client-fields",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    await clientInfoGate(req, "clients.view");
+    res.json(clientFieldsView());
+  })
+);
+
+tenantsRouter.get(
+  "/:id/profile",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    if (!(await clientInfoEnabled())) return res.json({ enabled: false });
+    await clientInfoGate(req, "clients.view");
+    const t = await loadTenant(req, req.params.id);
+    const p = await prisma.tenantProfile.findUnique({ where: { tenantId: t.id } });
+    res.json({
+      enabled: true,
+      canEdit: req.user!.permissions.includes("clients.edit"),
+      canSeeSsn: req.user!.permissions.includes("clients.ssn"),
+      profile: await profileView(t, p),
+    });
+  })
+);
+
+/** Who can be picked as their case lead: active staff approved for the resident's site. */
+tenantsRouter.get(
+  "/:id/profile/staff",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    await clientInfoGate(req, "clients.edit");
+    const t = await loadTenant(req, req.params.id);
+    res.json(await caseLeadChoices(t.siteId));
+  })
+);
+
+tenantsRouter.patch(
+  "/:id/profile",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    await clientInfoGate(req, "clients.edit");
+    const body = z
+      .object({ version: z.number().int().min(0), changes: z.record(z.unknown()) })
+      .parse(req.body);
+    const t = await loadTenant(req, req.params.id);
+    const before = await prisma.tenantProfile.findUnique({ where: { tenantId: t.id } });
+    const saved = await saveProfile({ tenant: t, before, version: body.version, changes: body.changes, userId: req.user!.userId });
+    if (saved) {
+      await audit({
+        actor: actorOf(req),
+        action: "tenant.profile_updated",
+        tenantId: t.id,
+        siteId: t.siteId,
+        summary: `Updated client information for ${displayName(t)} (${fieldWords(saved.changed)})`,
+        changes: saved.diff,
+      });
+    }
+    res.json({
+      enabled: true,
+      canEdit: true,
+      canSeeSsn: req.user!.permissions.includes("clients.ssn"),
+      profile: await profileView(t, saved?.row ?? before),
+    });
+  })
+);
+
+/** The whole SSN, for an Admin. Every look is written to the audit log. */
+tenantsRouter.post(
+  "/:id/profile/ssn",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    await clientInfoGate(req, "clients.ssn");
+    const t = await loadTenant(req, req.params.id);
+    const p = await prisma.tenantProfile.findUnique({ where: { tenantId: t.id }, select: { ssn: true } });
+    if (!p?.ssn) throw notFound("No Social Security Number on file.");
+    await audit({
+      actor: actorOf(req),
+      action: "tenant.ssn_viewed",
+      tenantId: t.id,
+      siteId: t.siteId,
+      summary: `Viewed the full Social Security Number of ${displayName(t)}`,
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ssn: formatSsn(p.ssn) });
   })
 );
 
