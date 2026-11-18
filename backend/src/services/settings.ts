@@ -25,6 +25,13 @@ export const SETTING_DEFAULTS = {
   seeEverythingGroups: "@IT",
   /** How every email looks (services/emailLook.ts): JSON, empty = the default. Only Super Admins change it. */
   emailLook: "",
+  /**
+   * "true": residents' client information (services/clientFields.ts) is on —
+   * the Client information card on a resident's page, its API and MCP tools.
+   * Off by default, so a site only shows it once an Admin turns it on (Admin →
+   * Settings). Turning it off hides it; nothing is deleted.
+   */
+  clientInfo: "false",
   /** Set when a build that wrote a default forms catalog had written it; see formCatalog.ts. */
   formCatalogSeeded: "",
   /** Set once the old default catalog has been taken out; see formCatalog.ts retireLegacyCatalog. */
@@ -71,3 +78,8 @@ export async function guestDomains(): Promise<string[]> {
   }
 }
 
+
+/** Residents' client information is switched on (Admin → Settings). */
+export async function clientInfoEnabled(): Promise<boolean> {
+  return (await getSetting("clientInfo")) === "true";
+}

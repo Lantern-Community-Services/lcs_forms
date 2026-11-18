@@ -38,7 +38,49 @@ function withoutSignatures(value: unknown): unknown {
   return value;
 }
 
+/** Client information: field keys and choices come from list_client_fields. */
+const clientChanges = z
+  .record(z.unknown())
+  .describe(
+    "Only the fields to change, keyed by field key (list_client_fields): text, \"YYYY-MM-DD\" dates, one of the field's options, a list of options for multi fields, a staff id for caseLead (list from get_client_info's site), a resident id for headOfHousehold, a list of { name, relationship, phone, email } for emergencyContacts. null clears a field. ssn takes nine digits."
+  );
+
 export const rosterOps = [
+  defineOp({
+    name: "list_client_fields",
+    description:
+      "The client information fields (what PlanStreet keeps on a case): sections, each field's key, label, type, options and when it applies (showIf), plus every building's programs. Read this before update_client_info.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/client-fields" },
+    shape: {},
+    annotations: { readOnlyHint: true },
+    run: (ctx) => ctx.route(tenantsRouter, { method: "GET", path: "/meta/client-fields" }),
+  }),
+
+  defineOp({
+    name: "get_client_info",
+    description:
+      "A resident's client information: date of birth and age, demographics, veteran status, program and funding, case lead, referral and intake, household (head and members) and move-out. The SSN comes as its last four only. `version` is what update_client_info needs (0 = nothing saved yet). Answers { enabled: false } while client information is turned off.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/client-info" },
+    shape: { id: residentId },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(tenantsRouter, { method: "GET", path: `/${id(a.id)}/profile` }),
+  }),
+
+  defineOp({
+    name: "update_client_info",
+    description:
+      "Change a resident's client information. Pass only the fields to change, and the version from get_client_info: if someone saved since, it's refused rather than overwritten. Answers that stop applying (e.g. veteran details when Veteran status becomes No) are cleared.",
+    scope: "clients:write",
+    as: "creator",
+    http: { method: "PATCH", path: "/residents/:id/client-info" },
+    shape: { id: residentId, version: z.number().int().min(0).describe("From get_client_info (0 = nothing saved yet)"), changes: clientChanges },
+    run: (ctx, { id: tid, ...body }) => ctx.route(tenantsRouter, { method: "PATCH", path: `/${id(tid)}/profile`, body }),
+  }),
+
   defineOp({
     name: "list_residents",
     description: "Residents on the roster at the sites the key can reach: active (default), attention (past the site's review threshold) or archived (removed). Search by name or unit with q.",

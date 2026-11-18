@@ -38,6 +38,9 @@ export const SCOPE_GRANTS: Partial<Record<ApiScope, Grant>> = {
   "roster:write": { all: ["roster.view", "roster.edit"], pinned: ["roster.view", "roster.edit"] },
   "roster:archive": { all: ["roster.view", "roster.archive", "roster.restore"], pinned: ["roster.view", "roster.archive", "roster.restore"] },
   "roster:import": { all: ["sites.manage"], pinned: [] },
+  // Client information: never the whole SSN (clients.ssn), whoever made the key.
+  "clients:read": { all: ["roster.view", "clients.view"], pinned: ["roster.view", "clients.view"] },
+  "clients:write": { all: ["roster.view", "clients.view", "clients.edit"], pinned: ["roster.view", "clients.view", "clients.edit"] },
   "audit:read": { all: ["roster.view", "audit.view"], pinned: ["roster.view", "audit.view"] },
   "sites:manage": { all: ["sites.manage", "sites.manageRules"], pinned: ["sites.manageRules"] },
   "people:manage": { all: ["users.manage", "users.manageSite", "people.records"], pinned: ["users.manageSite"] },

@@ -58,6 +58,8 @@ export const API_SCOPE_OPTIONS = [
   { scope: "roster:write", label: "Add and edit residents, mark them still here, take attendance", delegated: true },
   { scope: "roster:archive", label: "Remove residents from the roster and restore them", delegated: true },
   { scope: "roster:import", label: "Import a tenant list (CSV)", delegated: true },
+  { scope: "clients:read", label: "Read residents' client information (SSN as its last four only)", delegated: true },
+  { scope: "clients:write", label: "Change residents' client information", delegated: true },
   { scope: "audit:read", label: "Read the audit log", delegated: true },
   { scope: "sites:manage", label: "Manage sites and their roster rules", delegated: true },
   { scope: "people:manage", label: "People & roles: invite people, change roles, sites and status (never Admins)", delegated: true },

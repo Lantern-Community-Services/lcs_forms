@@ -735,6 +735,22 @@ declare module "@lcs/server" {
     lastActivityAt: string | null;
   }
 
+  /** ctx.roster.clientInfo(id): a resident's client information. */
+  export interface ServerClientInfo {
+    tenantId: string;
+    /** 0 = nothing saved yet. */
+    version: number;
+    /** Keyed by field: text, "YYYY-MM-DD" dates, option text, lists of options, numbers (years), { name, relationship, phone, email }[] for emergencyContacts. caseLead / headOfHousehold hold ids. */
+    values: Record<string, unknown>;
+    ssn: { last4: string; masked: string } | null;
+    age: number | null;
+    caseLead: { id: string; name: string; title: string | null; active: boolean } | null;
+    headOfHousehold: { id: string; displayName: string; unit: string | null; status: string } | null;
+    householdMembers: { id: string; displayName: string; unit: string | null; status: string; relationship: string | null }[];
+    updatedAt: string | null;
+    updatedBy: string | null;
+  }
+
   export interface ServerEntry<T = Record<string, unknown>> {
     id: string;
     data: T;
@@ -896,6 +912,14 @@ declare module "@lcs/server" {
       resident(id: string): ServerResident | null;
       /** Active residents, by last name; includeArchived for everyone who has lived there. */
       residents(siteIdOrCode: string, opts?: { includeArchived?: boolean }): ServerResident[];
+      /**
+       * The resident's client information (what PlanStreet keeps on a case: date of birth and age, demographics,
+       * veteran status, program and funding, case lead, referral, household, move-out), read only. `values` is keyed
+       * by field (get the list from the list_client_fields tool); the SSN comes as its last four only. null while
+       * client information is turned off (Admin → Roster rules), for someone without the "Client information" switch,
+       * for a resident outside their sites, and for share-link guests.
+       */
+      clientInfo(id: string): ServerClientInfo | null;
       /**
        * Note that the resident was seen (it resets their roster review clock and shows on their page),
        * labelled with the form's title unless you give one. An entry with tenantId does this already;

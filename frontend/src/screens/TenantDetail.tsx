@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import { RemoveDialog } from "@/components/roster/RemoveDialog";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
 import { HighAcuityFlag, HighAcuityToggle } from "@/components/roster/HighAcuity";
+import { ClientInfoCard } from "@/components/roster/ClientInfo";
 import { useRosterActions } from "@/components/roster/useRosterActions";
 import { rosterApi, useRosterMutation, useTenant } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
@@ -213,6 +214,8 @@ export function TenantDetailPage() {
             </div>
           )}
         </Card>
+
+        <ClientInfoCard tenant={t} />
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="page-list-item-enter p-5" style={{ animationDelay: "70ms" }}>
