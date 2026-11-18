@@ -432,8 +432,24 @@ export async function setFollowUp(
   actor: { userId: string | null; name: string },
   input: { done: boolean; note?: string | null; values?: Record<string, unknown>; tellAgain?: boolean }
 ) {
-  if (!entry.followUp) throw badRequest("This entry isn't tracked for follow-up. Turn follow-up on for the form; it applies to entries saved after that.");
   const note = input.note?.trim().slice(0, 2000) || null;
+  // An entry filed before follow-up was turned on isn't tracked yet. While the form tracks
+  // follow-ups, opening it starts tracking it, and marking it done tracks it as done.
+  if (!entry.followUp) {
+    if (!(await loadFollowUp(form)).enabled) throw badRequest("This entry isn't tracked for follow-up. Turn follow-up on for the form first.");
+    if (!input.done) {
+      const opened = await prisma.formEntry.update({ where: { id: entry.id }, data: { followUp: "open", followUpRemindedAt: null, followUpReminders: 0 } });
+      await prisma.formEntryNote.create({
+        data: {
+          entryId: entry.id,
+          kind: "system",
+          authorName: "System",
+          body: `Follow-up started by ${actor.name} (filed before follow-up was turned on)${note ? `: ${note}` : "."}`.slice(0, 2000),
+        },
+      });
+      return opened;
+    }
+  }
   if (input.done && entry.followUp === "done") throw badRequest(`Already done, by ${entry.followUpDoneByName ?? "someone"}.`);
   if (!input.done && entry.followUp === "open") throw badRequest("It's already open.");
 
