@@ -456,7 +456,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "mark_follow_up",
-    "Mark an entry's follow-up done, with a note of what was done and its done fields (values: { fieldId: answer }; see get_follow_up), or open it again with done: false. Whoever filed it is told. A password done field is emailed to them once and never kept; if that email can't go, nothing is saved. Marked done again after being opened again, nobody is emailed a second time (and no password is sent) unless tellAgain: true, e.g. for a corrected username or a new password. Acts as this key (the admin who made it).",
+    "Mark an entry's follow-up done, with a note of what was done and its done fields (values: { fieldId: answer }; see get_follow_up), or open it again with done: false. An entry filed before follow-up was turned on starts being tracked: done: false opens it (it then shows on the entry and is reminded about), done: true marks it done. Whoever filed it is told when it's done. A password done field is emailed to them once and never kept; if that email can't go, nothing is saved. Marked done again after being opened again, nobody is emailed a second time (and no password is sent) unless tellAgain: true, e.g. for a corrected username or a new password. Acts as this key (the admin who made it).",
     { form: formRef, entryId: z.string(), done: z.boolean(), note: z.string().max(2000).optional(), values: z.record(z.string().max(4000)).optional(), tellAgain: z.boolean().optional() },
     async ({ form, entryId, done, note, values, tellAgain }) => {
       need("entries:manage");
