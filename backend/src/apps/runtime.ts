@@ -6,6 +6,7 @@ import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { displayName, recordActivity } from "../services/roster.js";
 import { profileView } from "../services/clientProfile.js";
+import { completeForForm } from "../services/checklist.js";
 import { clientInfoEnabled } from "../services/settings.js";
 import { canReadEntries as canReadBasicEntries, isDuplicateClientId } from "../forms/entries.js";
 import { readDoc } from "../forms/service.js";
@@ -479,6 +480,8 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
       console.error(`[apps] roster activity for ${entry.id} failed:`, err)
     );
   }
+  // The move-in checklist: this form's task for them is done (services/checklist.ts).
+  if (tenant && !app.draft) await completeForForm({ tenantId: tenant.id, formSlug: app.form.slug, entryId: entry.id, at: occurredAt, byName: entry.createdByName ?? "Someone" });
   const out = entryOut(entry, await siteMap());
   if (app.build.server) {
     void runHook(app, user, "afterCreate", out).then((r) => {
@@ -987,7 +990,8 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         const s = await prisma.site.findFirst({ where: { OR: [{ id: String(args.x) }, { code: String(args.x) }] } });
         if (!s || !canSite(s.id)) return [];
         const status = args.opts?.includeArchived ? {} : { status: "active" };
-        return (await prisma.tenant.findMany({ where: { siteId: s.id, ...status }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] })).map(residentOut);
+        // Not moved in yet (case management): on the roster, but not someone a form is about.
+        return (await prisma.tenant.findMany({ where: { siteId: s.id, movedIn: true, ...status }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] })).map(residentOut);
       }
       case "roster.clientInfo": {
         // A resident's client information, for a person who may see it (services/clientFields.ts):

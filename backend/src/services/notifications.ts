@@ -81,6 +81,13 @@ export const NOTIFICATION_TYPES = {
     inApp: true,
     email: true,
   },
+  "residents.moves": {
+    label: "Move-ins, move-outs and checklists",
+    description: "Residents at your sites moving in or out, being away a long time, and checklist paperwork that's due or overdue.",
+    inApp: true,
+    email: false,
+    shownTo: (p) => p.includes("roster.edit") || p.includes("clients.view"),
+  },
   announcement: {
     label: "Announcements",
     description: "News from Lantern's admins, for everyone or for your role or site.",

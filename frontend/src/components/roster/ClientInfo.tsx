@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Eye, EyeOff, IdCard, Pencil, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -12,7 +11,7 @@ import { Spinner } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { clientApi, useCaseLeadChoices, useClientFields, useClientProfile, useTenants } from "@/lib/queries";
+import { clientApi, useCaseLeadChoices, useClientFields, useClientProfile } from "@/lib/queries";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import type { ClientField, ClientFieldsMeta, ClientProfile, ClientSection, ClientValue, ContactRow, TenantDetail } from "@/lib/types";
 
@@ -104,7 +103,6 @@ function SectionBlock(props: {
   const { section, profile, editing } = props;
   const shown = section.fields.filter((f) => applies(f, profile.values));
   const answered = shown.filter((f) => (f.type === "ssn" ? Boolean(profile.ssn) : !isEmpty(profile.values[f.key]))).length;
-  const household = section.key === "household" ? profile.householdMembers.length : 0;
 
   return (
     <section>
@@ -114,7 +112,6 @@ function SectionBlock(props: {
           <span className="font-heading text-[14px] font-bold text-ink">{section.title}</span>
           <span className="text-micro text-muted">
             {answered} of {shown.length}
-            {household > 0 && ` · ${household} in household`}
           </span>
         </button>
         {props.canEdit && !editing && (
@@ -138,8 +135,7 @@ function SectionBlock(props: {
 function SectionView({ section, tenant, profile, canSeeSsn }: { section: ClientSection; tenant: TenantDetail; profile: ClientProfile; canSeeSsn: boolean }) {
   const fields = section.fields.filter((f) => applies(f, profile.values));
   return (
-    <>
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-[13px] sm:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-[13px] sm:grid-cols-2">
         {fields.map((f) => (
           <div key={f.key} className={cn("min-w-0", f.wide && "sm:col-span-2")}>
             <dt className="text-micro font-semibold text-muted">{f.label}</dt>
@@ -149,24 +145,6 @@ function SectionView({ section, tenant, profile, canSeeSsn }: { section: ClientS
           </div>
         ))}
       </dl>
-      {section.key === "household" && profile.householdMembers.length > 0 && (
-        <div className="mt-4">
-          <p className="text-micro font-semibold text-muted">Household members</p>
-          <ul className="mt-1 space-y-1 text-[13px]">
-            {profile.householdMembers.map((m) => (
-              <li key={m.id}>
-                <Link to={`/tenants/${m.id}`} className="font-semibold text-accent hover:underline">{m.displayName}</Link>
-                <span className="text-muted">
-                  {m.relationship ? ` · ${m.relationship.replace(/^Head of household's /, "")}` : ""}
-                  {m.unit ? ` · unit ${m.unit}` : ""}
-                  {m.status !== "active" ? " · removed" : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
   );
 }
 
@@ -184,13 +162,6 @@ function FieldValue({ field, tenant, profile, canSeeSsn }: { field: ClientField;
           {profile.caseLead.title && <span className="text-muted"> · {profile.caseLead.title}</span>}
           {!profile.caseLead.active && <span className="text-muted"> (no longer active)</span>}
         </>
-      ) : <Blank />;
-    case "resident":
-      return profile.headOfHousehold ? (
-        <Link to={`/tenants/${profile.headOfHousehold.id}`} className="font-semibold text-accent hover:underline">
-          {profile.headOfHousehold.displayName}
-          {profile.headOfHousehold.unit ? ` · unit ${profile.headOfHousehold.unit}` : ""}
-        </Link>
       ) : <Blank />;
     case "date":
       return typeof v === "string" ? <>{fmtYmd(v)}{field.key === "dateOfBirth" && profile.age !== null ? <span className="text-muted"> · age {profile.age}</span> : null}</> : <Blank />;
@@ -370,8 +341,6 @@ function FieldInput({ field, value, onChange, meta, tenant }: { field: ClientFie
       return <ProgramSelect field={field} value={str} onChange={onChange} meta={meta} siteCode={tenant.site?.code} />;
     case "staff":
       return <StaffSelect tenantId={tenant.id} value={str} onChange={onChange} />;
-    case "resident":
-      return <HeadSelect tenant={tenant} value={str} onChange={onChange} />;
     case "contacts":
       return <ContactsInput value={Array.isArray(value) ? (value as ContactRow[]) : []} onChange={(rows) => onChange(rows)} />;
     default:
@@ -431,16 +400,6 @@ function StaffSelect({ tenantId, value, onChange }: { tenantId: string; value: s
   const options = (data ?? []).map((p) => ({ value: p.id, label: p.title ? `${p.name} — ${p.title}` : p.name }));
   if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: "Current case lead (not at this site now)" });
   return <Select value={value} onChange={(e) => onChange(e.target.value || undefined)} placeholder={isLoading ? "Loading staff…" : "—"} options={options} className={inputCls} />;
-}
-
-function HeadSelect({ tenant, value, onChange }: { tenant: TenantDetail; value: string; onChange: (v: string | undefined) => void }) {
-  const { data, isLoading } = useTenants(tenant.site?.code, "active", Boolean(tenant.site?.code));
-  const options = (data?.items ?? [])
-    .filter((r) => r.id !== tenant.id)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName))
-    .map((r) => ({ value: r.id, label: r.unit ? `${r.displayName} · unit ${r.unit}` : r.displayName }));
-  if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: "Current head of household" });
-  return <Select value={value} onChange={(e) => onChange(e.target.value || undefined)} placeholder={isLoading ? "Loading residents…" : "—"} options={options} className={inputCls} />;
 }
 
 function ContactsInput({ value, onChange }: { value: ContactRow[]; onChange: (rows: ContactRow[]) => void }) {

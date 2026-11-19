@@ -12,14 +12,15 @@ import { actorOf, audit, auditView, diff } from "../services/audit.js";
 import { attentionHours, clientInfoEnabled } from "../services/settings.js";
 import { clientFieldsView, formatSsn } from "../services/clientFields.js";
 import { caseLeadChoices, fieldWords, PROFILE_AUDIT_ACTIONS, profileView, saveProfile } from "../services/clientProfile.js";
-import { clockFrom, cutoff, displayName, isSentToReview, publicTenant, REVIEW_CLOCK, serializeTenant } from "../services/roster.js";
+import { clockFrom, cutoff, displayName, HOLD_CLOCK, isOnHold, isSentToReview, publicTenant, REVIEW_CLOCK, serializeTenant } from "../services/roster.js";
 import { formerNamesAfter, nameHistory, parseFormerNames } from "../services/nameHistory.js";
 import { reviewsRoster } from "../services/permissions.js";
+import { afterRestore, moveIn, releaseForRemoval, residencyOnFor } from "../services/residency.js";
 
 export const tenantsRouter = Router();
 tenantsRouter.use(requireAuth);
 
-const SITE_SELECT = { id: true, code: true, name: true, attentionHours: true } as const;
+const SITE_SELECT = { id: true, code: true, name: true, attentionHours: true, siteType: true } as const;
 
 /** Audit action for "Send back to review" (see the routes near the end). */
 const SENT_TO_REVIEW = "tenant.sent_to_review";
@@ -341,24 +342,48 @@ tenantsRouter.post(
   "/",
   requirePermission("roster.edit"),
   asyncHandler(async (req, res) => {
-    const body = z.object({ site: z.string(), ...tenantFields }).parse(req.body);
+    const body = z.object({ site: z.string(), ...tenantFields, unitId: z.string().max(64).nullable().optional() }).parse(req.body);
     const site = await resolveSite(req, body.site);
     if (!site) throw badRequest("Choose a site.");
     if (isOffice(site)) throw badRequest(`${site.name} is an office: it has no roster.`);
-    const { site: _s, ...data } = body;
+    const { site: _s, unitId, ...data } = body;
     const now = new Date();
-    const t = await prisma.tenant.create({
+    // Case management at a supportive site: being on the roster isn't living in a
+    // unit. Without a unit they're added as not moved in (kept out of pickers and
+    // review); with one, they're moved in on the move-in date.
+    const units = await residencyOnFor(site);
+    if (!units && unitId) throw badRequest(`${site.name} has no units.`);
+    let t = await prisma.tenant.create({
       data: {
         ...data,
-        unit: data.unit || null,
+        unit: units ? null : data.unit || null,
         preferredName: data.preferredName || null,
-        moveInDate: data.moveInDate ?? now,
+        moveInDate: units ? null : data.moveInDate ?? now,
         siteId: site.id,
         createdById: req.user!.userId,
-        attentionClockAt: now,
+        attentionClockAt: units ? HOLD_CLOCK : now,
+        movedIn: !units,
       },
       include: { site: { select: SITE_SELECT } },
     });
+    if (units && unitId) {
+      try {
+        await moveIn(
+          { actor: actorOf(req), userId: req.user!.userId, byName: req.user!.name },
+          {
+            unitId,
+            date: (data.moveInDate ?? now).toISOString().slice(0, 10),
+            people: [{ tenantId: t.id }],
+            canAccessSite: (id) => canAccessSite(req, id),
+          }
+        );
+      } catch (err) {
+        // The unit was taken or the date was wrong: don't leave half a resident behind.
+        await prisma.tenant.delete({ where: { id: t.id } });
+        throw err;
+      }
+      t = await prisma.tenant.findUniqueOrThrow({ where: { id: t.id }, include: { site: { select: SITE_SELECT } } });
+    }
     await audit({
       actor: actorOf(req),
       action: "tenant.created",
@@ -393,6 +418,9 @@ tenantsRouter.patch(
       .parse(req.body) as Record<string, unknown> & { version: number; site?: string };
 
     const before = await loadTenant(req, req.params.id);
+    if ((("unit" in body && (body.unit || null) !== before.unit) || (body.site && body.site !== before.site.code && body.site !== before.siteId)) && (await residencyOnFor(before.site))) {
+      throw badRequest("Units come from move-ins now: use Move in, or Transfer to move them to another unit or site.");
+    }
     const data: Record<string, unknown> = {};
     for (const k of EDITABLE) if (k in body && k !== "siteId") data[k] = body[k] === "" ? null : body[k];
     if (data.firstName === null) throw badRequest("First name is required.");
@@ -477,6 +505,7 @@ tenantsRouter.post(
       },
       include: { site: { select: SITE_SELECT } },
     });
+    await releaseForRemoval({ actor: actorOf(req), userId: req.user!.userId, byName: req.user!.name }, t, reason);
     await audit({
       actor: actorOf(req),
       action: "tenant.archived",
@@ -529,7 +558,9 @@ tenantsRouter.post(
       summary: recentOwn ? `Undid removal of ${displayName(t)}` : `Restored ${displayName(t)} to ${t.site.name}`,
       webhook: { event: "tenant.restored", data: publicTenant(after) },
     });
-    res.json(serializeTenant(after, await attentionHours()));
+    // Units: an undo puts them back in their unit; otherwise they come back not moved in.
+    await afterRestore({ actor: actorOf(req), userId: req.user!.userId, byName: req.user!.name }, after, Boolean(recentOwn));
+    res.json(serializeTenant(await loadTenant(req, t.id), await attentionHours()));
   })
 );
 
@@ -639,6 +670,7 @@ tenantsRouter.post(
   asyncHandler(async (req, res) => {
     const t = await loadTenant(req, req.params.id);
     if (t.status !== "active") throw badRequest("Only people on the roster can be sent to review.");
+    if (isOnHold(t)) throw badRequest(t.awaySince ? `${displayName(t)} is away. Mark them back first.` : `${displayName(t)} hasn't moved in yet.`);
     if (isSentToReview(t)) return res.json(serializeTenant(t, await attentionHours()));
     const after = await prisma.tenant.update({
       where: { id: t.id },
@@ -667,7 +699,8 @@ tenantsRouter.post(
     if (isOffice(site)) throw badRequest(`${site.name} is an office: it has no roster.`);
     const actor = actorOf(req);
     const targets = await prisma.tenant.findMany({
-      where: { siteId: site.id, status: "active", attentionClockAt: { gt: REVIEW_CLOCK } },
+      // People on hold (away, not moved in) stay out of review.
+      where: { siteId: site.id, status: "active", attentionClockAt: { gt: REVIEW_CLOCK, lt: HOLD_CLOCK } },
       select: { id: true },
     });
     const ids = targets.map((t) => t.id);

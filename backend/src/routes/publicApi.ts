@@ -60,7 +60,8 @@ publicApiRouter.get(
   requireApiScope("roster:read"),
   asyncHandler(async (req, res) => {
     const site = await siteByCode(req, req.params.code);
-    const rows = await prisma.tenant.findMany({ where: { siteId: site.id, status: "active" }, include: { site: { select: { code: true } } } });
+    // Not moved in yet (case management): not on the lists integrations pick from.
+    const rows = await prisma.tenant.findMany({ where: { siteId: site.id, status: "active", movedIn: true }, include: { site: { select: { code: true } } } });
     const items = rows.map(publicTenant).sort((a, b) => collator.compare(a.unit ?? "~", b.unit ?? "~") || collator.compare(a.displayName, b.displayName));
     res.set("Cache-Control", "private, max-age=60");
     res.json({ site: { code: site.code, name: site.name }, generatedAt: new Date().toISOString(), count: items.length, items });
@@ -77,7 +78,7 @@ publicApiRouter.get(
   requireApiScope("roster:read"),
   asyncHandler(async (req, res) => {
     const site = await siteByCode(req, req.params.code);
-    const rows = await prisma.tenant.findMany({ where: { siteId: site.id, status: "active" } });
+    const rows = await prisma.tenant.findMany({ where: { siteId: site.id, status: "active", movedIn: true } });
     const choices = rows
       .map((t) => ({ unit: t.unit, text: `${displayName(t)}${t.unit ? ` — ${t.unit}` : ""}`, value: t.id }))
       .sort((a, b) => collator.compare(a.unit ?? "~", b.unit ?? "~") || collator.compare(a.text, b.text))
