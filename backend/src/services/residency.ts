@@ -1,5 +1,5 @@
 import type { Prisma, Site, Stay, Tenant, TenantAbsence, Unit } from "@prisma/client";
-import { prisma } from "../prisma.js";
+import { CASE_TX, prisma } from "../prisma.js";
 import { badRequest, HttpError } from "../http.js";
 import { audit, type Actor } from "./audit.js";
 import { caseManagementEnabled } from "./settings.js";
@@ -228,7 +228,7 @@ export async function updateUnit(ctx: Ctx, unit: Unit & { site: SiteRow }, body:
     // Renamed: the people living there carry its new name.
     if (data.label) await tx.tenant.updateMany({ where: { unitId: unit.id, status: "active" }, data: { unit: data.label as string } });
     return u;
-  });
+  }, CASE_TX);
   await audit({
     actor: ctx.actor,
     action: "unit.updated",
@@ -305,7 +305,7 @@ export async function seedUnits(ctx: Ctx, site: SiteRow) {
         linked++;
       }
       await tx.unit.update({ where: { id: unit.id }, data: { vacantSince: null } });
-    });
+    }, CASE_TX);
   }
   await audit({ actor: ctx.actor, action: "units.seeded", siteId: site.id, summary: `Set up units at ${site.name} from the roster: ${added} new ${added === 1 ? "unit" : "units"}, ${linked} ${linked === 1 ? "person" : "people"} linked` });
   return { unitsAdded: added, residentsLinked: linked, unitsTotal: units.length };
@@ -390,7 +390,7 @@ export async function moveIn(ctx: Ctx, opts: { unitId: string; date: unknown; pe
       await tasksForStay(tx, { tenantId: t.id, siteId: unit.siteId, stayId: stay.id, moveIn: date, fresh: true });
     }
     await tx.unit.update({ where: { id: unit.id }, data: { vacantSince: null } });
-  });
+  }, CASE_TX);
 
   const names = plan.map((p) => displayName(byId.get(p.tenantId)!));
   for (const p of plan) {
@@ -479,7 +479,7 @@ export async function transfer(ctx: Ctx, opts: { tenantIds: string[]; toUnitId: 
     for (const u of fromUnits) {
       if (!(await tx.tenant.count({ where: { unitId: u, status: "active" } }))) await tx.unit.update({ where: { id: u }, data: { vacantSince: day(date) } });
     }
-  });
+  }, CASE_TX);
   for (const t of tenants) {
     const after = await prisma.tenant.findUniqueOrThrow({ where: { id: t.id }, include: { site: { select: { code: true } } } });
     await audit({
@@ -586,7 +586,7 @@ export async function moveOut(
     for (const u of units) {
       if (!(await tx.tenant.count({ where: { unitId: u, status: "active" } }))) await tx.unit.update({ where: { id: u }, data: { vacantSince: day(date) } });
     }
-  });
+  }, CASE_TX);
 
   for (const t of tenants) {
     const after = await prisma.tenant.findUniqueOrThrow({ where: { id: t.id }, include: { site: { select: { code: true } } } });
@@ -648,7 +648,7 @@ export async function releaseForRemoval(ctx: Ctx, t: Tenant, reason: string) {
     if (t.unitId && !(await tx.tenant.count({ where: { unitId: t.unitId, status: "active" } }))) {
       await tx.unit.update({ where: { id: t.unitId }, data: { vacantSince: day(date) } });
     }
-  });
+  }, CASE_TX);
 }
 
 /**
@@ -695,7 +695,7 @@ export async function afterRestore(ctx: Ctx, t: Tenant, undo: boolean) {
       await tx.unit.update({ where: { id: unit.id }, data: { vacantSince: null } });
       await tx.tenantTask.deleteMany({ where: { tenantId: t.id, key: "hmis_project_exit", status: "open", stayId: last.id } });
       await tx.tenantTask.updateMany({ where: { tenantId: t.id, status: "cancelled", updatedAt: { gte: new Date(last.updatedAt.getTime() - 60_000) } }, data: { status: "open" } });
-    });
+    }, CASE_TX);
     return;
   }
   await prisma.tenant.update({
@@ -771,7 +771,7 @@ export async function makeHead(ctx: Ctx, t: Tenant, formerHeadRelation: unknown)
     await tx.tenant.update({ where: { id: t.id }, data: { householdHeadId: null, householdRelation: HEAD, version: { increment: 1 } } });
     if (oldHead) await tx.tenant.update({ where: { id: oldHead.id }, data: { householdHeadId: t.id, householdRelation: formerHeadRelation, version: { increment: 1 } } });
     if (members.length) await tx.tenant.updateMany({ where: { id: { in: members.map((m) => m.id) } }, data: { householdHeadId: t.id } });
-  });
+  }, CASE_TX);
   await audit({ actor: ctx.actor, action: "tenant.household_head", tenantId: t.id, siteId: t.siteId, summary: `${displayName(t)} is now head of household${oldHead ? ` (was ${displayName(oldHead)})` : ""}` });
 }
 

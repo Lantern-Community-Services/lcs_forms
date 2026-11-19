@@ -1,5 +1,5 @@
 import type { Prisma, TenantTask } from "@prisma/client";
-import { prisma } from "../prisma.js";
+import { CASE_TX, prisma } from "../prisma.js";
 import { badRequest } from "../http.js";
 import { displayName } from "./roster.js";
 import { caseManagementEnabled } from "./settings.js";
@@ -161,7 +161,7 @@ export async function settleTask(
       }
     }
     return { task: updated, next };
-  });
+  }, CASE_TX);
 }
 
 /**
