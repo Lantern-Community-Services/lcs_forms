@@ -96,6 +96,12 @@ export interface User {
   viewAs?: { id: string; name: string; act: boolean; /** They build forms: the bar can open any form, drafts included. */ drafts: boolean } | null;
   /** /auth/me: whoever is really signed in may view the site as others (also true while they are). */
   canViewAs?: boolean;
+  /**
+   * /auth/me: org switches every screen follows (Admin → Settings). caseManagement: the case
+   * management rework (replacing PlanStreet) is on for this site; screens of the rework show
+   * only then, and the roster stays as it was otherwise (useCaseManagement in lib/auth.tsx).
+   */
+  features?: { caseManagement?: boolean };
 }
 
 export interface Site extends SiteRef {
@@ -269,8 +275,8 @@ export interface Settings {
   undoSeconds: string;
   /** "false" stops the welcome tour starting by itself (lib/tour/SiteTourStarter.tsx). */
   welcomeTour: string;
-  /** "true": residents' client information is on (the Client information card). Off by default. */
-  clientInfo: string;
+  /** "true": the case management rework is on (today: residents' client information). Off by default. */
+  caseManagement: string;
   /** The groups whose members see every form and every entry (IT by default). */
   seeEverythingGroupIds?: string[];
 }

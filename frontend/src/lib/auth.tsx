@@ -126,10 +126,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
-    await api.post("/auth/logout");
-    noteSignedOut();
-    void clearRoster();
-    setUser(null);
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      // Even when the server can't be reached (offline): nothing of theirs stays on the device.
+      noteSignedOut();
+      void clearRoster();
+      setUser(null);
+    }
   }
 
   const can = (permission: PermissionKey) => (user?.permissions ?? []).includes(permission);
@@ -145,4 +149,13 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+/**
+ * Whether the case management rework (replacing PlanStreet) is on for this site: Admin →
+ * Settings → Case management. It's built on the Azure dev site while prod keeps the roster
+ * as it is, from the same code, so each part of the rework shows only when this is true.
+ */
+export function useCaseManagement(): boolean {
+  return Boolean(useAuth().user?.features?.caseManagement);
 }

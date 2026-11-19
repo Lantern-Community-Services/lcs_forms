@@ -411,6 +411,8 @@ function buildServer(key: ResolvedKey, principal: CurrentUser, from?: CallFrom):
   tool("export_forms", "Export forms as an lcs-form bundle (JSON), optionally with their entries.", { forms: z.array(formRef).min(1), entries: z.boolean().optional() }, async ({ forms, entries }) => {
     need("forms:build");
     if (entries) need("entries:read");
+    // Entries for every site come with the bundle: not for a key limited to one site (like export_code_form).
+    if (entries && key.siteId) throw new HttpError(403, "A key limited to one site can't export entries with forms: use list_entries, which keeps to its site.");
     const ids = await Promise.all(forms.map(async (f) => (await findForm(f)).id));
     return exportForms(ids, { entries });
   }, { readOnlyHint: true });
@@ -467,7 +469,7 @@ function buildServer(key: ResolvedKey, principal: CurrentUser, from?: CallFrom):
   registerCatalogTools(tool, need, actor);
   registerTutorialTools(tool, need, actor);
   registerNotificationTools(tool, need, key, actor);
-  registerRoutingTools(tool, need, actor);
+  registerRoutingTools(tool, need, actor, key);
   registerOps(tool, key, from);
   return server;
 }

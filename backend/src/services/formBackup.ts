@@ -20,7 +20,8 @@ import { namesIn, rosterNames } from "./rosterNames.js";
  * over a newer one from another site. What each site last matched is kept in
  * sites/<site>/sync.json. A form whose backup moved on while this site's copy
  * didn't "needs sync": Admin → Form builder / Code forms can pull it in (Sync,
- * Sync all). One changed on both sides "differs": an admin picks which wins.
+ * Sync all). One changed on both sides "differs": an admin picks which wins, one
+ * form at a time (Sync all leaves those alone).
  *
  * Site-specific things live under sites/<site>/: the Forms catalog, each form's
  * status and published versions, a code form's settings collections (see
@@ -846,13 +847,14 @@ export function queueBackupJobs(action: JobAction, keys: (string | null)[], acto
 }
 
 /**
- * What Sync all brings in: every form and component on this site whose backup differs (needs sync, or
- * changed on both sides — the backup's version wins), that `allowed` lets through. Components first, so
- * the forms build against them. Not ones that exist only in the backup.
+ * What Sync all brings in: every form and component on this site that needs sync (the backup moved on,
+ * this site's copy didn't), that `allowed` lets through. Components first, so the forms build against
+ * them. Never one changed here too ("differs"): the backup replacing this site's work is an admin's call,
+ * form by form (Sync on that form). Nor ones that exist only in the backup.
  */
 export const formsToSync = (allowed: (key: string) => boolean = () => true) =>
   state.forms
-    .filter((f) => (f.state === "behind" || f.state === "differs") && allowed(f.key))
+    .filter((f) => f.state === "behind" && allowed(f.key))
     .sort((a, b) => Number(b.kind === "component") - Number(a.kind === "component"))
     .map((f) => f.key);
 

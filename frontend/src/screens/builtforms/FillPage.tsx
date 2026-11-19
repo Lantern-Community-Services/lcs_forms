@@ -5,7 +5,7 @@ import { CheckCircle2, CircleHelp, CloudOff, Lock } from "lucide-react";
 import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { useAuth } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
-import { isOnline } from "@/lib/offline";
+import { FORM_DRAFT_PREFIX, isOnline } from "@/lib/offline";
 import { Page } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,10 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   }, [publicView]);
   const [clientId, setClientId] = useState(newClientId);
   const [round, setRound] = useState(0);
-  const draftKey = `lcs-form-draft:${slug}`;
+  // Unsent answers are kept on the device only for the signed-in person filling in their own form:
+  // never signed out (/p/), by share link, or while the form is handed to a resident (locked), where
+  // the next person to open it could be anyone. Removed at sign-out and when someone else signs in (lib/offline.ts).
+  const draftKey = user && !publicView && !shareToken && !locked ? `${FORM_DRAFT_PREFIX}${user.id}:${slug}` : undefined;
 
   // The form's tutorial (its "tutorial"): the first time someone opens it, and from "Show me how".
   const values = useRef<Values>({});
@@ -88,6 +91,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   const { doc, form } = data;
 
   const clearDraft = () => {
+    if (!draftKey) return;
     try {
       localStorage.removeItem(draftKey);
     } catch {

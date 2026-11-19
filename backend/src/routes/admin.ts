@@ -3,10 +3,11 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
 import { allGroups, everythingGroupIds, reloadAccess } from "../services/staffGroups.js";
-import { requireAuth, requirePermission } from "../auth/middleware.js";
+import { refuseWhileActingAs, requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
 import { getAllSettings, setSetting } from "../services/settings.js";
 import { API_SCOPES, generateKey } from "../services/apiKeys.js";
+import { SCOPE_GRANTS } from "../ops/principal.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
 import { backupStatus, formsToSync, queueBackupJobs } from "../services/formBackup.js";
@@ -50,7 +51,9 @@ adminRouter.patch(
         guestDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "Not a domain")).optional(),
         undoSeconds: z.number().int().min(3).max(60).optional(),
         welcomeTour: z.boolean().optional(),
-        /** Residents' client information (services/clientFields.ts): off hides it everywhere. */
+        /** The case management rework (services/settings.ts caseManagement): off hides it everywhere. */
+        caseManagement: z.boolean().optional(),
+        /** The old name for caseManagement, still taken from older callers. */
         clientInfo: z.boolean().optional(),
         /** Groups whose members see every form and every entry. Super Admins only. */
         seeEverythingGroups: z.array(z.string().max(64)).max(20).optional(),
@@ -66,7 +69,8 @@ adminRouter.patch(
     if (body.guestDomains !== undefined) await setSetting("guestDomains", [...new Set(body.guestDomains)].join(","));
     if (body.undoSeconds !== undefined) await setSetting("undoSeconds", String(body.undoSeconds));
     if (body.welcomeTour !== undefined) await setSetting("welcomeTour", String(body.welcomeTour));
-    if (body.clientInfo !== undefined) await setSetting("clientInfo", String(body.clientInfo));
+    const caseManagement = body.caseManagement ?? body.clientInfo;
+    if (caseManagement !== undefined) await setSetting("caseManagement", String(caseManagement));
     if (body.seeEverythingGroups !== undefined) {
       await setSetting("seeEverythingGroups", [...new Set(body.seeEverythingGroups)].join(","));
       await reloadAccess();
@@ -94,6 +98,7 @@ adminRouter.post(
   "/api-keys",
   requirePermission("integrations.manage"),
   asyncHandler(async (req, res) => {
+    refuseWhileActingAs(req);
     const body = z
       .object({
         name: z.string().trim().min(1).max(80),
@@ -101,6 +106,12 @@ adminRouter.post(
         siteId: z.string().nullable().optional(),
       })
       .parse(req.body);
+    // Building forms and the org-wide delegated scopes reach every site whatever a pin says
+    // (ops/principal.ts), so a key limited to one site can't be given them at all.
+    if (body.siteId) {
+      const wide = body.scopes.filter((s) => s === "forms:build" || s === "apps:build" || (SCOPE_GRANTS[s] && SCOPE_GRANTS[s]!.all.length > 0 && SCOPE_GRANTS[s]!.pinned.length === 0));
+      if (wide.length) throw badRequest(`A key limited to one site can't have ${wide.join(", ")}: they reach every site. Make a key without a site for those.`);
+    }
     const { key, prefix, hash } = generateKey();
     const row = await prisma.apiKey.create({
       data: { name: body.name, prefix, hash, scopes: body.scopes.join(","), siteId: body.siteId || null, createdById: req.user!.userId },

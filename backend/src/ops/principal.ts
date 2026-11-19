@@ -85,6 +85,15 @@ export function delegatedUser(creator: CurrentUser, key: Pick<ResolvedKey, "name
   };
 }
 
+/**
+ * Whether the person who made the key has `permission` now, as an active account
+ * (currentUserById): an "Admin's key only" check that a deactivated or demoted maker fails.
+ */
+export async function keyMakerCan(key: Pick<ResolvedKey, "createdById">, permission: PermissionKey): Promise<boolean> {
+  const creator = key.createdById ? await currentUserById(key.createdById) : null;
+  return Boolean(creator?.permissions.includes(permission));
+}
+
 /** delegatedUser() for a real key: loads its creator, refusing a key nobody active stands behind. */
 export async function principalFor(key: ResolvedKey, scope: ApiScope): Promise<CurrentUser> {
   if (!key.createdById) {

@@ -48,7 +48,8 @@ export const importClientId = (externalId: string) => `import:${externalId}`;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const b64Bytes = (s: string) => Math.floor((s.replace(/=+$/, "").length * 3) / 4);
 
-export async function importEntries(form: BuiltForm, entries: ImportEntry[], opts: { dryRun: boolean }): Promise<ImportResult> {
+/** onlySiteId: an API key limited to one site imports entries for that site only. */
+export async function importEntries(form: BuiltForm, entries: ImportEntry[], opts: { dryRun: boolean; onlySiteId?: string | null }): Promise<ImportResult> {
   const doc = liveDoc(form);
   if (!doc) throw notFound("This form hasn't been published yet.");
   const fields = new Map<string, Field>(doc.fields.filter(isInputField).map((f) => [f.id, f]));
@@ -144,12 +145,17 @@ export async function importEntries(form: BuiltForm, entries: ImportEntry[], opt
       if (sf) siteId = sites.get(String(values[sf.id])) ?? null;
     }
     if (doc.settings.requireSite && !siteId) bad(x, "This form needs a site: send site or a Site field's answer.");
+    if (opts.onlySiteId && siteId !== opts.onlySiteId) bad(x, "This API key is limited to one site, so every entry must be at that site.");
     prepared.push({ e, values, files, siteId, at });
   }
 
-  const existing = new Set(
-    (await prisma.formEntry.findMany({ where: { formId: form.id, clientId: { in: entries.map((e) => importClientId(e.externalId)) } }, select: { clientId: true } })).map((r) => r.clientId)
-  );
+  const already = await prisma.formEntry.findMany({ where: { formId: form.id, clientId: { in: entries.map((e) => importClientId(e.externalId)) } }, select: { clientId: true, source: true } });
+  const existing = new Set(already.map((r) => r.clientId));
+  // import:<id> is the importer's alone (submit paths refuse it), so an entry that holds one
+  // without having been imported is a collision to look at, never proof it was imported.
+  for (const r of already) {
+    if (r.source !== "import") bad(String(r.clientId).slice("import:".length), `An entry that wasn't imported (${r.source}) already holds this id. Look at it before importing this one.`);
+  }
   const fresh = prepared.filter((p) => !existing.has(importClientId(p.e.externalId)));
   const skipped = prepared.filter((p) => existing.has(importClientId(p.e.externalId))).map((p) => p.e.externalId);
   if (problems.length || opts.dryRun) {

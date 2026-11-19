@@ -22,7 +22,7 @@ import { errorMessage } from "@/lib/utils";
  * sites.manageRules for it — an Admin sets each site.
  */
 export function AdminSettings() {
-  const { can } = useAuth();
+  const { can, refresh } = useAuth();
   const orgWide = can("settings.manage");
   const testSite = useTestSite();
   const { data, isLoading } = useSettings();
@@ -41,13 +41,14 @@ export function AdminSettings() {
     }
   }
 
-  async function setClientInfo(on: boolean) {
-    if (on && !window.confirm("Turn on client information? Admins, and anyone you give the \"Can see client information\" switch in People & roles, will see and edit residents' dates of birth, demographics, program and household on their pages.")) return;
+  async function setCaseManagement(on: boolean) {
+    if (on && !window.confirm("Turn on case management for this site? This is the PlanStreet replacement, still being built: Admins, and anyone you give the \"Can see client information\" switch in People & roles, will see and edit residents' client information (dates of birth, demographics, program, household) on their pages. Leave it off on the live site until it's ready.")) return;
     try {
-      await api.patch("/admin/settings", { clientInfo: on });
-      await qc.invalidateQueries({ queryKey: ["admin", "settings"] });
-      await qc.invalidateQueries({ queryKey: ["roster"] });
-      toast(on ? "Client information is on." : "Client information is off. Nothing was deleted; turning it back on shows it again.");
+      await api.patch("/admin/settings", { caseManagement: on });
+      // The switch is part of /auth/me (user.features), so every screen picks it up.
+      await qc.invalidateQueries();
+      await refresh();
+      toast(on ? "Case management is on for this site." : "Case management is off. Nothing was deleted; turning it back on shows it again.");
     } catch (e) {
       toast(errorMessage(e, "Could not save."), "error");
     }
@@ -78,15 +79,16 @@ export function AdminSettings() {
       {orgWide && (
         <Card className="mt-4 p-5">
           <label className="flex items-start gap-3">
-            <Switch className="mt-0.5" checked={data?.clientInfo === "true"} onCheckedChange={(on) => void setClientInfo(on)} />
+            <Switch className="mt-0.5" checked={data?.caseManagement === "true"} onCheckedChange={(on) => void setCaseManagement(on)} />
             <span>
-              <span className="block text-[14px] font-semibold text-ink">Client information</span>
+              <span className="block text-[14px] font-semibold text-ink">Case management (being built)</span>
               <span className="mt-0.5 block text-[13px] text-muted">
-                A Client information section on each resident's page — date of birth, Social Security Number, contact,
-                demographics, veteran status, program and funding, case lead, referral, household and move-out, as PlanStreet
-                keeps them. Admins see it; give anyone else the <b className="text-ink">Can see client information</b> switch in
-                People &amp; roles. The SSN shows as its last four digits; only Admins can show the whole number, and each look is logged.
-                Off hides it everywhere without deleting anything.
+                The PlanStreet replacement, built into the roster. While it's being built, keep it on for the dev site and off for
+                the live one: off, the roster works exactly as it always has. So far it adds a Client information section on each
+                resident's page — date of birth, Social Security Number, contact, demographics, veteran status, program and funding,
+                case lead, referral, household and move-out, as PlanStreet keeps them. Admins see it; give anyone else the{" "}
+                <b className="text-ink">Can see client information</b> switch in People &amp; roles. The SSN shows as its last four
+                digits; only Admins can show the whole number, and each look is logged. Off hides it everywhere without deleting anything.
               </span>
             </span>
           </label>

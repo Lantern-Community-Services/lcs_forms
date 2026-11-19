@@ -26,12 +26,16 @@ export const SETTING_DEFAULTS = {
   /** How every email looks (services/emailLook.ts): JSON, empty = the default. Only Super Admins change it. */
   emailLook: "",
   /**
-   * "true": residents' client information (services/clientFields.ts) is on —
-   * the Client information card on a resident's page, its API and MCP tools.
-   * Off by default, so a site only shows it once an Admin turns it on (Admin →
-   * Settings). Turning it off hides it; nothing is deleted.
+   * "true": the case management rework (replacing PlanStreet) is on for this site.
+   * It is being built on the Azure dev site while prod keeps the roster as it is,
+   * from the same code: every part of the rework checks this switch
+   * (caseManagementEnabled here, user.features.caseManagement in the app). Today
+   * that is residents' client information (services/clientFields.ts): the Client
+   * information card on a resident's page, its API and MCP tools. Off by default;
+   * turning it off hides the rework again and deletes nothing. Was "clientInfo"
+   * until 2026-11-19 (migrateSettingKeys carries the old value over).
    */
-  clientInfo: "false",
+  caseManagement: "false",
   /** Set when a build that wrote a default forms catalog had written it; see formCatalog.ts. */
   formCatalogSeeded: "",
   /** Set once the old default catalog has been taken out; see formCatalog.ts retireLegacyCatalog. */
@@ -79,7 +83,28 @@ export async function guestDomains(): Promise<string[]> {
 }
 
 
-/** Residents' client information is switched on (Admin → Settings). */
-export async function clientInfoEnabled(): Promise<boolean> {
-  return (await getSetting("clientInfo")) === "true";
+/** The case management rework is switched on for this site (Admin → Settings). */
+export async function caseManagementEnabled(): Promise<boolean> {
+  return (await getSetting("caseManagement")) === "true";
+}
+
+/** Residents' client information: part of the case management rework, so on and off with it. */
+export const clientInfoEnabled = caseManagementEnabled;
+
+/** Settings that were renamed, and what each became. */
+const RENAMED_SETTINGS: Record<string, SettingKey> = { clientInfo: "caseManagement" };
+
+/** At start-up: a renamed setting's stored value moves to its new name (unless that's already set). */
+export async function migrateSettingKeys(): Promise<number> {
+  let n = 0;
+  for (const [from, to] of Object.entries(RENAMED_SETTINGS)) {
+    const old = await prisma.setting.findUnique({ where: { key: from } });
+    if (!old) continue;
+    if (!(await prisma.setting.findUnique({ where: { key: to } }))) {
+      await prisma.setting.create({ data: { key: to, value: old.value } });
+      n++;
+    }
+    await prisma.setting.delete({ where: { key: from } });
+  }
+  return n;
 }

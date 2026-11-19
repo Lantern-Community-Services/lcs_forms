@@ -112,7 +112,7 @@ function colorHex(c: { slot?: number | null; siteType?: string; color?: string }
   return BAR;
 }
 
-/** Spreadsheet formula injection: a cell starting with = + - @ is shown as text. */
+/** Spreadsheet formula injection: a cell starting with = + - @ is shown as text (services/spreadsheetSafe.ts). */
 const safe = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
 
 type Col = z.infer<typeof column>;

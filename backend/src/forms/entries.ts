@@ -1,3 +1,4 @@
+import { formulaSafe } from "../services/spreadsheetSafe.js";
 import crypto from "node:crypto";
 import type { BuiltForm, FormEntry, Prisma } from "@prisma/client";
 import ExcelJS from "exceljs";
@@ -63,6 +64,23 @@ export function liveDoc(form: BuiltForm): FormDoc | null {
  * came through a share link that works (services/shareLinks.ts resolveShare),
  * which is how anyone fills in a form shared by link.
  */
+/**
+ * The form as someone filling it in or reading its entries gets it: without its
+ * notification rules, which hold webhook addresses and signing secrets, recipients
+ * and message bodies. Those are the server's (runNotifications) and the builder's,
+ * which only form admins open; nothing on the fill or entries pages uses them.
+ */
+export function docForViewer(doc: FormDoc, user: Viewer): FormDoc {
+  if (isFormAdmin(user) || !doc.settings.notifications) return doc;
+  const { notifications: _serverOnly, ...settings } = doc.settings;
+  return { ...doc, settings };
+}
+
+/** The form is limited to some roles (access.mode "roles") and this person's isn't one (Admins pass). */
+function outsideRoleLimit(doc: FormDoc, user: NonNullable<Viewer>): boolean {
+  return doc.settings.access?.mode === "roles" && !isFormAdmin(user) && !(doc.settings.access?.roles ?? []).includes(user.roleKey);
+}
+
 export function fillBlocker(form: BuiltForm, doc: FormDoc, user: Viewer, shared = false): { status: number; message: string } | null {
   if (form.status === "archived" || form.status === "draft" || !form.liveSchema) return { status: 404, message: "This form isn't available." };
   const mode = doc.settings.access?.mode ?? "signed_in";
@@ -71,7 +89,7 @@ export function fillBlocker(form: BuiltForm, doc: FormDoc, user: Viewer, shared 
   // Limited to some groups or people: never public, whatever its own setting says.
   const limited = isBuiltFormLimited(form.id);
   if ((mode !== "public" || limited) && !user) return { status: 401, message: "Sign in to fill in this form." };
-  if (mode === "roles" && user && !isFormAdmin(user) && !(doc.settings.access?.roles ?? []).includes(user.roleKey)) {
+  if (user && outsideRoleLimit(doc, user)) {
     return { status: 403, message: "This form is limited to other roles. Ask an administrator if you need it." };
   }
   if (user && !canUseBuiltForm(user, form.id)) {
@@ -128,6 +146,9 @@ export const legacyReadersOf = (doc: FormDoc) => doc.settings.entriesRoles ?? DE
  */
 export function entryReachOf(form: BuiltForm, doc: FormDoc, user: Viewer): "all" | "site" | "own" | null {
   if (!user) return null;
+  // A form limited to some roles: someone it isn't open to doesn't read everyone's entries
+  // either, whatever its "Who sees entries" says — only their own and the ones they were told about.
+  if (outsideRoleLimit(doc, user)) return "own";
   return entryReach(form.id, legacyReadersOf(doc), user);
 }
 
@@ -298,12 +319,18 @@ export async function submitEntry(input: SubmitInput) {
   if (input.source === "app" || input.source === "public" || input.source === "share") {
     const blocked = fillBlocker(form, doc, user, Boolean(input.share));
     if (blocked) throw new HttpError(blocked.status, blocked.message);
+    // import:<externalId> is the importer's (forms/entryImport.ts): someone filling the form in
+    // taking one would make a later import skip the real entry.
+    if (input.clientId?.startsWith("import:")) throw badRequest("That clientId is reserved for imported entries.");
   } else if (form.status === "archived" || form.status === "draft") throw notFound("This form isn't live.");
+  // Whether the person asking made `e`: only they get its answers back on a retry. Anyone
+  // else holding the same clientId (it's the caller's to choose) hears only that it's in.
+  const mine = (e: FormEntry) => Boolean(user && e.createdById === user.userId);
   // A retried upload gets back the entry it already made — before any limit
   // check, which that very entry would now trip.
   if (input.clientId) {
     const dup = await prisma.formEntry.findFirst({ where: { formId: form.id, clientId: input.clientId } });
-    if (dup) return { entry: dup, duplicate: true, doc };
+    if (dup) return { entry: dup, duplicate: true, doc, mine: mine(dup) };
   }
   const closed = await closedReason(form, doc, user);
   if (closed) throw new HttpError(409, closed);
@@ -358,7 +385,7 @@ export async function submitEntry(input: SubmitInput) {
     // The same upload sent twice at once (a retry while the first was still
     // being saved): both passed the check above, and the database let one in.
     const dup = input.clientId && isDuplicateClientId(e) ? await prisma.formEntry.findFirst({ where: { formId: form.id, clientId: input.clientId } }) : null;
-    if (dup) return { entry: dup, duplicate: true, doc };
+    if (dup) return { entry: dup, duplicate: true, doc, mine: mine(dup) };
     throw e;
   }
   const fileIds = filled.doc.fields.filter((f) => f.type === "file").flatMap((f) => ((values[f.id] as { id: string }[] | undefined) ?? []).map((x) => x.id));
@@ -381,7 +408,7 @@ export async function submitEntry(input: SubmitInput) {
   // Today's notification settings, with the fields the answers belong to.
   const notifyDoc = filled.doc === doc ? doc : { ...doc, fields: filled.doc.fields };
   void runNotifications(form, notifyDoc, entry, values, user).catch((err) => console.error(`[forms] notifications for entry ${entry.id} failed:`, err));
-  return { entry, duplicate: false, doc };
+  return { entry, duplicate: false, doc, mine: true };
 }
 
 export const entryUrl = (slug: string, id: string) => `${appBaseUrl}/f/${slug}/entries/${id}`;
@@ -770,8 +797,10 @@ export async function exportEntries(
   const base = `${form.slug}-entries-${new Date().toISOString().slice(0, 10)}`;
   if (format === "csv") {
     const esc = (s: string) => (/[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+    // Answers are typed by whoever filled the form in (signed out, on a public form): text that
+    // starts like a formula stays text (services/spreadsheetSafe.ts). Numbers stay numbers.
     // A leading BOM so Excel opens the UTF-8 correctly.
-    const text = "﻿" + [header, ...data].map((r) => r.map((c) => esc(String(c ?? ""))).join(",")).join("\r\n");
+    const text = "﻿" + [header, ...data].map((r) => r.map((c) => esc(typeof c === "string" ? formulaSafe(c) : String(c ?? ""))).join(",")).join("\r\n");
     return { filename: `${base}.csv`, mime: "text/csv; charset=utf-8", body: Buffer.from(text, "utf8") };
   }
   const wb = new ExcelJS.Workbook();

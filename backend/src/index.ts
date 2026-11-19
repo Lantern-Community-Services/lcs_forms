@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { devAuthEnabled, env, ssoConfigured } from "./env.js";
 import { retireLegacyCatalog } from "./services/formCatalog.js";
 import { migrateLegacyRoles } from "./services/permissions.js";
+import { migrateSettingKeys } from "./services/settings.js";
 import { backfillFormerNames } from "./services/nameHistory.js";
 import { startGeoip } from "./services/geoip.js";
 import { syncSuperAdmins } from "./services/superAdmins.js";
@@ -55,6 +56,10 @@ ensureSiteLocations()
 migrateLegacyRoles()
   .then((n) => n && console.log(`  Roles: moved ${n} people off retired roles.`))
   .catch((err) => console.error("[roles] could not migrate retired roles:", err));
+
+migrateSettingKeys()
+  .then((n) => n && console.log(`  Settings: moved ${n} renamed setting(s) to their new names.`))
+  .catch((err) => console.error("[settings] could not migrate renamed settings:", err));
 
 // IP → place for the audit log and sign-ins, on this server (downloads DB-IP's free file once a month).
 startGeoip();

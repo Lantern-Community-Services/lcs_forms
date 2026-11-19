@@ -4,7 +4,7 @@ import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { mailConfigured, sendLogged } from "./mailer.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
-import { LEGACY_ROLES, PERMISSIONS, isRoleKey, permissionsFor, roleFor, type PermissionKey } from "./permissions.js";
+import { LEGACY_ROLES, PERMISSIONS, RETIRED_ROLES, isRoleKey, permissionsFor, roleFor, type PermissionKey } from "./permissions.js";
 import { partsOf, startOfDay, today } from "../apps/time.js";
 import { messageWording, templateByKey } from "./emailTemplates.js";
 
@@ -231,10 +231,11 @@ export async function resolveAudience(to: Audience) {
   }
 
   // A retired role key (site_admin…) means the role it became: forms written before the change still reach people.
-  const roles = [...new Set((to.roles ?? []).filter(Boolean).map((r) => LEGACY_ROLES[r] ?? r))];
+  // A retired role with no stand-in (developer) reaches nobody.
+  const roles = [...new Set((to.roles ?? []).filter((r) => r && !(r in RETIRED_ROLES)).map((r) => LEGACY_ROLES[r] ?? r))];
   const perms = (to.permissions ?? []).filter(Boolean);
   const badRole = roles.find((r) => !isRoleKey(r));
-  if (badRole) throw new Error(`"${badRole}" isn't a role. Roles: admin, developer, main_office, site_manager, site_staff, arete_staff.`);
+  if (badRole) throw new Error(`"${badRole}" isn't a role. Roles: admin, main_office, site_manager, site_staff, arete_staff.`);
   const badPerm = perms.find((p) => !(PERMISSIONS as readonly string[]).includes(p));
   if (badPerm) throw new Error(`"${badPerm}" isn't a permission.`);
 

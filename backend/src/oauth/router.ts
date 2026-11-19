@@ -9,7 +9,7 @@ import type { OAuthMetadata, OAuthProtectedResourceMetadata } from "@modelcontex
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
-import { requireAuth } from "../auth/middleware.js";
+import { refuseWhileActingAs, requireAuth } from "../auth/middleware.js";
 import { audit, actorOf } from "../services/audit.js";
 import { OAUTH_SCOPES, clientsStore, issueCode, provider, readConnectRequest, redirectWith } from "./provider.js";
 
@@ -105,6 +105,7 @@ oauthRouter.post(
   asyncHandler(async (req, res) => {
     const body = z.object({ req: z.string().min(1), allow: z.boolean() }).parse(req.body);
     const { request, client } = await connectRequestOf(body.req);
+    if (body.allow) refuseWhileActingAs(req);
     if (!body.allow) {
       res.json({ redirect: redirectWith(request.redirectUri, { error: "access_denied", error_description: "The person cancelled.", state: request.state }) });
       return;

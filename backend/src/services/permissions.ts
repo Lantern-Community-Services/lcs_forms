@@ -1,8 +1,8 @@
 import { prisma } from "../prisma.js";
 
 /**
- * Roles are defined in code: the central admin, developers, and the people at
- * sites — main office staff, site managers and site staff. Everyone but an
+ * Roles are defined in code: the central admin, and the people at sites —
+ * main office staff, site managers, site staff and Arete staff. Everyone but an
  * Admin sees only the sites they've been approved for. If Lantern later needs editable roles, this table becomes a
  * Role model the way the AP app did it, and nothing that calls `can()` changes.
  */
@@ -25,7 +25,7 @@ export const PERMISSIONS = [
   "integrations.manage",
   "settings.manage",
   "forms.manage",
-  /** Build code forms: their files, server logic and data (Admin and Developer). */
+  /** Build and publish code forms: their files, server logic and data. Admin only. */
   "apps.develop",
   /**
    * The whole calendar: categories, events for every site, and any event at
@@ -131,15 +131,6 @@ export const ROLES: RoleDef[] = [
     allSites: true,
   },
   {
-    // Builds code forms. Can't change people, sites or settings, and sees
-    // rosters only at sites they're assigned (for testing with real data).
-    key: "developer",
-    name: "Developer",
-    description: "Builds code forms — pages, server logic, dashboards — and can read entries. Sees rosters only at assigned sites.",
-    permissions: ["apps.develop", "roster.view", "entries.view"],
-    allSites: false,
-  },
-  {
     // Its own role so it can be given main-office duties later. For now it can
     // do what Site Staff can, at the sites the person is approved for.
     key: "main_office",
@@ -188,14 +179,27 @@ export const LEGACY_ROLES: Record<string, string> = {
 };
 
 /**
+ * Roles that were retired with no stand-in. Anyone who still has one becomes the
+ * role it maps to (roleFor, migrateLegacyRoles), but a role list that names it —
+ * a form's roles, a notification route — matches nobody, rather than widening to
+ * everyone in the stand-in role.
+ */
+export const RETIRED_ROLES: Record<string, string> = {
+  // Developer retired (2026-11-19, security audit): code a Developer published ran
+  // with more reach than the role had (scheduled jobs as nobody, invites from anyone's
+  // Outlook). Only Admins build and publish code forms now.
+  developer: "site_staff",
+};
+
+/**
  * The roles a Site Manager may give out and see in Site settings. Listed, not
- * worked out from allSites: Developer is bounded by sites too but only an
+ * worked out from allSites: Arete Staff is bounded by sites too but only an
  * Admin hands it out.
  */
 export const SITE_ROLE_KEYS = ["site_manager", "site_staff", "main_office"];
 
 export function roleFor(key: string): RoleDef {
-  const k = LEGACY_ROLES[key] ?? key;
+  const k = LEGACY_ROLES[key] ?? RETIRED_ROLES[key] ?? key;
   return ROLES.find((r) => r.key === k) ?? ROLES.find((r) => r.key === DEFAULT_ROLE_KEY)!;
 }
 
@@ -237,7 +241,7 @@ export function isRoleKey(key: string): boolean {
  */
 export async function migrateLegacyRoles(): Promise<number> {
   let n = 0;
-  for (const [from, to] of Object.entries(LEGACY_ROLES)) {
+  for (const [from, to] of [...Object.entries(LEGACY_ROLES), ...Object.entries(RETIRED_ROLES)]) {
     n += (await prisma.user.updateMany({ where: { roleKey: from }, data: { roleKey: to } })).count;
   }
   return n;

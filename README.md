@@ -106,8 +106,8 @@ Admin → Hot Foods), which was removed with its data on 2026-10-07.
 
 | Tab | Who | What |
 |---|---|---|
-| **Record** | Admin, Developer, Site Manager, Site Staff | Meal → Resident → Sign, then Saved with Next resident and Undo. The meal is picked once per shift; most frequent residents first. Works offline: entries queue on the device and upload behind the scenes. |
-| **Entries** | Main Office, Site Manager, Developer | Filter by sites, dates, status and search; Print, and Export (CSV, Excel, PDF) of everything the filters match. Each entry opens with its signature, Print, and **Void** (Admin). |
+| **Record** | Admin, Site Manager, Site Staff | Meal → Resident → Sign, then Saved with Next resident and Undo. The meal is picked once per shift; most frequent residents first. Works offline: entries queue on the device and upload behind the scenes. |
+| **Entries** | Main Office, Site Manager | Filter by sites, dates, status and search; Print, and Export (CSV, Excel, PDF) of everything the filters match. Each entry opens with its signature, Print, and **Void** (Admin). |
 | **Reports** | same as Entries | Meals served, residents, meals per day (with a table), by site, by meal type, a weekday × hour grid and entries by staff member. Print, or export as a PDF report (charts drawn in) or an Excel workbook (one sheet per breakdown). |
 | **Settings** | Admin | Meals per day (supportive, shelter), the shelter cooldown, and the meal types with their report colors. |
 
@@ -432,8 +432,8 @@ A builder form can keep each new entry **open** until the people it's for mark i
 
 When a form needs more than fields and rules (custom screens, server-side logic, offline recording,
 dashboards), build it as a **code form**: a small project of its own, like working in this codebase
-but scoped to one form. **Admin → Code forms** (`/admin/apps`), for Admins and the **Developer** role
-(`apps.develop`). A code form opens at `/apps/<slug>` with one tab per page.
+but scoped to one form. **Admin → Code forms** (`/admin/apps`), for Admins only
+(`apps.develop`; the Developer role was retired on 2026-11-19). A code form opens at `/apps/<slug>` with one tab per page.
 
 ```
 form.json          title, icon, pages (tabs) and who sees each, who reads / voids entries, collections
@@ -480,8 +480,8 @@ lib/…  styles.css  anything else; Tailwind classes with the app's tokens work 
   1600px JPEG and stored as a `FormFile` (bytes in Blob Storage, see "Uploaded files"); any `{ fileId }` in an entry's data is attached when it saves.
   Offline, photos wait on the device and upload ahead of their entry (`frontend/src/apps/queue.ts`).
   `form.json` `"files"` sets size and types.
-- **Editing entries:** `entries.update` for `form.json` `entries.edit` roles (default admins and
-  developers) or the maker within `editOwnMinutes`; server `beforeUpdate` can refuse; every change,
+- **Editing entries:** `entries.update` for `form.json` `entries.edit` roles (default admins
+  only) or the maker within `editOwnMinutes`; server `beforeUpdate` can refuse; every change,
   void and restore is kept (`<EntryHistory>`).
 - **The rest of the site:** `calendar.*` (read, and write with the person's own calendar rights),
   `roster.resident()` and `ctx.roster.logActivity()`, and `form.json` `"home"` — a server action whose
@@ -864,7 +864,7 @@ every email **Sent**. The MCP has the same: `get_routing`, `save_route`, `set_ro
 people can do and where to go. The words are in `frontend/src/lib/help/content.ts`, written with the
 features: change them there when a feature changes.
 
-- **A guide for each role** (Site Staff, Site Manager, Main Office Staff, Developer, Admin, Super Admin):
+- **A guide for each role** (Site Staff, Site Manager, Main Office Staff, Arete Staff, Admin, Super Admin):
   what you can do, **Start here** buttons to the screens, and what to read first. Help opens on yours
   (Super Admin if you are one); every role's is at `/help/role/<key>`.
 - **An article for each feature** (`/help/<id>`): getting around, notifications, filling in forms,
@@ -1142,7 +1142,6 @@ pipeline and infrastructure live in `infra/` and `.github/workflows/`.
 | Site Manager | Site Staff + roster management (add, edit, keep, remove, restore residents; attendance) + **Site settings**: People & roles for their own sites, where they approve, decline and remove requests for those sites and turn "Can manage the roster" on for their staff. |
 | Main Office Staff | Same as Site Staff for now, at the sites they're approved for (it no longer sees every site); its own role so it can get main-office duties later. |
 | Site Staff | Submit and read forms, look at the roster, read the calendar, at their approved sites. Events are asked for through Event Requests. |
-| Developer | Builds code forms; reads entries and rosters at assigned sites. |
 | Arete Staff | Arete, the security partner (aretenyc.com accounts, an admitted domain). Sees **only** the forms its role names (`RoleDef.forms`: the two incident report forms), at its assigned sites: files reports and reads their sites' reports and Reports. No roster screen; the incident forms look residents up for them. An Admin can still give one person another form. |
 
 Two per-person switches add to a role: **Can manage the roster** (Site Managers or Admins turn it on)
