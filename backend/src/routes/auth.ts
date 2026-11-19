@@ -109,8 +109,26 @@ authRouter.get(
     clearTx();
 
     try {
-      let user = identity.oid ? await prisma.user.findFirst({ where: { entraObjectId: identity.oid } }) : null;
-      if (!user) user = await prisma.user.findUnique({ where: { email: identity.email } });
+      // The Microsoft object id (oid) never changes for an account; the email claim can be
+      // changed in the directory. So the account is found by oid first, and an email never
+      // takes over an account already linked to a different Microsoft account, nor moves onto
+      // an address another account (or a Super Admin) holds. A Super Admin can clear a link
+      // (POST /api/users/:id/unlink-microsoft) when someone's Microsoft account was remade.
+      const byOid = identity.oid ? await prisma.user.findFirst({ where: { entraObjectId: identity.oid } }) : null;
+      const byEmail = await prisma.user.findUnique({ where: { email: identity.email } });
+      const refuseLink = async (why: string) => {
+        console.warn(`[auth] refused Microsoft sign-in for ${identity.email} (oid ${identity.oid || "none"}): ${why}`);
+        await audit({ actor: { id: (byOid ?? byEmail)?.id ?? null, name: identity.name }, action: "user.signin_refused", summary: `Refused a Microsoft sign-in as ${identity.email}: ${why}` });
+        return failTo(res, "This Microsoft account doesn't match the Lantern Forms account for that email. Contact the IT Team.");
+      };
+      if (byEmail?.entraObjectId && byEmail.entraObjectId !== identity.oid) {
+        return refuseLink("that email's account is linked to a different Microsoft account");
+      }
+      if (byOid && byEmail && byOid.id !== byEmail.id) return refuseLink("that email belongs to another account");
+      let user = byOid ?? byEmail;
+      if (user && user.email !== identity.email && env.superAdmins.includes(identity.email) && !user.globalAdmin) {
+        return refuseLink("the account's email changed to a Super Admin's address");
+      }
 
       // Listed in SUPER_ADMINS: an active Super Admin whatever else is true,
       // which is how a new environment gets its first Admins.

@@ -197,7 +197,8 @@ export function AdminPeople() {
       const client = everyone && draft.id && draft.roleKey !== "admin" ? { clientInfoAccess: draft.clientInfoAccess } : {};
       // View as: a Super Admin's to give an Admin. Leaving Admin drops it on the server.
       const viewAs = managesAdmins && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" ? { viewAsEnabled: draft.viewAsEnabled } : {};
-      const title = { title: draft.title?.trim() || null };
+      // Job title: an Admin's to set (it decides staff groups); the server refuses it from anyone else.
+      const title = everyone ? { title: draft.title?.trim() || null } : {};
       if (draft.id) await api.patch(`/users/${draft.id}`, { roleKey: draft.roleKey, status: draft.status, siteIds: draft.siteIds, ...(draft.canEditRole && !draft.superAdmin ? title : {}), ...calendar, ...roster, ...client, ...viewAs });
       else await api.post("/users", { email: draft.email.trim(), roleKey: draft.roleKey, siteIds: draft.siteIds, ...title, ...calendar });
       toast(draft.id ? "Saved." : `Added ${draft.email.trim()}. Their name and title fill in when they first sign in.`);
@@ -207,6 +208,18 @@ export function AdminPeople() {
       await qc.invalidateQueries({ queryKey: ["admin", "users"] });
     } catch (e) {
       toast(errorMessage(e, "Could not save."), "error");
+    }
+  }
+
+  /** Super Admins: forget their Microsoft account, so a remade one can sign in (routes/users.ts). */
+  async function unlinkMicrosoft() {
+    if (!draft?.id) return;
+    if (!window.confirm(`Unlink ${draft.name} from their Microsoft account? Whichever Microsoft account next signs in as ${draft.email} becomes theirs. Only do this when their Microsoft account was remade.`)) return;
+    try {
+      await api.post(`/users/${draft.id}/unlink-microsoft`, {});
+      toast("Unlinked. Their next Microsoft sign-in links again.");
+    } catch (e) {
+      toast(errorMessage(e, "Could not unlink."), "error");
     }
   }
 
@@ -339,7 +352,8 @@ export function AdminPeople() {
                   <Input type="email" autoFocus value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="name@lanterncommunity.org" />
                 </Field>
               )}
-              {!draft.superAdmin && (draft.canEditRole || !draft.id) && (
+              {/* Admins only: a title puts people in staff groups, which decide what they can see. */}
+              {everyone && !draft.superAdmin && (draft.canEditRole || !draft.id) && (
                 <Field label="Job title" hint="Spelled out in full (Assistant Program Director, not APD): it puts them in their team's groups. Their Microsoft profile's title replaces it when they sign in, if it has one.">
                   <Input value={draft.title ?? ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} maxLength={120} placeholder="e.g. Assistant Program Director" />
                 </Field>
@@ -347,6 +361,15 @@ export function AdminPeople() {
               {draft.id && draft.status === "invited" && (
                 <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
                   Hasn't signed in yet. Their first sign-in fills in their name and job title from Microsoft and makes the account active.
+                </p>
+              )}
+              {draft.id && managesAdmins && draft.hasSignedIn && !draft.isSelf && (
+                <p className="text-[13px] text-muted">
+                  Sign-in refused because their Microsoft account was remade?{" "}
+                  <button type="button" className="font-medium text-ink underline underline-offset-2" onClick={() => void unlinkMicrosoft()}>
+                    Unlink their Microsoft account
+                  </button>
+                  , and their next sign-in links the new one.
                 </p>
               )}
               {draft.superAdmin ? (

@@ -158,6 +158,8 @@ const userBody = z.object({
 
 const CALENDAR_SWITCH_ADMIN_ONLY = "Only an Admin can change who edits the calendar.";
 const CLIENT_SWITCH_ADMIN_ONLY = "Only an Admin can change who sees client information.";
+/** A job title puts people in staff groups (staffGroups.ts groupsForTitle), the see-everything group included. */
+const TITLE_ADMIN_ONLY = "Only an Admin can change a job title: it decides which staff groups someone is in.";
 
 /**
  * Pre-create (invite) a person: a pending account, so they can be given a role
@@ -176,6 +178,7 @@ usersRouter.post(
     assertAssignable(req, body.roleKey, body.siteIds);
     if (!managesEveryone(req) && body.siteIds.length === 0) throw badRequest("Pick at least one of your sites.");
     if (body.calendarEditor && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
+    if (body.title && !managesEveryone(req)) throw forbidden(TITLE_ADMIN_ONLY);
     if (body.roleKey === "admin" && !managesAdmins(req)) throw forbidden(SUPER_ONLY);
     if (await prisma.user.findUnique({ where: { email: body.email } })) throw badRequest("Someone with that email already exists.");
     const user = await prisma.user.create({
@@ -234,6 +237,8 @@ usersRouter.patch(
     if (calendarChange && !managesEveryone(req)) throw forbidden(CALENDAR_SWITCH_ADMIN_ONLY);
     const rosterChange = body.rosterEditor !== undefined && body.rosterEditor !== before.rosterEditor;
     if (rosterChange && before.id === req.user!.userId) throw forbidden(ROSTER_SWITCH_NOT_YOURS);
+    const titleChange = body.title !== undefined && (body.title || null) !== before.title;
+    if (titleChange && !managesEveryone(req)) throw forbidden(TITLE_ADMIN_ONLY);
     const clientChange = body.clientInfoAccess !== undefined && body.clientInfoAccess !== before.clientInfoAccess;
     if (clientChange && !managesEveryone(req)) throw forbidden(CLIENT_SWITCH_ADMIN_ONLY);
     // View as is a Super Admin's to hand out, to an Admin only (it never outlives their being one).
@@ -334,6 +339,27 @@ usersRouter.patch(
     // Their sites, role or status decide which Outlook invites they get.
     if (body.siteIds || body.roleKey || body.status) await markUpcomingDirty();
     res.json(shape(user));
+  })
+);
+
+/**
+ * Forget which Microsoft account someone signs in with (Super Admins only). A sign-in
+ * whose email belongs to an account linked to a different Microsoft account is refused
+ * (routes/auth.ts); when their Microsoft account really was remade, this lets their
+ * next sign-in link the new one.
+ */
+usersRouter.post(
+  "/:id/unlink-microsoft",
+  requirePermission("users.manage"),
+  asyncHandler(async (req, res) => {
+    if (!managesAdmins(req)) throw forbidden("Only a Super Admin can unlink someone's Microsoft account.");
+    const u = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!u) throw notFound();
+    if (u.entraObjectId) {
+      await prisma.user.update({ where: { id: u.id }, data: { entraObjectId: null } });
+      await audit({ actor: actorOf(req), action: "user.microsoft_unlinked", summary: `Unlinked ${u.name} (${u.email}) from their Microsoft account: their next sign-in links again` });
+    }
+    res.json({ ok: true });
   })
 );
 
