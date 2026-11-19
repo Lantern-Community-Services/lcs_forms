@@ -51,7 +51,9 @@ adminRouter.patch(
         guestDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "Not a domain")).optional(),
         undoSeconds: z.number().int().min(3).max(60).optional(),
         welcomeTour: z.boolean().optional(),
-        /** Residents' client information (services/clientFields.ts): off hides it everywhere. */
+        /** The case management rework (services/settings.ts caseManagement): off hides it everywhere. */
+        caseManagement: z.boolean().optional(),
+        /** The old name for caseManagement, still taken from older callers. */
         clientInfo: z.boolean().optional(),
         /** Groups whose members see every form and every entry. Super Admins only. */
         seeEverythingGroups: z.array(z.string().max(64)).max(20).optional(),
@@ -67,7 +69,8 @@ adminRouter.patch(
     if (body.guestDomains !== undefined) await setSetting("guestDomains", [...new Set(body.guestDomains)].join(","));
     if (body.undoSeconds !== undefined) await setSetting("undoSeconds", String(body.undoSeconds));
     if (body.welcomeTour !== undefined) await setSetting("welcomeTour", String(body.welcomeTour));
-    if (body.clientInfo !== undefined) await setSetting("clientInfo", String(body.clientInfo));
+    const caseManagement = body.caseManagement ?? body.clientInfo;
+    if (caseManagement !== undefined) await setSetting("caseManagement", String(caseManagement));
     if (body.seeEverythingGroups !== undefined) {
       await setSetting("seeEverythingGroups", [...new Set(body.seeEverythingGroups)].join(","));
       await reloadAccess();

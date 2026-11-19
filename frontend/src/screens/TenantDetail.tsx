@@ -19,7 +19,7 @@ import { HighAcuityFlag, HighAcuityToggle } from "@/components/roster/HighAcuity
 import { ClientInfoCard } from "@/components/roster/ClientInfo";
 import { useRosterActions } from "@/components/roster/useRosterActions";
 import { rosterApi, useRosterMutation, useTenant } from "@/lib/queries";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useCaseManagement } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { errorMessage, formatDate, formatDateInput, formatDateTime, quietFor, relativeTime, tintFor } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
@@ -39,6 +39,7 @@ const toForm = (t: Tenant): FormState => ({
 export function TenantDetailPage() {
   const { id } = useParams();
   const { can } = useAuth();
+  const caseManagement = useCaseManagement();
   const toast = useToast();
   const { data: t, isLoading } = useTenant(id);
   const { remove, keep, restore, sendToReview } = useRosterActions();
@@ -215,7 +216,8 @@ export function TenantDetailPage() {
           )}
         </Card>
 
-        <ClientInfoCard tenant={t} />
+        {/* Part of the case management rework: only when it's on for this site (Admin → Settings). */}
+        {caseManagement && <ClientInfoCard tenant={t} />}
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="page-list-item-enter p-5" style={{ animationDelay: "70ms" }}>
