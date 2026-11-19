@@ -449,7 +449,7 @@ export const ARTICLES: HelpArticle[] = [
         heading: "Roles",
         points: [
           "Site Staff: fills in and reads forms, looks up residents, at their sites. Site Manager: also manages the roster and the people at their sites.",
-          "Main Office Staff: like Site Staff, at the sites they're approved for. Developer: builds code forms.",
+          "Main Office Staff: like Site Staff, at the sites they're approved for.",
           "Admin: everything, every site. Super Admin: an Admin who also makes Admins, reads person records and owns email templates.",
           "Switches add to a role for one person: “Can manage the roster” and “Can edit the calendar”.",
         ],
@@ -529,7 +529,7 @@ export const ARTICLES: HelpArticle[] = [
   },
 ];
 
-export type RoleGuideKey = "site_staff" | "site_manager" | "main_office" | "developer" | "arete_staff" | "admin" | "super_admin";
+export type RoleGuideKey = "site_staff" | "site_manager" | "main_office" | "arete_staff" | "admin" | "super_admin";
 
 export interface RoleGuide {
   key: RoleGuideKey;
@@ -586,14 +586,6 @@ export const ROLE_GUIDES: RoleGuide[] = [
       { label: "Notifications", to: "/notifications" },
     ],
     read: ["getting-around", "filling-forms", "entries", "follow-ups", "your-notifications"],
-  },
-  {
-    key: "developer",
-    name: "Developer",
-    intro: "You build code forms and read their entries. You see rosters only at the sites you're assigned.",
-    can: ["Build and publish code forms.", "Read entries.", "Look up residents at your assigned sites, to test with real data."],
-    startHere: [{ label: "Code forms", to: "/admin/apps", needs: ["apps.develop"] }],
-    read: ["admin-code-forms", "entries", "getting-around"],
   },
   {
     key: "arete_staff",

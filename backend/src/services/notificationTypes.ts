@@ -4,7 +4,7 @@ import { badRequest } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { routeSchema, type Recipient, type Route } from "../forms/routingSchema.js";
 import { canUseBuiltForm } from "./staffGroups.js";
-import { LEGACY_ROLES, roleFor } from "./permissions.js";
+import { LEGACY_ROLES, RETIRED_ROLES, roleFor } from "./permissions.js";
 import { audit, type Actor } from "./audit.js";
 import { mailConfigured } from "./mailer.js";
 import {
@@ -110,7 +110,7 @@ function couldReach(to: Recipient[], routeSites: string[] | undefined, p: Person
       case "person":
         return t.email.toLowerCase() === p.email;
       case "role":
-        return roleFor(LEGACY_ROLES[t.role] ?? t.role).key === p.roleKey && siteFits(t.siteOnly !== false);
+        return !(t.role in RETIRED_ROLES) && roleFor(LEGACY_ROLES[t.role] ?? t.role).key === p.roleKey && siteFits(t.siteOnly !== false);
       case "group":
         return p.groupIds.includes(t.group) && siteFits(Boolean(t.siteOnly));
       case "title":

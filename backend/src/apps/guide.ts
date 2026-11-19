@@ -38,10 +38,10 @@ anything else        .ts/.tsx/.json helpers you import with relative paths ("../
   "pdf": { "action": "printDocuments" },                            // each entry as its paper form in exports (see below)
   "tutorial": { "steps": [{ "page": "record", "target": "meal-picker", "action": "click", "title": "Pick the meal" }] }  // see below
 }
-entries also takes "edit": [roles] (who can change anyone's entry; default admins and developers only) and
+entries also takes "edit": [roles] (who can change anyone's entry; default admins only) and
 "editOwnMinutes": N (people can change their own entry for N minutes; default 0).
-Role keys: admin, developer, main_office, site_manager, site_staff, arete_staff (Arete, the security partner: sees only the forms its role names). "*" = everyone with access.
-Admins and developers pass every role check.
+Role keys: admin, main_office, site_manager, site_staff, arete_staff (Arete, the security partner: sees only the forms its role names). "*" = everyone with access.
+Admins pass every role check.
 
 ## How data flows
 - entries: the form's records. Each has free-form JSON "data", plus site, tenantId (a resident's roster id),

@@ -73,7 +73,7 @@ const ROSTER_SWITCH_NOT_YOURS = "You can't change your own roster access.";
  *     site that person has is one of theirs — a role applies everywhere, so one
  *     site's manager must not demote someone another site relies on. Otherwise
  *     they can still add or remove that person at their own sites.
- * Admin and Developer accounts are never theirs to touch. Nor is the "Can edit
+ * Admin accounts are never theirs to touch. Nor is the "Can edit
  * the calendar" switch: only an Admin turns that on or off.
  */
 const managesEveryone = (req: Request) => req.user!.permissions.includes("users.manage");
