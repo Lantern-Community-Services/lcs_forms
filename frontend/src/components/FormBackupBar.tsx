@@ -77,9 +77,7 @@ function useBackupActions(data: BackupStatus | undefined) {
       if (f.state === "differs" && !confirm(`“${f.title}” was changed here too. Replace this site's draft with the backup's version${savedLine(f) ? ` (${savedLine(f)})` : ""}? Published versions stay in its history.`)) return;
       queue.mutate({ path: "/sync", body: { keys: [f.key] } });
     },
-    syncAll(forms: FormSync[]) {
-      const changedHere = forms.filter((f) => f.state === "differs");
-      if (changedHere.length && !confirm(`Sync ${forms.length} from the backup? ${changedHere.length} of them (${changedHere.map((f) => f.title).join(", ")}) were changed here too: the backup's version replaces this site's. Published versions stay in their history.`)) return;
+    syncAll(_forms: FormSync[]) {
       queue.mutate({ path: "/sync", body: { all: true } });
     },
     keep: (f: FormSync) => {
@@ -159,8 +157,9 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
   const differs = mine.filter((f) => f.state === "differs");
   const onlyBackup = mine.filter((f) => f.state === "only_backup");
   const held = mine.filter((f) => f.state === "held");
-  // Sync all brings in everything that differs, on every kind of form (the backup's newest wins).
-  const unqueued = data.forms.filter((f) => (f.state === "behind" || f.state === "differs") && !actions.jobOf(f.key));
+  // Sync all brings in everything that needs sync, on every kind of form. A form changed here too
+  // ("differs") is never replaced in bulk: each one is synced (or kept) on its own.
+  const unqueued = data.forms.filter((f) => f.state === "behind" && !actions.jobOf(f.key));
   const backupJob = actions.jobOf(null);
   const waiting = data.jobs.length;
 
@@ -194,7 +193,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
         {data.configured && (
           <>
             {unqueued.length > 0 && (
-              <Button size="sm" onClick={() => actions.syncAll(unqueued)} title="Bring in the backup's version of every form that differs from it">
+              <Button size="sm" onClick={() => actions.syncAll(unqueued)} title="Bring in the backup's version of every form that needs sync. Forms changed here too are left for you to sync one at a time.">
                 <RefreshCw className="h-3.5 w-3.5" /> Sync all ({unqueued.length})
               </Button>
             )}

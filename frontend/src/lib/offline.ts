@@ -300,18 +300,41 @@ function clearStoredReads() {
 }
 
 /**
+ * Unsent answers to a built form, kept on the device while someone fills it in:
+ * `lcs-form-draft:<userId>:<slug>` (screens/builtforms/FillPage.tsx). Older ones
+ * were `lcs-form-draft:<slug>`, nobody's in particular.
+ */
+export const FORM_DRAFT_PREFIX = "lcs-form-draft:";
+
+/** Removes every form draft on the device but `keepUserId`'s. */
+function clearFormDrafts(keepUserId?: string) {
+  try {
+    const mine = keepUserId ? `${FORM_DRAFT_PREFIX}${keepUserId}:` : null;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(FORM_DRAFT_PREFIX) && !(mine && k.startsWith(mine))) localStorage.removeItem(k);
+    }
+  } catch {
+    /* storage blocked: nothing was kept either */
+  }
+}
+
+/**
  * The stored reads belong to one person. Called with whoever is signed in:
- * when that changes (a shared iPad, a new shift), the last person's copies go.
+ * when that changes (a shared iPad, a new shift), the last person's copies go,
+ * and so do anyone else's unsent form answers.
  */
 export function noteSignedIn(userId: string | null) {
   if (!userId) return;
   const last = readStorage(LAST_USER);
   if (last && last !== userId) clearStoredReads();
+  clearFormDrafts(userId);
   writeStorage(LAST_USER, userId);
 }
 
-/** Signing out: nothing of theirs is left to read on the device. Queued entries stay and upload when they sign in again. */
+/** Signing out: nothing of theirs is left to read on the device, unsent form answers included. Queued entries stay and upload when they sign in again. */
 export function noteSignedOut() {
   clearStoredReads();
+  clearFormDrafts();
   writeStorage(LAST_USER, null);
 }

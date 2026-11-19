@@ -387,10 +387,14 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
     const a = requireOpen(app, user);
     if (!a.create) throw forbidden(app.form.status === "closed" ? "This form isn't taking entries right now." : "You can't add entries to this form.");
   }
+  // import:<externalId> is the importer's (apps/importEntries.ts): an entry made here taking one
+  // would make a later import or inbound hook skip the real record.
+  if (input.clientId?.startsWith("import:")) throw badRequest("That clientId is reserved for imported entries.");
   if (input.clientId) {
     const dup = await prisma.formEntry.findFirst({ where: { formId: app.form.id, clientId: input.clientId } });
-    // A guest sending the same entry twice is told it's in, not shown it.
-    if (dup) return { status: "saved", entry: user?.guest ? guestReceipt(dup) : entryOut(dup, await siteMap()), logs: [] };
+    // Sending the same entry twice gets it back; anyone else whose clientId matches an entry
+    // (a guest, or someone who didn't make it) is told it's in, not shown it.
+    if (dup) return { status: "saved", entry: !user || (!user.guest && dup.createdById === user.userId) ? entryOut(dup, await siteMap()) : guestReceipt(dup), logs: [] };
   }
   if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) throw badRequest("data must be an object.");
   const dataJson = JSON.stringify(input.data);
@@ -612,8 +616,20 @@ const COLLECTION_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 
 const docOut = (r: { docId: string; data: string; updatedAt: Date; updatedByName: string | null }) => ({ id: r.docId, data: JSON.parse(r.data), updatedAt: r.updatedAt.toISOString(), updatedByName: r.updatedByName });
 
+/**
+ * Collections the platform keeps a form's own settings in, in the same table as the form's
+ * collections: "Who sees entries" and Main Office (access), share links (sharing), email
+ * reports (email), follow-up (followup) and old rules (routing). Pages and server code never
+ * read or write them: the settings screens do, with their checks and audit. (The "__" ones
+ * are kept out by COLLECTION_RE.) Compared lowercased, as the database compares them.
+ */
+const PLATFORM_COLLECTIONS = new Set(["access", "sharing", "email", "followup", "routing"]);
+
 function checkName(name: string) {
   if (!COLLECTION_RE.test(name)) throw badRequest("Collection names start with a letter and use letters, digits, - and _.");
+  if (PLATFORM_COLLECTIONS.has(name.toLowerCase())) {
+    throw badRequest(`"${name}" holds the form's own settings (who sees entries, sharing, email reports, follow-up), so a form's code can't use it. Pick another collection name.`);
+  }
 }
 
 export async function collectionList(formId: string, name: string) {
@@ -716,8 +732,10 @@ async function serverUpdate(app: LoadedApp, user: CurrentUser | null, args: { id
   return serverEntry((await prisma.formEntry.findUnique({ where: { id: e.id } }))!);
 }
 
-async function queryForServer(formId: string, q: ServerQuery, includePreview: boolean, mode: "find" | "count") {
+/** onlySites: another form's entries read for a person — only their sites' (and site-less) ones; null = no limit. */
+async function queryForServer(formId: string, q: ServerQuery, includePreview: boolean, mode: "find" | "count", onlySites: string[] | null = null) {
   const where: Prisma.FormEntryWhereInput = { formId };
+  if (onlySites) where.AND = [{ OR: [{ siteId: null }, { siteId: { in: onlySites } }] }];
   if (!includePreview) where.source = { not: "preview" };
   if (q.siteId) where.siteId = q.siteId;
   if (q.tenantId) where.tenantId = q.tenantId;
@@ -750,7 +768,8 @@ async function senderIds(list: unknown): Promise<string[]> {
   const items = (Array.isArray(list) ? list : [list]).filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()).slice(0, 20);
   if (!items.length) return [];
   const users = await prisma.user.findMany({
-    where: { OR: [{ id: { in: items } }, { email: { in: items.filter((x) => x.includes("@")) } }] },
+    // Only people who still have an active account send anything in their name.
+    where: { status: "active", OR: [{ id: { in: items } }, { email: { in: items.filter((x) => x.includes("@")) } }] },
     select: { id: true, email: true },
   });
   const ids = items.map((x) => users.find((u) => u.id === x || u.email.toLowerCase() === x.toLowerCase())?.id).filter((x): x is string => Boolean(x));
@@ -893,14 +912,15 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     const loaded = other.kind === "code" ? await loadApp(other, false).catch(() => null) : null;
     // A code form that shares with this one ("share": { "forms": [...] }) is readable whoever is asking:
     // this form's server code decides what of it to show (e.g. only the person's own sites).
-    if (loaded?.manifest.share?.forms?.includes(app.form.slug)) return other.id;
+    if (loaded?.manifest.share?.forms?.includes(app.form.slug)) return { id: other.id, onlySites: null };
     if (!user) throw new Error("Reading other forms needs a signed-in person.");
     let allowed = false;
     if (other.kind === "code") {
       allowed = Boolean(loaded && access(loaded, user).canOpen && access(loaded, user).readAll);
     } else allowed = canReadBasicEntries(other, readDoc(other.liveSchema ?? other.draftSchema), user) && canUseBuiltForm(user, other.id);
     if (!allowed) throw new Error(`${user.name} can't read the entries of "${slug}".`);
-    return other.id;
+    // Reading everyone's entries is still only at their own sites (access().readAll, listEntries).
+    return { id: other.id, onlySites: user.siteIds };
   }
 
   /** Another form's collections, read-only: only a code form that shares with this one. */
@@ -922,12 +942,13 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     switch (name) {
       case "entries.find":
       case "entries.count": {
-        const formId = args.form ? await otherForm(args.form) : app.form.id;
-        return queryForServer(formId, args.q ?? {}, app.draft, name === "entries.count" ? "count" : "find");
+        const t = args.form ? await otherForm(args.form) : { id: app.form.id, onlySites: null };
+        return queryForServer(t.id, args.q ?? {}, app.draft, name === "entries.count" ? "count" : "find", t.onlySites);
       }
       case "entries.get": {
-        const formId = args.form ? await otherForm(args.form) : app.form.id;
-        const e = await prisma.formEntry.findFirst({ where: { id: String(args.id), formId } });
+        const t = args.form ? await otherForm(args.form) : { id: app.form.id, onlySites: null };
+        const e = await prisma.formEntry.findFirst({ where: { id: String(args.id), formId: t.id } });
+        if (e && t.onlySites && e.siteId && !t.onlySites.includes(e.siteId)) return null;
         return e ? serverEntry(e) : null;
       }
       case "collections.list":

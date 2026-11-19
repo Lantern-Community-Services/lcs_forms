@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { HttpError } from "../http.js";
 import type { Actor } from "../services/audit.js";
+import type { ResolvedKey } from "../services/apiKeys.js";
 import { ROLES } from "../services/permissions.js";
 import {
   eventsOf, loadRouting, newRouteId, planRoutes, rerouteEntry, resetRouting, routingForm, routingLog, saveRouting, emailableFields, routeEmailPreview,
@@ -64,7 +65,12 @@ const routeShape = {
     .describe("Needs attention now (an incident, a request that can't wait): red in the bell, pinned at the top of their notifications until read, and emailed at once even to people on a daily summary. Default false."),
 };
 
-export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor) {
+/**
+ * `key`: a key limited to one site (key.siteId) reads and changes only that site's entries here,
+ * as list_entries and get_entry do, and can't list sent emails (they aren't kept by site).
+ */
+export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) => void, actor: Actor, key: Pick<ResolvedKey, "siteId">) {
+  const pin = key.siteId ? { siteId: key.siteId } : {};
   tool(
     "get_routing",
     "A form's notification routing: the events it can route (with the values a route can test and the people it names), its routes (who's told about what, at which sites), whether they're still the form's defaults, its revision, and the last sends. Works for basic and code forms. Change it with set_routing or save_route.",
@@ -199,7 +205,11 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
     async ({ form, entry, route, dryRun }) => {
       need("forms:build");
       need("notifications:send");
-      return rerouteEntry(await routingForm(form), entry, actor, { route, dryRun });
+      const f = await routingForm(form);
+      if (key.siteId && !(await prisma.formEntry.findFirst({ where: { id: entry, formId: f.id, ...pin }, select: { id: true } }))) {
+        throw new HttpError(404, "That entry isn't at this key's site.");
+      }
+      return rerouteEntry(f, entry, actor, { route, dryRun });
     }
   );
 
@@ -321,6 +331,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
     { form: formRef.optional(), limit: z.number().int().min(1).max(200).optional(), before: z.string().optional().describe("An ISO time: page back past the last one seen") },
     async ({ form, limit, before }) => {
       need("forms:build");
+      if (key.siteId) throw new HttpError(403, "Sent emails aren't kept by site, so a key limited to one site can't list them.");
       const f = form ? await routingForm(form) : null;
       return { items: await sentEmails({ formId: f?.id, limit, before }) };
     }
@@ -440,7 +451,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
       need("entries:read");
       const f = await routingForm(form);
       const rows = await prisma.formEntry.findMany({
-        where: { formId: f.id, status: "active", followUp: status },
+        where: { formId: f.id, status: "active", followUp: status, ...pin },
         orderBy: { createdAt: status === "open" ? "asc" : "desc" },
         take: limit,
         select: { id: true, createdAt: true, createdByName: true, siteId: true, data: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpChecks: true, followUpReminders: true },
@@ -461,7 +472,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
     async ({ form, entryId, done, note, values, tellAgain }) => {
       need("entries:manage");
       const f = await routingForm(form);
-      const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id } });
+      const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id, ...pin } });
       if (!entry) throw new HttpError(404, "That form has no such entry.");
       const out = await setFollowUp(f, entry, { userId: null, name: actor.name }, { done, note, values, tellAgain });
       return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, note: out.followUpNote, doneValues: parseDoneValues(out.followUpValues) };
@@ -482,7 +493,7 @@ export function registerRoutingTools(tool: ToolRegistrar, need: (scope: string) 
     async ({ form, entryId, item, done, removed }) => {
       need("entries:manage");
       const f = await routingForm(form);
-      const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id } });
+      const entry = await prisma.formEntry.findFirst({ where: { id: entryId, formId: f.id, ...pin } });
       if (!entry) throw new HttpError(404, "That form has no such entry.");
       const out = await setFollowUpItem(f, entry, { userId: null, name: actor.name }, { item, done, removed });
       return { id: out.id, followUp: out.followUp, doneAt: out.followUpDoneAt, doneByName: out.followUpDoneByName, checklist: checklistFor(await loadFollowUp(f), out) };

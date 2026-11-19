@@ -215,7 +215,7 @@ async function e2e() {
     // A Site Manager's key stays a Site Manager
     check((await api(kSite, "POST", "/residents", { site: siteY.code, firstName: "Sam", lastName: "Sample" })).status === 403, "site manager's key can't add at a site they don't have");
     check((await api(kSite, "POST", "/people", { email: `x.${stamp}@example.org`, roleKey: "admin", confirm: true })).status === 403, "site manager's key can't make an Admin");
-    check((await api(kSite, "POST", "/people", { email: `d.${stamp}@example.org`, roleKey: "developer", siteIds: [siteX.id] })).status === 403, "site manager's key can't make a Developer");
+    check((await api(kSite, "POST", "/people", { email: `d.${stamp}@example.org`, roleKey: "developer", siteIds: [siteX.id] })).status === 400, "the Developer role is gone");
     const invited = await api(kSite, "POST", "/people", { email: `pat.${stamp}@example.org`, roleKey: "site_staff", siteIds: [siteX.id] });
     check(invited.status === 201 || invited.status === 200, `site manager's key invites site staff at their site (${invited.status})`);
     check((await api(kSite, "POST", "/sites", { name: "Nope", code: `nope-${stamp}` })).status === 403, "site manager's key can't create a site");

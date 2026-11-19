@@ -67,7 +67,7 @@ export const manifestSchema = z.object({
     .min(1, "Add at least one page."),
   entries: z
     .object({
-      /** Roles that can read everyone's entries. Default: Main Office, Site Manager, Site Staff, Developer. */
+      /** Roles that can read everyone's entries. Default: Main Office, Site Manager, Site Staff. */
       read: roleList,
       /** Roles that can create entries. Default: everyone with access. */
       create: roleList,
@@ -77,7 +77,7 @@ export const manifestSchema = z.object({
       undoMinutes: z.number().int().min(0).max(1440).optional(),
       /** Entries about a resident log roster activity (resets their review clock). Default true. */
       rosterActivity: z.boolean().optional(),
-      /** Roles that can edit anyone's entry (every change is kept in its history). Default: admins and developers only. */
+      /** Roles that can edit anyone's entry (every change is kept in its history). Default: admins only. */
       edit: roleList,
       /** Minutes during which people can edit their own entry. Default 0 (off). */
       editOwnMinutes: z.number().int().min(0).max(10_080).optional(),
@@ -215,7 +215,7 @@ export const manifestSchema = z.object({
 
 export type Manifest = z.infer<typeof manifestSchema>;
 
-export const DEFAULT_ENTRY_READERS = ["main_office", "site_manager", "site_staff", "developer"];
+export const DEFAULT_ENTRY_READERS = ["main_office", "site_manager", "site_staff"];
 
 /** Roles check where "*" (or an empty/missing list) means everyone; admins always pass. */
 export function roleAllowed(roles: string[] | undefined, roleKey: string, isAdmin: boolean): boolean {
@@ -313,7 +313,7 @@ export function starterProject(title: string): Files {
         icon: "clipboard",
         pages: [
           { id: "record", label: "Record", file: "pages/record.tsx" },
-          { id: "entries", label: "Entries", file: "pages/entries.tsx", roles: ["main_office", "site_manager", "site_staff", "developer"] },
+          { id: "entries", label: "Entries", file: "pages/entries.tsx", roles: ["main_office", "site_manager", "site_staff"] },
         ],
         entries: { undoMinutes: 10 },
         collections: { settings: { read: ["*"], write: ["admin"] } },

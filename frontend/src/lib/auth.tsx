@@ -126,10 +126,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
-    await api.post("/auth/logout");
-    noteSignedOut();
-    void clearRoster();
-    setUser(null);
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      // Even when the server can't be reached (offline): nothing of theirs stays on the device.
+      noteSignedOut();
+      void clearRoster();
+      setUser(null);
+    }
   }
 
   const can = (permission: PermissionKey) => (user?.permissions ?? []).includes(permission);

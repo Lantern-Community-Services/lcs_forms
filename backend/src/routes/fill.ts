@@ -11,7 +11,7 @@ import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
-  canSeeEntry, canArchiveEntries, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
+  canSeeEntry, canArchiveEntries, docForViewer, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
   entryScope, inOrder, liveDoc, NEWEST, saveUpload, sortedEntryIds, submitEntry, updateEntry, type EntryFilter, type EntrySort,
 } from "../forms/entries.js";
 
@@ -63,7 +63,7 @@ fillRouter.get(
     }
     res.json({
       form: { id: form.id, slug: form.slug, title: form.title, status: form.status, version: form.liveVersion, isDraft: !form.liveSchema },
-      doc,
+      doc: docForViewer(doc, req.user),
       closed: form.liveSchema ? await closedReason(form, doc, req.user) : "This form hasn't been published yet — you're seeing the draft because you're an admin. Submitting is off.",
       user: req.user ? { name: req.user.name, email: req.user.email } : null,
       // Everyone signed in sees at least their own entries; entriesReach says how many more.
@@ -78,6 +78,7 @@ fillRouter.get(
 const submitBody = z.object({
   values: z.record(z.unknown()),
   siteCode: z.string().max(80).nullable().optional(),
+  /** Never import:<id>: those are the importer's (refused in submitEntry). */
   clientId: z.string().max(100).nullable().optional(),
   codeErrors: z.record(z.string().max(300)).optional(),
   /** The published version the page showed (forms/entries.ts SubmitInput.formVersion). */
@@ -99,7 +100,7 @@ fillRouter.post(
     // A bot filled the trap: act as if it worked so it doesn't try harder.
     if (body.website_hp) return res.status(201).json({ id: "ok", confirmation: doc.settings.confirmation ?? null });
     const share = await shareOf(form, body.shareToken);
-    const { entry, duplicate } = await submitEntry({
+    const { entry, duplicate, mine } = await submitEntry({
       form,
       values: body.values,
       siteCode: body.siteCode,
@@ -115,7 +116,9 @@ fillRouter.post(
       fillSeconds: body.fillSeconds,
     });
     if (share && !duplicate) await linkUsed(share.link);
-    res.status(duplicate ? 200 : 201).json({ id: entry.id, duplicate, values: JSON.parse(entry.data) });
+    // A retry gets its entry back; a clientId someone else's entry holds gets only "it's in"
+    // (no id, no answers), like a code form's guest (apps/runtime.ts guestReceipt).
+    res.status(duplicate ? 200 : 201).json(mine ? { id: entry.id, duplicate, values: JSON.parse(entry.data) } : { id: "", duplicate });
   })
 );
 
@@ -203,7 +206,7 @@ fillRouter.get(
     const follow = await loadFollowUp(form);
     res.json({
       form: { id: form.id, slug: form.slug, title: form.title, status: form.status, version: form.liveVersion },
-      doc,
+      doc: docForViewer(doc, req.user),
       total,
       items: rows.map((e) => entryRow({ ...e, site: e.siteId ? sites.get(e.siteId) ?? null : null }, follow)),
       sites: bySite
@@ -259,7 +262,7 @@ fillRouter.get(
     ]);
     res.json({
       form: { id: form.id, slug: form.slug, title: form.title },
-      doc,
+      doc: docForViewer(doc, req.user),
       entry: entryRow({ ...entry, site: entry.siteId ? sites.get(entry.siteId) ?? null : null }),
       notes,
       newerId: neighbours[0]?.id ?? null,

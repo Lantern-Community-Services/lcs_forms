@@ -97,7 +97,16 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
     const presented = looksLikeApiKey(bearer) ? bearer : looksLikeApiKey(headerKey) ? headerKey : null;
     if (presented) {
       const key = await resolveApiKey(presented);
-      if (key) req.apiKey = key;
+      if (key) {
+        // A key stands for the admin who made it. Once they're gone (deactivated) or no longer
+        // manage integrations, none of its scopes work, on any door (REST /api/v1 and MCP alike),
+        // including the ones that act as the key itself (roster:read, forms:build…).
+        const creator = key.createdById ? await currentUserById(key.createdById) : null;
+        if (!creator || !creator.permissions.includes("integrations.manage")) {
+          return next(unauthorized("The admin who made this API key no longer has an active Admin account, so the key is off. Make a new key in Admin → API keys."));
+        }
+        req.apiKey = key;
+      }
       return next();
     }
     if (looksLikeAccessToken(bearer)) {
@@ -166,14 +175,27 @@ const VIEW_AS_OPEN: RegExp[] = [
 
 const ACT_AS_CLOSED: RegExp[] = [/^\/api\/oauth\//, /^\/api\/admin\/api-keys(\/|$)/];
 
+const actingAsRefusal = (name: string) => `You're acting as ${name}: that can't be done in their name. Stop acting as them first.`;
+
+/**
+ * For handlers that hand out credentials outlasting the session (an API key, a
+ * Claude connection): refuses while acting as someone, whatever path got here.
+ * viewAsLimits refuses these too; this is the second lock on the same door.
+ */
+export function refuseWhileActingAs(req: Request) {
+  if (req.user?.viewAs) throw forbidden(actingAsRefusal(req.user.name));
+}
+
 export function viewAsLimits(req: Request, _res: Response, next: NextFunction) {
   const who = req.user?.viewAs && req.user;
   if (!who || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  // Express matches routes whatever their case (/api/OAuth reaches /api/oauth), so these do too.
+  const path = req.path.toLowerCase();
   if (who.viewAs!.act) {
-    if (ACT_AS_CLOSED.some((r) => r.test(req.path))) return next(forbidden(`You're acting as ${who.name}: that can't be done in their name. Stop acting as them first.`));
+    if (ACT_AS_CLOSED.some((r) => r.test(path))) return next(forbidden(actingAsRefusal(who.name)));
     return next();
   }
-  if (VIEW_AS_OPEN.some((r) => r.test(req.path))) return next();
+  if (VIEW_AS_OPEN.some((r) => r.test(path))) return next();
   next(forbidden(`You're viewing the site as ${who.name}, so nothing can be changed. Turn on "Act as them" in the bar along the top, or stop viewing as them.`));
 }
 

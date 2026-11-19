@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Lantern Roster Connector
  * Description: Fills Gravity Forms resident fields from Lantern Roster and reports form activity back, so the 48-hour review queue knows who is still around.
- * Version:     0.1.0
+ * Version:     0.1.1
  * Author:      Lantern Community Services
  *
  * ── Setup ────────────────────────────────────────────────────────────────
@@ -14,6 +14,10 @@
  * In a form, give a Drop Down / Checkboxes / Multi Select / Radio field the CSS classes:
  *   lantern-roster lantern-site-<site code>          e.g. "lantern-roster lantern-site-amber-hall"
  * or "lantern-roster lantern-site-param" to take the site from ?site=<code> in the page URL.
+ * lantern-site-param works only for signed-in WordPress users who can edit_posts (the
+ * same as the shortcode; change it with the lantern_roster_site_param_capability filter):
+ * anyone else could change ?site= to list any site's residents. Public forms use a fixed
+ * lantern-site-<code> class.
  *
  * The field's stored value is the permanent roster ID. After submission the
  * connector POSTs those IDs to /activity, which resets each person's review clock.
@@ -83,7 +87,12 @@ function lantern_roster_field_site($field): ?string {
     $classes = preg_split('/\s+/', (string) ($field->cssClass ?? ''));
     if (!in_array('lantern-roster', $classes, true)) return null;
     foreach ($classes as $c) {
-        if ($c === 'lantern-site-param') return isset($_GET['site']) ? sanitize_key(wp_unslash($_GET['site'])) : '';
+        if ($c === 'lantern-site-param') {
+            // The visitor picks the site here, so only staff may: residents' names are never shown to the public.
+            $cap = (string) apply_filters('lantern_roster_site_param_capability', 'edit_posts');
+            if (!is_user_logged_in() || !current_user_can($cap)) return '';
+            return isset($_GET['site']) ? sanitize_key(wp_unslash($_GET['site'])) : '';
+        }
         if (strpos($c, 'lantern-site-') === 0) return substr($c, strlen('lantern-site-'));
     }
     return '';
@@ -138,8 +147,11 @@ function lantern_roster_selected_ids($field, array $entry): array {
 add_action('gform_after_submission', function ($entry, $form) {
     $ids = [];
     foreach ($form['fields'] as $field) {
-        if (lantern_roster_field_site($field) === null) continue;
-        $ids = array_merge($ids, lantern_roster_selected_ids($field, $entry));
+        $site = lantern_roster_field_site($field);
+        if ($site === null || $site === '') continue;
+        // Only residents the field offered (its site's roster): a posted value can be anything.
+        $offered = array_map('strval', wp_list_pluck(lantern_roster_choices($site), 'value'));
+        $ids = array_merge($ids, array_values(array_intersect(lantern_roster_selected_ids($field, $entry), $offered)));
     }
     $ids = array_values(array_unique(array_filter($ids)));
     if (!$ids) return;
