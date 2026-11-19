@@ -377,7 +377,11 @@ export function MoveOutDialog({
         newHeadId: needsNewHead ? newHeadId : null,
       });
       await refresh();
-      toast(`Moved out${also.size ? ` with ${also.size} household ${also.size === 1 ? "member" : "members"}` : ""}. The unit is free.`);
+      const left = staying.length;
+      toast(
+        `Moved out${also.size ? ` with ${also.size} household ${also.size === 1 ? "member" : "members"}` : ""}. ` +
+          (left ? `${left} ${left === 1 ? "person stays" : "people stay"} in the unit.` : "The unit is free."),
+      );
       onOpenChange(false);
     } catch (e) {
       setError(errorMessage(e, "Could not move them out."));

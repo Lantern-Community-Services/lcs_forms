@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/misc";
 import { DECK_CLASS, RoundAction, SwipeCard, SwipeNote, useDeckPose } from "@/components/ui/swipe-card";
 import { ResidentCardHeader } from "@/components/roster/ResidentCardHeader";
-import { cn, formatDate, tintFor } from "@/lib/utils";
+import { cn, formatDay, tintFor } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 import { SignaturePanel } from "./SignaturePrompt";
 
@@ -274,6 +274,6 @@ function AttendanceCardBody({ tenant, collectSignatures, choice, skipped, remain
     <SwipeNote tone={note.tone} icon={note.icon} title={note.title}>{note.detail}</SwipeNote>
 
     <span className="flex-1" />
-    <p className="text-micro text-muted">{remaining} still to mark{tenant.moveInDate ? ` · moved in ${formatDate(tenant.moveInDate)}` : ""}</p>
+    <p className="text-micro text-muted">{remaining} still to mark{tenant.moveInDate ? ` · moved in ${formatDay(tenant.moveInDate)}` : ""}</p>
   </>;
 }

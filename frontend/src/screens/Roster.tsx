@@ -23,7 +23,7 @@ import { useAuth } from "@/lib/auth";
 import { fmtDay, shortRelation, useResidencyFor, useUnits, type UnitRow } from "@/lib/residency";
 import { readStoredJson, writeStorage } from "@/lib/storage";
 import { useSearchParam } from "@/lib/useSearchParam";
-import { cn, formatDate, relativeTime, tintFor, toggled } from "@/lib/utils";
+import { cn, formatDate, formatDay, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
 /**
@@ -684,7 +684,7 @@ const RosterRow = memo(function RosterRow({
           {tab === "archived" ? formatDate(t.archivedAt) : t.lastActivityAt ? relativeTime(t.lastActivityAt) : "—"}
         </span>
         <span className="hidden truncate text-[13px] text-muted lg:block">
-          {tab === "archived" ? t.archiveReason : formatDate(t.moveInDate)}
+          {tab === "archived" ? t.archiveReason : t.movedIn === false ? "—" : formatDay(t.moveInDate)}
         </span>
         <span className="hidden lg:flex lg:items-center">
           <TenantStatusBadge status={t.status} needsAttention={t.needsAttention && canArchive} />

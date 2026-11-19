@@ -653,20 +653,45 @@ export async function releaseForRemoval(ctx: Ctx, t: Tenant, reason: string) {
 
 /**
  * Back on the roster (Restore). Undoing one's own removal or move-out within ten
- * minutes puts them back in their unit if it's still free. Anything else brings
- * them back as not moved in: they need a move-in.
+ * minutes puts them back in their unit if nothing else changed there: it's still
+ * empty, or (household sites) the household they left is still there as it was.
+ * A head comes back as head. Anything else brings them back as not moved in:
+ * they need a move-in.
  */
 export async function afterRestore(ctx: Ctx, t: Tenant, undo: boolean) {
   const site = await prisma.site.findUnique({ where: { id: t.siteId }, select: SITE_SELECT });
   if (!site || !(await residencyOnFor(site))) return;
   const last = await prisma.stay.findFirst({ where: { tenantId: t.id }, orderBy: { updatedAt: "desc" } });
   const recent = last && last.endKind && last.endedById === ctx.userId && Date.now() - last.updatedAt.getTime() < 10 * 60_000;
-  const free = last?.unitId ? (await prisma.tenant.count({ where: { unitId: last.unitId, status: "active", id: { not: t.id } } })) === 0 : false;
+  // Everyone in the unit now, with the household their current stay started in
+  // (a stay keeps its head and relation when someone else is made head).
+  const others = last?.unitId
+    ? await prisma.tenant.findMany({
+        where: { unitId: last.unitId, status: "active", id: { not: t.id } },
+        select: { id: true, householdHeadId: true, householdRelation: true, stays: { where: { moveOutDate: null, endKind: null }, select: { householdHeadId: true, householdRelation: true }, take: 1 } },
+      })
+    : [];
+  const wasHead = !last?.householdHeadId;
+  const rejoin =
+    Boolean(site.households && last && others.length) &&
+    (wasHead
+      ? others.every((o) => o.stays[0]?.householdHeadId === t.id)
+      : others.some((o) => o.id === last!.householdHeadId && !o.householdHeadId));
   const unit = last?.unitId ? await prisma.unit.findUnique({ where: { id: last.unitId } }) : null;
-  if (undo && recent && last && unit?.active && free) {
+  if (undo && recent && last && unit?.active && (others.length === 0 || rejoin)) {
     await prisma.$transaction(async (tx) => {
       await tx.stay.update({ where: { id: last.id }, data: { moveOutDate: null, endKind: null, endReason: null, exitDestination: null, forwardingAddress: null, endNote: null, endedById: null } });
       await tx.tenant.update({ where: { id: t.id }, data: { unitId: unit.id, unit: unit.label, movedIn: true, householdHeadId: last.householdHeadId, householdRelation: last.householdRelation } });
+      // A head back at the head of the household they left: the others go back
+      // to being their members, with the relation they moved in with.
+      if (rejoin && wasHead) {
+        for (const o of others) {
+          await tx.tenant.update({
+            where: { id: o.id },
+            data: { householdHeadId: t.id, householdRelation: o.stays[0]?.householdRelation ?? o.householdRelation, version: { increment: 1 } },
+          });
+        }
+      }
       await tx.unit.update({ where: { id: unit.id }, data: { vacantSince: null } });
       await tx.tenantTask.deleteMany({ where: { tenantId: t.id, key: "hmis_project_exit", status: "open", stayId: last.id } });
       await tx.tenantTask.updateMany({ where: { tenantId: t.id, status: "cancelled", updatedAt: { gte: new Date(last.updatedAt.getTime() - 60_000) } }, data: { status: "open" } });
@@ -675,7 +700,7 @@ export async function afterRestore(ctx: Ctx, t: Tenant, undo: boolean) {
   }
   await prisma.tenant.update({
     where: { id: t.id },
-    data: { movedIn: false, unitId: null, householdHeadId: null, householdRelation: null, awaySince: null, awayReason: null, attentionClockAt: HOLD_CLOCK },
+    data: { movedIn: false, unitId: null, unit: null, householdHeadId: null, householdRelation: null, awaySince: null, awayReason: null, attentionClockAt: HOLD_CLOCK },
   });
 }
 
