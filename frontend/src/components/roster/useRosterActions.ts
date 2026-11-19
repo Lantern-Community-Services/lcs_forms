@@ -16,8 +16,11 @@ export function useRosterActions() {
 
   async function restore(t: Tenant, quiet = false) {
     try {
-      await rosterApi.restore(t.id);
-      if (!quiet) toast(`${t.displayName} is back on the roster.`);
+      const back = await rosterApi.restore(t.id);
+      // Case management: their unit wasn't theirs to go back to (taken, or an older
+      // removal), so they're back without one.
+      const noUnit = back?.movedIn === false && Boolean(t.unit || t.unitId);
+      if (!quiet) toast(noUnit ? `${t.displayName} is back on the roster, not moved in. Move them in to give them a unit.` : `${t.displayName} is back on the roster.`);
     } catch (e) {
       toast(errorMessage(e, "Could not restore."), "error");
     } finally {

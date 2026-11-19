@@ -37,6 +37,19 @@ export function formatDate(value: string | Date | null | undefined): string {
   return DATE_FMT.format(d);
 }
 
+/**
+ * A calendar day (move-in date, due date…) stored as midnight UTC. Read off the
+ * ISO string so it isn't shifted to the evening before in New York, which
+ * `formatDate` would do.
+ */
+export function formatDay(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const iso = typeof value === "string" ? value : Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return "—";
+  return DATE_FMT.format(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+}
+
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;

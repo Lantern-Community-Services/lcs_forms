@@ -1,5 +1,5 @@
 import type { AuditEvent } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDay } from "@/lib/utils";
 
 /**
  * What a resident edit changed, as "Label: old → new" lines, from the audit
@@ -22,7 +22,7 @@ const LABELS: Record<string, string> = {
 function shown(field: string, v: unknown): string {
   if (v === null || v === undefined || v === "") return "none";
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (field === "moveInDate" && typeof v === "string") return formatDate(v);
+  if (field === "moveInDate" && typeof v === "string") return formatDay(v);
   const s = String(v);
   return s.length > 120 ? `${s.slice(0, 117)}…` : s;
 }
