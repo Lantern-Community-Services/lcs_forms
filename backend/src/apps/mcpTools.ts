@@ -251,7 +251,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       if (!(await keyMakerCan(key, "forms.manage"))) throw new HttpError(403, "Only an Admin's key can import entries.");
       if (!dryRun && confirm !== true) throw new HttpError(400, "This saves entries to the live form without running its rules. Pass confirm: true (or dryRun: true to check first).");
       const row = await findCodeForm(form);
-      const r = await importEntries(row, entries, { dryRun, update });
+      const r = await importEntries(row, entries, { dryRun, update, onlySiteId: key.siteId });
       if (r.problems.length || dryRun) return { ...r, ids: undefined, dryRun: Boolean(dryRun) };
       if (r.saved) await audit({ actor, action: "apps.entriesImported", summary: `Imported ${r.saved} entries into “${row.title}”`, changes: { form: row.slug, count: r.saved, skipped: r.skipped.length } });
       if (r.updated) await audit({ actor, action: "apps.entriesReimported", summary: `Updated ${r.updated} imported entries of “${row.title}”`, changes: { form: row.slug, count: r.updated } });

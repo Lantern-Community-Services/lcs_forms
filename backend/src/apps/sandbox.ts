@@ -19,14 +19,18 @@ const { parentPort } = require("node:worker_threads");
 const { newQuickJSWASMModule } = require("quickjs-emscripten");
 const modP = newQuickJSWASMModule();
 const decoder = new TextDecoder();
+// Every host call this worker makes, across all its jobs, gets the next number: a reply carries
+// the number of the call it answers, so one meant for an earlier call is never taken for this one.
+let callSeq = 0;
 
 parentPort.on("message", async (job) => {
   const logs = [];
   let result;
   try {
     const mod = await modP;
-    const ctrl = new Int32Array(job.sab, 0, 2);
-    const bytes = new Uint8Array(job.sab, 8);
+    // [0] reply ready, [1] its length, [2] the call it answers.
+    const ctrl = new Int32Array(job.sab, 0, 4);
+    const bytes = new Uint8Array(job.sab, 16);
     const rt = mod.newRuntime();
     rt.setMemoryLimit(job.memoryBytes);
     rt.setMaxStackSize(1024 * 1024);
@@ -41,14 +45,15 @@ parentPort.on("message", async (job) => {
         const name = vm.getString(nameH);
         const args = vm.getString(argsH);
         if (hostSpent >= job.hostBudgetMs) return vm.newString(JSON.stringify({ error: "The database took too long to answer." }));
+        const id = ++callSeq;
         Atomics.store(ctrl, 0, 0);
         const started = Date.now();
-        parentPort.postMessage({ type: "host", name, args });
-        const waited = Atomics.wait(ctrl, 0, 0, Math.min(job.hostTimeoutMs, job.hostBudgetMs - hostSpent));
+        parentPort.postMessage({ type: "host", name, args, id });
+        Atomics.wait(ctrl, 0, 0, Math.min(job.hostTimeoutMs, job.hostBudgetMs - hostSpent));
         const took = Date.now() - started;
         hostSpent += took;
         deadline += took;
-        if (waited === "timed-out") return vm.newString(JSON.stringify({ error: "The database took too long to answer." }));
+        if (Atomics.load(ctrl, 0) !== 1 || Atomics.load(ctrl, 2) !== id) return vm.newString(JSON.stringify({ error: "The database took too long to answer." }));
         const len = Atomics.load(ctrl, 1);
         return vm.newString(decoder.decode(bytes.slice(0, len)));
       });
@@ -202,6 +207,12 @@ interface Slot {
    * API ran out of memory between collections.)
    */
   sab: SharedArrayBuffer;
+  /**
+   * The host call the worker is waiting on now (its id). A reply to any other call —
+   * one that took longer than the worker would wait, possibly from an earlier job on
+   * this slot run for someone else — is dropped, never written where this one reads.
+   */
+  waitingOn: number;
 }
 
 const POOL_SIZE = 2;
@@ -212,7 +223,7 @@ const REPLY_BYTES = 16 * 1024 * 1024;
 const HOST_BUDGET_MS = 20_000;
 
 function spawn(): Slot {
-  const slot: Slot = { worker: new Worker(WORKER_SOURCE, { eval: true }), busy: false, sab: new SharedArrayBuffer(8 + REPLY_BYTES) };
+  const slot: Slot = { worker: new Worker(WORKER_SOURCE, { eval: true }), busy: false, sab: new SharedArrayBuffer(16 + REPLY_BYTES), waitingOn: 0 };
   slot.worker.unref();
   slot.worker.on("error", (err) => console.error("[apps] sandbox worker failed:", err));
   return slot;
@@ -255,8 +266,8 @@ export async function runInSandbox(opts: { bundle: string; call: string; onHost:
   const timeoutMs = opts.timeoutMs ?? 3000;
   let slot = await acquire();
   const sab = slot.sab;
-  const ctrl = new Int32Array(sab, 0, 2);
-  const bytes = new Uint8Array(sab, 8);
+  const ctrl = new Int32Array(sab, 0, 4);
+  const bytes = new Uint8Array(sab, 16);
   const encoder = new TextEncoder();
 
   return new Promise<SandboxResult>((resolve) => {
@@ -275,9 +286,13 @@ export async function runInSandbox(opts: { bundle: string; call: string; onHost:
       resolve(r);
     };
 
-    const onMessage = async (msg: { type: string; name?: string; args?: string; result?: SandboxResult; logs?: string[] }) => {
+    const onMessage = async (msg: { type: string; name?: string; args?: string; id?: number; result?: SandboxResult; logs?: string[] }) => {
       if (msg.type === "done") return finish({ ...(msg.result as SandboxResult), logs: msg.logs ?? [] });
       if (msg.type !== "host") return;
+      // The worker makes one call at a time and waits only on its latest.
+      const mySlot = slot;
+      const id = msg.id ?? 0;
+      mySlot.waitingOn = id;
       let reply: string;
       try {
         const value = await opts.onHost(msg.name!, JSON.parse(msg.args ?? "null"));
@@ -286,10 +301,14 @@ export async function runInSandbox(opts: { bundle: string; call: string; onHost:
         // A refusal meant for the person (View as) reaches them as the action's error, like a UserError.
         reply = JSON.stringify({ error: err instanceof Error ? err.message : String(err), ...(err instanceof Error && (err as { userError?: boolean }).userError ? { userError: true } : {}) });
       }
+      // Too late: this run has ended, or the worker gave up on this call and moved on. The slot (and
+      // its buffer) may already be answering someone else's run, so nothing is written.
+      if (finished || mySlot.waitingOn !== id) return;
       let buf = encoder.encode(reply);
       if (buf.length > REPLY_BYTES) buf = encoder.encode(JSON.stringify({ error: "That query returned too much data; ask for less (limit, dates)." }));
       bytes.set(buf);
       Atomics.store(ctrl, 1, buf.length);
+      Atomics.store(ctrl, 2, id);
       Atomics.store(ctrl, 0, 1);
       Atomics.notify(ctrl, 0);
     };

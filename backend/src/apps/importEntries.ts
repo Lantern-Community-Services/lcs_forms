@@ -37,7 +37,8 @@ const clientIdOf = (externalId: string) => `import:${externalId}`;
  * resident, time and filer instead of being skipped (to fix an import, e.g. sites found later). Its id,
  * status (voided stays voided), notes and files are kept.
  */
-export async function importEntries(row: BuiltForm, entries: ImportedEntry[], opts: { dryRun?: boolean; update?: boolean } = {}): Promise<ImportResult> {
+/** onlySiteId: an API key limited to one site imports entries for that site only. */
+export async function importEntries(row: BuiltForm, entries: ImportedEntry[], opts: { dryRun?: boolean; update?: boolean; onlySiteId?: string | null } = {}): Promise<ImportResult> {
   const problems: { externalId: string; problem: string }[] = [];
   const seen = new Set<string>();
   for (const e of entries) {
@@ -55,7 +56,16 @@ export async function importEntries(row: BuiltForm, entries: ImportedEntry[], op
     if (e.tenantId && !tenants.has(e.tenantId)) problems.push({ externalId: e.externalId, problem: `No resident with id "${e.tenantId}".` });
   }
 
-  const found = await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: entries.map((e) => clientIdOf(e.externalId)) } }, select: { id: true, clientId: true } });
+  if (opts.onlySiteId) {
+    for (const e of entries) if (!e.site || sites.get(e.site) !== opts.onlySiteId) problems.push({ externalId: e.externalId, problem: "This API key is limited to one site, so every entry must be at that site." });
+  }
+
+  const found = await prisma.formEntry.findMany({ where: { formId: row.id, clientId: { in: entries.map((e) => clientIdOf(e.externalId)) } }, select: { id: true, clientId: true, source: true } });
+  // import:<id> is the importer's alone (entry paths refuse it): one held by an entry that wasn't
+  // imported is a collision to look at, never proof the record is already here.
+  for (const x of found) {
+    if (x.source !== "import") problems.push({ externalId: String(x.clientId).slice("import:".length), problem: `An entry that wasn't imported (${x.source}) already holds this id. Look at it before importing this one.` });
+  }
   const existing = new Map(found.map((x) => [x.clientId, x.id]));
   const fresh = entries.filter((e) => !existing.has(clientIdOf(e.externalId)));
   const again = entries.filter((e) => existing.has(clientIdOf(e.externalId)));
