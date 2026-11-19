@@ -51,6 +51,8 @@ export interface BuiltFormDetail {
 export interface Audience {
   groupIds: string[];
   titles: string[];
+  /** Site types: everyone approved for an active site of one of them. */
+  siteTypes: string[];
   userIds: string[];
 }
 

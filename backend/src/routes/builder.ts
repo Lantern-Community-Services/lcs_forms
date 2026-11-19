@@ -4,7 +4,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { asyncHandler, badRequest } from "../http.js";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
-import { audienceOf, builtFormKey, categoryKey, setAudience } from "../services/staffGroups.js";
+import { audienceOf, builtFormKey, categoryKey, setAudience, siteTypeLabel, siteTypesSchema } from "../services/staffGroups.js";
 import { prisma } from "../prisma.js";
 import { CODE_BLOCK_API, EXPRESSION_FUNCTIONS, FIELD_TYPES, emptyForm } from "../forms/engine.js";
 import { formDocSchema, parseFormDoc } from "../forms/schema.js";
@@ -161,6 +161,7 @@ builderRouter.put(
         groupIds: z.array(z.string()).max(50),
         titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
         userIds: z.array(z.string()).max(500).default([]),
+        siteTypes: siteTypesSchema,
       })
       .parse(req.body);
     const form = await findForm(req.params.id);
@@ -169,13 +170,13 @@ builderRouter.put(
       prisma.user.findMany({ where: { id: { in: body.userIds } }, select: { id: true, name: true } }),
     ]);
     if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
-    await setAudience(builtFormKey(form.id), body.groupIds, body.userIds, body.titles);
-    const who = [...groups.map((g) => g.name), ...body.titles, ...users.map((u) => u.name)];
+    await setAudience(builtFormKey(form.id), body.groupIds, body.userIds, body.titles, body.siteTypes);
+    const who = [...groups.map((g) => g.name), ...body.titles, ...body.siteTypes.map(siteTypeLabel), ...users.map((u) => u.name)];
     await audit({
       actor: actorOf(req),
       action: "forms.audience_changed",
       summary: who.length ? `Limited “${form.title}” to ${who.join(", ")}` : `Opened “${form.title}” to everyone`,
-      changes: { groups: groups.map((g) => g.name), positions: body.titles, people: users.map((u) => u.name) },
+      changes: { groups: groups.map((g) => g.name), positions: body.titles, siteTypes: body.siteTypes, people: users.map((u) => u.name) },
     });
     res.json({ audience: audienceOf(builtFormKey(form.id)) });
   })

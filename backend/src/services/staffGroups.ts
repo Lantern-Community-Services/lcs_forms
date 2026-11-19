@@ -13,8 +13,9 @@ import { ROLES, roleFor } from "./permissions.js";
  * one of its rules, or an admin added them by hand; an admin can also take
  * them out (StaffGroupMember.include).
  *
- * A form can be limited to some groups, positions (exact job titles) and/or
- * named people (FormAudience). No rows = everyone. A catalog category can be
+ * A form can be limited to some groups, positions (exact job titles), site
+ * types (everyone approved for a shelter site, say) and/or named people
+ * (FormAudience). Someone matching any of them is in. No rows = everyone. A catalog category can be
  * limited the same way (key category:<id>): then it, and every form on its
  * cards, is only for those people, on top of each form's own limit.
  *
@@ -56,7 +57,16 @@ interface Audience {
   userIds: Set<string>;
   /** Positions: job titles, trimmed and lower-cased. */
   titles: Set<string>;
+  /** Site types (shelter, supportive…): everyone approved for an active site of one of them. */
+  siteTypes: Set<string>;
 }
+
+/** The site types a form can be limited to, as stored on Site.siteType. */
+export const AUDIENCE_SITE_TYPES = ["shelter", "supportive", "office", "other"] as const;
+export const siteTypesSchema = z.array(z.enum(AUDIENCE_SITE_TYPES)).max(AUDIENCE_SITE_TYPES.length).default([]);
+const SITE_TYPE_LABEL: Record<string, string> = { shelter: "shelter", supportive: "supportive housing", office: "office", other: "other" };
+/** How an audit line names a site type: "people at shelter sites". */
+export const siteTypeLabel = (t: string) => `people at ${SITE_TYPE_LABEL[t] ?? t} sites`;
 
 /** A job title as it's compared: trimmed, any case. */
 export const normTitle = (t: string | null | undefined) => (t ?? "").trim().toLowerCase();
@@ -75,14 +85,16 @@ let groupForms = new Map<string, Set<string>>();
 let personForms = new Map<string, Map<string, boolean>>();
 /** Role key → the only forms it sees (form keys), for roles that name them (RoleDef.forms). */
 let roleForms = new Map<string, Set<string>>();
+/** Active site id → its type, for audiences limited to site types. */
+let siteTypeOf = new Map<string, string>();
 let loading: Promise<void> | null = null;
 let loaded = false;
 
 async function load() {
   const roleSlugs = [...new Set(ROLES.flatMap((r) => r.forms ?? []))];
-  const [rows, aud, linked, cards, access, everything, given, personal, named] = await Promise.all([
+  const [rows, aud, linked, cards, access, everything, given, personal, named, sites] = await Promise.all([
     prisma.staffGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { rules: { select: { contains: true } } } }),
-    prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true } }),
+    prisma.formAudience.findMany({ select: { formKey: true, groupId: true, userId: true, title: true, siteType: true } }),
     prisma.builtForm.findMany({ where: { catalogLinkId: { not: null } }, select: { id: true, catalogLinkId: true } }),
     prisma.formLink.findMany({ select: { id: true, categoryId: true } }),
     prisma.formRecord.findMany({ where: { collection: ACCESS_COLLECTION, docId: ACCESS_DOC }, select: { formId: true, data: true } }),
@@ -90,7 +102,9 @@ async function load() {
     prisma.groupForm.findMany({ select: { groupId: true, formKey: true } }),
     prisma.personForm.findMany({ select: { userId: true, formKey: true, include: true } }),
     roleSlugs.length ? prisma.builtForm.findMany({ where: { slug: { in: roleSlugs } }, select: { id: true, slug: true } }) : Promise.resolve([]),
+    prisma.site.findMany({ where: { active: true }, select: { id: true, siteType: true } }),
   ]);
+  siteTypeOf = new Map(sites.map((x) => [x.id, x.siteType]));
   roleForms = new Map(
     ROLES.filter((r) => r.forms).map((r) => [r.key, new Set(named.filter((f) => r.forms!.includes(f.slug)).map((f) => builtFormKey(f.id)))])
   );
@@ -117,10 +131,11 @@ async function load() {
   }));
   const next = new Map<string, Audience>();
   for (const a of aud) {
-    const entry = next.get(a.formKey) ?? { groupIds: new Set<string>(), userIds: new Set<string>(), titles: new Set<string>() };
+    const entry = next.get(a.formKey) ?? { groupIds: new Set<string>(), userIds: new Set<string>(), titles: new Set<string>(), siteTypes: new Set<string>() };
     if (a.groupId) entry.groupIds.add(a.groupId);
     if (a.userId) entry.userIds.add(a.userId);
     if (a.title) entry.titles.add(normTitle(a.title));
+    if (a.siteType) entry.siteTypes.add(a.siteType);
     next.set(a.formKey, entry);
   }
   audiences = next;
@@ -204,12 +219,27 @@ export const keyForCard = (cardId: string, builtFormId: string | null | undefine
 /** Positions are given back as stored (their case), for the editor. */
 const titleCase = new Map<string, string>();
 
-export function audienceOf(formKey: string): { groupIds: string[]; userIds: string[]; titles: string[] } {
+export function audienceOf(formKey: string): { groupIds: string[]; userIds: string[]; titles: string[]; siteTypes: string[] } {
   const a = audiences.get(formKey);
-  return { groupIds: a ? [...a.groupIds] : [], userIds: a ? [...a.userIds] : [], titles: a ? [...a.titles].map((t) => titleCase.get(t) ?? t) : [] };
+  return {
+    groupIds: a ? [...a.groupIds] : [],
+    userIds: a ? [...a.userIds] : [],
+    titles: a ? [...a.titles].map((t) => titleCase.get(t) ?? t) : [],
+    siteTypes: a ? AUDIENCE_SITE_TYPES.filter((t) => a.siteTypes.has(t)) : [],
+  };
 }
 
-const isEmpty = (a: Audience | undefined) => !a || (!a.groupIds.size && !a.userIds.size && !a.titles.size);
+const isEmpty = (a: Audience | undefined) => !a || (!a.groupIds.size && !a.userIds.size && !a.titles.size && !a.siteTypes.size);
+
+/**
+ * Whether this person is approved for an active site of one of these types.
+ * siteIds null = every site (Admin-like roles), so any type; left out = no sites.
+ */
+function atSiteOfType(siteIds: string[] | null | undefined, types: Set<string>): boolean {
+  if (!types.size) return false;
+  if (siteIds === null) return true;
+  return (siteIds ?? []).some((id) => types.has(siteTypeOf.get(id) ?? ""));
+}
 
 export const isLimited = (formKey: string) => !isEmpty(audiences.get(formKey));
 
@@ -222,12 +252,16 @@ export function seesEverything(user: Pick<CurrentUser, "groupIds">): boolean {
 export const everythingGroupIds = () => [...everythingGroups];
 
 /** Whether this person may see and use the form. Admins, and the groups that see everything, always may. */
-export function inAudience(user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null; roleKey?: string }, formKey: string): boolean {
+export function inAudience(
+  user: Pick<CurrentUser, "userId" | "permissions" | "groupIds"> & { title?: string | null; roleKey?: string; siteIds?: string[] | null },
+  formKey: string
+): boolean {
   if (user.permissions.includes("forms.manage") || seesEverything(user)) return true;
   const a = audiences.get(formKey);
   if (isEmpty(a)) return true;
   if (a!.userIds.has(user.userId)) return true;
   if (user.title && a!.titles.has(normTitle(user.title))) return true;
+  if (atSiteOfType(user.siteIds, a!.siteTypes)) return true;
   return (user.groupIds ?? []).some((g) => a!.groupIds.has(g));
 }
 
@@ -392,13 +426,14 @@ export async function setEntryAccess(formId: string, input: unknown, by: string)
 }
 
 /** Replaces a form's audience. Empty lists = everyone. */
-export async function setAudience(formKey: string, groupIds: string[], userIds: string[], titles: string[] = []) {
+export async function setAudience(formKey: string, groupIds: string[], userIds: string[], titles: string[] = [], siteTypes: string[] = []) {
   const uniqueTitles = [...new Map(titles.map((t) => t.trim()).filter(Boolean).map((t) => [normTitle(t), t])).values()];
   await prisma.$transaction([
     prisma.formAudience.deleteMany({ where: { formKey } }),
     ...[...new Set(groupIds)].map((groupId) => prisma.formAudience.create({ data: { formKey, groupId } })),
     ...[...new Set(userIds)].map((userId) => prisma.formAudience.create({ data: { formKey, userId } })),
     ...uniqueTitles.map((title) => prisma.formAudience.create({ data: { formKey, title } })),
+    ...[...new Set(siteTypes)].map((siteType) => prisma.formAudience.create({ data: { formKey, siteType } })),
   ]);
   await reloadAccess();
 }

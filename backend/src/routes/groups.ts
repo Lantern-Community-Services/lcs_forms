@@ -138,12 +138,12 @@ groupsRouter.get(
   asyncHandler(async (req, res) => {
     const u = await prisma.user.findUnique({
       where: { id: req.params.userId },
-      select: { id: true, title: true, roleKey: true, calendarEditor: true, rosterEditor: true, clientInfoAccess: true, globalAdmin: true, viewAsEnabled: true, groupOverrides: { select: { groupId: true, include: true } } },
+      select: { id: true, title: true, roleKey: true, calendarEditor: true, rosterEditor: true, clientInfoAccess: true, globalAdmin: true, viewAsEnabled: true, groupOverrides: { select: { groupId: true, include: true } }, sites: { where: { approved: true }, select: { siteId: true } } },
     });
     if (!u) throw notFound();
     const groupIds = effectiveGroups(u.title, u.groupOverrides);
     const role = roleFor(u.roleKey);
-    const viewer = { userId: u.id, permissions: permissionsFor(role, u), groupIds, title: u.title };
+    const viewer = { userId: u.id, permissions: permissionsFor(role, u), groupIds, title: u.title, siteIds: role.allSites ? null : u.sites.map((s) => s.siteId) };
     const own = personFormKeys(u.id);
     const added = new Set(own.added);
     const hidden = new Set(own.hidden);

@@ -302,7 +302,7 @@ export interface FormLink {
   /** Role keys that may see this form. Empty = every role. */
   roles: string[];
   /** Admins' catalog editor only: who it's open to. Both empty = everyone. */
-  audience?: { groupIds: string[]; userIds: string[]; titles: string[] };
+  audience?: { groupIds: string[]; userIds: string[]; titles: string[]; siteTypes?: string[] };
   keywords: string | null;
   badge: string | null;
   /** Icon key (lib/formIcons.ts); null = the category's icon. */
@@ -320,7 +320,7 @@ export interface FormCategory {
   sortOrder: number;
   forms: FormLink[];
   /** Catalog editor only: who the category and its forms are open to. All empty = everyone. */
-  audience?: { groupIds: string[]; userIds: string[]; titles: string[] };
+  audience?: { groupIds: string[]; userIds: string[]; titles: string[]; siteTypes?: string[] };
 }
 
 export interface FormCatalog {

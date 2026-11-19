@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The pickers for who a form or a catalog category is open to: staff groups
- * (with the positions in each), positions (job titles) and named people. Used
+ * (with the positions in each), positions (job titles), site types and named people. Used
  * by Forms catalog and by the form builder's Settings.
  */
 
@@ -55,6 +55,52 @@ export function GroupChecklist({ groups, titles, value, onChange }: { groups: St
                 <span className="mt-0.5 block text-[12px] leading-snug text-muted">
                   {positions.length ? positions.join(" · ") : "No positions join it; people are added by hand."}
                 </span>
+              </span>
+            </label>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The site types a form can be limited to, in the order they're offered. */
+export const SITE_TYPE_CHOICES: { value: string; label: string }[] = [
+  { value: "shelter", label: "Shelter sites" },
+  { value: "supportive", label: "Supportive housing sites" },
+  { value: "office", label: "Office sites" },
+  { value: "other", label: "Other sites" },
+];
+
+/** "people at shelter sites", for summaries of who a form is open to. */
+export const siteTypeWords = (t: string) => `people at ${SITE_TYPE_CHOICES.find((c) => c.value === t)?.label.toLowerCase() ?? `${t} sites`}`;
+
+/**
+ * Site types a form is open to: everyone approved for at least one active
+ * site of the type, whatever their job title. Each shows its sites, so it's
+ * clear who a tick takes in. Types with no active site aren't offered unless
+ * already ticked.
+ */
+export function SiteTypeChecklist({ sites, value, onChange }: { sites: { name: string; siteType: string; active?: boolean }[]; value: string[]; onChange: (siteTypes: string[]) => void }) {
+  const live = sites.filter((s) => s.active !== false);
+  const shown = SITE_TYPE_CHOICES.filter((c) => value.includes(c.value) || live.some((s) => s.siteType === c.value));
+  return (
+    <ul className="divide-y divide-hairline rounded-input border border-hairline">
+      {shown.map((c) => {
+        const names = live.filter((s) => s.siteType === c.value).map((s) => s.name);
+        const on = value.includes(c.value);
+        return (
+          <li key={c.value}>
+            <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-rowhover">
+              <input type="checkbox" checked={on} onChange={() => onChange(on ? value.filter((v) => v !== c.value) : [...value, c.value])} className="mt-[3px]" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-semibold text-ink">
+                  Everyone at {c.label.toLowerCase()}
+                  <span className="ml-1.5 font-normal text-muted">
+                    {names.length} {names.length === 1 ? "site" : "sites"}
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-muted">{names.length ? names.join(" · ") : "No active sites of this type."}</span>
               </span>
             </label>
           </li>
