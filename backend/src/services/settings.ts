@@ -44,6 +44,8 @@ export const SETTING_DEFAULTS = {
   siteLocationsSeeded: "",
   /** Set once the default calendar categories have been written; see calendar.ts. */
   calendarCategoriesSeeded: "",
+  /** Test sites only: the made-up programs for their made-up sites (JSON); see testDataSites.ts. */
+  testPrograms: "",
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;

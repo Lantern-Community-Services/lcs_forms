@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { asyncHandler, badRequest, forbidden, notFound } from "../http.js";
+import { HttpError, asyncHandler, badRequest, forbidden, notFound } from "../http.js";
 import { allGroups, everythingGroupIds, reloadAccess } from "../services/staffGroups.js";
 import { refuseWhileActingAs, requireAuth, requirePermission } from "../auth/middleware.js";
 import { actorOf, audit } from "../services/audit.js";
@@ -11,7 +11,8 @@ import { SCOPE_GRANTS } from "../ops/principal.js";
 import { ROSTER_EVENTS, deliver, generateSecret } from "../services/webhooks.js";
 import { decodeCsv, importTenants, readRows } from "../services/tenantImport.js";
 import { backupStatus, formsToSync, queueBackupJobs } from "../services/formBackup.js";
-import { replaceWithMadeUpData } from "../services/testData.js";
+import { replaceWithMadeUpData, type ReplaceSummary } from "../services/testData.js";
+import { testSite } from "../env.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -20,16 +21,43 @@ adminRouter.use(requireAuth);
 
 /**
  * A test site (env.ts testSite) only: wipe residents, entries and everything
- * made from them, and start over with made-up residents (services/testData.ts).
- * Super Admins, typing REPLACE to confirm.
+ * made from them, rename real sites to made-up ones, and start over with
+ * made-up data (services/testData.ts). Super Admins, typing REPLACE to confirm.
+ *
+ * It takes minutes on a small database, longer than the web app's proxy waits,
+ * so it runs in the background: POST starts it (202) and GET says how it's going.
  */
+type ReplaceRun = { startedAt: string; by: string; finishedAt?: string; result?: ReplaceSummary; error?: string };
+let replaceRun: ReplaceRun | null = null;
+
+adminRouter.get(
+  "/test-data/replace",
+  requirePermission("admins.manage"),
+  asyncHandler(async (_req, res) => res.json({ testSite, run: replaceRun }))
+);
+
 adminRouter.post(
   "/test-data/replace",
   requirePermission("admins.manage"),
   asyncHandler(async (req, res) => {
     const { confirm } = z.object({ confirm: z.string() }).parse(req.body);
     if (confirm !== "REPLACE") throw badRequest("Type REPLACE to confirm.");
-    res.json(await replaceWithMadeUpData(actorOf(req)));
+    if (!testSite) throw forbidden("This is the live site: its residents and entries are real, and they stay.");
+    if (replaceRun && !replaceRun.finishedAt) throw new HttpError(409, `Already replacing (started by ${replaceRun.by}).`);
+    const run: ReplaceRun = { startedAt: new Date().toISOString(), by: req.user!.name };
+    replaceRun = run;
+    replaceWithMadeUpData(actorOf(req), req.user!.userId)
+      .then((result) => {
+        run.result = result;
+      })
+      .catch((err: unknown) => {
+        console.error("[test-data] replace failed:", err);
+        run.error = err instanceof Error ? err.message : String(err);
+      })
+      .finally(() => {
+        run.finishedAt = new Date().toISOString();
+      });
+    res.status(202).json({ testSite, run });
   })
 );
 

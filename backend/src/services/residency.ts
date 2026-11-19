@@ -4,7 +4,7 @@ import { badRequest, HttpError } from "../http.js";
 import { audit, type Actor } from "./audit.js";
 import { caseManagementEnabled } from "./settings.js";
 import { clockAfterHold, displayName, HOLD_CLOCK, isOnHold, publicTenant } from "./roster.js";
-import { MOVE_OUT_REASONS, PROGRAMS, US_STATES } from "./clientFields.js";
+import { MOVE_OUT_REASONS, programs, US_STATES } from "./clientFields.js";
 import { addExitTask, cancelOpenTasks, day, SCHEDULE, tasksForStay, todayNY, ymd } from "./checklist.js";
 import { notifyQuietly } from "./notifications.js";
 
@@ -105,7 +105,7 @@ export function residencyMeta() {
     exitDestinations: EXIT_DESTINATIONS,
     unitTypes: UNIT_TYPES,
     states: US_STATES,
-    programs: PROGRAMS,
+    programs: programs(),
     schedule: SCHEDULE.map(({ key, label, afterMoveIn, every, afterMoveOut }) => ({ key, label, afterMoveIn, every, afterMoveOut })),
   };
 }
@@ -357,7 +357,7 @@ export async function moveIn(ctx: Ctx, opts: { unitId: string; date: unknown; pe
   if (!opts.canAccessSite(unit.siteId)) throw new HttpError(404, "Unit not found.");
   if (!unit.active) throw badRequest(`Unit ${unit.label} is retired. Bring it back on the Units page first.`);
   const date = moveDate(opts.date, "Move-in date");
-  if (opts.program && !PROGRAMS.some((p) => p.value === opts.program)) throw badRequest(`"${opts.program}" isn't a program.`);
+  if (opts.program && !programs().some((p) => p.value === opts.program)) throw badRequest(`"${opts.program}" isn't a program.`);
   const tenants = await prisma.tenant.findMany({ where: { id: { in: opts.people.map((p) => p.tenantId) } } });
   const byId = new Map(tenants.map((t) => [t.id, t]));
   for (const p of opts.people) {

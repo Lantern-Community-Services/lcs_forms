@@ -107,30 +107,55 @@ interface ReplaceSummary {
   attendance: number;
   redacted: string[];
   stillNamed: string[];
+  sites?: { renamed: { from: string; to: string }[]; rewritten: string[]; stillNaming: string[] };
+  caseManagement?: { sites: number; units: number; householdSites: string[]; families: number; waiting: number; away: number; movedOut: number; profiles: number } | null;
 }
 
 /**
  * Test sites only, Super Admins: wipe residents, entries and everything made
- * from them, and start over with made-up residents (backend services/testData.ts).
+ * from them, make the sites up, and start over with made-up data (backend
+ * services/testData.ts). It runs in the background on the server; this starts
+ * it and checks on it every few seconds.
  */
+type ReplaceRun = { startedAt: string; by: string; finishedAt?: string; result?: ReplaceSummary; error?: string };
+
 function ReplaceWithMadeUpData() {
   const [confirm, setConfirm] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<ReplaceSummary | null>(null);
+  const [run, setRun] = useState<ReplaceRun | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
+  const running = Boolean(run && !run.finishedAt);
+  const done = run?.result ?? null;
+
+  // Pick up a run already going (or just finished), then follow it while it runs.
+  useEffect(() => {
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = async () => {
+      try {
+        const r = await api.get<{ run: ReplaceRun | null }>("/admin/test-data/replace");
+        if (stop) return;
+        setRun(r.run);
+        if (r.run && !r.run.finishedAt) timer = setTimeout(() => void check(), 3000);
+        else if (r.run?.finishedAt && running) await qc.invalidateQueries();
+      } catch {
+        if (!stop) timer = setTimeout(() => void check(), 5000);
+      }
+    };
+    void check();
+    return () => {
+      stop = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function replace() {
-    setBusy(true);
     try {
-      const r = await api.post<ReplaceSummary>("/admin/test-data/replace", { confirm });
-      setDone(r);
+      const r = await api.post<{ run: ReplaceRun }>("/admin/test-data/replace", { confirm });
+      setRun(r.run);
       setConfirm("");
-      await qc.invalidateQueries();
     } catch (e) {
       toast(errorMessage(e, "Could not replace the data."), "error");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -138,23 +163,36 @@ function ReplaceWithMadeUpData() {
     <Card className="mt-4 p-5">
       <p className="text-[14px] font-semibold text-ink">Test site data</p>
       <p className="mt-1 text-[13px] text-muted">
-        This is a test site, so its residents should be made up. Replace removes every resident, entry, photo, attendance record, notification and
-        audit event here, takes the old residents' names out of forms and the calendar, and adds a made-up roster at every site. Forms, sites, people
-        and settings stay. It can't be undone.
+        This is a test site, so its residents and buildings should be made up. Replace removes every resident, entry, photo, attendance record,
+        notification and audit event here, takes the old residents' names out of forms and the calendar, renames real sites to made-up ones, and adds a
+        made-up roster at every site — with case management on, also units, moves, families and client information. Forms, people and settings stay.
+        It can't be undone.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type REPLACE" aria-label="Type REPLACE to confirm" className="w-40" />
-        <Button variant="danger" onClick={() => void replace()} disabled={busy || confirm !== "REPLACE"}>
-          {busy ? "Replacing…" : "Replace with made-up data"}
+        <Button variant="danger" onClick={() => void replace()} disabled={running || confirm !== "REPLACE"}>
+          {running ? "Replacing…" : "Replace with made-up data"}
         </Button>
       </div>
+      {running && <p className="mt-3 text-[13px] text-muted">Replacing, started by {run!.by}. This takes a few minutes; you can leave this page.</p>}
+      {run?.error && <p className="mt-3 text-[13px] text-status-redText">It stopped partway: {run.error}</p>}
       {done && (
         <div className="mt-3 text-[13px] text-muted">
           <p>
             Removed {done.residents.removed} residents, {done.entries} entries, {done.files} files and {done.attendance} attendance records. Added {done.residents.added} made-up
             residents.{done.redacted.length > 0 && <> Took names out of {done.redacted.length} forms and records.</>}
           </p>
+          {done.sites && done.sites.renamed.length > 0 && <p className="mt-1">Renamed {done.sites.renamed.length} sites to made-up ones.</p>}
+          {done.caseManagement && (
+            <p className="mt-1">
+              Set up {done.caseManagement.units} units at {done.caseManagement.sites} sites, {done.caseManagement.families} families at {done.caseManagement.householdSites.join(" and ")},{" "}
+              {done.caseManagement.waiting} people waiting to move in, {done.caseManagement.away} away, {done.caseManagement.movedOut} moved out, and client information for {done.caseManagement.profiles}.
+            </p>
+          )}
           {done.stillNamed.length > 0 && <p className="mt-1 text-status-amberText">Still naming someone, fix by hand: {done.stillNamed.join(", ")}.</p>}
+          {done.sites && done.sites.stillNaming.length > 0 && (
+            <p className="mt-1 text-status-amberText">Still naming a real building (left alone, they're shared with the live site through the form backup): {done.sites.stillNaming.join(", ")}.</p>
+          )}
         </div>
       )}
     </Card>
