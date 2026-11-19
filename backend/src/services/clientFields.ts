@@ -29,14 +29,12 @@ export type ClientFieldType =
   | "ssn"
   /** A staff member (User id) who works at the resident's site. */
   | "staff"
-  /** Another resident (Tenant id) at the same site. */
-  | "resident"
   /** One of PROGRAMS: building – funder – population. */
   | "program"
   /** A list of people: name, relationship, phone, email. */
   | "contacts";
 
-export type ClientColumn = "dateOfBirth" | "ssn" | "program" | "caseLeadId" | "headOfHouseholdId";
+export type ClientColumn = "dateOfBirth" | "ssn" | "program" | "caseLeadId";
 
 export interface ClientField {
   key: string;
@@ -119,7 +117,8 @@ export const PROGRAMS: readonly { value: string; site: string }[] = [
 ];
 const PROGRAM_VALUES = new Set(PROGRAMS.map((p) => p.value));
 
-const US_STATES = [
+/** For forwarding addresses (services/residency.ts move-outs). */
+export const US_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida",
   "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
   "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire",
@@ -128,7 +127,8 @@ const US_STATES = [
   "Washington", "West Virginia", "Wisconsin", "Wyoming",
 ] as const;
 
-const MOVE_OUT_REASONS = [
+/** PlanStreet's move-out reasons (services/residency.ts). */
+export const MOVE_OUT_REASONS = [
   "Abandonment", "Deceased", "Detox/Rehab", "Eviction", "External Permanent Supportive Housing Transfer",
   "Internal Permanent Supportive Housing Transfer", "Hospital", "Independent Housing", "Jail/Prison",
   "Living with Family/Friends/Partner", "Nursing Home", "Shelter",
@@ -275,40 +275,6 @@ export const CLIENT_SECTIONS: readonly ClientSection[] = [
       { key: "declinedReason", label: "Declined because", type: "select", showIf: { key: "intakeOutcome", in: ["Declined"] }, options: ["Unit Size", "Shared Bathrooms", "Supportive Housing", "Neighborhood", "Alternative Housing"] },
     ],
   },
-  {
-    key: "household",
-    title: "Household",
-    description: "Everyone in a household is on the roster. Point each member at the head of household; the head's page lists them.",
-    fields: [
-      {
-        key: "relationshipToHead",
-        label: "Relationship to head of household",
-        type: "select",
-        options: ["Self (head of household)", "Head of household's child", "Head of household's spouse or partner", "Head of household's other relation member", "Other: non-relation member"],
-      },
-      {
-        key: "headOfHousehold",
-        label: "Head of household",
-        type: "resident",
-        column: "headOfHouseholdId",
-        showIf: { key: "relationshipToHead", in: ["Head of household's child", "Head of household's spouse or partner", "Head of household's other relation member", "Other: non-relation member"] },
-      },
-    ],
-  },
-  {
-    key: "moveOut",
-    title: "Move-out",
-    description: "When they leave. The move-out date is recorded when they're removed from the roster.",
-    fields: [
-      { key: "moveOutReason", label: "Move-out reason", type: "select", options: MOVE_OUT_REASONS, wide: true },
-      { key: "transferProgram", label: "Transferred to", type: "program", allSites: true, wide: true, showIf: { key: "moveOutReason", in: ["Internal Permanent Supportive Housing Transfer"] } },
-      { key: "forwardingAddress1", label: "Forwarding address", type: "text", wide: true },
-      { key: "forwardingAddress2", label: "Address line 2", type: "text", wide: true },
-      { key: "forwardingCity", label: "City", type: "text" },
-      { key: "forwardingState", label: "State", type: "select", options: US_STATES },
-      { key: "forwardingZip", label: "ZIP code", type: "text" },
-    ],
-  },
 ];
 
 export const CLIENT_FIELDS: readonly ClientField[] = CLIENT_SECTIONS.flatMap((s) => s.fields);
@@ -392,8 +358,7 @@ export function parseClientValue(field: ClientField, raw: unknown): ClientValue 
       if (/^(000|666|9)/.test(digits) || digits.slice(3, 5) === "00" || digits.slice(5) === "0000") throw bad("that isn't a valid number.");
       return digits;
     }
-    case "staff":
-    case "resident": {
+    case "staff": {
       if (typeof raw !== "string" || raw.length > 64) throw bad("pick someone from the list.");
       return raw;
     }

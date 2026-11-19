@@ -48,7 +48,7 @@ export function changeLines(e: Pick<AuditEvent, "action" | "changes">): { label:
   // head of household) are left to the summary; the SSN arrives masked.
   if (e.action === "tenant.profile_updated" && e.changes) {
     return Object.entries(e.changes as Record<string, { from: unknown; to: unknown }>)
-      .filter(([k, v]) => v && typeof v === "object" && "to" in v && k !== "caseLead" && k !== "headOfHousehold")
+      .filter(([k, v]) => v && typeof v === "object" && "to" in v && k !== "caseLead")
       .map(([k, v]) => ({ label: k === "ssn" ? "SSN" : humanize(k), from: clientShown(v.from), to: clientShown(v.to) }));
   }
   if (e.action !== "tenant.updated" || !e.changes) return [];

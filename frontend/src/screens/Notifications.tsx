@@ -1,8 +1,6 @@
 import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  AlertTriangle, Bell, CheckCheck, FileText, Megaphone, MessageSquare, MoreHorizontal, Settings2, Trash2, UserPlus, UserRound,
-} from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, FileText, Megaphone, MessageSquare, MoreHorizontal, Settings2, Trash2, UserPlus, UserRound, House } from "lucide-react";
 import { Page, PageHeader, DesktopBackLink } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Button } from "@/components/ui/button";
@@ -25,6 +23,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   "people.request": UserPlus,
   account: UserRound,
   announcement: Megaphone,
+  "residents.moves": House,
 };
 
 /** "Today", "Yesterday", or the day, for grouping the list. */

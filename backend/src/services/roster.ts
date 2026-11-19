@@ -35,6 +35,23 @@ export function isSentToReview(t: { attentionClockAt: Date }): boolean {
   return t.attentionClockAt.getTime() <= REVIEW_CLOCK.getTime();
 }
 
+/**
+ * "On hold": away from the building, or on the roster but not moved in yet
+ * (services/residency.ts). The clock is parked here, after any threshold, so they
+ * never reach the review queue, wherever it's counted. Form activity leaves it
+ * alone; moving in or coming back starts it again (clockAfterHold).
+ */
+export const HOLD_CLOCK = new Date("2100-01-01T00:00:00Z");
+
+export function isOnHold(t: { attentionClockAt: Date }): boolean {
+  return t.attentionClockAt.getTime() >= HOLD_CLOCK.getTime();
+}
+
+/** Coming off hold (moved in, back from being away) counts as being seen now. */
+export function clockAfterHold(): Date {
+  return new Date();
+}
+
 /** Threshold in hours for a site: its own override, else the org default. */
 export async function thresholdFor(site: Pick<Site, "attentionHours"> | null, orgDefault?: number) {
   return site?.attentionHours ?? orgDefault ?? (await attentionHours());
@@ -77,6 +94,15 @@ export function serializeTenant(
     hoursQuiet: Math.round(hoursQuiet),
     needsAttention: t.status === "active" && (sentToReview || hoursQuiet >= (t.site?.attentionHours ?? hours)),
     sentToReview: t.status === "active" && sentToReview,
+    /** The unit they live in (case management), and whether they've moved in at all. */
+    unitId: t.unitId ?? null,
+    movedIn: t.movedIn !== false,
+    /** Household sites: their head of household (null for the head or someone alone) and relation to the head. */
+    householdHeadId: t.householdHeadId ?? null,
+    householdRelation: t.householdRelation ?? null,
+    /** Away from the building since this day, and why. */
+    awaySince: t.awaySince ?? null,
+    awayReason: t.awayReason ?? null,
     archivedAt: t.archivedAt,
     archiveReason: t.archiveReason,
     version: t.version,
@@ -147,8 +173,9 @@ export async function recordActivity(opts: {
             data: {
               lastActivityAt: occurredAt,
               lastActivitySource: opts.label ?? opts.source,
-              // Sent back to review: stays there until someone keeps them.
-              ...(isSentToReview(tenant) ? {} : { attentionClockAt: clockFrom({ ...tenant, lastActivityAt: occurredAt }) }),
+              // Sent back to review: stays there until someone keeps them. Away or
+              // not moved in (on hold): a form naming them doesn't put them back.
+              ...(isSentToReview(tenant) || isOnHold(tenant) ? {} : { attentionClockAt: clockFrom({ ...tenant, lastActivityAt: occurredAt }) }),
             },
           }),
         ]

@@ -744,8 +744,6 @@ declare module "@lcs/server" {
     ssn: { last4: string; masked: string } | null;
     age: number | null;
     caseLead: { id: string; name: string; title: string | null; active: boolean } | null;
-    headOfHousehold: { id: string; displayName: string; unit: string | null; status: string } | null;
-    householdMembers: { id: string; displayName: string; unit: string | null; status: string; relationship: string | null }[];
     updatedAt: string | null;
     updatedBy: string | null;
   }

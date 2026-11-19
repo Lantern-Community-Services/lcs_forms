@@ -14,20 +14,22 @@ import { LoadingState } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useSites } from "@/lib/queries";
+import { useCaseManagement } from "@/lib/auth";
 import { DEFAULT_GEOFENCE_METERS } from "@/lib/location";
 import type { Site } from "@/lib/types";
 import { errorMessage } from "@/lib/utils";
 
 type Draft = {
-  id?: string; name: string; code: string; entityName: string; siteType: string; address: string; attentionHours: string; active: boolean;
+  id?: string; name: string; code: string; entityName: string; siteType: string; address: string; attentionHours: string; active: boolean; households: boolean;
   latitude: string; longitude: string; geofenceMeters: string;
 };
-const empty: Draft = { name: "", code: "", entityName: "", siteType: "supportive", address: "", attentionHours: "", active: true, latitude: "", longitude: "", geofenceMeters: "" };
+const empty: Draft = { name: "", code: "", entityName: "", siteType: "supportive", address: "", attentionHours: "", active: true, households: false, latitude: "", longitude: "", geofenceMeters: "" };
 /** Six decimals is ~10 cm, plenty for a building. */
 const coord = (n: number) => String(Math.round(n * 1e6) / 1e6);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export function AdminSites() {
+  const caseManagement = useCaseManagement();
   const { data: sites, isLoading } = useSites(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const qc = useQueryClient();
@@ -46,6 +48,7 @@ export function AdminSites() {
       code: draft.code,
       entityName: draft.entityName || null,
       siteType: draft.siteType,
+      households: draft.households,
       address: draft.address || null,
       latitude: lat,
       longitude: lng,
@@ -67,7 +70,7 @@ export function AdminSites() {
   const edit = (s: Site) =>
     setDraft({
       id: s.id, name: s.name, code: s.code, entityName: s.entityName ?? "", siteType: s.siteType,
-      address: s.address ?? "", attentionHours: s.attentionHours ? String(s.attentionHours) : "", active: s.active,
+      address: s.address ?? "", attentionHours: s.attentionHours ? String(s.attentionHours) : "", active: s.active, households: Boolean(s.households),
       latitude: s.latitude != null ? coord(s.latitude) : "", longitude: s.longitude != null ? coord(s.longitude) : "",
       geofenceMeters: s.geofenceMeters ? String(s.geofenceMeters) : "",
     });
@@ -139,6 +142,17 @@ export function AdminSites() {
                 <span className="text-[13.5px] text-ink">Active — shown in rosters, forms and the API</span>
                 <Switch checked={draft.active} onCheckedChange={(v) => setDraft({ ...draft, active: v })} />
               </label>
+              {caseManagement && draft.siteType === "supportive" && (
+                <label className="col-span-2 flex items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2">
+                  <span>
+                    <span className="block text-[13.5px] text-ink">Households live here</span>
+                    <span className="block text-micro text-muted">
+                      A unit can hold a family: a head of household and members, each with their relation to the head. Off: one person per unit.
+                    </span>
+                  </span>
+                  <Switch checked={draft.households} onCheckedChange={(v) => setDraft({ ...draft, households: v })} className="mt-0.5" />
+                </label>
+              )}
             </DialogBody>
           )}
           <DialogFooter>

@@ -17,6 +17,7 @@ import { startNotificationMail } from "./services/notifications.js";
 import { startEmailReports } from "./services/emailReports.js";
 import { loadLook } from "./services/emailLook.js";
 import { startFollowUpReminders } from "./services/followUp.js";
+import { startChecklistReminders } from "./services/checklist.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
 
@@ -48,6 +49,7 @@ startNotificationMail();
 void loadLook().catch(() => undefined);
 startEmailReports();
 startFollowUpReminders();
+startChecklistReminders();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

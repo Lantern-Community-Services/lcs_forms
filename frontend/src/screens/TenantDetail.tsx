@@ -17,8 +17,10 @@ import { RemoveDialog } from "@/components/roster/RemoveDialog";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
 import { HighAcuityFlag, HighAcuityToggle } from "@/components/roster/HighAcuity";
 import { ClientInfoCard } from "@/components/roster/ClientInfo";
+import { ResidencyCards } from "@/components/residency/ResidencyCards";
+import { useResidencyFor } from "@/lib/residency";
 import { useRosterActions } from "@/components/roster/useRosterActions";
-import { rosterApi, useRosterMutation, useTenant } from "@/lib/queries";
+import { rosterApi, useRosterMutation, useSites, useTenant } from "@/lib/queries";
 import { useAuth, useCaseManagement } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { errorMessage, formatDate, formatDateInput, formatDateTime, quietFor, relativeTime, tintFor } from "@/lib/utils";
@@ -40,6 +42,8 @@ export function TenantDetailPage() {
   const { id } = useParams();
   const { can } = useAuth();
   const caseManagement = useCaseManagement();
+  const { data: allSites } = useSites();
+  const residencyFor = useResidencyFor();
   const toast = useToast();
   const { data: t, isLoading } = useTenant(id);
   const { remove, keep, restore, sendToReview } = useRosterActions();
@@ -67,6 +71,10 @@ export function TenantDetailPage() {
   const baseVersion = loaded.version;
 
   const editable = can("roster.edit") && t.status === "active";
+  // Case management at a supportive site: the unit and move-in come from Move in / transfers (Home, below).
+  const units = residencyFor(allSites?.find((s) => s.id === t.siteId));
+  // Away, or not moved in yet: out of review, so no Still here / Send to review.
+  const onHold = t.movedIn === false || Boolean(t.awaySince);
   const set = (k: Exclude<keyof FormState, "highAcuity">) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f!, [k]: e.target.value }));
 
@@ -115,17 +123,23 @@ export function TenantDetailPage() {
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 <TenantStatusBadge status={t.status} needsAttention={t.needsAttention && can("roster.archive")} />
                 {t.highAcuity && <HighAcuityFlag />}
+                {t.status === "active" && t.movedIn === false && (
+                  <span className="rounded-pill bg-status-amberBg px-2 py-0.5 text-micro font-bold text-status-amberText">Not moved in</span>
+                )}
+                {t.status === "active" && t.awaySince && (
+                  <span className="rounded-pill bg-subtle2 px-2 py-0.5 text-micro font-bold text-ink" title={t.awayReason ?? undefined}>Away</span>
+                )}
               </div>
             </div>
             <div className="flex w-full gap-2 md:w-auto">
               {t.status === "active" ? (
                 <>
-                  {can("roster.edit") && (
+                  {can("roster.edit") && !onHold && (
                     <Button variant="secondary" onClick={() => void keep(t)} className="min-h-[44px] flex-1 md:h-9 md:min-h-0">
                       <CheckCircle2 className="h-4 w-4" /> Still here
                     </Button>
                   )}
-                  {can("roster.edit") && !t.needsAttention && (
+                  {can("roster.edit") && !t.needsAttention && !onHold && (
                     <Button variant="secondary" onClick={() => void sendToReview(t)} className="min-h-[44px] flex-1 md:h-9 md:min-h-0">
                       <ListChecks className="h-4 w-4" /> Send to review
                     </Button>
@@ -191,8 +205,12 @@ export function TenantDetailPage() {
             </div>
           )}
           <fieldset disabled={!editable} className="grid grid-cols-2 gap-3">
-            <Field label="Unit / bed"><Input value={form.unit} onChange={set("unit")} className="min-h-[44px] md:min-h-9" /></Field>
-            <Field label="Move-in date"><Input type="date" value={form.moveInDate} onChange={set("moveInDate")} className="min-h-[44px] md:min-h-9" /></Field>
+            <Field label="Unit / bed" hint={units ? "Set by Move in or Move to another unit, under Home." : undefined}>
+              <Input value={form.unit} onChange={set("unit")} disabled={units} className="min-h-[44px] md:min-h-9" />
+            </Field>
+            <Field label="Move-in date" hint={units ? "Set by Move in." : undefined}>
+              <Input type="date" value={form.moveInDate} onChange={set("moveInDate")} disabled={units} className="min-h-[44px] md:min-h-9" />
+            </Field>
             <Field label="First name" className="col-span-2 sm:col-span-1"><Input value={form.firstName} onChange={set("firstName")} className="min-h-[44px] md:min-h-9" /></Field>
             <Field label="Last name" className="col-span-2 sm:col-span-1"><Input value={form.lastName} onChange={set("lastName")} className="min-h-[44px] md:min-h-9" /></Field>
             <Field label="Goes by" className="col-span-2 sm:col-span-1"><Input value={form.preferredName} onChange={set("preferredName")} className="min-h-[44px] md:min-h-9" /></Field>
@@ -217,6 +235,7 @@ export function TenantDetailPage() {
         </Card>
 
         {/* Part of the case management rework: only when it's on for this site (Admin → Settings). */}
+        {units && <ResidencyCards tenant={t} />}
         {caseManagement && <ClientInfoCard tenant={t} />}
 
         <div className="grid gap-4 md:grid-cols-2">
