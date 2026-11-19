@@ -804,6 +804,15 @@ model FormEntry {
   followUpRemindedAt DateTime?
   followUpReminders  Int       @default(0)
 
+  /// Sign-off (services/signOff.ts): "waiting" while a signature question that's signed after
+  /// filing (a supervisor's) still needs signing; "done" once every one it needs is signed; null
+  /// when the form asks for none.
+  signOff           String?   @db.NVarChar(16)
+  /// Who signed each one and when: { [fieldId]: { byId, byName, at } }. The signature itself is the question's answer.
+  signOffs          String?   @db.NVarChar(Max)
+  signOffRemindedAt DateTime?
+  signOffReminders  Int       @default(0)
+
   @@unique([formId, clientId])
   @@index([formId, createdAt])
   @@index([formId, status])
@@ -816,6 +825,7 @@ model FormEntry {
   @@index([createdById, createdAt])
   @@index([formId, sharedById])
   @@index([formId, followUp])
+  @@index([formId, signOff])
 }
 
 /// A note on an entry — typed by a person, or written by the system

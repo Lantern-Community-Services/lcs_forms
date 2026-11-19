@@ -9,6 +9,7 @@ import { findForm, readDoc } from "../forms/service.js";
 import { canUseBuiltForm } from "../services/staffGroups.js";
 import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp, setFollowUp, setFollowUpItem, wasDoneBefore } from "../services/followUp.js";
 import { fillMetaFields } from "../forms/fillMeta.js";
+import { signEntry, signOffView } from "../services/signOff.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
 import {
   canSeeEntry, canArchiveEntries, docForViewer, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
@@ -169,6 +170,7 @@ function filterOf(req: Request): EntryFilter {
     starred: q.starred === "1",
     site: typeof q.site === "string" && q.site ? q.site : undefined,
     followUp: q.followUp === "open" || q.followUp === "done" ? q.followUp : undefined,
+    signOff: q.signOff === "waiting" || q.signOff === "done" ? q.signOff : undefined,
     archived: q.archived === "only" || q.archived === "all" ? q.archived : "hide",
     ids,
   };
@@ -275,6 +277,8 @@ fillRouter.get(
       followUpChecklist: follow ? checklistFor(follow, entry) : [],
       // Marked done before and opened again: marking it done again tells nobody unless they ask to.
       followUpDoneBefore: entry.followUp === "open" ? await wasDoneBefore(entry.id) : false,
+      // Signatures signed after filing: each one it needs, and whether this person can sign it now.
+      signOffs: entry.signOff ? await signOffView(form, doc, entry, req.user) : [],
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
       canArchive: canArchiveEntries(form, liveOrDraft, req.user, reach),
       isAdmin: isFormAdmin(req.user),
@@ -325,6 +329,21 @@ fillRouter.post(
     const updated = await setFollowUp(form, entry, { userId: req.user!.userId, name: req.user!.name }, body);
     const sites = await siteNames();
     res.json(entryRow({ ...updated, site: updated.siteId ? sites.get(updated.siteId) ?? null : null }));
+  })
+);
+
+/** Sign one of an entry's sign-offs (a supervisor's signature): the people it names, and Admins; never whoever filed it. */
+fillRouter.post(
+  "/:slug/entries/:id/sign",
+  asyncHandler(async (req, res) => {
+    if (!req.user) throw unauthorized("Sign in to sign it.");
+    const body = z.object({ field: z.string().min(1).max(64), signature: z.string().max(700_000), values: z.record(z.unknown()).optional() }).parse(req.body);
+    const { form, reach } = await readable(req);
+    const entry = await entryIn(req, form, reach);
+    const doc = await docForEntry(form, entry.formVersion);
+    const updated = await signEntry(form, doc, entry, req.user, body);
+    const sites = await siteNames();
+    res.json({ entry: entryRow({ ...updated, site: updated.siteId ? sites.get(updated.siteId) ?? null : null }), signOffs: await signOffView(form, doc, updated, req.user) });
   })
 );
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FIELD_ID_RE, FIELD_TYPE_KEYS, FORMAT, FORMAT_VERSION, lintForm, type FormDoc } from "./engine.js";
 import { tutorialSchema } from "../tutorials/schema.js";
+import { recipientSchema } from "./routingSchema.js";
 
 /**
  * The lcs-form document, as a zod schema. Strict on purpose: an unknown key is
@@ -88,6 +89,12 @@ const baseField = z.object({
   content: z.string().max(200_000).optional(),
   nextLabel: z.string().max(60).optional(),
   code: codeBlock.optional(),
+  /** A signature signed after filing, by one of `by` (services/signOff.ts). */
+  signOff: z.object({
+    by: z.array(recipientSchema).min(1).max(50),
+    fields: z.array(fieldId).max(10).optional(),
+    whatToDo: z.string().trim().max(500).optional(),
+  }).strict().optional(),
 });
 
 type FieldIn = z.infer<typeof baseField> & { fields?: FieldIn[] };

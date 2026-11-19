@@ -75,6 +75,8 @@ export function BuiltFormEntriesPage() {
   const [status, setStatus] = useState<Status>("active");
   const [starred, setStarred] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUp>("");
+  // Sign-off: waiting for a signature (a supervisor's), or signed off.
+  const [signOff, setSignOff] = useState<"" | "waiting" | "done">("");
   // Archived entries: hidden unless asked for.
   const [archived, setArchived] = useState<"hide" | "only" | "all">("hide");
   const [archiving, setArchiving] = useState(false);
@@ -95,13 +97,14 @@ export function BuiltFormEntriesPage() {
     if (site) p.set("site", site);
     if (starred) p.set("starred", "1");
     if (followUp) p.set("followUp", followUp);
+    if (signOff) p.set("signOff", signOff);
     if (archived !== "hide") p.set("archived", archived);
     if (sort.key !== NEWEST.key || sort.dir !== NEWEST.dir) {
       p.set("sort", sort.key);
       p.set("dir", sort.dir);
     }
     return p.toString();
-  }, [q, from, to, site, status, starred, followUp, archived, sort]);
+  }, [q, from, to, site, status, starred, followUp, signOff, archived, sort]);
   const qs = `${filterQs}&take=${PAGE}&skip=${page * PAGE}`;
   const { data, isLoading, error } = useEntries(slug, qs);
 
@@ -139,12 +142,13 @@ export function BuiltFormEntriesPage() {
     return opts;
   }, [hasSites, columns, sort]);
 
-  const moreCount = (status !== "active" ? 1 : 0) + (starred ? 1 : 0) + (followUp ? 1 : 0) + (archived !== "hide" ? 1 : 0);
+  const moreCount = (status !== "active" ? 1 : 0) + (starred ? 1 : 0) + (followUp ? 1 : 0) + (signOff ? 1 : 0) + (archived !== "hide" ? 1 : 0);
   const chips: { key: string; label: string; clear: () => void }[] = [];
   if (range !== "any") chips.push({ key: "range", label: range === "custom" ? `${from || "…"} – ${to || "…"}` : RANGES.find((r) => r.value === range)!.label, clear: () => setRange("any") });
   if (site) chips.push({ key: "site", label: siteOptions.find((s) => s.id === site)?.name ?? "Site", clear: () => setSite("") });
   if (status !== "active") chips.push({ key: "status", label: status === "voided" ? "Voided only" : "Active and voided", clear: () => setStatus("active") });
   if (followUp) chips.push({ key: "followUp", label: followUp === "open" ? "Follow-up open" : "Follow-up done", clear: () => setFollowUp("") });
+  if (signOff) chips.push({ key: "signOff", label: signOff === "waiting" ? "Needs signature" : "Signed off", clear: () => setSignOff("") });
   if (starred) chips.push({ key: "starred", label: "Starred", clear: () => setStarred(false) });
   if (archived !== "hide") chips.push({ key: "archived", label: archived === "only" ? "Archived only" : "With archived", clear: () => setArchived("hide") });
   const filtered = Boolean(q.trim()) || chips.length > 0;
@@ -157,6 +161,7 @@ export function BuiltFormEntriesPage() {
     setStatus("active");
     setStarred(false);
     setFollowUp("");
+    setSignOff("");
     setArchived("hide");
   }
 
@@ -339,6 +344,17 @@ export function BuiltFormEntriesPage() {
                 ))}
               </>
             )}
+            {data.doc.fields.some((f) => f.signOff) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Sign-off</DropdownMenuLabel>
+                {([["", "Any"], ["waiting", "Needs signature"], ["done", "Signed off"]] as const).map(([v, label]) => (
+                  <DropdownMenuCheckboxItem key={v || "any"} checked={signOff === v} onCheckedChange={() => setSignOff(v)}>
+                    <Check className={cn("h-4 w-4", signOff === v ? "text-accent" : "invisible")} /> {label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuLabel>Archived</DropdownMenuLabel>
             {([["hide", "Hide archived"], ["only", "Archived only"], ["all", "Show them too"]] as const).map(([v, label]) => (
@@ -456,6 +472,7 @@ export function BuiltFormEntriesPage() {
                         {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
                         {e.archivedAt && <span className="ml-2"><ToneBadge tone="neutral">Archived</ToneBadge></span>}
                         {e.followUp && <span className="ml-2"><ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge></span>}
+                        {e.signOff && <span className="ml-2"><SignOffBadge s={e.signOff} /></span>}
                         {(e.noteCount ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 text-micro"><MessageSquare className="h-3.5 w-3.5" />{e.noteCount}</span>}
                       </td>
                     </tr>
@@ -479,6 +496,7 @@ export function BuiltFormEntriesPage() {
                       {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
                       {e.archivedAt && <ToneBadge tone="neutral">Archived</ToneBadge>}
                       {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge>}
+                      {e.signOff && <SignOffBadge s={e.signOff} />}
                     </div>
                     <p className="mt-0.5 text-micro text-muted">{formatDateTime(e.createdAt)} · {e.createdByName}{e.site ? ` · ${e.site.name}` : ""}</p>
                     {doneColumns.some((c) => e.followUp?.values?.some((x) => x.id === c.id && x.value)) && (
@@ -525,6 +543,11 @@ function sortLabel(key: string, columns: Field[]) {
   if (key === "site") return "Site";
   const c = columns.find((x) => `field:${x.id}` === key);
   return c ? c.label || c.id : "Column";
+}
+
+/** An entry's sign-off: waiting for a signature (a supervisor's), or signed off. */
+function SignOffBadge({ s }: { s: NonNullable<EntryRow["signOff"]> }) {
+  return s.status === "waiting" ? <ToneBadge tone="amber">Needs signature</ToneBadge> : <ToneBadge tone="green">Signed off</ToneBadge>;
 }
 
 /** An entry's follow-up badge: Open or Done, with how far its checklist has got ("Open · 2 of 4"). */
