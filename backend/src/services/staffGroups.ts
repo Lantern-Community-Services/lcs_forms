@@ -26,7 +26,8 @@ import { ROLES, roleFor } from "./permissions.js";
  * (PersonForm), whatever their groups say. Someone whose groups have no forms
  * sees what each form's own limit allows, as before. Giving a form to a group
  * or a person is deliberate, so it passes the form's and its category's own
- * limits. Admins and Super Admins (forms.manage), and the see-everything
+ * limits, except a site-type limit, which still holds for a group's forms
+ * (groups mix shelter and supportive staff). Admins and Super Admins (forms.manage), and the see-everything
  * groups, ignore all of it and see every form.
  *
  * Who sees a form's entries (entryReach) is kept here too: each form's
@@ -296,8 +297,21 @@ function givenVerdict(user: Pick<CurrentUser, "userId" | "groupIds">, formKey: s
 type FormViewer = Parameters<typeof inAudience>[0];
 
 /**
+ * A form (or category) limited to site types still applies to forms given to
+ * groups: a group mixes shelter and supportive staff, and the site type says
+ * where the form belongs. Passes when there's no site-type limit, the person
+ * works at a site of one of the types, or the limit names them.
+ */
+function siteTypesAllow(user: FormViewer, key: string): boolean {
+  const a = audiences.get(key);
+  if (!a || !a.siteTypes.size) return true;
+  return a.userIds.has(user.userId) || atSiteOfType(user.siteIds, a.siteTypes);
+}
+
+/**
  * Whether this person sees a catalog form (key form:… or card:…) in this
- * category: what was given to their groups and to them, else the form's and
+ * category: what was given to them, then what was given to their groups
+ * (still only at the form's site types, when it has some), else the form's and
  * the category's own limits. Admins and the see-everything groups always do.
  * ignoreOwn leaves out the person's own changes: what their groups alone give them.
  */
@@ -306,8 +320,11 @@ export function canSeeFormKey(user: FormViewer, formKey: string, categoryId: str
   // A role that names its forms (Arete Staff) sees those, and whatever an Admin gave this one person.
   const only = user.roleKey ? roleForms.get(roleFor(user.roleKey).key) : undefined;
   if (only) return (opts.ignoreOwn ? undefined : personForms.get(user.userId)?.get(formKey)) ?? only.has(formKey);
-  const given = givenVerdict(user, formKey, opts.ignoreOwn);
-  if (given !== null) return given;
+  // Given to or hidden from this one person: that wins over everything else.
+  const own = opts.ignoreOwn ? undefined : personForms.get(user.userId)?.get(formKey);
+  if (own !== undefined) return own;
+  const given = givenVerdict(user, formKey, true);
+  if (given !== null) return given && siteTypesAllow(user, formKey) && (!categoryId || siteTypesAllow(user, categoryKey(categoryId)));
   return inAudience(user, formKey) && (!categoryId || inAudience(user, categoryKey(categoryId)));
 }
 
