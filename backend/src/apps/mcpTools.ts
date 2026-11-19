@@ -4,7 +4,7 @@ import { fileBytes } from "../services/fileStore.js";
 import { appBaseUrl } from "../env.js";
 import { HttpError } from "../http.js";
 import { audit, type Actor } from "../services/audit.js";
-import { permissionsFor, roleFor } from "../services/permissions.js";
+import { keyMakerCan } from "../ops/principal.js";
 import type { ResolvedKey } from "../services/apiKeys.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { assertRealDataAllowed } from "../services/testData.js";
@@ -248,8 +248,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
     async ({ form, entries, update, dryRun, confirm }) => {
       need("entries:manage");
       assertRealDataAllowed("migrating entries from an old system");
-      const creator = key.createdById ? await prisma.user.findUnique({ where: { id: key.createdById } }) : null;
-      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
+      if (!(await keyMakerCan(key, "forms.manage"))) throw new HttpError(403, "Only an Admin's key can import entries.");
       if (!dryRun && confirm !== true) throw new HttpError(400, "This saves entries to the live form without running its rules. Pass confirm: true (or dryRun: true to check first).");
       const row = await findCodeForm(form);
       const r = await importEntries(row, entries, { dryRun, update });
@@ -270,8 +269,7 @@ export function registerCodeTools(tool: ToolRegistrar, need: (scope: string) => 
       const row = await findCodeForm(form);
       if (op === "status") return { hooks: await inboundStatus(row) };
       if (!name) throw new HttpError(400, "Say which hook (name).");
-      const creator = key.createdById ? await prisma.user.findUnique({ where: { id: key.createdById } }) : null;
-      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can manage inbound hooks.");
+      if (!(await keyMakerCan(key, "forms.manage"))) throw new HttpError(403, "Only an Admin's key can manage inbound hooks.");
       if (confirm !== true) throw new HttpError(400, op === "create" ? "This makes a live address that adds entries to the form. Pass confirm: true." : "This turns the address off. Pass confirm: true.");
       if (op === "revoke") {
         const done = await revokeInboundToken(row.id, name);

@@ -10,7 +10,7 @@ import { importEntries } from "../forms/entryImport.js";
 import { MAX_ASSEMBLED_BYTES, receivePart } from "../services/uploadChunks.js";
 import { createFormFile } from "../services/fileStore.js";
 import { assertRealDataAllowed } from "../services/testData.js";
-import { permissionsFor, roleFor } from "../services/permissions.js";
+import { keyMakerCan } from "./principal.js";
 import { defineOp, flag, int } from "./registry.js";
 
 /**
@@ -176,11 +176,10 @@ export const formOps = [
     annotations: { destructiveHint: true },
     run: async (ctx, { form, entries, dryRun }) => {
       assertRealDataAllowed("migrating entries from an old system");
-      const creator = ctx.key.createdById ? await prisma.user.findUnique({ where: { id: ctx.key.createdById } }) : null;
-      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
+      if (!(await keyMakerCan(ctx.key, "forms.manage"))) throw new HttpError(403, "Only an Admin's key can import entries.");
       const row = await findForm(form);
       if (row.kind === "code") throw new HttpError(400, "That's a code form: use import_code_entries.");
-      return importEntries(row, entries, { dryRun: Boolean(dryRun) });
+      return importEntries(row, entries, { dryRun: Boolean(dryRun), onlySiteId: ctx.key.siteId });
     },
     audit: (a, r) =>
       r?.saved ? { action: "entries.imported", summary: `Imported ${r.saved} entries into form “${a.form}”`, changes: { form: a.form, count: r.saved, skipped: r.skipped?.length ?? 0 } } : null,
@@ -205,8 +204,7 @@ export const formOps = [
     },
     run: async (ctx, a) => {
       assertRealDataAllowed("migrating entries from an old system");
-      const creator = ctx.key.createdById ? await prisma.user.findUnique({ where: { id: ctx.key.createdById } }) : null;
-      if (!creator || !permissionsFor(roleFor(creator.roleKey), creator).includes("forms.manage")) throw new HttpError(403, "Only an Admin's key can import entries.");
+      if (!(await keyMakerCan(ctx.key, "forms.manage"))) throw new HttpError(403, "Only an Admin's key can import entries.");
       const row = await findForm(a.form);
       const doc = row.liveSchema ? readDoc(row.liveSchema) : null;
       if (!doc?.fields.some((f) => f.id === a.field && f.type === "file")) throw new HttpError(400, `The live form has no File field "${a.field}".`);
