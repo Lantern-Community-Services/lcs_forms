@@ -9,7 +9,7 @@ import { builtFormsForCatalog, linkCatalogCard, unlinkCatalogCard } from "../for
 import { FORM_ICON_KEYS } from "../forms/iconKeys.js";
 import { builtFormRef, entryAccessReview, entryAccessView, saveEntryAccess } from "../services/entryAccess.js";
 import { officeSitesView, saveOfficeSites } from "../services/officeSites.js";
-import { audienceOf, builtFormKey, canSeeFormKey, cardKey, categoryKey, forgetGivenForm, keyForCard, moveAudience, reloadAccess, setAudience } from "../services/staffGroups.js";
+import { audienceOf, builtFormKey, canSeeFormKey, cardKey, categoryKey, forgetGivenForm, keyForCard, moveAudience, reloadAccess, setAudience, siteTypeLabel, siteTypesSchema } from "../services/staffGroups.js";
 
 export const formsRouter = Router();
 formsRouter.use(requireAuth);
@@ -286,6 +286,7 @@ formsRouter.put(
         groupIds: z.array(z.string()).max(50),
         titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
         userIds: z.array(z.string()).max(500).default([]),
+        siteTypes: siteTypesSchema,
       })
       .parse(req.body);
     const cat = await prisma.formCategory.findUnique({ where: { id: req.params.id } });
@@ -295,13 +296,13 @@ formsRouter.put(
       prisma.user.findMany({ where: { id: { in: body.userIds } }, select: { id: true, name: true } }),
     ]);
     if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
-    await setAudience(categoryKey(cat.id), body.groupIds, body.userIds, body.titles);
-    const who = [...groups.map((g) => g.name), ...body.titles, ...users.map((u) => u.name)];
+    await setAudience(categoryKey(cat.id), body.groupIds, body.userIds, body.titles, body.siteTypes);
+    const who = [...groups.map((g) => g.name), ...body.titles, ...body.siteTypes.map(siteTypeLabel), ...users.map((u) => u.name)];
     await audit({
       actor: actorOf(req),
       action: "forms.audience_changed",
       summary: who.length ? `Limited the “${cat.name}” category to ${who.join(", ")}` : `Opened the “${cat.name}” category to everyone`,
-      changes: { groups: groups.map((g) => g.name), positions: body.titles, people: users.map((u) => u.name) },
+      changes: { groups: groups.map((g) => g.name), positions: body.titles, siteTypes: body.siteTypes, people: users.map((u) => u.name) },
     });
     res.json(audienceOf(categoryKey(cat.id)));
   })
@@ -398,6 +399,7 @@ formsRouter.put(
         groupIds: z.array(z.string()).max(50),
         userIds: z.array(z.string()).max(500),
         titles: z.array(z.string().trim().min(1).max(255)).max(100).default([]),
+        siteTypes: siteTypesSchema,
       })
       .parse(req.body);
     const form = await prisma.formLink.findUnique({ where: { id: req.params.id } });
@@ -408,13 +410,13 @@ formsRouter.put(
     ]);
     if (groups.length !== new Set(body.groupIds).size || users.length !== new Set(body.userIds).size) throw badRequest("A group or person in the list doesn't exist any more. Reload and try again.");
     const key = keyForCard(form.id, (await builtByCard()).get(form.id));
-    await setAudience(key, body.groupIds, body.userIds, body.titles);
-    const who = [...groups.map((g) => g.name), ...body.titles, ...users.map((u) => u.name)];
+    await setAudience(key, body.groupIds, body.userIds, body.titles, body.siteTypes);
+    const who = [...groups.map((g) => g.name), ...body.titles, ...body.siteTypes.map(siteTypeLabel), ...users.map((u) => u.name)];
     await audit({
       actor: actorOf(req),
       action: "forms.audience_changed",
       summary: who.length ? `Limited “${form.title}” to ${who.join(", ")}` : `Opened “${form.title}” to everyone`,
-      changes: { groups: groups.map((g) => g.name), positions: body.titles, people: users.map((u) => u.name) },
+      changes: { groups: groups.map((g) => g.name), positions: body.titles, siteTypes: body.siteTypes, people: users.map((u) => u.name) },
     });
     res.json(audienceOf(key));
   })

@@ -17,7 +17,7 @@ import { useToast } from "@/components/ui/toast";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
 import { useTourSample } from "@/lib/tour/store";
-import { errorMessage, formatDate, quietFor, relativeTime, tintFor, toggled } from "@/lib/utils";
+import { errorMessage, formatDate, formatDay, quietFor, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
 /** One decision made in this session, newest last — what Undo walks back through. */
@@ -413,7 +413,7 @@ function ReviewCard({
       >
         Open profile <ChevronRight className="h-4 w-4" />
       </Link>
-      <p className="text-micro text-muted">Threshold {hours}h{t.moveInDate ? ` · moved in ${formatDate(t.moveInDate)}` : ""}</p>
+      <p className="text-micro text-muted">Threshold {hours}h{t.moveInDate ? ` · moved in ${formatDay(t.moveInDate)}` : ""}</p>
     </SwipeCard>
   );
 }

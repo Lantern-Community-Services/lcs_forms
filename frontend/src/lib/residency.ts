@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { useCaseManagement } from "./auth";
 import type { Site, SiteRef } from "./types";
+import { formatDay } from "./utils";
 
 /**
  * Units, moving in and out, being away, the move-in checklist (backend
@@ -224,10 +225,7 @@ export function shortRelation(r: string | null | undefined): string | null {
 
 /** "2026-03-14" → "Mar 14, 2026". */
 export function fmtDay(v: string | null | undefined): string {
-  if (!v) return "—";
-  const [y, m, d] = v.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  return Number.isNaN(date.getTime()) ? v : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return formatDay(v);
 }
 
 /** Today, "YYYY-MM-DD", on this device. */

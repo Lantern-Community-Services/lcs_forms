@@ -15,9 +15,9 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useDeviceKind } from "@/lib/device";
 import { useJobTitles, useStaffGroups } from "@/lib/groups";
-import { GroupChecklist, PeoplePicker, PositionsDropdown, Segmented } from "@/components/AccessPickers";
+import { GroupChecklist, PeoplePicker, PositionsDropdown, Segmented, SiteTypeChecklist, siteTypeWords } from "@/components/AccessPickers";
 import { formIcon, type FormIconKey } from "@/lib/formIcons";
-import { formsApi, useBuiltFormOptions, useForms, useRoles, useUsers, type BuiltFormOption } from "@/lib/queries";
+import { formsApi, useBuiltFormOptions, useForms, useRoles, useSites, useUsers, type BuiltFormOption } from "@/lib/queries";
 import type { FormLink } from "@/lib/types";
 import { FormSection, IconField, LINK_DOMAIN, messageOf } from "./catalogParts";
 
@@ -40,9 +40,10 @@ type CardDraft = {
   active: boolean;
   /** Role keys that may see it; empty = every role. */
   roles: string[];
-  /** Who it's open to: staff groups, positions (job titles) and named people. All empty = everyone. */
+  /** Who it's open to: staff groups, positions (job titles), site types and named people. All empty = everyone. */
   groupIds: string[];
   titles: string[];
+  siteTypes: string[];
   userIds: string[];
 };
 
@@ -55,7 +56,7 @@ const draftOf = (f: FormLink, built: boolean): CardDraft => ({
   id: f.id,
   source: built ? "built" : "link",
   link: built ? LINK_DOMAIN : f.url,
-  limited: Boolean(f.roles.length || f.audience?.groupIds.length || f.audience?.titles?.length || f.audience?.userIds.length),
+  limited: Boolean(f.roles.length || f.audience?.groupIds.length || f.audience?.titles?.length || f.audience?.siteTypes?.length || f.audience?.userIds.length),
   categoryId: f.categoryId,
   title: f.title,
   description: f.description ?? "",
@@ -67,6 +68,7 @@ const draftOf = (f: FormLink, built: boolean): CardDraft => ({
   roles: f.roles,
   groupIds: f.audience?.groupIds ?? [],
   titles: f.audience?.titles ?? [],
+  siteTypes: f.audience?.siteTypes ?? [],
   userIds: f.audience?.userIds ?? [],
 });
 
@@ -89,6 +91,7 @@ export function CatalogCardPage() {
   const { data: groups } = useStaffGroups();
   const { data: people } = useUsers();
   const { data: jobTitles } = useJobTitles();
+  const { data: sites } = useSites(true);
   const [form, setForm] = useState<CardDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const categories = data?.categories ?? [];
@@ -96,8 +99,8 @@ export function CatalogCardPage() {
   const existing = id === "new" ? null : categories.flatMap((c) => c.forms).find((f) => f.id === id) ?? null;
   const groupName = (gid: string) => groups?.find((g) => g.id === gid)?.name ?? "A deleted group";
   const audienceLabel = (a: FormLink["audience"]) =>
-    a && (a.groupIds.length || a.userIds.length || a.titles?.length)
-      ? [...a.groupIds.map(groupName), ...(a.titles ?? []), ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : [])].join(", ")
+    a && (a.groupIds.length || a.userIds.length || a.titles?.length || a.siteTypes?.length)
+      ? [...a.groupIds.map(groupName), ...(a.titles ?? []), ...(a.siteTypes ?? []).map(siteTypeWords), ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : [])].join(", ")
       : null;
   // Admins see every form regardless, so they aren't offered as a choice.
   const limitable = (allRoles ?? []).filter((r) => r.key !== "admin");
@@ -109,7 +112,7 @@ export function CatalogCardPage() {
       const wanted = search.get("category");
       setForm({
         source: "link", link: LINK_DOMAIN, limited: false, categoryId: categories.find((c) => c.id === wanted)?.id ?? categories[0]?.id ?? "",
-        title: "", description: "", url: "", keywords: "", badge: "", icon: null, active: true, roles: [], groupIds: [], titles: [], userIds: [],
+        title: "", description: "", url: "", keywords: "", badge: "", icon: null, active: true, roles: [], groupIds: [], titles: [], siteTypes: [], userIds: [],
       });
     } else if (existing) {
       setForm(draftOf(existing, builtByUrl.has(existing.url)));
@@ -159,7 +162,9 @@ export function CatalogCardPage() {
       // Who it's open to is saved on its own (on the form it opens, when it's built here).
       await api.put(
         `/forms/${form.id ?? saved.id}/audience`,
-        limited ? { groupIds: form.groupIds, titles: form.titles, userIds: form.userIds } : { groupIds: [], titles: [], userIds: [] }
+        limited
+          ? { groupIds: form.groupIds, titles: form.titles, siteTypes: form.siteTypes, userIds: form.userIds }
+          : { groupIds: [], titles: [], siteTypes: [], userIds: [] }
       );
       await Promise.all([qc.invalidateQueries({ queryKey: ["forms"] }), qc.invalidateQueries({ queryKey: ["builder"] }), qc.invalidateQueries({ queryKey: ["apps"] })]);
       toast(form.id ? "Card saved." : "Form added.");
@@ -298,7 +303,7 @@ export function CatalogCardPage() {
             />
             <p className="text-[12.5px] leading-snug text-muted">
               {form.limited
-                ? `Only the groups, positions and people you pick see it, open it or read its entries${limit ? `, and they also need to be able to see ${cat!.name}` : ""}. Roles narrow it further. Admins always see every form.`
+                ? `Only the groups, positions, sites and people you pick see it, open it or read its entries${limit ? `, and they also need to be able to see ${cat!.name}` : ""}. Roles narrow it further. Admins always see every form.`
                 : limit
                   ? `Everyone who can see ${cat!.name}. Admins always see every form.`
                   : "Every staff member can see and open it. Admins always see every form."}
@@ -314,6 +319,9 @@ export function CatalogCardPage() {
                 </Field>
                 <Field label="Positions">
                   <PositionsDropdown groups={groups ?? []} titles={jobTitles ?? []} value={form.titles} onChange={(titles) => setForm({ ...form, titles })} />
+                </Field>
+                <Field label="Sites" hint="Everyone approved for a site of this type, whatever their job.">
+                  <SiteTypeChecklist sites={sites ?? []} value={form.siteTypes} onChange={(siteTypes) => setForm({ ...form, siteTypes })} />
                 </Field>
                 <Field label="People">
                   <PeoplePicker people={people ?? []} value={form.userIds} onChange={(userIds) => setForm({ ...form, userIds })} />

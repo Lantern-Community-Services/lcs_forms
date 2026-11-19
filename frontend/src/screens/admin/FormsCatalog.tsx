@@ -15,9 +15,9 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useDeviceKind } from "@/lib/device";
 import { useJobTitles, useStaffGroups } from "@/lib/groups";
-import { GroupChecklist, PositionsDropdown, Segmented } from "@/components/AccessPickers";
+import { GroupChecklist, PositionsDropdown, Segmented, SiteTypeChecklist, siteTypeWords } from "@/components/AccessPickers";
 import { formIcon, isInternalForm, type FormIconKey } from "@/lib/formIcons";
-import { formsApi, useBuiltFormOptions, useForms, useRoles } from "@/lib/queries";
+import { formsApi, useBuiltFormOptions, useForms, useRoles, useSites } from "@/lib/queries";
 import type { FormCategory, FormLink } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { builtEditorPath } from "./CatalogCard";
@@ -28,10 +28,11 @@ type CategoryDraft = {
   name: string;
   icon: FormIconKey;
   description: string;
-  /** Everyone, or only these groups and positions (and anyone named before, kept as is). */
+  /** Everyone, or only these groups, positions and site types (and anyone named before, kept as is). */
   limited: boolean;
   groupIds: string[];
   titles: string[];
+  siteTypes: string[];
   userIds: string[];
 };
 type Pending = { kind: "form"; form: FormLink } | { kind: "category"; category: FormCategory };
@@ -46,12 +47,14 @@ export function AdminFormsCatalog() {
   const { data: built } = useBuiltFormOptions();
   const { data: groups } = useStaffGroups();
   const { data: jobTitles } = useJobTitles();
+  const { data: sites } = useSites(true);
   const groupName = (id: string) => groups?.find((g) => g.id === id)?.name ?? "A deleted group";
   const audienceLabel = (a: FormLink["audience"]) =>
-    a && (a.groupIds.length || a.userIds.length || a.titles?.length)
+    a && (a.groupIds.length || a.userIds.length || a.titles?.length || a.siteTypes?.length)
       ? [
           ...a.groupIds.map(groupName),
           ...(a.titles ?? []),
+          ...(a.siteTypes ?? []).map(siteTypeWords),
           ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : []),
         ].join(", ")
       : null;
@@ -102,7 +105,9 @@ export function AdminFormsCatalog() {
       const saved = (await (category.id ? formsApi.updateCategory(category.id, body) : formsApi.createCategory(body))) as { id: string };
       await api.put(
         `/forms/categories/${category.id ?? saved.id}/audience`,
-        category.limited ? { groupIds: category.groupIds, titles: category.titles, userIds: category.userIds } : { groupIds: [], titles: [], userIds: [] }
+        category.limited
+          ? { groupIds: category.groupIds, titles: category.titles, siteTypes: category.siteTypes, userIds: category.userIds }
+          : { groupIds: [], titles: [], siteTypes: [], userIds: [] }
       );
     }, category.id ? "Category saved." : "Category added.");
     if (ok) setCategory(null);
@@ -134,7 +139,7 @@ export function AdminFormsCatalog() {
         subtitle="What staff see on the Forms screen. Changes are live for everyone as soon as they save."
         actions={
           <>
-            <Button variant="secondary" onClick={() => setCategory({ name: "", icon: "folder", description: "", limited: false, groupIds: [], titles: [], userIds: [] })}>
+            <Button variant="secondary" onClick={() => setCategory({ name: "", icon: "folder", description: "", limited: false, groupIds: [], titles: [], siteTypes: [], userIds: [] })}>
               <Plus className="h-4 w-4" /> Category
             </Button>
             <Button onClick={() => navigate("/admin/forms/card/new")} disabled={categories.length === 0}>
@@ -176,6 +181,7 @@ export function AdminFormsCatalog() {
                       limited: Boolean(audienceLabel(cat.audience)),
                       groupIds: cat.audience?.groupIds ?? [],
                       titles: cat.audience?.titles ?? [],
+                      siteTypes: cat.audience?.siteTypes ?? [],
                       userIds: cat.audience?.userIds ?? [],
                     })
                   }
@@ -270,12 +276,12 @@ export function AdminFormsCatalog() {
                 <FormSection title="Who can see it">
                   <Segmented
                     value={category.limited ? "limited" : "everyone"}
-                    options={[["everyone", "Everyone"], ["limited", "Only some groups and positions"]]}
+                    options={[["everyone", "Everyone"], ["limited", "Only some people"]]}
                     onChange={(v) => setCategory({ ...category, limited: v === "limited" })}
                   />
                   <p className="text-[12.5px] leading-snug text-muted">
                     {category.limited
-                      ? "Only the groups and positions you pick see this category and open the forms in it. Each form's own limit still applies on top. Admins always see everything."
+                      ? "Only the groups, positions and sites you pick see this category and open the forms in it. Each form's own limit still applies on top. Admins always see everything."
                       : "Everyone sees this category. Each form can still be limited on its own."}
                   </p>
                   {category.limited && (
@@ -290,6 +296,9 @@ export function AdminFormsCatalog() {
                       <Field label="Positions">
                         <PositionsDropdown groups={groups ?? []} titles={jobTitles ?? []} value={category.titles} onChange={(titles) => setCategory({ ...category, titles })} />
                       </Field>
+                      <Field label="Sites" hint="Everyone approved for a site of this type, whatever their job.">
+                        <SiteTypeChecklist sites={sites ?? []} value={category.siteTypes} onChange={(siteTypes) => setCategory({ ...category, siteTypes })} />
+                      </Field>
                     </>
                   )}
                 </FormSection>
@@ -298,8 +307,12 @@ export function AdminFormsCatalog() {
                 <Button type="button" variant="secondary" onClick={() => setCategory(null)}>Cancel</Button>
                 <Button
                   type="submit"
-                  disabled={busy || !category.name.trim() || (category.limited && !category.groupIds.length && !category.titles.length && !category.userIds.length)}
-                  title={category.limited && !category.groupIds.length && !category.titles.length && !category.userIds.length ? "Pick at least one group or position" : undefined}
+                  disabled={busy || !category.name.trim() || (category.limited && !category.groupIds.length && !category.titles.length && !category.siteTypes.length && !category.userIds.length)}
+                  title={
+                    category.limited && !category.groupIds.length && !category.titles.length && !category.siteTypes.length && !category.userIds.length
+                      ? "Pick at least one group, position or site type"
+                      : undefined
+                  }
                 >
                   {category.id ? "Save" : "Add category"}
                 </Button>
