@@ -67,7 +67,8 @@ export function TakeAttendanceDialog({
   const effectiveCode = siteCode || (sites?.length === 1 ? sites[0].code : "");
   const site = sites?.find((item) => item.code === effectiveCode);
   const { data, isLoading, isPlaceholderData, isError, error } = useTenants(site?.code, "active", open && Boolean(site));
-  const roster = isPlaceholderData ? [] : data?.items ?? [];
+  // Not moved in yet (case management): not at the building's events.
+  const roster = isPlaceholderData ? [] : (data?.items ?? []).filter((t) => t.movedIn !== false);
 
   if (!can("roster.edit")) return null;
 

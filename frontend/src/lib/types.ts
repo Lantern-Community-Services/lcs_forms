@@ -108,6 +108,8 @@ export interface Site extends SiteRef {
   entityName?: string | null;
   /** "office": the Main Office and the like (no roster, only in forms that include it). */
   siteType: "supportive" | "shelter" | "other" | "office";
+  /** Case management: units here can hold a household (head of household and members). */
+  households?: boolean;
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -145,6 +147,15 @@ export interface Tenant {
   needsAttention: boolean;
   /** Someone sent them back to review: in review until kept, whatever their activity. */
   sentToReview?: boolean;
+  /** Case management: the unit they live in, and whether they've moved in at all (false = on the roster, waiting to move in). */
+  unitId?: string | null;
+  movedIn?: boolean;
+  /** Household sites: their head of household (null for the head or someone alone) and relation to the head. */
+  householdHeadId?: string | null;
+  householdRelation?: string | null;
+  /** Away from the building since this day ("YYYY-MM-DD…"), and why. */
+  awaySince?: string | null;
+  awayReason?: string | null;
   archivedAt: string | null;
   archiveReason: string | null;
   version: number;
@@ -530,7 +541,7 @@ export type CalendarScope = "all" | "this" | "following";
 
 export type ClientFieldType =
   | "text" | "textarea" | "date" | "select" | "multi" | "year" | "phone" | "email"
-  | "ssn" | "staff" | "resident" | "program" | "contacts";
+  | "ssn" | "staff" | "program" | "contacts";
 
 export interface ClientField {
   key: string;
@@ -574,8 +585,6 @@ export interface ClientProfile {
   ssn: { last4: string; masked: string } | null;
   age: number | null;
   caseLead: { id: string; name: string; title: string | null; active: boolean } | null;
-  headOfHousehold: ClientPersonRef | null;
-  householdMembers: (ClientPersonRef & { relationship: string | null })[];
   updatedAt: string | null;
   updatedBy: string | null;
 }

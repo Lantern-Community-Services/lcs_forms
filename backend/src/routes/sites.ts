@@ -89,6 +89,8 @@ const siteBody = z.object({
   geofenceMeters: z.number().int().min(25).max(2000).nullable().optional(),
   attentionHours: z.number().int().min(1).max(24 * 60).nullable().optional(),
   active: z.boolean().optional(),
+  /** Units here can hold a household (case management: services/residency.ts). */
+  households: z.boolean().optional(),
 });
 
 /** A location is both coordinates or neither — half of one would put a site in the ocean. */

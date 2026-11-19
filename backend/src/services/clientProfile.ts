@@ -46,7 +46,6 @@ export function valuesOf(p: TenantProfile | null): ClientValues {
   if (p.dateOfBirth) v.dateOfBirth = ymd(p.dateOfBirth);
   if (p.program) v.program = p.program;
   if (p.caseLeadId) v.caseLead = p.caseLeadId;
-  if (p.headOfHouseholdId) v.headOfHousehold = p.headOfHouseholdId;
   return v;
 }
 
@@ -58,21 +57,12 @@ export function ageOn(dob: string | undefined | null, now = new Date()): number 
   return age >= 0 && age < 130 ? age : null;
 }
 
-const PERSON_SELECT = { id: true, firstName: true, lastName: true, preferredName: true, unit: true, status: true, siteId: true } as const;
-type PersonRow = Prisma.TenantGetPayload<{ select: typeof PERSON_SELECT }>;
-const personView = (t: PersonRow) => ({ id: t.id, displayName: displayName(t), unit: t.unit, status: t.status });
 
 /** What the resident page and the MCP tools get. */
 export async function profileView(tenant: TenantWithSite, p: TenantProfile | null) {
   const values = valuesOf(p);
-  const [lead, head, members, editor] = await Promise.all([
+  const [lead, editor] = await Promise.all([
     p?.caseLeadId ? prisma.user.findUnique({ where: { id: p.caseLeadId }, select: { id: true, name: true, title: true, status: true } }) : null,
-    p?.headOfHouseholdId ? prisma.tenant.findUnique({ where: { id: p.headOfHouseholdId }, select: PERSON_SELECT }) : null,
-    prisma.tenantProfile.findMany({
-      where: { headOfHouseholdId: tenant.id },
-      include: { tenant: { select: PERSON_SELECT } },
-      take: 50,
-    }),
     p?.updatedById ? prisma.user.findUnique({ where: { id: p.updatedById }, select: { name: true } }) : null,
   ]);
   return {
@@ -83,10 +73,6 @@ export async function profileView(tenant: TenantWithSite, p: TenantProfile | nul
     ssn: p?.ssn ? { last4: p.ssn.slice(-4), masked: maskSsn(p.ssn) } : null,
     age: ageOn(values.dateOfBirth as string | undefined),
     caseLead: lead ? { id: lead.id, name: lead.name, title: lead.title, active: lead.status === "active" } : p?.caseLeadId ? { id: p.caseLeadId, name: "Removed account", title: null, active: false } : null,
-    headOfHousehold: head ? personView(head) : null,
-    householdMembers: members
-      .map((m) => ({ ...personView(m.tenant), relationship: (valuesOf(m).relationshipToHead as string | undefined) ?? null }))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName)),
     updatedAt: p?.updatedAt ?? null,
     updatedBy: editor?.name ?? null,
   };
@@ -161,18 +147,6 @@ export async function saveProfile(opts: {
     });
     if (!lead) throw badRequest(`Case lead: pick someone who works at ${tenant.site.name}.`);
   }
-  if (next.headOfHousehold !== undefined && next.headOfHousehold !== prev.headOfHousehold) {
-    const headId = String(next.headOfHousehold);
-    if (headId === tenant.id) throw badRequest("Head of household: pick someone else, or choose \"Self (head of household)\".");
-    const head = await prisma.tenant.findUnique({ where: { id: headId }, include: { profile: { select: { headOfHouseholdId: true } } } });
-    if (!head || head.siteId !== tenant.siteId) throw badRequest(`Head of household: pick someone at ${tenant.site.name}.`);
-    if (head.profile?.headOfHouseholdId) throw badRequest(`Head of household: ${displayName(head)} is a member of another household. Pick the head of that household.`);
-  }
-  // Becoming a member of a household: they can't still be someone's head.
-  if (next.headOfHousehold && !prev.headOfHousehold) {
-    const own = await prisma.tenantProfile.count({ where: { headOfHouseholdId: tenant.id } });
-    if (own > 0) throw badRequest("They're the head of a household now. Point its members at the new head first.");
-  }
 
   // What changed, for the audit log. The SSN is named, never written out.
   const diff: Record<string, { from: unknown; to: unknown }> = {};
@@ -191,7 +165,6 @@ export async function saveProfile(opts: {
     dateOfBirth: next.dateOfBirth ? new Date(`${next.dateOfBirth}T00:00:00Z`) : null,
     program: (next.program as string | undefined) ?? null,
     caseLeadId: (next.caseLead as string | undefined) ?? null,
-    headOfHouseholdId: (next.headOfHousehold as string | undefined) ?? null,
     ...(ssn !== undefined ? { ssn } : {}),
     data: JSON.stringify(data),
     updatedById: opts.userId,

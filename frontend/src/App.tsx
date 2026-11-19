@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { Monitor } from "lucide-react";
-import { ADMIN_AREA, useAuth } from "./lib/auth";
+import { ADMIN_AREA, useAuth, useCaseManagement } from "./lib/auth";
 import type { PermissionKey } from "./lib/types";
 import { AppShell } from "./components/shell/AppShell";
 import { SectionTabsLayout } from "./components/shell/SectionTabs";
@@ -19,6 +19,9 @@ import { HomePage } from "./screens/Home";
 import { DashboardPage } from "./screens/Dashboard";
 import { RosterPage } from "./screens/Roster";
 import { ReviewPage } from "./screens/Review";
+import { UnitsPage } from "./screens/residency/Units";
+import { ChecklistPage } from "./screens/residency/Checklist";
+import { MovesPage } from "./screens/residency/Moves";
 import { TenantDetailPage } from "./screens/TenantDetail";
 import { ActivityPage } from "./screens/Activity";
 import { AttendancePage } from "./screens/Attendance";
@@ -176,12 +179,16 @@ function RosterSection() {
   const reviewCount = useReviewCount();
   // The review queue is for people who can Keep or Remove; someone who only looks residents up doesn't see it.
   const reviews = can("roster.archive");
+  // Case management: units, the move-in checklist and move-ins & move-outs.
+  const caseManagement = useCaseManagement();
   return (
     <SectionTabsLayout
       title="Roster"
       tabs={[
         { to: "/roster", label: "Residents", end: true },
         ...(reviews ? [{ to: "/roster/review", label: "Review", count: reviewCount }] : []),
+        ...(caseManagement ? [{ to: "/roster/checklist", label: "Checklist" }, { to: "/roster/moves", label: "Move-ins & outs" }] : []),
+        ...(caseManagement && (reviews || can("sites.manage")) ? [{ to: "/roster/units", label: "Units" }] : []),
         { to: "/roster/attendance", label: "Attendance" },
         { to: "/roster/activity", label: "Activity" },
         { to: "/roster/overview", label: "Overview" },
@@ -256,6 +263,10 @@ export function App() {
             <Route path="/roster/attendance" element={<AttendancePage />} />
             <Route path="/roster/activity" element={<ActivityPage />} />
             <Route path="/roster/overview" element={<DashboardPage />} />
+            <Route path="/roster/units" element={<UnitsPage />} />
+            <Route path="/roster/checklist" element={<ChecklistPage />} />
+            <Route path="/roster/moves" element={<MovesPage />} />
+            <Route path="/roster/reports" element={<Moved to="/roster/moves" />} />
           </Route>
           {/* Detail screens sit outside the tabs: they carry their own way back. */}
           <Route path="/roster/attendance/:id" element={<AttendanceDetailPage />} />

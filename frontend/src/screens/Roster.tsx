@@ -16,15 +16,28 @@ import { RemoveDialog } from "@/components/roster/RemoveDialog";
 import { SendSiteToReview } from "@/components/roster/SendSiteToReview";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
 import { useRosterActions } from "@/components/roster/useRosterActions";
+import { MoveInDialog, MoveOutDialog } from "@/components/residency/Dialogs";
 import { useTenants } from "@/lib/queries";
 import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
+import { fmtDay, shortRelation, useResidencyFor, useUnits, type UnitRow } from "@/lib/residency";
 import { readStoredJson, writeStorage } from "@/lib/storage";
 import { useSearchParam } from "@/lib/useSearchParam";
 import { cn, formatDate, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
 
-type Tab = "active" | "attention" | "archived";
+/**
+ * "all", "vacant": case management at supportive sites, where people are
+ * assigned to units and a unit nobody lives in shows as vacant.
+ */
+type Tab = "all" | "active" | "vacant" | "attention" | "archived";
+
+/** A line of the list: a resident, or a unit nobody lives in. */
+type Row =
+  | { kind: "tenant"; key: string; siteId: string; siteName: string; t: Tenant }
+  | { kind: "vacant"; key: string; siteId: string; siteName: string; u: UnitRow };
+
+const unitCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 const COLLAPSED_KEY = "ln.roster.collapsed";
 
@@ -164,13 +177,21 @@ export function RosterPage() {
   const { can } = useAuth();
   const { codes, setCodes, selected, sites, param, isLoading: sitesLoading } = useSiteSelection();
   const multiSite = selected.length > 1;
+  // Case management at supportive sites: units, vacancies, move-ins.
+  const residencyFor = useResidencyFor();
+  const unitsMode = selected.some((s) => residencyFor(s));
   const [tabParam, setTab] = useSearchParam("tab");
-  // ?tab=attention from a link or bookmark is the plain roster for someone who doesn't review.
-  const tab = tabParam === "attention" && !can("roster.archive") ? "active" : (tabParam as Tab) || "active";
+  const wanted = (tabParam as Tab) || (unitsMode ? "all" : "active");
+  // ?tab=attention from a link or bookmark is the plain roster for someone who doesn't review;
+  // All and Vacant are the plain roster where there are no units.
+  const tab: Tab =
+    wanted === "attention" && !can("roster.archive") ? "active" : (wanted === "all" || wanted === "vacant") && !unitsMode ? "active" : wanted;
   const [q, setQ] = useState("");
   const query = useDeferredValue(q.trim().toLowerCase());
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Tenant | null>(null);
+  const [movingOut, setMovingOut] = useState<Tenant | null>(null);
+  const [moveInto, setMoveInto] = useState<UnitRow | null>(null);
   const { remove, restore } = useRosterActions();
   // Rows are memoised (see RosterRow), so what they're handed must be stable —
   // a fresh function per render would re-render every row on every batch.
@@ -178,32 +199,59 @@ export function RosterPage() {
   restoreRef.current = restore;
   const onRestore = useCallback((t: Tenant) => void restoreRef.current(t), []);
   const { collapsed, setCollapsed, toggle: toggleSite } = useCollapsedSites();
+  const siteById = useMemo(() => new Map(selected.map((s) => [s.id, s])), [selected]);
+  // Someone living in a unit moves out; anyone else is removed (a duplicate, a mistake).
+  const unitsRef = useRef({ residencyFor, siteById });
+  unitsRef.current = { residencyFor, siteById };
+  const onRemove = useCallback((t: Tenant) => {
+    const { residencyFor: on, siteById: by } = unitsRef.current;
+    if (t.unitId && on(by.get(t.siteId))) setMovingOut(t);
+    else setRemoving(t);
+  }, []);
 
   // "attention" is a view of the active list, so it reuses that request.
   const { data, isLoading } = useTenants(param, tab === "archived" ? "archived" : "active", selected.length > 0);
   const all = data?.items ?? [];
+  const { data: unitData } = useUnits(param, unitsMode && tab !== "archived");
+  const vacantUnits = useMemo(() => (unitData?.units ?? []).filter((u) => u.vacant && siteById.has(u.siteId)), [unitData, siteById]);
 
-  const rows = useMemo(() => {
-    const base = tab === "attention" ? all.filter((t) => t.needsAttention) : all;
-    if (!query) return base;
-    return base.filter((t) =>
-      // An old name finds them too (formerNames, kept on each rename).
-      [t.displayName, t.firstName, t.lastName, t.preferredName, t.unit, multiSite ? t.site?.name : null, ...(t.formerNames ?? [])].some((v) =>
-        v?.toLowerCase().includes(query)
-      )
+  const rows = useMemo<Row[]>(() => {
+    const match = (vals: (string | null | undefined)[]) => !query || vals.some((v) => v?.toLowerCase().includes(query));
+    const people = (list: Tenant[]) =>
+      list
+        // An old name finds them too (formerNames, kept on each rename).
+        .filter((t) => match([t.displayName, t.firstName, t.lastName, t.preferredName, t.unit, multiSite ? t.site?.name : null, ...(t.formerNames ?? [])]))
+        .map((t): Row => ({ kind: "tenant", key: t.id, siteId: t.siteId, siteName: t.site?.name ?? siteById.get(t.siteId)?.name ?? "", t }));
+    if (tab === "attention") return people(all.filter((t) => t.needsAttention));
+    if (tab === "active" || tab === "archived") return people(all);
+    const vacant = vacantUnits
+      .filter((u) => match([u.label, "vacant", u.unitType, multiSite ? siteById.get(u.siteId)?.name : null]))
+      .map((u): Row => ({ kind: "vacant", key: `unit:${u.id}`, siteId: u.siteId, siteName: siteById.get(u.siteId)?.name ?? "", u }));
+    const list = tab === "vacant" ? vacant : [...people(all), ...vacant];
+    // By site, then unit (anyone without one last), a head of household before
+    // their household, then by name.
+    const unitOf = (r: Row) => (r.kind === "vacant" ? r.u.label : r.t.unit);
+    return list.sort(
+      (a, b) =>
+        unitCollator.compare(a.siteName, b.siteName) ||
+        Number(!unitOf(a)) - Number(!unitOf(b)) ||
+        unitCollator.compare(unitOf(a) ?? "", unitOf(b) ?? "") ||
+        (a.kind === "tenant" && b.kind === "tenant"
+          ? Number(Boolean(a.t.householdHeadId)) - Number(Boolean(b.t.householdHeadId)) || a.t.displayName.localeCompare(b.t.displayName)
+          : Number(a.kind === "tenant") - Number(b.kind === "tenant"))
     );
-  }, [all, tab, query, multiSite]);
+  }, [all, tab, query, multiSite, vacantUnits, siteById]);
 
   // Grouped by site whenever more than one is in view. The archived tab is
   // sorted by removal date across sites, so it stays one flat list.
   const grouped = multiSite && tab !== "archived";
   const groups = useMemo(() => {
     const m = new Map<string, { count: number; attention: number }>();
-    for (const t of rows) {
-      const g = m.get(t.siteId) ?? { count: 0, attention: 0 };
+    for (const r of rows) {
+      const g = m.get(r.siteId) ?? { count: 0, attention: 0 };
       g.count++;
-      if (t.needsAttention) g.attention++;
-      m.set(t.siteId, g);
+      if (r.kind === "tenant" && r.t.needsAttention) g.attention++;
+      m.set(r.siteId, g);
     }
     return m;
   }, [rows]);
@@ -214,14 +262,14 @@ export function RosterPage() {
   // React compare a dozen chunks rather than ~1,900 rows. Site headings are
   // decided here, across chunk boundaries.
   const chunks = useMemo(() => {
-    const out: { t: Tenant; heading: boolean; index: number }[][] = [];
+    const out: { r: Row; heading: boolean; index: number }[][] = [];
     let size = FIRST_BATCH;
     for (let i = 0; i < rows.length; i += size, size = BATCH) {
       out.push(
-        rows.slice(i, i + size).map((t, j) => ({
-          t,
+        rows.slice(i, i + size).map((r, j) => ({
+          r,
           index: i + j,
-          heading: grouped && t.siteId !== rows[i + j - 1]?.siteId,
+          heading: grouped && r.siteId !== rows[i + j - 1]?.siteId,
         }))
       );
     }
@@ -238,29 +286,36 @@ export function RosterPage() {
 
   const canAdd = can("roster.edit") && selected.length > 0;
   const reviews = can("roster.archive");
-  // Exports and printouts are of exactly this: selection, tab and search.
-  const exportView = { site: param, status: tab, q };
-  const subtitle = selected.length ? `${selectionLabel(codes, sites)} · ${onRoster.toLocaleString()} on roster` : undefined;
+  // Exports and printouts are of exactly this: selection, tab and search (All and Vacant export the roster).
+  const exportView = { site: param, status: tab === "all" || tab === "vacant" ? "active" : tab, q };
+  const vacantCount = vacantUnits.length;
+  const subtitle = selected.length
+    ? `${selectionLabel(codes, sites)} · ${onRoster.toLocaleString()} on roster${unitsMode ? ` · ${vacantCount} vacant` : ""}`
+    : undefined;
+  const tabs = (
+    [
+      ...(unitsMode ? [["all", "All", undefined]] : []),
+      ["active", "On roster", onRoster],
+      ...(unitsMode ? [["vacant", "Vacant", vacantCount]] : []),
+      // Review: only for people who can Keep or Remove.
+      ...(reviews ? [["attention", "Review", attention]] : []),
+      ["archived", "Removed", undefined],
+    ] as [Tab, string, number | undefined][]
+  );
 
   const controls = (
     <>
-      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or unit" />
-      <div className={cn("grid rounded-input bg-navsel/60 p-0.5", reviews ? "grid-cols-3" : "grid-cols-2")} role="tablist">
-        {(
-          [
-            ["active", "On roster", onRoster],
-            // Review: only for people who can Keep or Remove.
-            ...(reviews ? [["attention", "Review", attention]] : []),
-            ["archived", "Removed", undefined],
-          ] as [Tab, string, number | undefined][]
-        ).map(([key, label, count]) => (
+      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={unitsMode ? "Search name, unit or “vacant”" : "Search name or unit"} />
+      {/* Five tabs don't fit a phone side by side: there they scroll; from a tablet up, they share the width. */}
+      <div className="flex overflow-x-auto rounded-input bg-navsel/60 p-0.5 md:grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} role="tablist">
+        {tabs.map(([key, label, count]) => (
           <button
             key={key}
             role="tab"
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={cn(
-              "flex min-h-[38px] items-center justify-center gap-1.5 rounded-[5px] px-2 text-[12.5px] font-bold transition-colors md:min-h-[30px]",
+              "flex min-h-[38px] shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] px-2.5 text-[12.5px] font-bold transition-colors md:min-h-[30px]",
               tab === key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"
             )}
           >
@@ -273,7 +328,6 @@ export function RosterPage() {
       </div>
     </>
   );
-
   return (
     <div className="flex min-h-full flex-col">
       <PhoneHeader
@@ -315,7 +369,7 @@ export function RosterPage() {
               </>
             }
           />
-          <div className="mb-4 grid grid-cols-[minmax(0,1fr)_340px] gap-3">{controls}</div>
+          <div className={cn("mb-4 grid gap-3", unitsMode ? "grid-cols-[minmax(0,1fr)_460px]" : "grid-cols-[minmax(0,1fr)_340px]")}>{controls}</div>
         </div>
 
         {tab === "attention" && selected.length === 1 && can("roster.archive") && !sitesLoading && !isLoading && (
@@ -327,7 +381,7 @@ export function RosterPage() {
           <EmptyState title="No sites assigned" hint="You aren't assigned to any sites yet, so there's no roster to show. Ask an administrator to add you to one." icon={<Users className="h-8 w-8" />} />
         ) : rows.length === 0 ? (
           <EmptyState
-            title={query ? "Nobody matches" : tab === "archived" ? "Nobody removed yet" : tab === "attention" ? "Nobody to review" : "Nobody on this roster"}
+            title={query ? "Nobody matches" : tab === "archived" ? "Nobody removed yet" : tab === "attention" ? "Nobody to review" : tab === "vacant" ? "No vacant units" : "Nobody on this roster"}
             hint={query ? "Try a unit number or part of a name." : tab === "active" && canAdd ? "Tap Add to put the first person on." : undefined}
           />
         ) : (
@@ -359,15 +413,15 @@ export function RosterPage() {
             <div className="hidden grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] gap-3 border-b border-hairline px-4 py-2.5 text-micro font-bold uppercase tracking-[0.04em] text-muted lg:grid">
               <span>Unit</span>
               <span>Name</span>
-              <span>{tab === "archived" ? "Removed" : "Last on a form"}</span>
-              <span>{tab === "archived" ? "Reason" : "Moved in"}</span>
+              <span>{tab === "archived" ? "Removed" : tab === "vacant" ? "Unit type" : "Last on a form"}</span>
+              <span>{tab === "archived" ? "Reason" : tab === "vacant" ? "Vacant since" : "Moved in"}</span>
               <span>Status</span>
               <span />
             </div>
             <ul>
               {chunks.slice(0, shownChunks).map((chunk) => (
                 <RosterChunk
-                  key={chunk[0].t.id}
+                  key={chunk[0].r.key}
                   entries={chunk}
                   folded={folded}
                   groups={groups}
@@ -377,8 +431,9 @@ export function RosterPage() {
                   canRestore={can("roster.restore")}
                   canArchive={can("roster.archive")}
                   onToggleSite={toggleSite}
-                  onRemove={setRemoving}
+                  onRemove={onRemove}
                   onRestore={onRestore}
+                  onMoveIn={can("roster.edit") ? setMoveInto : undefined}
                 />
               ))}
             </ul>
@@ -390,6 +445,21 @@ export function RosterPage() {
       </Page>
 
       {selected.length > 0 && <AddResident open={adding} onOpenChange={setAdding} sites={selected} />}
+      {moveInto && siteById.get(moveInto.siteId) && (
+        <MoveInDialog open onOpenChange={(o) => !o && setMoveInto(null)} site={siteById.get(moveInto.siteId)!} unit={moveInto} />
+      )}
+      {movingOut && (
+        <MoveOutDialog
+          open
+          onOpenChange={(o) => !o && setMovingOut(null)}
+          tenant={movingOut}
+          awaySince={movingOut.awaySince}
+          household={
+            (unitData?.units ?? []).find((u) => u.id === movingOut.unitId)?.occupants ??
+            [{ id: movingOut.id, displayName: movingOut.displayName, head: true, relation: null, away: false, highAcuity: false }]
+          }
+        />
+      )}
       <RemoveDialog
         tenant={removing}
         onCancel={() => setRemoving(null)}
@@ -407,9 +477,9 @@ const NO_SITES: Set<string> = new Set();
 
 /** One batch of the list. Re-renders only when its own rows, the folds or the tab change. */
 const RosterChunk = memo(function RosterChunk({
-  entries, folded, groups, tab, multiSite, query, canRestore, canArchive, onToggleSite, onRemove, onRestore,
+  entries, folded, groups, tab, multiSite, query, canRestore, canArchive, onToggleSite, onRemove, onRestore, onMoveIn,
 }: {
-  entries: { t: Tenant; heading: boolean; index: number }[];
+  entries: { r: Row; heading: boolean; index: number }[];
   folded: Set<string>;
   groups: Map<string, { count: number; attention: number }>;
   tab: Tab;
@@ -421,27 +491,32 @@ const RosterChunk = memo(function RosterChunk({
   onToggleSite: (siteId: string) => void;
   onRemove: (t: Tenant) => void;
   onRestore: (t: Tenant) => void;
+  /** Move someone into a vacant unit (roster editors). */
+  onMoveIn?: (u: UnitRow) => void;
 }) {
   return (
     <>
-      {entries.map(({ t, heading, index }) => (
-        <Fragment key={t.id}>
+      {entries.map(({ r, heading, index }) => (
+        <Fragment key={r.key}>
           {heading && (
             <SiteHeading
-              siteId={t.siteId}
-              name={t.site?.name ?? ""}
-              folded={folded.has(t.siteId)}
-              count={groups.get(t.siteId)?.count ?? 0}
-              attention={tab === "active" && canArchive ? groups.get(t.siteId)?.attention ?? 0 : 0}
+              siteId={r.siteId}
+              name={r.siteName}
+              folded={folded.has(r.siteId)}
+              count={groups.get(r.siteId)?.count ?? 0}
+              attention={(tab === "active" || tab === "all") && canArchive ? groups.get(r.siteId)?.attention ?? 0 : 0}
               onToggle={onToggleSite}
             />
           )}
-          {!folded.has(t.siteId) && (
+          {!folded.has(r.siteId) && r.kind === "vacant" && (
+            <VacantRow u={r.u} enterDelay={index < STAGGERED ? index * STAGGER_MS : null} onMoveIn={onMoveIn} />
+          )}
+          {!folded.has(r.siteId) && r.kind === "tenant" && (
             <RosterRow
-              t={t}
+              t={r.t}
               tab={tab}
               multiSite={multiSite}
-              formerly={query ? t.formerNames?.find((n) => n.toLowerCase().includes(query)) : undefined}
+              formerly={query ? r.t.formerNames?.find((n) => n.toLowerCase().includes(query)) : undefined}
               // Only the first screenful slides in; rows appended after it are
               // below the fold and simply appear.
               enterDelay={index < STAGGERED ? index * STAGGER_MS : null}
@@ -576,8 +651,8 @@ const RosterRow = memo(function RosterRow({
         Remove
       </button>}
       <div className="group relative flex items-center gap-3 bg-surface px-4 py-2.5 hover:bg-rowhover lg:grid lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] lg:py-2" style={{ transform: `translateX(${offset}px)`, transition: dragging ? "none" : "transform 180ms ease-out", touchAction: swipable ? "pan-y" : undefined }}>
-        <span className="w-[52px] shrink-0 text-center font-heading text-[14px] font-extrabold tabular text-ink lg:w-auto lg:text-left lg:text-[13.5px]">
-          {t.unit ?? "—"}
+        <span className={cn("w-[52px] shrink-0 text-center font-heading text-[14px] font-extrabold tabular lg:w-auto lg:text-left lg:text-[13.5px]", t.householdHeadId && tab !== "archived" ? "text-muted" : "text-ink")}>
+          {t.householdHeadId && tab !== "archived" ? "↳" : t.unit ?? "—"}
         </span>
         <Link to={`/tenants/${t.id}`} draggable={false} className="flex min-w-0 flex-1 items-center gap-2.5 lg:flex-none">
           <Avatar name={t.displayName} color={tintFor(t.id)} size={30} className="hidden lg:inline-flex" />
@@ -585,8 +660,13 @@ const RosterRow = memo(function RosterRow({
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[14.5px] font-semibold text-ink lg:text-[13.5px]">{t.displayName}</span>
               {t.highAcuity && <HighAcuityFlag />}
+              {tab !== "archived" && t.movedIn === false && <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 py-px text-[10.5px] font-bold text-status-amberText">Not moved in</span>}
+              {tab !== "archived" && t.awaySince && <span className="shrink-0 rounded-pill bg-subtle2 px-1.5 py-px text-[10.5px] font-bold text-ink" title={t.awayReason ?? undefined}>Away</span>}
               {t.needsAttention && canArchive && <span className="h-2 w-2 shrink-0 rounded-full bg-status-amberDot lg:hidden" aria-label="Needs review" />}
             </span>
+            {tab !== "archived" && t.householdHeadId && (
+              <span className="block truncate text-micro text-muted">{shortRelation(t.householdRelation) ?? "Household member"}</span>
+            )}
             <span className="block truncate text-micro text-muted lg:hidden">
               {tab === "archived"
                 ? `${multiSite ? `${t.site?.name} · ` : ""}Removed ${formatDate(t.archivedAt)} · ${t.archiveReason ?? ""}`
@@ -627,6 +707,38 @@ const RosterRow = memo(function RosterRow({
             </button>
           ) : (
             <ChevronRight className="h-4 w-4 text-muted" />
+          )}
+        </span>
+      </div>
+    </li>
+  );
+});
+
+/** A unit nobody lives in: vacant since when, and Move in. */
+const VacantRow = memo(function VacantRow({ u, enterDelay, onMoveIn }: { u: UnitRow; enterDelay: number | null; onMoveIn?: (u: UnitRow) => void }) {
+  return (
+    <li
+      className={cn("border-b border-hairline last:border-0", enterDelay !== null && "page-list-item-enter")}
+      style={enterDelay !== null ? { animationDelay: `${enterDelay}ms` } : undefined}
+    >
+      <div className="flex items-center gap-3 bg-surface px-4 py-2.5 lg:grid lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] lg:py-2">
+        <span className="w-[52px] shrink-0 text-center font-heading text-[14px] font-extrabold tabular text-muted lg:w-auto lg:text-left lg:text-[13.5px]">{u.label}</span>
+        <span className="min-w-0 flex-1 lg:flex-none">
+          <span className="block truncate text-[14.5px] font-semibold italic text-muted lg:text-[13.5px]">Vacant</span>
+          <span className="block truncate text-micro text-muted lg:hidden">
+            {[u.unitType, u.vacantSince ? `since ${fmtDay(u.vacantSince)}` : null].filter(Boolean).join(" · ") || "Nobody lives here"}
+          </span>
+        </span>
+        <span className="hidden truncate text-[13px] text-muted lg:block">{u.unitType ?? "—"}</span>
+        <span className="hidden truncate text-[13px] text-muted lg:block">{u.vacantSince ? fmtDay(u.vacantSince) : "—"}</span>
+        {/* Status column: Move in for roster editors, otherwise a plain "Vacant". */}
+        <span className="flex shrink-0 items-center lg:col-span-2">
+          {onMoveIn ? (
+            <Button size="sm" variant="secondary" onClick={() => onMoveIn(u)} className="min-h-[40px] lg:min-h-0" aria-label={`Move someone into ${u.label}`}>
+              Move in
+            </Button>
+          ) : (
+            <span className="rounded-pill border border-hairline px-2 py-0.5 text-micro font-bold text-muted">Vacant</span>
           )}
         </span>
       </div>

@@ -861,7 +861,7 @@ function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, n
   }
   if (!siteCode) return <p className="rounded-input border border-dashed border-hairline px-3 py-2.5 text-[13px] text-muted">{needsSite}</p>;
   const needle = q.trim().toLowerCase();
-  const people = (data?.items ?? []).filter((t) => !highAcuityOnly || t.highAcuity).filter((t) => !needle || t.displayName.toLowerCase().includes(needle) || `${t.firstName} ${t.lastName}`.toLowerCase().includes(needle) || (t.unit ?? "").toLowerCase().includes(needle) || (t.formerNames ?? []).some((n) => n.toLowerCase().includes(needle)));
+  const people = (data?.items ?? []).filter((t) => t.movedIn !== false).filter((t) => !highAcuityOnly || t.highAcuity).filter((t) => !needle || t.displayName.toLowerCase().includes(needle) || `${t.firstName} ${t.lastName}`.toLowerCase().includes(needle) || (t.unit ?? "").toLowerCase().includes(needle) || (t.formerNames ?? []).some((n) => n.toLowerCase().includes(needle)));
   return (
     <div ref={boxRef} className="relative">
       <div className={cn("relative rounded-input border bg-surface", showList ? "border-navy" : "border-hairline")}>

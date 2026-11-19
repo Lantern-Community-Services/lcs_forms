@@ -3,6 +3,7 @@ import { HttpError } from "../http.js";
 import { tenantsRouter, ARCHIVE_REASONS } from "../routes/tenants.js";
 import { attendanceRouter } from "../routes/attendance.js";
 import { activityRouter } from "../routes/activity.js";
+import { residencyRouter } from "../routes/residency.js";
 import { decodeCsv, importTenants, MAX_IMPORT_ROWS, readRows } from "../services/tenantImport.js";
 import { defineOp, int, flag } from "./registry.js";
 
@@ -275,4 +276,187 @@ export const rosterOps = [
     },
     run: async (ctx, a) => withoutSignatures(await ctx.route(attendanceRouter, { method: "POST", path: "/", body: a })),
   }),
+  // ── Units, moving in and out, away, the checklist (case management) ──
+  defineOp({
+    name: "residency_options",
+    description:
+      "Case management's lists: household relations, move-out reasons, away reasons, HUD exit destinations, unit types, programs and the move-in checklist schedule. Units and move-ins work at supportive sites while case management is on.",
+    scope: "roster:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/options" },
+    shape: {},
+    annotations: { readOnlyHint: true },
+    run: (ctx) => ctx.route(residencyRouter, { method: "GET", path: "/meta" }),
+  }),
+
+  defineOp({
+    name: "list_units",
+    description: "Units at supportive sites, each with who lives there (head of household first) or vacant and since when. retired: true includes retired units.",
+    scope: "roster:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/units" },
+    shape: { site, retired: z.boolean().optional() },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/units", query: { site: a.site, retired: a.retired ? "1" : undefined } }),
+  }),
+
+  defineOp({
+    name: "save_unit",
+    description: "Add a unit to a site (site + label), or change one (id): label, unit type, program, notes, active (false retires an empty unit). Site Managers' and Admins' keys.",
+    scope: "roster:archive",
+    as: "creator",
+    http: { method: "POST", path: "/residency/units/save" },
+    shape: {
+      id: z.string().optional().describe("A unit to change; leave out to add one"),
+      site: z.string().optional().describe("Site code or id, when adding"),
+      label: z.string().max(40).optional(),
+      unitType: z.string().max(40).nullable().optional(),
+      program: z.string().max(255).nullable().optional(),
+      notes: z.string().max(1000).nullable().optional(),
+      active: z.boolean().optional(),
+    },
+    run: (ctx, { id: uid, ...body }) =>
+      uid ? ctx.route(residencyRouter, { method: "PATCH", path: `/units/${id(uid)}`, body }) : ctx.route(residencyRouter, { method: "POST", path: "/units", body }),
+  }),
+
+  defineOp({
+    name: "add_units",
+    description: "Add many units to a site at once (labels); ones it already has are skipped.",
+    scope: "roster:archive",
+    as: "creator",
+    http: { method: "POST", path: "/residency/units/bulk" },
+    shape: { site: z.string(), labels: z.array(z.string().max(40)).min(1).max(1000), unitType: z.string().max(40).nullable().optional(), program: z.string().max(255).nullable().optional() },
+    run: (ctx, a) => ctx.route(residencyRouter, { method: "POST", path: "/units/bulk", body: a }),
+  }),
+
+  defineOp({
+    name: "seed_units",
+    description:
+      "Set a supportive site up from its roster: a unit for every unit number on it, and each resident linked to theirs with a stay from their move-in date and the recurring checklist. Safe to run again (adds only what's missing). Needs confirm: true.",
+    scope: "roster:archive",
+    as: "creator",
+    http: { method: "POST", path: "/residency/units/seed" },
+    shape: { site: z.string() },
+    confirm: true,
+    run: (ctx, a) => ctx.route(residencyRouter, { method: "POST", path: "/units/seed", body: { site: a.site } }),
+  }),
+
+  defineOp({
+    name: "move_in",
+    description:
+      "Move residents (on the site's roster, not living in a unit) into a unit on a date (not in the future). One person per unit, except at household sites: the first into a vacant unit is head of household; everyone else needs relation (residency_options relations), joining an existing household included. Starts their stay and checklist.",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/residency/units/:unitId/move-in" },
+    shape: {
+      unitId: z.string(),
+      date: z.string().describe("YYYY-MM-DD"),
+      people: z.array(z.object({ tenantId: z.string(), relation: z.string().max(80).nullable().optional() })).min(1).max(20),
+      program: z.string().max(255).nullable().optional().describe("Defaults to the unit's program"),
+    },
+    run: (ctx, { unitId, ...body }) => ctx.route(residencyRouter, { method: "POST", path: `/units/${id(unitId)}/move-in`, body }),
+  }),
+
+  defineOp({
+    name: "transfer_resident",
+    description:
+      "Move a resident who lives in a unit to another unit, at the same or another site (an internal transfer): their stay ends as transferred and a new one starts. withHousehold moves their whole household (a head can't leave theirs behind).",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/residency/residents/:id/transfer" },
+    shape: {
+      id: residentId,
+      toUnitId: z.string(),
+      date: z.string().describe("YYYY-MM-DD"),
+      reason: z.string().max(120).nullable().optional(),
+      withHousehold: z.boolean().optional(),
+      relations: z.record(z.string().max(80)).optional().describe("{ tenantId: relation } when joining a household"),
+    },
+    run: (ctx, { id: tid, ...body }) => ctx.route(residencyRouter, { method: "POST", path: `/tenants/${id(tid)}/transfer`, body }),
+  }),
+
+  defineOp({
+    name: "move_out",
+    description:
+      "Move a resident out: date, reason (residency_options moveOutReasons), HUD exit destination, forwarding address, note; alsoIds for household members leaving with them; newHeadId when a head leaves a household behind. Ends their stay, removes them from the roster, frees the unit, cancels open checklist items and adds the HMIS exit assessment. Needs confirm: true.",
+    scope: "roster:archive",
+    as: "creator",
+    http: { method: "POST", path: "/residency/residents/:id/move-out" },
+    shape: {
+      id: residentId,
+      date: z.string().describe("YYYY-MM-DD"),
+      reason: z.string().max(120),
+      destination: z.string().max(200).nullable().optional(),
+      forwardingAddress: z.object({ line1: z.string().optional(), line2: z.string().optional(), city: z.string().optional(), state: z.string().optional(), zip: z.string().optional() }).nullable().optional(),
+      note: z.string().max(2000).nullable().optional(),
+      alsoIds: z.array(z.string()).max(20).optional(),
+      newHeadId: z.string().nullable().optional(),
+    },
+    confirm: true,
+    run: (ctx, { id: tid, ...body }) => ctx.route(residencyRouter, { method: "POST", path: `/tenants/${id(tid)}/move-out`, body }),
+  }),
+
+  defineOp({
+    name: "mark_away",
+    description: "Mark a resident away from the building (PlanStreet's Out of Building Status): last seen, reason (residency_options awayReasons), detail, expected return. They stay out of review until marked back.",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/residency/residents/:id/away" },
+    shape: { id: residentId, lastSeen: z.string(), reason: z.string().max(120), detail: z.string().max(1000).nullable().optional(), expectedReturn: z.string().nullable().optional() },
+    run: (ctx, { id: tid, ...body }) => ctx.route(residencyRouter, { method: "POST", path: `/tenants/${id(tid)}/away`, body }),
+  }),
+
+  defineOp({
+    name: "mark_returned",
+    description: "A resident marked away is back (date).",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/residency/residents/:id/returned" },
+    shape: { id: residentId, date: z.string() },
+    run: (ctx, { id: tid, ...body }) => ctx.route(residencyRouter, { method: "POST", path: `/tenants/${id(tid)}/returned`, body }),
+  }),
+
+  defineOp({
+    name: "get_residency",
+    description: "A resident's unit, household, whether they're away, every stay (move-in to move-out, reason, destination) and their checklist.",
+    scope: "roster:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/residents/:id" },
+    shape: { id: residentId },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: `/tenants/${id(a.id)}` }),
+  }),
+
+  defineOp({
+    name: "list_checklist",
+    description: "Move-in checklist tasks at supportive sites: view overdue, due (next two weeks, overdue included, the default), open, or done (last 90 days). mine: only residents the key's maker is case lead for.",
+    scope: "roster:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/checklist" },
+    shape: { site, view: z.enum(["overdue", "due", "open", "done"]).optional(), mine: z.boolean().optional() },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/tasks", query: { site: a.site, view: a.view, mine: a.mine ? "1" : undefined } }),
+  }),
+
+  defineOp({
+    name: "update_checklist_task",
+    description: "Mark a checklist task done (doneOn, note), skipped (not needed; note required) or open again. A recurring one makes its next.",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/residency/checklist/:id" },
+    shape: { id: z.string(), status: z.enum(["done", "skipped", "open"]), doneOn: z.string().optional(), note: z.string().max(2000).nullable().optional() },
+    run: (ctx, { id: tid, ...body }) => ctx.route(residencyRouter, { method: "POST", path: `/tasks/${id(tid)}`, body }),
+  }),
+
+  defineOp({
+    name: "residency_report",
+    description: "Move-ins, move-outs (by month, reason, HUD destination), length of stay, vacancies now, people waiting to move in or away, and checklist on-time rates, for supportive sites between from and to (default: the last year).",
+    scope: "roster:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/report" },
+    shape: { site, from: z.string().optional(), to: z.string().optional() },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/report", query: { site: a.site, from: a.from, to: a.to } }),
+  }),
 ];
+

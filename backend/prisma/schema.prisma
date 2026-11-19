@@ -52,7 +52,12 @@ model Site {
   /// Per-site override of the attention threshold, in hours. Null = org default.
   attentionHours Int?
 
+  /// Units here can hold a household (a head of household and members, each
+  /// with their relation to the head). Elsewhere a unit holds one person. Admin → Sites.
+  households       Boolean @default(false)
+
   tenants          Tenant[]
+  units            Unit[]
   userSites        UserSite[]
   apiKeys          ApiKey[]
   attendanceEvents AttendanceEvent[]
@@ -95,6 +100,22 @@ model Tenant {
   /// of who changed what, and when, is the audit log (services/nameHistory.ts).
   formerNames   String?   @db.NVarChar(Max)
 
+  // ── Where they live (case management: services/residency.ts) ──
+  /// The unit they live in. `unit` keeps its label for everything that reads text
+  /// (exports, forms, WordPress). Set by a move-in or a transfer, cleared by a move-out.
+  unitId            String?   @db.NVarChar(64)
+  unitRef           Unit?     @relation(fields: [unitId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  /// False: on the roster but not moved into a unit yet (an applicant). Kept out of
+  /// form pickers and the review queue until the move-in. Everyone before units existed is true.
+  movedIn           Boolean   @default(true)
+  /// Household sites: their head of household (a Tenant id; null for the head or
+  /// someone alone) and their relation to the head, in HUD's words.
+  householdHeadId   String?   @db.NVarChar(64)
+  householdRelation String?   @db.NVarChar(80)
+  /// Away from the building since this day (the open TenantAbsence), and why. For the roster's badge.
+  awaySince         DateTime? @db.Date
+  awayReason        String?   @db.NVarChar(120)
+
   // ── Activity / attention ────────────────────────────────
   /// Last time any designated form or integration referenced this person.
   lastActivityAt     DateTime?
@@ -123,9 +144,14 @@ model Tenant {
   attendanceEntries AttendanceEntry[]
   /// Client information (services/clientFields.ts). Made on the first save.
   profile           TenantProfile?
+  stays             Stay[]
+  absences          TenantAbsence[]
+  tasks             TenantTask[]
 
   @@index([siteId, status, attentionClockAt])
   @@index([siteId, status, unit])
+  @@index([unitId])
+  @@index([householdHeadId])
   @@index([updatedAt])
   @@index([lastName, firstName])
 }
@@ -168,8 +194,6 @@ model TenantProfile {
   program           String?   @db.NVarChar(255)
   /// User id of their case lead. Not a relation: a removed user stays named in the audit log.
   caseLeadId        String?   @db.NVarChar(64)
-  /// Tenant id of their head of household. Null: they are the head, or live alone.
-  headOfHouseholdId String?   @db.NVarChar(64)
   /// Every other field, as JSON { key: value }.
   data              String    @default("{}") @db.NVarChar(Max)
   /// Optimistic concurrency, as on Tenant: every save presents the version it read.
@@ -179,8 +203,122 @@ model TenantProfile {
   updatedAt         DateTime  @updatedAt
 
   @@index([caseLeadId])
-  @@index([headOfHouseholdId])
   @@index([program])
+}
+
+/// A unit at a site (case management: services/residency.ts). Who lives there is
+/// Tenant.unitId; the history is Stay. A unit is vacant when nobody moved in lives
+/// there. Retired units (active false) stay for history but take nobody new.
+model Unit {
+  id          String    @id @default(cuid()) @db.NVarChar(64)
+  site        Site      @relation(fields: [siteId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  siteId      String    @db.NVarChar(64)
+  /// What staff call it: "4B", "106-C".
+  label       String    @db.NVarChar(40)
+  /// Studio | 1-Bedroom | 2-Bedrooms | 3-Bedrooms | SRO (services/clientFields.ts unitType).
+  unitType    String?   @db.NVarChar(40)
+  /// The funded program it belongs to (clientFields PROGRAMS), offered at move-in.
+  program     String?   @db.NVarChar(255)
+  notes       String?   @db.NVarChar(1000)
+  active      Boolean   @default(true)
+  /// The day it last became empty; null while someone lives there (or before anyone has).
+  vacantSince DateTime? @db.Date
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenants     Tenant[]
+  stays       Stay[]
+
+  @@unique([siteId, label])
+}
+
+/// One time someone lived somewhere: moved in on a day, until they moved out,
+/// transferred or were removed. A transfer ends one stay and starts the next.
+/// What HMIS calls an enrollment.
+model Stay {
+  id                String    @id @default(cuid()) @db.NVarChar(64)
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String    @db.NVarChar(64)
+  siteId            String    @db.NVarChar(64)
+  unit              Unit?     @relation(fields: [unitId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  unitId            String?   @db.NVarChar(64)
+  unitLabel         String?   @db.NVarChar(40)
+  program           String?   @db.NVarChar(255)
+  householdHeadId   String?   @db.NVarChar(64)
+  householdRelation String?   @db.NVarChar(80)
+  /// "moved_in" (arrived) or "transferred" (came from another of our units).
+  startKind         String    @default("moved_in") @db.NVarChar(20)
+  moveInDate        DateTime  @db.Date
+  moveOutDate       DateTime? @db.Date
+  /// null while they live there; "moved_out" | "transferred" | "removed" after.
+  endKind           String?   @db.NVarChar(20)
+  /// Move-out reason (residency.ts MOVE_OUT_REASONS) or why they were removed.
+  endReason         String?   @db.NVarChar(120)
+  /// HUD exit destination (residency.ts EXIT_DESTINATIONS).
+  exitDestination   String?   @db.NVarChar(160)
+  /// JSON { line1, line2, city, state, zip }.
+  forwardingAddress String?   @db.NVarChar(1000)
+  endNote           String?   @db.NVarChar(2000)
+  createdById       String?   @db.NVarChar(64)
+  endedById         String?   @db.NVarChar(64)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([siteId, moveOutDate])
+  @@index([unitId])
+}
+
+/// Away from the building (PlanStreet's Out of Building Status): from the day
+/// they were last seen until they're back, or it turns into a move-out.
+model TenantAbsence {
+  id             String    @id @default(cuid()) @db.NVarChar(64)
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId       String    @db.NVarChar(64)
+  siteId         String    @db.NVarChar(64)
+  lastSeen       DateTime  @db.Date
+  reason         String    @db.NVarChar(120)
+  detail         String?   @db.NVarChar(1000)
+  expectedReturn DateTime? @db.Date
+  returnedOn     DateTime? @db.Date
+  /// null while away; "returned" | "moved_out" after.
+  outcome        String?   @db.NVarChar(20)
+  /// The last "still away" reminder.
+  remindedAt     DateTime?
+  createdById    String?   @db.NVarChar(64)
+  endedById      String?   @db.NVarChar(64)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([siteId, outcome])
+}
+
+/// The move-in checklist (services/checklist.ts): paperwork due by a date — the
+/// Initial Assessment within 3 days of moving in, a Housing Assessment every
+/// month, and so on. Open until done (or skipped); a recurring one makes the next.
+model TenantTask {
+  id         String    @id @default(cuid()) @db.NVarChar(64)
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId   String    @db.NVarChar(64)
+  siteId     String    @db.NVarChar(64)
+  stayId     String?   @db.NVarChar(64)
+  /// checklist.ts SCHEDULE key, e.g. "initial_assessment".
+  key        String    @db.NVarChar(60)
+  label      String    @db.NVarChar(160)
+  dueOn      DateTime  @db.Date
+  /// open | done | skipped | cancelled (they moved out before it was due)
+  status     String    @default("open") @db.NVarChar(20)
+  doneOn     DateTime? @db.Date
+  doneByName String?   @db.NVarChar(255)
+  note       String?   @db.NVarChar(2000)
+  /// The form entry that did it, when one ticked it off.
+  entryRef   String?   @db.NVarChar(64)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([siteId, status, dueOn])
+  @@index([tenantId, status])
 }
 
 /// Immutable record of who changed a roster and why.

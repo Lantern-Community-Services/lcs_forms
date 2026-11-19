@@ -8,6 +8,7 @@ import { HttpError, badRequest, forbidden, notFound } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { appBaseUrl } from "../env.js";
 import { displayName, recordActivity } from "../services/roster.js";
+import { completeForForm } from "../services/checklist.js";
 import { mailConfigured, sendLogged } from "../services/mailer.js";
 import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
@@ -401,6 +402,7 @@ export async function submitEntry(input: SubmitInput) {
       await recordActivity({ tenantId: r.id, source: "form", label: form.title, externalRef: `${entry.id}:${f.id}`, occurredAt: entry.createdAt, recordedBy: actorName }).catch((err) =>
         console.error(`[forms] roster activity for entry ${entry.id} failed:`, err)
       );
+      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName });
     }
   }
 

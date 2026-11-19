@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CheckCircle2, History, ListChecks, LogIn, PencilLine, RotateCcw, Settings2, Undo2, UserMinus, UserPlus } from "lucide-react";
+import { ArrowRightLeft, Building2, CheckCircle2, DoorClosed, DoorOpen, History, ListChecks, LogIn, PencilLine, Plane, RotateCcw, Settings2, Undo2, UserMinus, UserPlus, Users } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { ChangeList } from "@/components/roster/ChangeList";
@@ -19,6 +19,17 @@ const ICONS: Record<string, typeof History> = {
   "tenant.remove_undone": Undo2,
   "tenant.sent_to_review": ListChecks,
   "roster.sent_to_review": ListChecks,
+  "tenant.moved_in": DoorOpen,
+  "tenant.moved_out": DoorClosed,
+  "tenant.transferred": ArrowRightLeft,
+  "tenant.away": Plane,
+  "tenant.returned": RotateCcw,
+  "tenant.task": CheckCircle2,
+  "tenant.household": Users,
+  "tenant.household_head": Users,
+  "unit.created": Building2,
+  "unit.updated": Building2,
+  "units.seeded": Building2,
   "user.signed_in": LogIn,
 };
 

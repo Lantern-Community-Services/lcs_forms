@@ -8,10 +8,11 @@ import { HighAcuityToggle } from "@/components/roster/HighAcuity";
 import { useToast } from "@/components/ui/toast";
 import { useIsPhone } from "@/lib/useMediaQuery";
 import { rosterApi, useRosterMutation } from "@/lib/queries";
+import { useResidencyFor, useUnits } from "@/lib/residency";
 import { errorMessage, formatDateInput } from "@/lib/utils";
-import type { SiteRef } from "@/lib/types";
+import type { Site, SiteRef } from "@/lib/types";
 
-const blank = () => ({ unit: "", firstName: "", lastName: "", preferredName: "", moveInDate: formatDateInput(new Date()), highAcuity: false });
+const blank = () => ({ unit: "", unitId: "", firstName: "", lastName: "", preferredName: "", moveInDate: formatDateInput(new Date()), highAcuity: false });
 
 /**
  * Quick add. Four fields, one of them required, and "Save & add another" keeps
@@ -23,7 +24,7 @@ export function AddResident({ open, onOpenChange, sites }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   /** The sites in view. With more than one, the form asks which. */
-  sites: SiteRef[];
+  sites: (SiteRef & Partial<Pick<Site, "siteType" | "households">>)[];
 }) {
   const phone = useIsPhone();
   const toast = useToast();
@@ -31,7 +32,15 @@ export function AddResident({ open, onOpenChange, sites }: {
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState(0);
   const [siteCode, setSiteCode] = useState(sites[0]?.code ?? "");
-  const siteName = sites.find((s) => s.code === siteCode)?.name;
+  const site = sites.find((s) => s.code === siteCode);
+  const siteName = site?.name;
+  // Case management at a supportive site: being added isn't moving in. A unit
+  // is optional here (picking one moves them in); without one they're on the
+  // roster, not moved in, until Move in.
+  const residencyFor = useResidencyFor();
+  const unitsMode = residencyFor(site as Site | undefined);
+  const { data: unitData } = useUnits(siteCode || undefined, open && unitsMode);
+  const vacant = (unitData?.units ?? []).filter((u) => u.vacant && u.siteId === site?.id);
   const unitRef = useRef<HTMLInputElement>(null);
   const create = useRosterMutation((body: Record<string, unknown>) => rosterApi.create(body));
 
@@ -45,7 +54,7 @@ export function AddResident({ open, onOpenChange, sites }: {
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set = (k: Exclude<keyof ReturnType<typeof blank>, "highAcuity">) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (k: Exclude<keyof ReturnType<typeof blank>, "highAcuity" | "unitId">) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function save(another: boolean) {
@@ -61,17 +70,19 @@ export function AddResident({ open, onOpenChange, sites }: {
     try {
       const t = await create.mutateAsync({
         site: siteCode,
-        unit: form.unit.trim() || null,
+        ...(unitsMode ? { unitId: form.unitId || null } : { unit: form.unit.trim() || null }),
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         preferredName: form.preferredName.trim() || null,
         moveInDate: form.moveInDate || null,
         highAcuity: form.highAcuity,
       });
-      toast(`Added ${t.displayName}${t.unit ? ` to ${t.unit}` : ""}.`);
+      toast(unitsMode && !form.unitId ? `Added ${t.displayName}. Move them in when they get a unit.` : `Added ${t.displayName}${t.unit ? ` to ${t.unit}` : ""}.`);
       if (another) {
         setAdded((n) => n + 1);
         setForm((f) => ({ ...blank(), moveInDate: f.moveInDate }));
+
+
         setTimeout(() => unitRef.current?.focus(), 0);
       } else onOpenChange(false);
     } catch (e) {
@@ -98,12 +109,31 @@ export function AddResident({ open, onOpenChange, sites }: {
           />
         </Field>
       )}
-      <Field label="Unit / bed" className="col-span-1">
-        <Input ref={unitRef} value={form.unit} onChange={set("unit")} placeholder="e.g. 3B" className="min-h-[44px]" autoFocus={!phone} />
-      </Field>
-      <Field label="Move-in date" className="col-span-1">
-        <Input type="date" value={form.moveInDate} onChange={set("moveInDate")} className="min-h-[44px]" />
-      </Field>
+      {unitsMode ? (
+        <>
+          <Field label="Unit" className="col-span-1" hint="Leave empty if they haven't moved in yet.">
+            <Select
+              value={form.unitId}
+              onChange={(e) => setForm((f) => ({ ...f, unitId: e.target.value }))}
+              placeholder="Not moved in yet"
+              className="min-h-[44px]"
+              options={vacant.map((u) => ({ value: u.id, label: `${u.label}${u.unitType ? ` · ${u.unitType}` : ""}` }))}
+            />
+          </Field>
+          <Field label="Move-in date" className="col-span-1">
+            <Input type="date" value={form.moveInDate} onChange={set("moveInDate")} disabled={!form.unitId} className="min-h-[44px]" />
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field label="Unit / bed" className="col-span-1">
+            <Input ref={unitRef} value={form.unit} onChange={set("unit")} placeholder="e.g. 3B" className="min-h-[44px]" autoFocus={!phone} />
+          </Field>
+          <Field label="Move-in date" className="col-span-1">
+            <Input type="date" value={form.moveInDate} onChange={set("moveInDate")} className="min-h-[44px]" />
+          </Field>
+        </>
+      )}
       <Field label="First name *" className="col-span-2 sm:col-span-1">
         <Input value={form.firstName} onChange={set("firstName")} autoComplete="off" className="min-h-[44px]" autoCapitalize="words" />
       </Field>

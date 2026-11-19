@@ -349,7 +349,8 @@ export function AppFrame({
       "roster.residents": async (code: string) => {
         // The device's own copy of the roster when it has one: instant, and offline.
         const res = await loadTenants(String(code), { userId: latest.current.runtime.user.id });
-        return res.items.map((t) => ({
+        // Not moved in yet (case management): on the roster, not someone a form is about.
+        return res.items.filter((t) => t.movedIn !== false).map((t) => ({
           id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit,
           moveInDate: t.moveInDate?.slice(0, 10) ?? null, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
         }));

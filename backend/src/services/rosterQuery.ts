@@ -24,6 +24,7 @@ const LIST_COLUMNS = Prisma.raw(
     "id", "siteId", "unit", "firstName", "lastName", "preferredName", "formerNames", "status",
     "moveInDate", "moveOutDate", "externalId", "highAcuity", "lastActivityAt", "lastActivitySource",
     "lastKeptAt", "attentionClockAt", "archivedAt", "archiveReason", "version",
+    "unitId", "movedIn", "householdHeadId", "householdRelation", "awaySince", "awayReason",
     "createdAt", "updatedAt",
   ].join(", ")
 );
