@@ -17,6 +17,7 @@ import { startNotificationMail } from "./services/notifications.js";
 import { startEmailReports } from "./services/emailReports.js";
 import { loadLook } from "./services/emailLook.js";
 import { startFollowUpReminders } from "./services/followUp.js";
+import { startSignOffReminders } from "./services/signOff.js";
 import { startChecklistReminders } from "./services/checklist.js";
 import { loadTestPrograms } from "./services/testDataSites.js";
 import { fileStorageLabel } from "./services/fileStore.js";
@@ -50,6 +51,7 @@ startNotificationMail();
 void loadLook().catch(() => undefined);
 startEmailReports();
 startFollowUpReminders();
+startSignOffReminders();
 startChecklistReminders();
 
 // A test site's made-up sites have made-up programs (services/testDataSites.ts).

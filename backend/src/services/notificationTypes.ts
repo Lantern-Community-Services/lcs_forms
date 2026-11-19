@@ -14,6 +14,7 @@ import {
 } from "./notifications.js";
 import { manifestOf, routeRule, routeTopicKey } from "./routing.js";
 import { COLLECTION as FOLLOW_UP, FOLLOW_UP_RULE, followUpSchema, followUpTopicKey } from "./followUp.js";
+import { SIGN_OFF_RULE, signOffTopicKey } from "./signOff.js";
 
 /**
  * Notification types, as people choose them and Admins set them up.
@@ -82,6 +83,7 @@ const KEY_RE = {
   form: /^form:([\w-]{1,64}):(forms\.message|forms\.entry|forms\.problem)$/,
   route: /^route:([\w-]{1,64}):([a-z0-9][a-z0-9_-]{0,63})$/i,
   followup: /^followup:([\w-]{1,64}):(reminder|done)$/,
+  signoff: /^signoff:([\w-]{1,64}):(request|done)$/,
 };
 
 // ── Who a type could reach ───────────────────────────────────────────────
@@ -251,6 +253,22 @@ export async function prefsFor(viewer: Viewer): Promise<PrefsView> {
         )
       );
     }
+    // Sign-offs (services/signOff.ts): once one has reached them, or they've set it.
+    for (const which of ["request", "done"] as const) {
+      const key = signOffTopicKey(f.id, which);
+      const sent = sentOf((x) => x.topic === key);
+      if (!sent && !has(key)) continue;
+      rows.push(
+        row(
+          key,
+          which === "request" ? "Sign-off requests" : "Your entry was signed off",
+          which === "request" ? "An entry is waiting for your signature (and reminders until it's signed)." : "Every signature an entry you filed needed is in.",
+          SIGN_OFF_RULE,
+          [formKind("forms.entry"), "forms.entry"],
+          { sent }
+        )
+      );
+    }
     // What the form sends outside routing: a code form's own messages (ctx.notify.send), and any kind it has sent or they've set.
     for (const k of Object.keys(FORM_KINDS) as FormKind[]) {
       const key = formKind(k);
@@ -277,6 +295,7 @@ export async function prefsFor(viewer: Viewer): Promise<PrefsView> {
 /** The rule a settings key answers to, or an error naming what's wrong. */
 async function ruleOfKey(key: string): Promise<TypeRule> {
   if (isNotificationType(key)) return (await systemRules())[key];
+  if (KEY_RE.signoff.test(key)) return SIGN_OFF_RULE;
   if (KEY_RE.form.test(key) || KEY_RE.followup.test(key)) return key.startsWith("followup:") ? FOLLOW_UP_RULE : { ...defaultRule("forms.message"), choice: "optional" };
   const m = KEY_RE.route.exec(key);
   if (m) {

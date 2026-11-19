@@ -2,7 +2,7 @@ import { sendFile } from "./upload";
 import { createContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "./api";
-import type { FieldTypeInfo, FormDoc, Values } from "./formEngine";
+import type { Field, FieldTypeInfo, FormDoc, Values } from "./formEngine";
 
 /** Built forms: the admin builder's reads and writes, and filling in / reading entries. */
 
@@ -131,7 +131,25 @@ export interface EntryRow {
     checked?: number;
     checkTotal?: number;
   } | null;
+  /** Signatures signed after filing (backend services/signOff.ts): null when it needs none. */
+  signOff?: { status: "waiting" | "done"; signed: string[] } | null;
   noteCount?: number;
+}
+
+/** One signature an entry needs after filing (a supervisor's), as it stands. */
+export interface SignOffState {
+  id: string;
+  label: string;
+  state: "waiting" | "signed";
+  signed: { byId: string | null; byName: string; at: string } | null;
+  /** Who signs it, in words. */
+  who: string;
+  whatToDo: string | null;
+  /** Questions the signer fills in as they sign (a license number). */
+  fields: Field[];
+  canSign: boolean;
+  /** Why this person can't (they filed it). */
+  cantSignWhy: string | null;
 }
 
 export interface EntryList {
@@ -178,6 +196,8 @@ export interface EntryDetail {
   followUpChecklist?: CheckState[];
   /** Marked done before and opened again: marking it done again tells nobody unless tellAgain. */
   followUpDoneBefore?: boolean;
+  /** The signatures it needs after filing, and whether this person can sign each now. */
+  signOffs?: SignOffState[];
 }
 
 /** A follow-up checklist item on one entry (backend services/followUp.ts). */
@@ -324,6 +344,9 @@ export const fillApi = {
     api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up`, { done, note, values, tellAgain }),
   /** Tick one of the follow-up's checklist items off, or untick it; or take it off this entry's list (removed), or put it back. */
   followUpItem: (slug: string, id: string, item: string, change: { done: boolean } | { removed: boolean }) => api.post<EntryRow>(`/f/${slug}/entries/${id}/follow-up/items`, { item, ...change }),
+  /** Sign one of the entry's sign-offs: the signature, and the answers to the questions its signer fills in. */
+  sign: (slug: string, id: string, field: string, signature: string, values?: Values) =>
+    api.post<{ entry: EntryRow; signOffs: SignOffState[] }>(`/f/${slug}/entries/${id}/sign`, { field, signature, values }),
   remove: (slug: string, id: string) => api.delete(`/f/${slug}/entries/${id}`),
   /** What the filters match, or just `ids` (the ticked entries) within them. */
   exportFile: (slug: string, qs: string, format: "csv" | "xlsx" | "pdf", ids?: string[]) =>

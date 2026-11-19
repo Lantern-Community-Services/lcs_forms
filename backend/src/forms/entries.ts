@@ -14,6 +14,7 @@ import { isInternalAddress } from "../services/emailTemplate.js";
 import { notify } from "../services/notifications.js";
 import { emailValues, entryInput, outcomeNote, routeEmail, routeQuietly } from "../services/routing.js";
 import { canFollowUp, checklistCount, checklistFor, loadFollowUp, openFollowUp, parseDoneValues, type FollowUpSettings } from "../services/followUp.js";
+import { isSignerOn, keepSignOffAnswers, openSignOffs, parseSigned } from "../services/signOff.js";
 import { movedRuleCheck } from "../services/ruleConversion.js";
 import { TZ, stamp } from "../services/exportCommon.js";
 import { canUseBuiltForm, entryReach, isBuiltFormLimited, notifiedCanOpen } from "../services/staffGroups.js";
@@ -192,12 +193,22 @@ export async function visibleWhere(form: BuiltForm, user: Viewer, reach: "all" |
 }
 
 /** Whether this person may open this one entry: theirs, their site's (by the form's setting), told about it, or theirs to follow up. */
-export async function canSeeEntry(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own", entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null }): Promise<boolean> {
+export async function canSeeEntry(
+  form: BuiltForm,
+  user: Viewer,
+  reach: "all" | "site" | "own",
+  entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null } & Partial<Pick<FormEntry, "signOff" | "signOffs" | "data" | "formVersion">>
+): Promise<boolean> {
   if (!user) return false;
   if (reach === "all" || entry.createdById === user.userId || (entry.sharedById && entry.sharedById === user.userId)) return true;
   if (reach === "site" && (!user.siteIds || (entry.siteId && user.siteIds.includes(entry.siteId)))) return true;
   if ((await notifiedEntryIds(form, user.userId)).includes(entry.id)) return true;
-  return entry.followUp ? canFollowUp(form, user as CurrentUser, entry) : false;
+  if (entry.followUp && (await canFollowUp(form, user as CurrentUser, entry))) return true;
+  // Asked to sign it (services/signOff.ts): they open it to sign, whether or not their notice has come.
+  if (entry.signOff === "waiting" && entry.data !== undefined && entry.formVersion !== undefined) {
+    return isSignerOn(form, await docForEntry(form, entry.formVersion), { ...entry, data: entry.data, signOffs: entry.signOffs ?? null }, user.userId);
+  }
+  return false;
 }
 
 /** Entries limited to the person's sites; entries not made for a site stay visible to readers. */
@@ -393,6 +404,8 @@ export async function submitEntry(input: SubmitInput) {
   if (fileIds.length) await prisma.formFile.updateMany({ where: { id: { in: fileIds } }, data: { entryId: entry.id } });
   // Tracked for follow-up when the form asks for it: open until someone it's for marks it done.
   await openFollowUp(form, entry.id);
+  // Waits for its sign-offs (a supervisor's signature) when it needs any.
+  await openSignOffs(form, filled.doc, entry);
 
   // The roster hears that these residents were seen.
   for (const f of filled.doc.fields) {
@@ -545,6 +558,8 @@ export interface EntryFilter {
   site?: string;
   /** Follow-up: still open, or done. */
   followUp?: "open" | "done";
+  /** Sign-off: still waiting for a signature, or all signed. */
+  signOff?: "waiting" | "done";
   /** Archived entries: hidden (the entries list's default), only them, or all. Left out: no filter. */
   archived?: "hide" | "only" | "all";
   /** Only these entries (the ones ticked on the Entries screen). */
@@ -573,6 +588,7 @@ export function entryWhere(form: BuiltForm, user: Viewer, filter: EntryFilter): 
   if (filter.to) and.push({ createdAt: { lt: new Date(nyDayStart(filter.to).getTime() + 86_400_000) } });
   if (filter.site) and.push({ siteId: filter.site });
   if (filter.followUp) and.push({ followUp: filter.followUp });
+  if (filter.signOff) and.push({ signOff: filter.signOff });
   if (filter.ids) and.push({ id: { in: filter.ids } });
   if (filter.q?.trim()) {
     const q = filter.q.trim();
@@ -684,6 +700,8 @@ export function entryRow(e: FormEntry & { site?: { name: string; code: string } 
           ...(follow ? checklistCount(follow, e) : {}),
         }
       : null,
+    // Signatures signed after filing (services/signOff.ts): waiting for them, or all signed, and by whom.
+    signOff: e.signOff ? { status: e.signOff, signed: Object.values(parseSigned(e.signOffs)).map((s) => s.byName) } : null,
     noteCount: e._count?.notes,
   };
 }
@@ -703,6 +721,8 @@ export async function updateEntry(form: BuiltForm, entry: FormEntry, incoming: V
   const values = cleanValues(doc, { ...before, ...incoming }, { includeAdminOnly: true });
   // Files and residents keep what they were unless explicitly replaced with the same shape.
   for (const f of doc.fields) if ((f.type === "file" || f.type === "resident" || f.type === "signature") && !(f.id in incoming) && before[f.id] !== undefined) values[f.id] = before[f.id];
+  // Sign-offs change only by signing.
+  keepSignOffAnswers(doc, before, values);
   const errors = validateValues(doc, values, { includeAdminOnly: true });
   for (const f of doc.fields) if (f.type === "file" || f.type === "signature") delete errors[f.id];
   // A resident picked in the edit comes from the roster (never the request), like a submission's.

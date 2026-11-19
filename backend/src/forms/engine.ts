@@ -163,6 +163,35 @@ export interface Field {
 
   // code
   code?: CodeBlock;
+
+  // signature
+  /**
+   * Signed after the entry is filed, by someone else (a supervisor, a licensed
+   * reviewer): left out when the form is filled in, then signed on the entry by
+   * one of `by` (services/signOff.ts). Its own conditional still decides
+   * whether an entry needs it.
+   */
+  signOff?: SignOff;
+}
+
+export interface SignOff {
+  /** Who may sign: the same kinds of people as a notification route's (forms/routingSchema.ts), resolved at the entry's site. */
+  by: { kind: string; [key: string]: unknown }[];
+  /** Other questions the signer fills in as they sign (a license number, the date), left out of filling too. */
+  fields?: string[];
+  /** What the signer is asked to do, in the request (plain text). */
+  whatToDo?: string;
+}
+
+/** Questions answered after filing: each sign-off signature, and the questions its signer fills in. */
+export function signOffFieldIds(doc: Pick<FormDoc, "fields">): Set<string> {
+  const ids = new Set<string>();
+  for (const f of doc.fields) {
+    if (f.type !== "signature" || !f.signOff) continue;
+    ids.add(f.id);
+    for (const id of f.signOff.fields ?? []) ids.add(id);
+  }
+  return ids;
 }
 
 export interface Notification {
@@ -650,11 +679,13 @@ export function pagesOf(doc: Pick<FormDoc, "fields">): PageInfo[] {
  * rule passes, its section's rule passes and its page's rule passes. Rules
  * that read a hidden field see it as empty, so a chain of rules collapses the
  * way people expect. Iterates until stable (a rule can depend on a field that
- * comes later).
+ * comes later). Questions signed after filing (signOffFieldIds) are left out
+ * unless includeSignOff: the person filling in never sees them.
  */
-export function visibleFieldIds(doc: Pick<FormDoc, "fields">, values: Values, opts: { includeAdminOnly?: boolean } = {}): Set<string> {
+export function visibleFieldIds(doc: Pick<FormDoc, "fields">, values: Values, opts: { includeAdminOnly?: boolean; includeSignOff?: boolean } = {}): Set<string> {
   let current = { ...values };
   let visible = new Set<string>();
+  const later = opts.includeSignOff ? new Set<string>() : signOffFieldIds(doc);
   for (let pass = 0; pass < 6; pass++) {
     const next = new Set<string>();
     let pageOn = true;
@@ -672,7 +703,12 @@ export function visibleFieldIds(doc: Pick<FormDoc, "fields">, values: Values, op
         continue;
       }
       if (f.adminOnly && !opts.includeAdminOnly) continue;
+      if (later.has(f.id)) continue;
       if (pageOn && sectionOn && conditionPasses(f.conditional, current)) next.add(f.id);
+    }
+    // A sign-off's own questions (a license number) show only with the sign-off they belong to.
+    if (opts.includeSignOff) {
+      for (const f of doc.fields) if (f.type === "signature" && f.signOff && !next.has(f.id)) for (const id of f.signOff.fields ?? []) next.delete(id);
     }
     const same = next.size === visible.size && [...next].every((id) => visible.has(id));
     visible = next;
@@ -1237,13 +1273,15 @@ export interface ValidateOptions {
   /** Only check these field ids (one page of a multi-page form). */
   only?: Set<string>;
   includeAdminOnly?: boolean;
+  /** Check the questions signed after filing too (signing an entry). */
+  includeSignOff?: boolean;
   /** Custom code blocks that reported themselves invalid: { fieldId: message }. */
   codeErrors?: Record<string, string>;
 }
 
 export function validateValues(doc: Pick<FormDoc, "fields">, values: Values, opts: ValidateOptions = {}): Errors {
   const errors: Errors = {};
-  const visible = visibleFieldIds(doc, values, { includeAdminOnly: opts.includeAdminOnly });
+  const visible = visibleFieldIds(doc, values, { includeAdminOnly: opts.includeAdminOnly, includeSignOff: opts.includeSignOff });
   for (const f of doc.fields) {
     if (!isInputField(f) || !visible.has(f.id)) continue;
     if (opts.only && !opts.only.has(f.id)) continue;
@@ -1260,7 +1298,7 @@ export function validateValues(doc: Pick<FormDoc, "fields">, values: Values, opt
  * (an answer to a question the person never saw means nothing), layout blocks
  * and unknown keys removed, strings trimmed.
  */
-export function cleanValues(doc: Pick<FormDoc, "fields">, values: Values, opts: { includeAdminOnly?: boolean } = {}): Values {
+export function cleanValues(doc: Pick<FormDoc, "fields">, values: Values, opts: { includeAdminOnly?: boolean; includeSignOff?: boolean } = {}): Values {
   const calculated = applyCalculations(doc, values);
   const visible = visibleFieldIds(doc, calculated, opts);
   const out: Values = {};
@@ -1341,6 +1379,18 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
         if (subIds.has(sf.id)) problems.push({ path: `${p}.fields[${j}].id`, message: `"${sf.id}" is repeated inside the repeater.` });
         subIds.add(sf.id);
         if (["repeater", "page", "file", "signature", "code", "resident"].includes(sf.type)) problems.push({ path: `${p}.fields[${j}].type`, message: `A ${sf.type} field can't go inside a repeater.` });
+      });
+    }
+    if (f.signOff) {
+      if (f.type !== "signature") problems.push({ path: `${p}.signOff`, message: "Only a signature question can be signed after filing." });
+      if (!f.signOff.by?.length) problems.push({ path: `${p}.signOff.by`, message: "Say who signs it: at least one person, role, group or position." });
+      (f.signOff.fields ?? []).forEach((id, j) => {
+        const other = doc.fields.find((x) => x.id === id);
+        const at = `${p}.signOff.fields[${j}]`;
+        if (!other) problems.push({ path: at, message: `There's no question "${id}" on this form.` });
+        else if (!["text", "textarea", "number", "date", "time", "select", "radio", "email", "phone"].includes(other.type)) problems.push({ path: at, message: `The signer can't fill in a ${other.type} question as they sign.` });
+        else if (other.signOff) problems.push({ path: at, message: "That's a sign-off itself." });
+        else if (doc.fields.some((x) => x !== f && x.signOff?.fields?.includes(id))) problems.push({ path: at, message: `“${other.label || id}” is filled in by another sign-off's signer already.` });
       });
     }
   });

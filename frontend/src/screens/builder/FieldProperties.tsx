@@ -207,6 +207,8 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
         </>
       )}
 
+      {f.type === "signature" && !nested && <SignOffEditor field={f} set={set} siblings={siblings} />}
+
       {f.type === "repeater" && <SubfieldsEditor field={f} set={set} />}
 
       {(f.type === "html" || f.type === "section" || f.type === "page") && (
@@ -218,6 +220,81 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
 
       {input && !["file", "signature", "repeater", "calculation", "code", "resident", "likert", "name", "address"].includes(f.type) && <DefaultValue field={f} set={set} />}
       {nested && NOT_IN_REPEATER.includes(f.type) && <p className="text-micro text-status-redText">This type can't go inside a repeater.</p>}
+    </>
+  );
+}
+
+/** Roles a sign-off can go to here (at the entry's site); positions, groups and people are set in the form's code. */
+const SIGNER_ROLES: { key: string; label: string }[] = [
+  { key: "site_manager", label: "Site Managers" },
+  { key: "main_office", label: "Main Office Staff" },
+  { key: "site_staff", label: "Site Staff" },
+  { key: "admin", label: "Admins" },
+];
+/** Questions a signer can fill in as they sign. */
+const SIGNER_FILLS: FieldType[] = ["text", "textarea", "number", "date", "time", "select", "radio", "email", "phone"];
+
+/**
+ * A signature signed after filing, by someone else (a supervisor, a licensed
+ * reviewer): who signs it, and what else they fill in as they sign.
+ */
+function SignOffEditor({ field: f, set, siblings }: { field: Field; set: (p: Partial<Field>) => void; siblings: Field[] }) {
+  const s = f.signOff;
+  const by = s?.by ?? [];
+  const roles = by.filter((r) => r.kind === "role").map((r) => String(r.role));
+  const others = by.length - roles.length;
+  const update = (patch: Partial<NonNullable<Field["signOff"]>>) => {
+    const next = { ...(s ?? { by: [] }), ...patch };
+    if (!next.fields?.length) delete next.fields;
+    if (!next.whatToDo) delete next.whatToDo;
+    set({ signOff: next });
+  };
+  const toggleRole = (key: string) =>
+    update({ by: roles.includes(key) ? by.filter((r) => !(r.kind === "role" && r.role === key)) : [...by, { kind: "role", role: key }] });
+  const fills = s?.fields ?? [];
+  // Another sign-off's own questions, and other sign-offs, can't be this one's.
+  const taken = new Set(siblings.filter((x) => x.id !== f.id && x.signOff).flatMap((x) => [x.id, ...(x.signOff?.fields ?? [])]));
+  const candidates = siblings.filter((x) => SIGNER_FILLS.includes(x.type) && !taken.has(x.id));
+  return (
+    <>
+      <Toggle
+        label="Signed after filing"
+        hint="Someone else signs it on the entry once it's filed, like a supervisor. Whoever fills the form in doesn't see it; the signers are asked, and reminded, until it's signed."
+        checked={Boolean(s)}
+        onChange={(v) => set({ signOff: v ? { by: [{ kind: "role", role: "site_manager" }] } : undefined })}
+      />
+      {s && (
+        <>
+          <Row label="Who signs" hint="At the entry's site. Admins can always sign. Nobody signs off their own entry.">
+            <div className="flex flex-wrap gap-1.5">
+              {SIGNER_ROLES.map((r) => (
+                <button key={r.key} onClick={() => toggleRole(r.key)} className={cn("rounded-pill border px-2.5 py-1 text-[12.5px] font-semibold", roles.includes(r.key) ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {others > 0 && <p className="mt-1 text-micro text-muted">And {others} more set in the form's code (positions, groups or people).</p>}
+            {!by.length && <p className="mt-1 text-micro text-status-redText">Pick who signs it.</p>}
+          </Row>
+          {candidates.length > 0 && (
+            <Row label="The signer also fills in" hint="Answered as they sign, like a license number or the date signed. Hidden from whoever fills the form in.">
+              <div className="flex flex-wrap gap-1.5">
+                {candidates.map((x) => {
+                  const on = fills.includes(x.id);
+                  return (
+                    <button key={x.id} onClick={() => update({ fields: on ? fills.filter((id) => id !== x.id) : [...fills, x.id] })} className={cn("rounded-pill border px-2.5 py-1 text-[12px]", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
+                      {x.label || x.id}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+          )}
+          <Row label="What to ask them (optional)" hint="In the request they get, e.g. “Review the note and sign.”">
+            <Input value={s.whatToDo ?? ""} maxLength={500} onChange={(e) => update({ whatToDo: e.target.value })} />
+          </Row>
+        </>
+      )}
     </>
   );
 }
