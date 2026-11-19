@@ -6,7 +6,7 @@ import { AUTH_COOKIE, ONBOARDING_COOKIE, VIEW_AS_COOKIE, VIEW_AS_TTL_MS, signOnb
 import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, safeReturnTo } from "../auth/entra.js";
 import { canViewAs, currentUserById, mayViewAs, requireAuth } from "../auth/middleware.js";
 import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured, testSite } from "../env.js";
-import { guestDomains } from "../services/settings.js";
+import { caseManagementEnabled, guestDomains } from "../services/settings.js";
 import { audit, fromRequest } from "../services/audit.js";
 import { locate } from "../services/geoip.js";
 import { notifyQuietly } from "../services/notifications.js";
@@ -272,6 +272,8 @@ authRouter.get(
           }
         : null,
       canViewAs: canViewAs(req.user!) || Boolean(req.user!.viewAs),
+      // Org switches the app's screens follow (Admin → Settings).
+      features: { caseManagement: await caseManagementEnabled() },
     });
   })
 );

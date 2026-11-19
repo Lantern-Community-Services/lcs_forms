@@ -156,7 +156,7 @@ export function AdminPeople() {
   const everyone = can("users.manage");
   // Whether client information is on at all (Admin → Settings): the switch says so when it isn't.
   const { data: orgSettings } = useSettings(everyone);
-  const clientInfoOn = orgSettings?.clientInfo === "true";
+  const clientInfoOn = orgSettings?.caseManagement === "true";
   // Admins are a Super Admin's to make, change or remove; the server refuses anyone else.
   const managesAdmins = can("admins.manage");
   const { data: users, isLoading } = useUsers();
@@ -435,7 +435,7 @@ export function AdminPeople() {
                     <span className="block text-[13.5px] font-semibold text-ink">Can see client information</span>
                     <span className="block text-micro text-muted">
                       See and edit residents' client information at their sites: date of birth, demographics, program and funding, referral, household. The SSN shows as its last four digits. Admins always can.
-                      {!clientInfoOn && " Client information is turned off in Admin → Settings, so this does nothing until it's on."}
+                      {!clientInfoOn && " Case management is turned off in Admin → Settings, so this does nothing until it's on."}
                     </span>
                   </span>
                   <Switch checked={draft.clientInfoAccess} onCheckedChange={(clientInfoAccess) => setDraft({ ...draft, clientInfoAccess })} className="mt-0.5" />

@@ -232,7 +232,7 @@ export const adminOps = [
   // ── Settings ──
   defineOp({
     name: "get_settings",
-    description: "Org settings: the default review threshold (attentionHours), guest sign-in domains, undo window, and whether residents' client information is on (clientInfo). (Every first sign-in is a request now; there is no automatic approval.)",
+    description: "Org settings: the default review threshold (attentionHours), guest sign-in domains, undo window, and whether the case management rework is on (caseManagement: residents' client information, and whatever else of the PlanStreet replacement is built). (Every first sign-in is a request now; there is no automatic approval.)",
     scope: "settings:manage",
     as: "creator",
     http: { method: "GET", path: "/settings" },
@@ -251,9 +251,9 @@ export const adminOps = [
       attentionHours: z.number().int().min(1).max(24 * 60).optional(),
       guestDomains: z.array(z.string()).optional().describe("Replaces the whole list"),
       undoSeconds: z.number().int().min(3).max(60).optional(),
-      clientInfo: z.boolean().optional().describe("Residents' client information (the Client information card, its API and tools): true shows it, false hides it (nothing is deleted)"),
+      caseManagement: z.boolean().optional().describe("The case management rework (replacing PlanStreet: today residents' client information, its card, API and tools): true turns it on for this site, false hides it again (nothing is deleted). On for the Azure dev site while it's built; off on prod."),
     },
-    confirm: (a) => a.guestDomains !== undefined || a.clientInfo !== undefined,
+    confirm: (a) => a.guestDomains !== undefined || a.caseManagement !== undefined,
     run: (ctx, a) => ctx.route(adminRouter, { method: "PATCH", path: "/settings", body: a }),
   }),
 

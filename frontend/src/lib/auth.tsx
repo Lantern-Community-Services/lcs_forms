@@ -150,3 +150,12 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+/**
+ * Whether the case management rework (replacing PlanStreet) is on for this site: Admin →
+ * Settings → Case management. It's built on the Azure dev site while prod keeps the roster
+ * as it is, from the same code, so each part of the rework shows only when this is true.
+ */
+export function useCaseManagement(): boolean {
+  return Boolean(useAuth().user?.features?.caseManagement);
+}
