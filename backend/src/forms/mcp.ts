@@ -85,6 +85,10 @@ Number: min, max, step, prefix, suffix. Date: minDate/maxDate as YYYY-MM-DD or "
 Repeater: "fields": [sub-fields] (no page/file/signature/code/resident/repeater inside), minRows, maxRows, addLabel.
 Likert: "choices" = the scale, "statements" = the rows.
 Resident: "siteField": "<id of a site field>" (else the form's site). Logs roster activity unless logActivity:false. "highAcuityOnly": true lists only residents flagged High Acuity on the roster.
+Sign-off (signature, signed after filing by someone else — a supervisor, a licensed reviewer): "signOff": { "by": [people], "fields": ["license_number"], "whatToDo": "…" }.
+  The question is left out when the form is filled in; once the entry is filed, the people in "by" are asked to sign it on the entry (in the app and by email), and reminded every 3 days (3 times) until they do. Whoever filed it is told when every sign-off is in.
+  "by" takes a notification route's kinds of people, at the entry's site: { "kind": "role", "role": "site_manager" } (siteOnly false: everyone with the role), { "kind": "title", "title": "Program Director", "siteOnly": true }, { "kind": "group", "group": "<staff group id>" }, { "kind": "person", "email": "…" }, { "kind": "field", "field": "<a question holding an email>" }.
+  "fields": other top-level questions the signer fills in as they sign (text, number, date…: a license number, the date signed); they're left out of filling too. The question's own conditional still decides whether an entry needs it. Nobody signs off their own entry; Admins can sign any other.
 
 ## Calculations ("calculation" field, "expression")
 {qty} * {price}, + - * / % ^, comparisons == != > < >= <=, && || !, "text".

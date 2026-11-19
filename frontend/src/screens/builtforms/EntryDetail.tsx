@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, MinusCircle, Pencil, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, MinusCircle, Pencil, PenLine, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { SignaturePad, type SignaturePadHandle } from "@/components/attendance/SignaturePad";
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { EmptyState, LoadingState } from "@/components/ui/misc";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { AnswerList, FormRenderer } from "@/components/formkit/FormRenderer";
-import { fillApi, submitErrors, useEntry, type CheckState, type DoneField, type EntryDetail } from "@/lib/builder";
+import { fillApi, submitErrors, useEntry, type CheckState, type DoneField, type EntryDetail, type SignOffState } from "@/lib/builder";
 import type { Errors, Values } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
 import { deviceLabel, fillTimeText } from "@/lib/fillMeta";
@@ -137,6 +138,8 @@ export function BuiltFormEntryPage() {
           <AnswerList doc={doc} values={entry.values} slug={slug} />
         )}
       </Card>
+
+      {!!data.signOffs?.length && !editing && <SignOffPanel slug={slug} id={id} signOffs={data.signOffs} onSigned={refresh} />}
 
       {entry.followUp && (
         <FollowUpPanel
@@ -395,6 +398,124 @@ function FollowUpPanel({
         <p className="text-[13px] text-muted">Waiting for the people it's for to mark it done.</p>
       )}
     </Card>
+  );
+}
+
+/**
+ * Signatures signed after filing (a supervisor's, a licensed reviewer's): each
+ * waits for the people it names, and one of them signs it here. The signature
+ * itself shows with the answers above.
+ */
+function SignOffPanel({ slug, id, signOffs, onSigned }: { slug: string; id: string; signOffs: SignOffState[]; onSigned: () => Promise<unknown> }) {
+  const [signing, setSigning] = useState<SignOffState | null>(null);
+  const waiting = signOffs.filter((s) => s.state === "waiting");
+  return (
+    <Card className={cn("mb-4 p-5 print:hidden", waiting.length ? "border-status-amberText/40" : "")}>
+      <div className="mb-3 flex items-center gap-2">
+        {waiting.length ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
+        <p className="font-heading text-[15px] font-extrabold text-ink">{waiting.length ? `Sign-off: waiting for ${waiting.length === 1 ? "a signature" : `${waiting.length} signatures`}` : "Signed off"}</p>
+      </div>
+      <ul className="divide-y divide-hairline rounded-input border border-hairline">
+        {signOffs.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+            {s.signed ? <CheckCircle2 className="h-5 w-5 shrink-0 text-status-greenText" /> : <Circle className="h-5 w-5 shrink-0 text-muted" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-semibold text-ink">{s.label}</p>
+              <p className="text-micro text-muted">
+                {s.signed ? `Signed by ${s.signed.byName}, ${formatDateTime(s.signed.at)}` : `Waiting for ${s.who}.${s.cantSignWhy ? ` ${s.cantSignWhy}` : ""}`}
+              </p>
+            </div>
+            {s.canSign && <Button size="sm" onClick={() => setSigning(s)}><PenLine className="h-4 w-4" /> Sign</Button>}
+          </li>
+        ))}
+      </ul>
+      {signing && <SignDialog slug={slug} id={id} signOff={signing} onClose={() => setSigning(null)} onSigned={onSigned} />}
+    </Card>
+  );
+}
+
+const todayNY = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+function SignDialog({ slug, id, signOff, onClose, onSigned }: { slug: string; id: string; signOff: SignOffState; onClose: () => void; onSigned: () => Promise<unknown> }) {
+  const pad = useRef<SignaturePadHandle>(null);
+  const toast = useToast();
+  const [empty, setEmpty] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
+  // A date the signer fills in starts as today (the date signed).
+  const [answers, setAnswers] = useState<Record<string, string>>(() => Object.fromEntries(signOff.fields.map((f) => [f.id, f.type === "date" ? todayNY() : ""])));
+  const missing = signOff.fields.filter((f) => f.required && !answers[f.id]?.trim());
+
+  async function sign() {
+    const signature = pad.current?.toDataURL();
+    if (!signature) {
+      setErrors({ [signOff.id]: "Please sign." });
+      return;
+    }
+    setBusy(true);
+    setErrors({});
+    try {
+      const values = Object.fromEntries(Object.entries(answers).filter(([, v]) => v.trim()));
+      await fillApi.sign(slug, id, signOff.id, signature, values);
+      await onSigned();
+      toast("Signed. Your name and the time are kept with it.");
+      onClose();
+    } catch (e) {
+      setErrors(submitErrors(e));
+      toast(errorMessage(e, "Couldn't sign it."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader title={signOff.label} subtitle={signOff.whatToDo ?? "Read the entry through, then sign. Your name and the time are kept with your signature."} />
+        <DialogBody>
+          {signOff.fields.length > 0 && (
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              {signOff.fields.map((f) => {
+                const set = (v: string) => setAnswers((x) => ({ ...x, [f.id]: v }));
+                const choices = f.choices ?? [];
+                return (
+                  <Field key={f.id} label={`${f.label || f.id}${f.required ? "" : " (optional)"}`} hint={errors[f.id] ?? f.description}>
+                    {choices.length ? (
+                      <select aria-label={f.label} value={answers[f.id] ?? ""} onChange={(e) => set(e.target.value)} className="h-11 w-full rounded-input border border-strongline bg-surface px-3 text-[14px] md:h-9">
+                        <option value="">Choose…</option>
+                        {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    ) : f.type === "textarea" ? (
+                      <Textarea aria-label={f.label} value={answers[f.id] ?? ""} onChange={(e) => set(e.target.value)} className="min-h-[64px]" />
+                    ) : (
+                      <Input
+                        aria-label={f.label}
+                        type={f.type === "date" ? "date" : f.type === "time" ? "time" : f.type === "number" ? "number" : f.type === "email" ? "email" : f.type === "phone" ? "tel" : "text"}
+                        value={answers[f.id] ?? ""}
+                        onChange={(e) => set(e.target.value)}
+                        autoComplete="off"
+                      />
+                    )}
+                  </Field>
+                );
+              })}
+            </div>
+          )}
+          <p className="mb-1.5 text-[13px] font-semibold text-ink">Signature</p>
+          <div className={cn("overflow-hidden rounded-card border bg-white", errors[signOff.id] ? "border-status-redDot" : "border-hairline")}>
+            <SignaturePad ref={pad} onChangeEmpty={setEmpty} className="h-40 w-full" />
+          </div>
+          <div className="mt-1.5 flex justify-between text-micro text-muted">
+            <span>{errors[signOff.id] ?? "Sign with your finger, a pen or the mouse."}</span>
+            <button type="button" onClick={() => pad.current?.clear()} className="font-semibold text-accent">Clear</button>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button disabled={busy || empty || missing.length > 0} onClick={() => void sign()}><PenLine className="h-4 w-4" /> {busy ? "Signing…" : "Sign"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

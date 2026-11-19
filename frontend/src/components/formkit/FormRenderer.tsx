@@ -15,7 +15,7 @@ import { isOnline } from "@/lib/offline";
 import { cn, errorMessage } from "@/lib/utils";
 import {
   ADDRESS_PARTS, DEFAULT_ADDRESS_PARTS, DEFAULT_NAME_PARTS, NAME_PARTS, applyCalculations, formatValue, initialValues, isInputField,
-  pagesOf, renderTemplate, resolveDate, validateValues, visibleFieldIds,
+  pagesOf, renderTemplate, resolveDate, signOffFieldIds, validateValues, visibleFieldIds,
   type Errors, type Field, type FormDoc, type Values,
 } from "@/lib/formEngine";
 
@@ -901,7 +901,9 @@ function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, n
 
 /** A read-only list of answers — the entry view, the confirmation summary and printouts. */
 export function AnswerList({ doc, values, slug, compact }: { doc: FormDoc; values: Values; slug?: string; compact?: boolean }) {
-  const visible = visibleFieldIds(doc, values, { includeAdminOnly: true });
+  // Signatures signed after filing show too: signed, or waiting for it.
+  const visible = visibleFieldIds(doc, values, { includeAdminOnly: true, includeSignOff: true });
+  const later = signOffFieldIds(doc);
   return (
     <dl className={cn("divide-y divide-hairline", compact && "text-[13px]")}>
       {doc.fields.map((f) => {
@@ -912,7 +914,7 @@ export function AnswerList({ doc, values, slug, compact }: { doc: FormDoc; value
           <div key={f.id} className="grid gap-1 py-2.5 sm:grid-cols-[minmax(140px,32%)_1fr] sm:gap-4">
             <dt className="text-[13px] font-semibold text-muted">{f.label || f.id}{f.adminOnly && <span className="ml-1 text-micro font-normal">(admin)</span>}</dt>
             <dd className="min-w-0 whitespace-pre-wrap break-words text-[14px] text-ink">
-              <AnswerValue field={f} value={v} slug={slug} />
+              {f.signOff && later.has(f.id) && (v === undefined || v === "") ? <span className="text-muted">Waiting for sign-off</span> : <AnswerValue field={f} value={v} slug={slug} />}
             </dd>
           </div>
         );
