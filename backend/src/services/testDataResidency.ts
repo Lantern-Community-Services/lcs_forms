@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { prisma } from "../prisma.js";
+import { CASE_TX, prisma } from "../prisma.js";
 import type { Actor } from "./audit.js";
 import { addDays, addExitTask, todayNY } from "./checklist.js";
 import { programs as programList } from "./clientFields.js";
@@ -130,7 +130,7 @@ export async function addCaseManagementData(ctx: Ctx): Promise<CaseManagementSum
         await tx.tenant.update({ where: { id: t.id }, data: { archiveReason: `Moved out — ${stay.endReason}` } });
         await addExitTask(tx, { tenantId: t.id, siteId: site.id, stayId: stay.id, moveOut: out });
         await tx.unit.update({ where: { id: unit!.id }, data: { vacantSince: new Date(`${out}T00:00:00Z`) } });
-      });
+      }, CASE_TX);
       summary.movedOut++;
       summary.units++;
     }

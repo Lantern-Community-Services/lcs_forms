@@ -28,6 +28,15 @@ export const prisma = new PrismaClient({
 });
 
 /**
+ * For case management's multi-step writes (moves, units, checklists). Prisma's
+ * default lets a transaction take 5 seconds, and the Azure dev database (Basic
+ * tier) took 18 for one move-in while the test-site reset kept it busy; the
+ * write was rolled back and the reset stopped halfway. The same queries usually
+ * take well under a second; this only stops a slow database from failing them.
+ */
+export const CASE_TX = { maxWait: 15_000, timeout: 60_000 };
+
+/**
  * Each query as a SQL dependency in Application Insights (src/telemetry.ts),
  * only when that's on. Prisma's own tracing doesn't work with the OpenTelemetry
  * SDK the Azure Monitor distro uses, so the middleware times each call itself,
