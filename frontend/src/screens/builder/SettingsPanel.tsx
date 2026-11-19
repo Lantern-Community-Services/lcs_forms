@@ -10,10 +10,10 @@ import { CheckboxList } from "@/components/ui/checkbox";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
 import { ConditionalEditor } from "./ConditionalEditor";
 import { IconPicker } from "@/components/IconPicker";
-import { useForms, useUsers } from "@/lib/queries";
+import { useForms, useSites, useUsers } from "@/lib/queries";
 import { builderApi, type Audience, type BuilderReference, type BuiltFormDetail } from "@/lib/builder";
 import { useJobTitles, useStaffGroups, type StaffGroup } from "@/lib/groups";
-import { GroupChecklist, PeoplePicker, PositionsDropdown, Segmented } from "@/components/AccessPickers";
+import { GroupChecklist, PeoplePicker, PositionsDropdown, Segmented, SiteTypeChecklist, siteTypeWords } from "@/components/AccessPickers";
 import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/utils";
 import { EMAIL_FIELD_TYPES, type FormDoc, type FormSettings, type Notification } from "@/lib/formEngine";
@@ -177,14 +177,15 @@ export function SettingsPanel({
 }
 
 /** Drop empty settings so the JSON stays tidy (and the strict schema is happy). */
-const NOBODY: Audience = { groupIds: [], titles: [], userIds: [] };
-const isSet = (a: Audience | undefined) => Boolean(a && (a.groupIds.length || a.titles.length || a.userIds.length));
+const NOBODY: Audience = { groupIds: [], titles: [], siteTypes: [], userIds: [] };
+const isSet = (a: Audience | undefined) => Boolean(a && (a.groupIds.length || a.titles.length || a.siteTypes?.length || a.userIds.length));
 
 /** "HR, Financial Analyst and 2 people", for a limit. */
 function audienceWords(a: Audience, groups: StaffGroup[]) {
   const parts = [
     ...a.groupIds.map((id) => groups.find((g) => g.id === id)?.name ?? "a deleted group"),
     ...a.titles,
+    ...(a.siteTypes ?? []).map(siteTypeWords),
     ...(a.userIds.length ? [`${a.userIds.length} ${a.userIds.length === 1 ? "person" : "people"}`] : []),
   ];
   return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
@@ -209,12 +210,13 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
   const { data: groups } = useStaffGroups();
   const { data: titles } = useJobTitles();
   const { data: people } = useUsers();
+  const { data: sites } = useSites(true);
   const [draft, setDraft] = useState<Audience | null>(null);
   const [limited, setLimited] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!data) return;
-    setDraft(data.audience);
+    setDraft({ ...data.audience, siteTypes: data.audience.siteTypes ?? [] });
     setLimited(isSet(data.audience));
   }, [data]);
 
@@ -224,7 +226,7 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
   const changed = data ? JSON.stringify(wanted) !== JSON.stringify(data.audience) : false;
 
   async function save() {
-    if (limited && !isSet(draft ?? undefined)) return toast("Pick at least one group, position or person, or choose Everyone.", "error");
+    if (limited && !isSet(draft ?? undefined)) return toast("Pick at least one group, position, site type or person, or choose Everyone.", "error");
     setBusy(true);
     try {
       await builderApi.setAudience(form.id, wanted);
@@ -257,7 +259,7 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
       )}
       <Segmented
         value={limited ? "limited" : "everyone"}
-        options={[["everyone", categoryLimit ? `Everyone who can see ${category!.name}` : "Everyone"], ["limited", "Only some groups, positions or people"]]}
+        options={[["everyone", categoryLimit ? `Everyone who can see ${category!.name}` : "Everyone"], ["limited", "Only some people"]]}
         onChange={(v) => setLimited(v === "limited")}
       />
       {limited && draft && (
@@ -271,6 +273,9 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
           </Row>
           <Row label="Positions">
             <PositionsDropdown groups={groups ?? []} titles={titles ?? []} value={draft.titles} onChange={(t) => setDraft({ ...draft, titles: t })} />
+          </Row>
+          <Row label="Sites" hint="Everyone approved for a site of this type, whatever their job.">
+            <SiteTypeChecklist sites={sites ?? []} value={draft.siteTypes} onChange={(siteTypes) => setDraft({ ...draft, siteTypes })} />
           </Row>
           <Row label="People">
             <PeoplePicker people={people ?? []} value={draft.userIds} onChange={(userIds) => setDraft({ ...draft, userIds })} />

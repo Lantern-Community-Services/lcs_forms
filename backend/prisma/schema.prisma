@@ -1058,6 +1058,8 @@ model FormAudience {
   userId  String?     @db.NVarChar(64)
   /// A position: everyone whose job title is exactly this (any case).
   title   String?     @db.NVarChar(255)
+  /// A site type: everyone approved for at least one active site of this type (shelter, supportive…).
+  siteType String?    @db.NVarChar(40)
 
   @@index([formKey])
 }

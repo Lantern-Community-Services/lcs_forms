@@ -8,7 +8,7 @@ import { LEGACY_FORM_ICON_KEYS } from "./iconKeys.js";
 import { builtSlugOf, linkCatalogCard, unlinkCatalogCard } from "./service.js";
 import type { ToolRegistrar } from "./mcp.js";
 import { builtFormRef, entryAccessReview, entryAccessView, saveEntryAccess } from "../services/entryAccess.js";
-import { allGroups, audienceOf, categoryKey, keyForCard, knownTitles, setAudience } from "../services/staffGroups.js";
+import { allGroups, AUDIENCE_SITE_TYPES, audienceOf, categoryKey, keyForCard, knownTitles, setAudience, siteTypeLabel } from "../services/staffGroups.js";
 
 /**
  * MCP tools for the Forms catalog (the Forms screen and the sidebar): list it,
@@ -196,7 +196,7 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "get_form_audience",
-    "Who a catalog card's form is open to: group ids, positions (job titles) and person ids. All empty = everyone (its roles still apply). Admins always see every form.",
+    "Who a catalog card's form is open to: group ids, positions (job titles), site types (everyone approved for a site of that type) and person ids. Matching any one is enough. All empty = everyone (its roles still apply). Admins always see every form.",
     { cardId: z.string().describe("The catalog card's id (list_catalog)") },
     async ({ cardId }) => {
       need("forms:build");
@@ -207,9 +207,9 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "set_category_audience",
-    "Limit a catalog category, and every form on its cards, to some staff groups, positions (exact job titles, any case) and/or named people (user ids), or open it to everyone with every list empty. Each form's own audience still applies on top. Applies everywhere: the catalog and search, opening its forms, their entries.",
-    { categoryId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), userIds: z.array(z.string()).max(500).optional() },
-    async ({ categoryId, groupIds, titles = [], userIds = [] }) => {
+    "Limit a catalog category, and every form on its cards, to some staff groups, positions (exact job titles, any case), site types (siteTypes: everyone approved for an active site of that type, e.g. shelter) and/or named people (user ids), or open it to everyone with every list empty. Each form's own audience still applies on top. Applies everywhere: the catalog and search, opening its forms, their entries.",
+    { categoryId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), siteTypes: z.array(z.enum(AUDIENCE_SITE_TYPES)).max(4).optional(), userIds: z.array(z.string()).max(500).optional() },
+    async ({ categoryId, groupIds, titles = [], siteTypes = [], userIds = [] }) => {
       need("forms:build");
       const cat = await prisma.formCategory.findUnique({ where: { id: categoryId } });
       if (!cat) throw new HttpError(404, "No such category. Use list_catalog.");
@@ -219,8 +219,8 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       ]);
       if (groups.length !== new Set(groupIds).size) throw new HttpError(400, "Unknown group id. Use list_staff_groups.");
       if (users.length !== new Set(userIds).size) throw new HttpError(400, "Unknown user id.");
-      await setAudience(categoryKey(cat.id), groupIds, userIds, titles);
-      const who = [...groups.map((g) => g.name), ...titles, ...users.map((u) => u.name)];
+      await setAudience(categoryKey(cat.id), groupIds, userIds, titles, siteTypes);
+      const who = [...groups.map((g) => g.name), ...titles, ...siteTypes.map(siteTypeLabel), ...users.map((u) => u.name)];
       await audit({ actor, action: "forms.audience_changed", summary: who.length ? `Limited the “${cat.name}” category to ${who.join(", ")}` : `Opened the “${cat.name}” category to everyone` });
       return audienceOf(categoryKey(cat.id));
     },
@@ -229,9 +229,9 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
 
   tool(
     "set_form_audience",
-    "Limit a form to some staff groups, positions (exact job titles, any case) and/or named people (user ids), or open it to everyone with every list empty. Applies everywhere: the catalog and search, opening the form, its entries. Stored on the form itself when the card opens a form built here.",
-    { cardId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), userIds: z.array(z.string()).max(500).optional() },
-    async ({ cardId, groupIds, titles = [], userIds = [] }) => {
+    "Limit a form to some staff groups, positions (exact job titles, any case), site types (siteTypes: everyone approved for an active site of that type, e.g. shelter) and/or named people (user ids), or open it to everyone with every list empty. Applies everywhere: the catalog and search, opening the form, its entries. Stored on the form itself when the card opens a form built here.",
+    { cardId: z.string(), groupIds: z.array(z.string()).max(50), titles: z.array(z.string()).max(100).optional(), siteTypes: z.array(z.enum(AUDIENCE_SITE_TYPES)).max(4).optional(), userIds: z.array(z.string()).max(500).optional() },
+    async ({ cardId, groupIds, titles = [], siteTypes = [], userIds = [] }) => {
       need("forms:build");
       const { card, key } = await cardKeyOf(cardId);
       const [groups, users] = await Promise.all([
@@ -240,8 +240,8 @@ export function registerCatalogTools(tool: ToolRegistrar, need: (scope: string) 
       ]);
       if (groups.length !== new Set(groupIds).size) throw new HttpError(400, "Unknown group id. Use list_staff_groups.");
       if (users.length !== new Set(userIds).size) throw new HttpError(400, "Unknown user id.");
-      await setAudience(key, groupIds, userIds, titles);
-      const who = [...groups.map((g) => g.name), ...titles, ...users.map((u) => u.name)];
+      await setAudience(key, groupIds, userIds, titles, siteTypes);
+      const who = [...groups.map((g) => g.name), ...titles, ...siteTypes.map(siteTypeLabel), ...users.map((u) => u.name)];
       await audit({ actor, action: "forms.audience_changed", summary: who.length ? `Limited “${card.title}” to ${who.join(", ")}` : `Opened “${card.title}” to everyone` });
       return audienceOf(key);
     },
