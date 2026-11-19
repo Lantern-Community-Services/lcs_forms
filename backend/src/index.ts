@@ -1,6 +1,6 @@
 import { noteBoot, startDevlog } from "./services/devlog.js";
 import { createApp } from "./app.js";
-import { devAuthEnabled, env, ssoConfigured } from "./env.js";
+import { devAuthEnabled, env, ssoConfigured, testSite } from "./env.js";
 import { retireLegacyCatalog } from "./services/formCatalog.js";
 import { migrateLegacyRoles } from "./services/permissions.js";
 import { migrateSettingKeys } from "./services/settings.js";
@@ -18,6 +18,7 @@ import { startEmailReports } from "./services/emailReports.js";
 import { loadLook } from "./services/emailLook.js";
 import { startFollowUpReminders } from "./services/followUp.js";
 import { startChecklistReminders } from "./services/checklist.js";
+import { loadTestPrograms } from "./services/testDataSites.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
 
@@ -50,6 +51,9 @@ void loadLook().catch(() => undefined);
 startEmailReports();
 startFollowUpReminders();
 startChecklistReminders();
+
+// A test site's made-up sites have made-up programs (services/testDataSites.ts).
+if (testSite) void loadTestPrograms();
 
 ensureSiteLocations()
   .then((n) => n && console.log(`  Sites: filled in the location of ${n} sites from the site map.`))

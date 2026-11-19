@@ -29,7 +29,7 @@ export type ClientFieldType =
   | "ssn"
   /** A staff member (User id) who works at the resident's site. */
   | "staff"
-  /** One of PROGRAMS: building – funder – population. */
+  /** One of programs(): building – funder – population. */
   | "program"
   /** A list of people: name, relationship, phone, email. */
   | "contacts";
@@ -69,7 +69,9 @@ const HUD_UNKNOWN = ["Client doesn't know", "Client prefers not to answer", "Dat
  * unit counts it puts in brackets. `site` is the Lantern Forms site code.
  * PlanStreet calls Huntersmoon Hall "HMH Hall" in some lists.
  */
-export const PROGRAMS: readonly { value: string; site: string }[] = [
+export type Program = { value: string; site: string };
+
+const REAL_PROGRAMS: readonly Program[] = [
   { site: "amber-hall", value: "Amber Hall - HASA/CoC Single Adults" },
   { site: "audubon-hall", value: "Audubon Hall - HASA/CoC Single Adults" },
   { site: "cedar-hall", value: "Cedars Hall - DOHMH/CoC Families" },
@@ -115,7 +117,19 @@ export const PROGRAMS: readonly { value: string; site: string }[] = [
   { site: "vicinitas-hall", value: "Vicinitas Hall - DOHMH/PBV Young Adults" },
   { site: "vicinitas-hall", value: "Vicinitas Hall - Pop I/PBV Young Adults" },
 ];
-const PROGRAM_VALUES = new Set(PROGRAMS.map((p) => p.value));
+let PROGRAMS_NOW: readonly Program[] = REAL_PROGRAMS;
+let PROGRAM_VALUES = new Set(PROGRAMS_NOW.map((p) => p.value));
+
+/** The programs in use: the real ones, or a test site's made-up ones (services/testData.ts). */
+export function programs(): readonly Program[] {
+  return PROGRAMS_NOW;
+}
+
+/** Test sites only (services/testData.ts): made-up programs for made-up sites; null goes back to the real ones. */
+export function setTestPrograms(list: readonly Program[] | null) {
+  PROGRAMS_NOW = list?.length ? list : REAL_PROGRAMS;
+  PROGRAM_VALUES = new Set(PROGRAMS_NOW.map((p) => p.value));
+}
 
 /** For forwarding addresses (services/residency.ts move-outs). */
 export const US_STATES = [
@@ -286,7 +300,7 @@ export function clientField(key: string): ClientField | undefined {
 
 /** What the browser needs to draw the sections. */
 export function clientFieldsView() {
-  return { sections: CLIENT_SECTIONS, programs: PROGRAMS };
+  return { sections: CLIENT_SECTIONS, programs: programs() };
 }
 
 // ── Values ──────────────────────────────────────────────────────────────

@@ -42,6 +42,11 @@ const SITE_MAP: { codes: string[]; name: string; address: string; lat: number; l
  */
 export const DEFAULT_GEOFENCE_METERS = 200;
 
+/** Every code a building has gone by (the site map's aliases), for rewriting old references (services/testDataSites.ts). */
+export function codeAliases(code: string): string[] {
+  return SITE_MAP.find((m) => m.codes.includes(code))?.codes ?? [code];
+}
+
 /**
  * Add the site map's sites that aren't there yet. A test site's made-up roster
  * (services/testData.ts) needs sites, and there's no tenant list to make them

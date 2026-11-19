@@ -5,6 +5,8 @@ import { HttpError } from "../http.js";
 import { audit, type Actor } from "./audit.js";
 import { deleteFiles } from "./fileStore.js";
 import { forgetRosterNames, namesIn, rosterNames } from "./rosterNames.js";
+import { addCaseManagementData, type CaseManagementSummary } from "./testDataResidency.js";
+import { makeUpPrograms, renameSites, rewriteSiteReferences } from "./testDataSites.js";
 
 /**
  * Made-up data for test sites (env.ts testSite): the Azure dev app and copies
@@ -46,6 +48,12 @@ function madeUpRoster(site: { id: string; siteType: string }) {
   const shelter = site.siteType === "shelter";
   const count = shelter ? 20 : 30;
   const used = new Set<string>();
+  // Supportive: a different unit each (floors 1–6, A–F), so units can be set up from them.
+  const units = Array.from({ length: 36 }, (_, i) => `${1 + Math.floor(i / 6)}${"ABCDEF"[i % 6]}`);
+  for (let i = units.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [units[i], units[j]] = [units[j], units[i]];
+  }
   const rows = [];
   for (let i = 0; i < count; i++) {
     let first = pick(FIRST);
@@ -58,7 +66,7 @@ function madeUpRoster(site: { id: string; siteType: string }) {
       firstName: first,
       lastName: last,
       preferredName: NICKNAMES[first] && crypto.randomInt(2) ? NICKNAMES[first] : null,
-      unit: shelter ? `Bed ${i + 1}` : `${1 + crypto.randomInt(8)}${"ABCDEFGH"[crypto.randomInt(8)]}`,
+      unit: shelter ? `Bed ${i + 1}` : units[i],
       moveInDate: daysAgo(shelter ? 5 + crypto.randomInt(120) : 30 + crypto.randomInt(2000)),
       highAcuity: !shelter && crypto.randomInt(10) === 0,
       externalId: `TEST-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
@@ -118,6 +126,10 @@ export interface ReplaceSummary {
   redacted: string[];
   /** Anything that still names someone from the old roster after redaction: fix it by hand. */
   stillNamed: string[];
+  /** Real sites renamed to made-up ones, and what named them that was rewritten. */
+  sites: { renamed: { from: string; to: string }[]; rewritten: string[]; stillNaming: string[] };
+  /** Units, moves, families and client information (case management on), or null. */
+  caseManagement: CaseManagementSummary | null;
 }
 
 /**
@@ -125,11 +137,14 @@ export interface ReplaceSummary {
  * files, attendance, the audit log, notifications, the email log, the dev log,
  * form jobs and the routing log — take the old residents' names out of forms,
  * versions, components, collections and the calendar, and fill the roster with
- * made-up residents. Forms, sites, people, groups and settings stay.
+ * made-up residents. Real sites become made-up ones in place (testDataSites.ts),
+ * and with case management on the roster gets units, moves, families and client
+ * information (testDataResidency.ts). Forms, people, groups and settings stay.
  *
  * Test sites only. Re-running is safe: whatever is there is replaced again.
  */
-export async function replaceWithMadeUpData(actor: Actor): Promise<ReplaceSummary> {
+export async function replaceWithMadeUpData(actor: Actor, userId: string | null = null): Promise<ReplaceSummary> {
+  const ctx = { actor, userId, byName: actor.name };
   if (!testSite) throw new HttpError(403, "This is the live site: its residents and entries are real, and they stay.");
 
   // 1. The real names, read fresh (not the five-minute cache), to take out of everything that stays.
@@ -194,10 +209,17 @@ export async function replaceWithMadeUpData(actor: Actor): Promise<ReplaceSummar
   const emails = (await prisma.emailLog.deleteMany({})).count;
   const devEvents = (await prisma.devEvent.deleteMany({})).count;
   const auditRows = (await prisma.auditEvent.deleteMany({})).count;
-  const removed = (await prisma.tenant.deleteMany({})).count; // activity goes with them
+  const removed = (await prisma.tenant.deleteMany({})).count; // activity, client information, stays, time away and checklists go with them
+  await prisma.unit.deleteMany({});
 
-  // 3. A made-up roster.
+  // 3. Made-up buildings in place of the real ones, and whatever named them by code or name rewritten.
+  const renames = await renameSites();
+  const siteRefs = renames.length ? await rewriteSiteReferences(renames) : { rewritten: [], stillNaming: [] };
+
+  // 4. A made-up roster, and with case management on, units, moves, families and client information.
   const added = await addMadeUpResidents();
+  const caseManagement = await addCaseManagementData(ctx);
+  if (!caseManagement) await makeUpPrograms();
 
   const summary: ReplaceSummary = {
     residents: { removed, added },
@@ -210,13 +232,15 @@ export async function replaceWithMadeUpData(actor: Actor): Promise<ReplaceSummar
     devEvents,
     jobs,
     routingLog,
+    sites: { renamed: renames.map((r) => ({ from: r.from.name, to: r.to.name })), ...siteRefs },
+    caseManagement,
     redacted: [...new Set(redacted)],
     stillNamed: [...new Set(stillNamed)],
   };
   await audit({
     actor,
     action: "testdata.replaced",
-    summary: `Replaced this test site's data with made-up data: ${removed} residents and ${entries} entries removed, ${added} made-up residents added${summary.redacted.length ? `, names taken out of ${summary.redacted.length} forms and records` : ""}`,
+    summary: `Replaced this test site's data with made-up data: ${removed} residents and ${entries} entries removed, ${added} made-up residents added${renames.length ? `, ${renames.length} sites renamed to made-up ones` : ""}${summary.redacted.length ? `, names taken out of ${summary.redacted.length} forms and records` : ""}`,
   });
   return summary;
 }
