@@ -13,6 +13,7 @@ import { audit, type Actor } from "./audit.js";
 import { mailConfigured, sendLogged } from "./mailer.js";
 import { notify, resolveAudience, sitePath, type TypeRule } from "./notifications.js";
 import { isRoleKey, ROLES } from "./permissions.js";
+import { isClinicalForm } from "../forms/clinical.js";
 
 /**
  * Notification routing: for each form, who's told about what. Admins edit it in
@@ -158,6 +159,8 @@ export function emailableFields(form: BuiltForm, manifest?: Known): EmailField[]
     const ev = eventsOf(form, manifest).find((e) => e.id === ENTRY_CREATED);
     return [...BUILT_IN_EMAIL_FIELDS, ...(ev?.fields ?? []).filter((f) => f.choices?.length).map((f) => ({ id: f.id, label: f.label }))];
   }
+  // A clinical record's answers never go in an email (forms/clinical.ts), whatever a route, rule or report asked for.
+  if (isClinicalForm(form)) return BUILT_IN_EMAIL_FIELDS;
   return [
     ...BUILT_IN_EMAIL_FIELDS,
     ...basicDoc(form)
@@ -171,6 +174,9 @@ export function checkEmailFields(form: BuiltForm, ids: string[] | undefined, whe
   if (!ids?.length) return;
   const ok = emailableFields(form, manifest);
   const bad = ids.filter((id) => !ok.some((f) => f.id === id));
+  if (bad.length && isClinicalForm(form)) {
+    throw badRequest(`${where}: “${form.title}” is a clinical record, so its answers can't go in an email. Take them out; the site, date and who filed it can stay.`);
+  }
   if (bad.length) {
     throw badRequest(`${where}: ${bad.map((b) => `"${b}"`).join(", ")} can't go in an email. These can: ${ok.map((f) => `${f.label} (${f.id})`).join(", ")}.`);
   }

@@ -125,6 +125,7 @@ export function BuiltFormEntryPage() {
           </p>
         )}
         {entry.updatedByName && <p className="mt-2 text-micro text-muted">Last edited by {entry.updatedByName}, {formatDateTime(entry.updatedAt)}</p>}
+        {data.clinicalNotice && <p className="mt-2 text-micro text-muted print:hidden">Clinical record. Who opens or exports it is recorded.</p>}
       </Card>
 
       <Card className="mb-4 p-5">
@@ -158,6 +159,9 @@ export function BuiltFormEntryPage() {
           }
         />
       )}
+
+      {/* A clinical record leaves the site with its 42 CFR Part 2 notice. */}
+      {data.clinicalNotice && <p className="hidden text-[9px] leading-snug text-ink print:mt-4 print:block">{data.clinicalNotice}</p>}
 
       <Card className="p-5 print:hidden">
         <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">Notes</p>

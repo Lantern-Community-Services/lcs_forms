@@ -11,6 +11,7 @@ import { MAX_ASSEMBLED_BYTES, receivePart } from "../services/uploadChunks.js";
 import { createFormFile } from "../services/fileStore.js";
 import { assertRealDataAllowed } from "../services/testData.js";
 import { keyMakerCan } from "./principal.js";
+import { CLINICAL_REFUSAL, auditClinicalView, isClinicalForm } from "../forms/clinical.js";
 import { defineOp, flag, int } from "./registry.js";
 
 /**
@@ -23,6 +24,11 @@ import { defineOp, flag, int } from "./registry.js";
 
 const formRef = z.string().describe("The form's id or its slug (URL name).");
 const enc = (v: string) => encodeURIComponent(v);
+
+/** A clinical record's entries (forms/clinical.ts) are read through a key only when the admin who made it can see client information. */
+async function clinicalKey(key: Parameters<typeof keyMakerCan>[0], form: Parameters<typeof isClinicalForm>[0]) {
+  if (isClinicalForm(form) && !(await keyMakerCan(key, "clients.view"))) throw new HttpError(403, CLINICAL_REFUSAL);
+}
 
 /** A form's status and URLs, as the MCP tools report it. */
 export function summarize(row: Awaited<ReturnType<typeof findForm>>) {
@@ -107,6 +113,7 @@ export const formOps = [
     annotations: { readOnlyHint: true },
     run: async (ctx, { form, q, from, to, status, archived, limit }) => {
       const row = await findForm(form);
+      await clinicalKey(ctx.key, row);
       const where = entryWhere(row, undefined, { q, from, to, status, archived: archived ?? "hide" });
       if (ctx.key.siteId) (where.AND as object[]).push({ siteId: ctx.key.siteId });
       const [items, total] = await Promise.all([prisma.formEntry.findMany({ where, orderBy: { createdAt: "desc" }, take: limit ?? 50 }), prisma.formEntry.count({ where })]);
@@ -124,8 +131,10 @@ export const formOps = [
     annotations: { readOnlyHint: true },
     run: async (ctx, { form, id }) => {
       const row = await findForm(form);
+      await clinicalKey(ctx.key, row);
       const entry = await prisma.formEntry.findFirst({ where: { id, formId: row.id, ...(ctx.key.siteId ? { siteId: ctx.key.siteId } : {}) } });
       if (!entry) throw new HttpError(404, "No such entry.");
+      if (isClinicalForm(row)) await auditClinicalView(ctx.actor, row, entry, { tool: `get_entry (${ctx.via})` });
       const doc = await docForEntry(row, entry.formVersion);
       const notes = await prisma.formEntryNote.findMany({ where: { entryId: entry.id }, orderBy: { createdAt: "asc" } });
       return { entry: entryRow(entry), fields: doc.fields.map((f) => ({ id: f.id, type: f.type, label: f.label })), notes };

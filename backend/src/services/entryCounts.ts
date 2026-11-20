@@ -5,6 +5,7 @@ import type { CurrentUser } from "../auth/middleware.js";
 import { findAnyForm, readDoc } from "../forms/service.js";
 import { entryReachOf, entryWhere, liveDoc, visibleWhere } from "../forms/entries.js";
 import { formatValue } from "../forms/engine.js";
+import { CLINICAL_REFUSAL, clinicalBlocked } from "../forms/clinical.js";
 import { canUseBuiltForm } from "./staffGroups.js";
 import { access, dateWhere, loadLiveApp } from "../apps/runtime.js";
 
@@ -87,6 +88,8 @@ export async function countEntries(user: CurrentUser, q: CountQuery) {
   } else {
     const doc = liveDoc(form) ?? readDoc(form.draftSchema);
     if (!canUseBuiltForm(user, form.id)) throw new HttpError(403, "You can't see this form's entries.");
+    // Counts by answer would tell what a clinical record holds (forms/clinical.ts).
+    if (clinicalBlocked(form, user)) throw new HttpError(403, CLINICAL_REFUSAL);
     const reach = entryReachOf(form, doc, user);
     if (!reach) throw new HttpError(403, "You can't see this form's entries.");
     if (reach !== "all") scope = reach === "site" ? "entries at your sites and your own" : "your own entries and the ones you were told about";

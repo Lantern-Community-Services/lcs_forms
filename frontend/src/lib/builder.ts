@@ -203,6 +203,8 @@ export interface EntryDetail {
   followUpDoneBefore?: boolean;
   /** The signatures it needs after filing, and whether this person can sign each now. */
   signOffs?: SignOffState[];
+  /** A clinical record (settings.clinical): the 42 CFR Part 2 notice it's printed with. */
+  clinicalNotice?: string | null;
 }
 
 /** A follow-up checklist item on one entry (backend services/followUp.ts). */
