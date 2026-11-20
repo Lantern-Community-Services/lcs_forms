@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { CalendarDays, ChevronRight, ExternalLink, Home, LayoutGrid, LogOut, Contact, Pin, X } from "lucide-react";
+import { CalendarDays, ChevronRight, ClipboardList, ExternalLink, Home, LayoutGrid, LogOut, Contact, Pin, X } from "lucide-react";
+import { useShowCaseload } from "@/lib/caseload";
 import { cn } from "@/lib/utils";
 import { isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
@@ -62,13 +63,18 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   // A phone has five slots: Home, Roster, Calendar, All forms and the account
   // slot leave room for a pin only when there's no Roster. A tablet fits as
   // many pins as its width allows, up to MAX_NAV_PINS.
-  const fixed = (roster ? 5 : 4); // Home, Roster, Calendar, All forms, the account slot
+  // A tablet also has Caseload beside the Roster; a phone finds it in the launcher.
+  const caseload = useShowCaseload() && !phone;
+  const fixed = (roster ? 5 : 4) + (caseload ? 1 : 0); // Home, Roster, (Caseload,) Calendar, All forms, the account slot
   const tabletPins = Math.min(MAX_NAV_PINS, Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed));
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
 
   const home = <DockLink key="home" tour="dock-home" to="/home" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/home"} phone={phone} onClick={onCloseLauncher} />;
   const rosterItem = roster && (
     <DockLink key="roster" tour="dock-roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
+  );
+  const caseloadItem = caseload && (
+    <DockLink key="caseload" to="/caseload" label="Caseload" Icon={ClipboardList} active={!launcherOpen && pathname.startsWith("/caseload")} phone={phone} onClick={onCloseLauncher} />
   );
   const calendarItem = (
     <DockLink key="calendar" tour="dock-calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} onClick={onCloseLauncher} />
@@ -111,6 +117,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
         <div className="relative z-[45] flex items-center gap-1 rounded-[26px] border border-hairline bg-surface p-2 shadow-panel">
           {home}
           {rosterItem}
+          {caseloadItem}
           {calendarItem}
           {pinItems.length > 0 && <span className="mx-1 h-9 w-px bg-hairline" />}
           {pinItems}
@@ -279,6 +286,9 @@ function DockPin({ pin, active, phone, onClick }: { pin: NavForm; active: boolea
  */
 const LAUNCHER_MS = 280;
 
+/** Caseload (case management) as a launcher tile: not a form, so never pinned. */
+const CASELOAD_TILE: FormLink = { id: "caseload", categoryId: "", title: "Caseload", description: null, url: "/caseload", roles: [], keywords: null, badge: null, icon: null, sortOrder: 0, active: true };
+
 export function Launcher({ device, open, onClose }: { device: "phone" | "tablet"; open: boolean; onClose: () => void }) {
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
@@ -305,6 +315,7 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   const dialogRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const phone = device === "phone";
+  const showCaseload = useShowCaseload();
   const swipe = useSwipeDown(dialogRef, listRef, onClose);
 
   // Focus moves into the sheet (not the search: on a phone that would throw
@@ -412,6 +423,23 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
             )
           ) : (
             <div className="grid gap-y-6 pt-1">
+              {/* The phone's dock has no room for Caseload, so it's the first tile here. */}
+              {phone && showCaseload && (
+                <Group title="Case management" Icon={ClipboardList}>
+                  <AppTile
+                    form={CASELOAD_TILE}
+                    Icon={ClipboardList}
+                    lit={lit(CASELOAD_TILE.url)}
+                    count={0}
+                    onPick={onClose}
+                    editing={false}
+                    pinned={false}
+                    markPinned={false}
+                    onTogglePin={async () => false}
+                    onLongPress={() => setEditing(true)}
+                  />
+                </Group>
+              )}
               <PinRow count={pinned.length} editing={editing} phone={phone}>
                 {pinned.slice(0, MAX_NAV_PINS).map((p) => tile(p.form, p.Icon, `pin-${p.form.id}`, true))}
               </PinRow>

@@ -22,6 +22,7 @@ import { ReviewPage } from "./screens/Review";
 import { UnitsPage } from "./screens/residency/Units";
 import { ChecklistPage } from "./screens/residency/Checklist";
 import { MovesPage } from "./screens/residency/Moves";
+import { CaseloadPage, CaseloadSection, CaseloadTasksPage, UnassignedPage } from "./screens/Caseload";
 import { TenantDetailPage } from "./screens/TenantDetail";
 import { ActivityPage } from "./screens/Activity";
 import { AttendancePage } from "./screens/Attendance";
@@ -271,6 +272,12 @@ export function App() {
           {/* Detail screens sit outside the tabs: they carry their own way back. */}
           <Route path="/roster/attendance/:id" element={<AttendanceDetailPage />} />
           <Route path="/tenants/:id" element={<TenantDetailPage />} />
+          {/* Case management: a case lead's residents and to-do list (it checks who may see it). */}
+          <Route element={<CaseloadSection />}>
+            <Route path="/caseload" element={<CaseloadPage />} />
+            <Route path="/caseload/tasks" element={<CaseloadTasksPage />} />
+            <Route path="/caseload/unassigned" element={<UnassignedPage />} />
+          </Route>
 
           {/* Where these screens lived before they became Roster tabs — kept so
               bookmarks and saved landing pages still land somewhere. */}
