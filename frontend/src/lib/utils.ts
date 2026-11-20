@@ -1,10 +1,15 @@
 import { clsx, type ClassValue } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
-// tailwind.config.ts adds two font sizes. Untold, tailwind-merge reads
-// `text-micro` as a colour and drops it whenever a text colour follows it.
+// tailwind.theme.ts names the type scale's steps. Untold, tailwind-merge reads
+// `text-micro` (or `text-body`) as a colour and drops it whenever a text colour
+// follows it, or drops the colour when the size comes second.
 const twMerge = extendTailwindMerge({
-  extend: { classGroups: { "font-size": [{ text: ["micro", "meta"] }] } },
+  extend: {
+    classGroups: {
+      "font-size": [{ text: ["micro", "meta", "caption", "label", "body", "body-lg", "lead", "title-sm", "title", "display"] }],
+    },
+  },
 });
 
 export function cn(...inputs: ClassValue[]) {

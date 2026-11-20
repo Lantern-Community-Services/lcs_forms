@@ -35,9 +35,9 @@ export function DocumentsCard({ tenant }: { tenant: Tenant }) {
 
   // The tour's sample residents have no record; a switch or permission that changed since the page loaded hides the card.
   if (isSample(tenant.id) || (error instanceof ApiError && (error.status === 403 || error.status === 404))) return null;
-  if (error) return <Card className="mb-4 p-5 text-[13px] text-status-redText">{errorMessage(error, "Could not load the documents.")}</Card>;
+  if (error) return <Card className="mb-4 p-5 text-label text-status-redText">{errorMessage(error, "Could not load the documents.")}</Card>;
   if (!data) {
-    return <Card className="mb-4 flex items-center gap-2 p-5 text-[13px] text-muted"><Spinner className="h-4 w-4" /> Loading documents…</Card>;
+    return <Card className="mb-4 flex items-center gap-2 p-5 text-label text-muted"><Spinner className="h-4 w-4" /> Loading documents…</Card>;
   }
   return (
     <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "60ms" }}>
@@ -50,7 +50,7 @@ export function DocumentsCard({ tenant }: { tenant: Tenant }) {
         )}
       </div>
       {data.items.length === 0 ? (
-        <p className="text-[13px] text-muted">No documents yet.{data.canEdit ? " Add their ID, lease or a signed release here." : ""}</p>
+        <p className="text-label text-muted">No documents yet.{data.canEdit ? " Add their ID, lease or a signed release here." : ""}</p>
       ) : (
         <ul className="divide-y divide-hairline">
           {data.items.map((d) => <DocumentLine key={d.id} tenantId={tenant.id} doc={d} canEdit={data.canEdit} />)}
@@ -85,7 +85,7 @@ function DocumentLine({ tenantId, doc, canEdit }: { tenantId: string; doc: Clien
       <div className="flex items-center gap-3">
         <Icon className="h-5 w-5 shrink-0 text-muted" />
         <span className="min-w-0 flex-1">
-          <a href={documentUrl(tenantId, doc.id)} target="_blank" rel="noreferrer" className="block truncate text-[13.5px] font-semibold text-accent hover:underline">
+          <a href={documentUrl(tenantId, doc.id)} target="_blank" rel="noreferrer" className="block truncate text-body font-semibold text-accent hover:underline">
             {doc.label ?? doc.name}
           </a>
           <span className="block truncate text-micro text-muted">
@@ -106,7 +106,7 @@ function DocumentLine({ tenantId, doc, canEdit }: { tenantId: string; doc: Clien
         )}
       </div>
       {confirming && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">
           <span className="flex-1">Remove this document from their record?</span>
           <Button size="sm" variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>Keep it</Button>
           <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy}>{busy ? "Removing…" : "Remove"}</Button>
@@ -162,7 +162,7 @@ function AddDocumentDialog({ tenantId, meta, onClose }: { tenantId: string; meta
             <Button type="button" variant="secondary" onClick={() => input.current?.click()} disabled={busy} className="min-h-[44px] md:min-h-9">
               <Paperclip className="h-4 w-4" /> {file ? "Choose another" : "Choose a file"}
             </Button>
-            {file && <span className="min-w-0 truncate text-[13px] text-ink">{file.name} · {fileSize(file.size)}</span>}
+            {file && <span className="min-w-0 truncate text-label text-ink">{file.name} · {fileSize(file.size)}</span>}
           </div>
         </Field>
         <Field label="What is it?">
@@ -218,11 +218,11 @@ export function TimelineCard({ tenant }: { tenant: Tenant }) {
         <p className="text-micro text-muted">Forms, moves, checklist and documents, newest first</p>
       </div>
       {isLoading ? (
-        <p className="flex items-center gap-2 text-[13px] text-muted"><Spinner className="h-4 w-4" /> Loading…</p>
+        <p className="flex items-center gap-2 text-label text-muted"><Spinner className="h-4 w-4" /> Loading…</p>
       ) : isError ? (
-        <p className="text-[13px] text-status-redText">{errorMessage(error, "Could not load the timeline.")}</p>
+        <p className="text-label text-status-redText">{errorMessage(error, "Could not load the timeline.")}</p>
       ) : items.length === 0 ? (
-        <p className="text-[13px] text-muted">Nothing yet. Forms filled in about them, their moves and their checklist show here.</p>
+        <p className="text-label text-muted">Nothing yet. Forms filled in about them, their moves and their checklist show here.</p>
       ) : (
         <>
           <ol className="space-y-4">
@@ -255,7 +255,7 @@ function TimelineLine({ item, tenantId }: { item: TimelineItem; tenantId: string
     <span className="font-semibold text-ink">{item.title}</span>
   );
   return (
-    <li className="relative text-[13px]">
+    <li className="relative text-label">
       <span className="absolute -left-[25px] top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-surface">
         <Icon className={cn("h-3.5 w-3.5", item.kind === "task_done" ? "text-status-greenDot" : item.kind === "moved_out" || item.kind === "removed" ? "text-status-redText" : "text-muted")} />
       </span>

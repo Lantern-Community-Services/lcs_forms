@@ -50,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             role="status"
             className={cn(
-              "flex items-center gap-2.5 rounded-panel border bg-surface px-4 py-3 text-[13.5px] text-ink shadow-panel md:min-w-[280px]",
+              "flex items-center gap-2.5 rounded-panel border bg-surface px-4 py-3 text-body text-ink shadow-panel md:min-w-[280px]",
               t.kind === "success" && "border-status-greenDot/40",
               t.kind === "error" && "border-status-redDot/40",
               t.kind === "info" && "border-hairline"
@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.action && (
               <button
                 onClick={() => { t.action!.onClick(); dismiss(t.id); }}
-                className="min-h-[36px] shrink-0 rounded-input px-2.5 font-heading text-[13.5px] font-bold text-accent hover:bg-subtle2 dark:text-white"
+                className="min-h-[36px] shrink-0 rounded-input px-2.5 font-heading text-body font-bold text-accent hover:bg-subtle2 dark:text-white"
               >
                 {t.action.label}
               </button>

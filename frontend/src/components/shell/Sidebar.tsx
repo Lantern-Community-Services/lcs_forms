@@ -70,7 +70,7 @@ function WaitingDot({ collapsed }: { collapsed: boolean }) {
  */
 const itemClass = (active: boolean, collapsed = false) =>
   cn(
-    "group/item flex h-10 w-full shrink-0 items-center overflow-hidden rounded-input text-[13.5px] font-semibold transition-colors",
+    "group/item flex h-10 w-full shrink-0 items-center overflow-hidden rounded-input text-body font-semibold transition-colors",
     collapsed
       ? active ? "text-accent dark:text-white" : "text-muted hover:text-ink"
       : active ? "bg-navsel text-accent dark:text-white" : "text-muted hover:bg-navsel/60 hover:text-ink"
@@ -137,7 +137,7 @@ function FormRow({ form, Icon, subtitle, collapsed, lit, count, indented }: {
 }) {
   const internal = isInternalForm(form.url);
   const waiting = (count ?? 0) > 0;
-  const className = cn(itemClass(lit, collapsed), wrapRow(collapsed), !lit && "font-medium", !Icon && "text-[13px]");
+  const className = cn(itemClass(lit, collapsed), wrapRow(collapsed), !lit && "font-medium", !Icon && "text-label");
   const body = (
     <>
       {Icon && (
@@ -180,7 +180,7 @@ function useCollapsed() {
   const wide = useMediaQuery("(min-width: 768px)");
   // A code form's page can ask for more (or less) folding than the default.
   const mode = useNavMode() ?? "auto";
-  const auto = isFormPath(pathname) && (mode === "always" ? wide : mode === "never" ? false : portrait);
+  const auto = (isFormPath(pathname) || mode === "always") && (mode === "always" ? wide : mode === "never" ? false : portrait);
   const [peek, setPeek] = useState(false);
   useEffect(() => setPeek(false), [pathname, auto]);
   return auto
@@ -306,7 +306,7 @@ export function Sidebar() {
           {/* ml-3 pairs with the gap-3 so the rule sits centred in the space
               between the mark and the wordmark. */}
           <span className="ml-3 h-9 w-[1.5px] shrink-0 bg-hairline" />
-          <span className="font-heading text-[21px] font-extrabold text-accent dark:text-white">Forms</span>
+          <span className="font-heading text-title-sm font-extrabold text-accent dark:text-white">Forms</span>
         </div>
       </div>
 
@@ -339,9 +339,9 @@ export function Sidebar() {
             tabIndex={collapsed ? -1 : undefined}
             placeholder="Search"
             aria-label="Search screens, forms and residents"
-            className="h-10 min-h-10 bg-surface pr-14 text-[13.5px] md:min-h-10"
+            className="h-10 min-h-10 bg-surface pr-14 text-body md:min-h-10"
           />
-          <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-hairline px-1.5 py-px font-body text-[10.5px] font-bold text-muted">Ctrl K</kbd>
+          <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-hairline px-1.5 py-px font-body text-micro font-bold text-muted">Ctrl K</kbd>
         </div>
       </div>
 
@@ -377,11 +377,11 @@ export function Sidebar() {
                   </NavLink>
                 ))}
                 {hits.residentTotal > hits.residents.length && (
-                  <p className="px-2.5 py-1.5 text-[12px] text-muted">Keep typing to narrow it down, or search the Roster.</p>
+                  <p className="px-2.5 py-1.5 text-caption text-muted">Keep typing to narrow it down, or search the Roster.</p>
                 )}
               </>
             )}
-            {nothing && <p className="px-2.5 py-2 text-[13px] text-muted">Nothing matches. Try a shorter word.</p>}
+            {nothing && <p className="px-2.5 py-2 text-label text-muted">Nothing matches. Try a shorter word.</p>}
           </>
         ) : (
           <>
@@ -444,7 +444,7 @@ export function Sidebar() {
       <button
         onClick={toggleCollapsed}
         title={collapsed ? "Expand" : "Collapse"}
-        className="mb-3 flex h-10 w-full shrink-0 items-center overflow-hidden rounded-input text-[12.5px] font-semibold text-muted transition-colors hover:bg-navsel/60 hover:text-ink"
+        className="mb-3 flex h-10 w-full shrink-0 items-center overflow-hidden rounded-input text-label font-semibold text-muted transition-colors hover:bg-navsel/60 hover:text-ink"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center">
           {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
@@ -472,7 +472,7 @@ export function Sidebar() {
             </span>
             {/* Hidden, not unmounted, while collapsed, so the name doesn't re-wrap as the width moves. */}
             <span className={cn("min-w-0 flex-1 pr-2", fade(collapsed))} aria-hidden={collapsed || undefined}>
-              <span className="block truncate text-[13px] font-semibold leading-tight text-ink">{user?.name}</span>
+              <span className="block truncate text-label font-semibold leading-tight text-ink">{user?.name}</span>
               <span className="mt-0.5 block truncate text-micro leading-tight text-muted">{user?.role?.name}</span>
             </span>
           </NavLink>

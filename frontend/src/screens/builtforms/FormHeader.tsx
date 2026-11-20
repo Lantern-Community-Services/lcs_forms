@@ -7,8 +7,11 @@ import { useAuth } from "@/lib/auth";
 import { useFillForm } from "@/lib/builder";
 import { useDeviceKind } from "@/lib/device";
 
-/** Every basic-form tab lines up at this width, whichever tab is open (the code forms' "tablet"). */
-export const BUILT_FORM_HEADER_WIDTH = "max-w-[1080px]";
+/**
+ * Every basic-form tab lines up at this width, whichever tab is open: the same as Page's own
+ * default, so the title, the tabs, the form card (left-aligned, narrower) and Entries share one edge.
+ */
+export const BUILT_FORM_HEADER_WIDTH = "max-w-[1240px]";
 
 /**
  * A basic form's title and tabs (Form, Entries, Notifications), the same bar

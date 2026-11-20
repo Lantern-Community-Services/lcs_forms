@@ -145,7 +145,7 @@ function ResidentRow({ r }: { r: CaseloadResident }) {
     <li className="grid gap-x-4 gap-y-1.5 py-3 sm:grid-cols-[minmax(0,1fr)_200px_180px]">
       <div className="min-w-0">
         <span className="flex flex-wrap items-center gap-1.5">
-          <Link to={`/tenants/${r.id}`} className="text-[14px] font-semibold text-accent hover:underline dark:text-white">{r.displayName}</Link>
+          <Link to={`/tenants/${r.id}`} className="text-body font-semibold text-accent hover:underline dark:text-white">{r.displayName}</Link>
           {r.away && <Tag tone="amber" title={r.away.reason ?? undefined}>Away</Tag>}
           {r.highAcuity && <Tag tone="red">High acuity</Tag>}
           {!r.movedIn && <Tag tone="neutral">Not moved in</Tag>}
@@ -159,7 +159,7 @@ function ResidentRow({ r }: { r: CaseloadResident }) {
           </span>
         )}
       </div>
-      <div className="text-[12.5px] leading-[17px]">
+      <div className="text-label leading-[17px]">
         {overdue > 0 ? (
           <span className="font-semibold text-status-redText">
             {overdue} overdue{oldestOverdue ? ` · ${oldestOverdue.label} was due ${fmtDay(oldestOverdue.dueOn)}` : ""}
@@ -171,7 +171,7 @@ function ResidentRow({ r }: { r: CaseloadResident }) {
         )}
         {overdue > 0 && next && <span className="block text-muted">Next: {next.label}, {fmtDay(next.dueOn)}</span>}
       </div>
-      <div className="text-[12.5px] leading-[17px]">
+      <div className="text-label leading-[17px]">
         {r.lastContact ? (
           <Link to={`/f/${r.lastContact.formSlug}/entries/${r.lastContact.entryId}`} className="hover:underline">
             <span className="text-ink">Last contact {formatDate(r.lastContact.at)}</span>
@@ -221,7 +221,7 @@ export function CaseloadTasksPage() {
           return (
             <section key={when} className="mb-5">
               <h2 className={cn("mb-1 font-heading text-[16px] font-extrabold", when === "overdue" ? "text-status-redText" : "text-ink")}>
-                {title} <span className="text-[13px] font-semibold text-muted">· {rows.length}</span>
+                {title} <span className="text-label font-semibold text-muted">· {rows.length}</span>
               </h2>
               <p className="mb-2 text-micro text-muted">{hint}</p>
               <Card className="px-4">
@@ -305,7 +305,7 @@ function UnassignedSiteCard({ site }: { site: UnassignedSite }) {
           onCheckedChange={(v) => setPicked(v === true ? site.residents.map((r) => r.id) : [])}
           aria-label={`Select everyone at ${site.name}`}
         />
-        <h2 className="flex-1 font-heading text-[15px] font-extrabold text-ink">{site.name}</h2>
+        <h2 className="flex-1 font-heading text-body-lg font-extrabold text-ink">{site.name}</h2>
         <span className="text-micro text-muted">{site.residents.length} without a case lead</span>
       </div>
       <ul className="divide-y divide-hairline px-4">
@@ -318,12 +318,12 @@ function UnassignedSiteCard({ site }: { site: UnassignedSite }) {
                 aria-label={`Select ${r.displayName}`}
               />
               <span className="min-w-0 flex-1">
-                <span className="text-[13.5px] font-semibold text-ink">{r.displayName}</span>
+                <span className="text-body font-semibold text-ink">{r.displayName}</span>
                 {r.away && <Tag tone="amber" className="ml-1.5">Away</Tag>}
                 {!r.movedIn && <Tag tone="neutral" className="ml-1.5">Not moved in</Tag>}
                 <span className="block text-micro text-muted">{[r.unit && `Unit ${r.unit}`, r.movedInOn && `Moved in ${fmtDay(r.movedInOn)}`].filter(Boolean).join(" · ") || "No unit"}</span>
               </span>
-              <Link to={`/tenants/${r.id}`} className="text-[12.5px] font-semibold text-accent hover:underline dark:text-white" onClick={(e) => e.stopPropagation()}>Open</Link>
+              <Link to={`/tenants/${r.id}`} className="text-label font-semibold text-accent hover:underline dark:text-white" onClick={(e) => e.stopPropagation()}>Open</Link>
             </label>
           </li>
         ))}
@@ -331,7 +331,7 @@ function UnassignedSiteCard({ site }: { site: UnassignedSite }) {
       {/* Stays in view at the bottom of the screen while a long list is scrolled. */}
       {chosen.length > 0 && (
         <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 rounded-b-card border-t border-hairline bg-subtle px-4 py-3">
-          <span className="text-[13px] font-semibold text-ink">{chosen.length} selected</span>
+          <span className="text-label font-semibold text-ink">{chosen.length} selected</span>
           <Select
             value={leadId}
             onChange={(e) => setLeadId(e.target.value)}

@@ -54,15 +54,15 @@ export function AgendaDay({
   const sorted = [...items].sort((a, b) => Number(b.allDay || b.startDate < day) - Number(a.allDay || a.startDate < day) || (a.startTime ?? "").localeCompare(b.startTime ?? ""));
   return (
     <section>
-      <h2 className={cn("mb-2 flex items-baseline gap-2 text-[13px] font-extrabold", day === today ? "text-accent dark:text-white" : "text-ink")}>
+      <h2 className={cn("mb-2 flex items-baseline gap-2 text-label font-extrabold", day === today ? "text-accent dark:text-white" : "text-ink")}>
         <span>{relative ? `${relative} · ${shortDay(day)}` : longDay(day)}</span>
         {onNew && (
-          <button type="button" onClick={() => onNew(day)} className="ml-auto inline-flex min-h-[36px] items-center gap-1 text-[13px] font-semibold text-accent dark:text-white">
+          <button type="button" onClick={() => onNew(day)} className="ml-auto inline-flex min-h-[36px] items-center gap-1 px-1 text-label font-semibold text-accent dark:text-white touch:min-h-11">
             <Plus className="h-4 w-4" /> Add
           </button>
         )}
       </h2>
-      {sorted.length === 0 && showEmpty && <p className="rounded-card border border-dashed border-hairline px-4 py-5 text-center text-[13.5px] text-muted">Nothing on this day.</p>}
+      {sorted.length === 0 && showEmpty && <p className="rounded-card border border-dashed border-hairline px-4 py-5 text-center text-body text-muted">Nothing on this day.</p>}
       <ul className="overflow-hidden rounded-card border border-hairline bg-surface empty:hidden">
         {sorted.map((o) => (
           <AgendaRow key={o.key} occ={o} day={day} colors={colors} onOpen={onOpen} />
@@ -88,13 +88,13 @@ function AgendaRow({ occ, day, colors, onOpen }: { occ: CalendarOccurrence; day:
   return (
     <li className="border-b border-hairline last:border-b-0">
       <button type="button" onClick={() => onOpen(occ)} className="flex w-full items-stretch gap-3 px-3 py-2.5 text-left hover:bg-rowhover md:px-4">
-        <span className="w-[92px] shrink-0 pt-px text-[12.5px] font-semibold tabular text-muted md:w-[110px]">
+        <span className="w-[92px] shrink-0 pt-px text-label font-semibold tabular text-muted md:w-[110px]">
           {time}
           {multi && <span className="block text-micro font-medium">Day {daysApart(occ.startDate, day) + 1} of {daysApart(occ.startDate, occ.endDate) + 1}</span>}
         </span>
         <span className={cn("w-1 shrink-0 rounded-pill", occ.pending && "opacity-50")} style={{ background: color.solid }} />
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 text-[14.5px] font-semibold text-ink">
+          <span className="flex items-center gap-1.5 text-body-lg font-semibold text-ink">
             <span className="truncate">{occ.title}</span>
             {occ.repeats && <Repeat className="h-3.5 w-3.5 shrink-0 text-muted" aria-label="Repeats" />}
           </span>

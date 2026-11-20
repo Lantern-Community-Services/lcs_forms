@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/misc";
 import { ThemedLogo } from "@/components/shell/ThemedLogo";
 import { headerLinkClass } from "@/components/shell/FormTabs";
-import { BuiltFormHeader } from "./FormHeader";
+import { BUILT_FORM_HEADER_WIDTH, BuiltFormHeader } from "./FormHeader";
 import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { useToast } from "@/components/ui/toast";
 import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit/FormRenderer";
@@ -90,7 +90,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
       <Shell>
         <Card className="p-8 text-center">
           <Lock className="mx-auto h-8 w-8 text-muted" />
-          <p className="mt-3 font-heading text-[17px] font-extrabold text-ink">{errorMessage(error, "This form isn't available.")}</p>
+          <p className="mt-3 font-heading text-lead font-extrabold text-ink">{errorMessage(error, "This form isn't available.")}</p>
           {error instanceof ApiError && error.status === 401 && <Link to={`/signin?returnTo=${encodeURIComponent(`/f/${slug}`)}`} className="mt-3 inline-block font-semibold text-accent">Sign in</Link>}
         </Card>
       </Shell>
@@ -167,14 +167,14 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
 
       <Card className="p-5 md:p-8">
         <div data-tour="form-title">
-          <h1 className={cn("font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]", !publicView && "md:hidden")}>{doc.title}</h1>
-          {doc.description && !done && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+          <h1 className={cn("font-heading text-title font-extrabold leading-tight text-ink md:text-display", !publicView && "md:hidden")}>{doc.title}</h1>
+          {doc.description && !done && <div className="prose-form mt-2 text-body text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
         </div>
         <div className="mt-6">
           {done ? (
             <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} locked={locked} />
           ) : data.closed ? (
-            <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-[14px] text-ink">{data.closed}</div>
+            <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-body text-ink">{data.closed}</div>
           ) : drafts.state.phase === "checking" ? (
             <LoadingState label="Looking for unfinished answers…" />
           ) : drafts.state.phase === "choose" ? (
@@ -189,7 +189,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
             />
           ) : (
             <FillShareContext.Provider value={shareToken ?? null}>
-              {data.share && <p className="mb-4 text-[12.5px] text-muted">Shared with you by {data.share.sharedBy} at Lantern Community Services.</p>}
+              {data.share && <p className="mb-4 text-label text-muted">Shared with you by {data.share.sharedBy} at Lantern Community Services.</p>}
               <FormRenderer
                 key={round}
                 doc={doc}
@@ -216,7 +216,8 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   return (
     <>
       <BuiltFormHeader slug={slug} actions={<>{helpButton}{!locked && <LockFormButton base={`/f/${slug}`} title={doc.title} />}</>} />
-      <Page className="max-w-[820px]">{content}</Page>
+      {/* The form keeps a readable width, left-aligned under the title and tabs. */}
+      <Page className={BUILT_FORM_HEADER_WIDTH}><div className="max-w-[820px]">{content}</div></Page>
     </>
   );
 }
@@ -234,7 +235,7 @@ function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }
         // number) that only happen once the server has it, so it isn't shown.
         <div className="flex items-start gap-3 rounded-card border border-status-amberDot/40 bg-status-amberBg p-4">
           <CloudOff className="mt-0.5 h-6 w-6 shrink-0 text-status-amberText" />
-          <div className="text-[14.5px] text-ink">
+          <div className="text-body-lg text-ink">
             <p className="font-semibold">Saved on this device.</p>
             <p className="mt-1 text-muted">There's no connection right now. It uploads by itself as soon as the internet is back. You can fill in another or leave this screen.</p>
           </div>
@@ -242,7 +243,7 @@ function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }
       ) : (
         <div className="flex items-start gap-3 rounded-card border border-status-greenDot/40 bg-status-greenBg p-4">
           <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-status-greenText" />
-          <div className="prose-form text-[14.5px] text-ink" dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="prose-form text-body-lg text-ink" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       )}
       {conf?.showSummary && (
@@ -260,7 +261,7 @@ function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }
 }
 
 function InAppShell({ children }: { children: React.ReactNode }) {
-  return <Page className="max-w-[820px]">{children}</Page>;
+  return <Page className={BUILT_FORM_HEADER_WIDTH}><div className="max-w-[820px]">{children}</div></Page>;
 }
 
 /** Public forms: no sidebar, no sign-in — just the Lantern logo and the form. */
@@ -295,7 +296,7 @@ export function SharedFormPage() {
       <PublicShell>
         <Card className="p-8 text-center">
           <Lock className="mx-auto h-8 w-8 text-muted" />
-          <p className="mt-3 font-heading text-[17px] font-extrabold text-ink">{errorMessage(error, "This link doesn't work any more.")}</p>
+          <p className="mt-3 font-heading text-lead font-extrabold text-ink">{errorMessage(error, "This link doesn't work any more.")}</p>
         </Card>
       </PublicShell>
     );

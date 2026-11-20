@@ -50,7 +50,7 @@ export function IconField({ value, onChange, inherit: Inherit, canInherit = true
         <span className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-navsel text-accent dark:text-white">
           <Current className="h-5 w-5" />
         </span>
-        <span className="min-w-0 flex-1 text-[13px] text-muted">{!canInherit ? "Shown on the Forms page" : value ? "Its own icon" : "The category's icon"}</span>
+        <span className="min-w-0 flex-1 text-label text-muted">{!canInherit ? "Shown on the Forms page" : value ? "Its own icon" : "The category's icon"}</span>
         {value && canInherit && (
           <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)}>
             Use the category's

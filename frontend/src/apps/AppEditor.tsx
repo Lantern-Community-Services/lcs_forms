@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { setNavMode } from "@/lib/shellNav";
 import { Link, useParams } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -54,6 +55,11 @@ const langOf = (path: string) => (path.endsWith(".css") ? "css" : path.endsWith(
 /** Admin → Code forms → one form: files, editor, live preview, console, versions, reference. */
 export function AppEditorPage() {
   const { id = "" } = useParams();
+  // The editor needs the width: the main sidebar folds to icons while it's open.
+  useEffect(() => {
+    setNavMode("always");
+    return () => setNavMode(null);
+  }, []);
   const { data, isLoading, error } = useProject(id);
   if (error) return <div className="p-6"><EmptyState title={errorMessage(error, "Couldn't open this code form.")} /></div>;
   if (isLoading || !data) return <LoadingState />;
@@ -225,8 +231,8 @@ function AppEditor({ initial }: { initial: Project }) {
     <div className="flex h-full min-h-0 flex-col bg-appbg">
       {/* Top bar */}
       <div className="flex flex-none flex-wrap items-center gap-2 border-b border-hairline bg-surface px-3 py-2 pt-safe-top">
-        <Link to="/admin/apps" className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-[13px] font-semibold text-accent hover:bg-subtle dark:text-white"><ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Code forms</span></Link>
-        <span className="font-heading text-[15px] font-extrabold text-ink">{project.title}</span>
+        <Link to="/admin/apps" className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-label font-semibold text-accent hover:bg-subtle dark:text-white"><ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Code forms</span></Link>
+        <span className="font-heading text-body-lg font-extrabold text-ink">{project.title}</span>
         <StatusBadge status={project.status} unpublished={project.unpublishedChanges || (dirty && project.status !== "draft")} />
         <code className="hidden text-micro text-muted md:inline">/apps/{project.slug}</code>
         <div className="flex-1" />
@@ -269,7 +275,7 @@ function AppEditor({ initial }: { initial: Project }) {
           <FileTree files={files} active={active} onOpen={openFile} onRename={renameFile} onDelete={deleteFile} problems={allProblems} />
           <div className="mt-2 border-t border-hairline pt-2">
             <span className="mb-1 block px-3 text-micro font-bold uppercase tracking-[0.04em] text-muted">Form</span>
-            <button onClick={() => openFile(TUTORIAL)} className={cn("flex w-full items-center gap-1.5 py-1 pl-[10px] pr-2 text-left text-[12.5px]", active === TUTORIAL ? "bg-navsel font-semibold text-ink" : "text-ink hover:bg-rowhover")}>
+            <button onClick={() => openFile(TUTORIAL)} className={cn("flex w-full items-center gap-1.5 py-1 pl-[10px] pr-2 text-left text-label", active === TUTORIAL ? "bg-navsel font-semibold text-ink" : "text-ink hover:bg-rowhover")}>
               <GraduationCap className="h-3.5 w-3.5 shrink-0 text-muted" /> Tutorial
               <span className="ml-auto text-micro text-muted">{tutorialSteps ? `${tutorialSteps} step${tutorialSteps === 1 ? "" : "s"}` : "none"}</span>
             </button>
@@ -280,7 +286,7 @@ function AppEditor({ initial }: { initial: Project }) {
         <section className="flex min-h-0 flex-col border-r border-hairline">
           <div className="flex flex-none overflow-x-auto border-b border-hairline bg-surface">
             {open.filter((p) => p === TUTORIAL || files[p] !== undefined).map((p) => (
-              <div key={p} className={cn("group flex shrink-0 items-center gap-1 border-r border-hairline px-3 py-1.5 text-[12.5px]", p === active ? "bg-appbg font-semibold text-ink" : "text-muted hover:text-ink")}>
+              <div key={p} className={cn("group flex shrink-0 items-center gap-1 border-r border-hairline px-3 py-1.5 text-label", p === active ? "bg-appbg font-semibold text-ink" : "text-muted hover:text-ink")}>
                 <button onClick={() => setActive(p)} className="inline-flex items-center gap-1">{p === TUTORIAL ? <><GraduationCap className="h-3.5 w-3.5" /> Tutorial</> : p.split("/").pop()}</button>
                 <button onClick={() => closeFile(p)} className="rounded opacity-50 hover:opacity-100" aria-label={`Close ${p === TUTORIAL ? "Tutorial" : p}`}><X className="h-3 w-3" /></button>
               </div>
@@ -292,20 +298,20 @@ function AppEditor({ initial }: { initial: Project }) {
             ) : active && files[active] !== undefined ? (
               <CodeEditor key={active} value={files[active]} onChange={(v) => setFiles((f) => ({ ...f, [active]: v }))} language={langOf(active)} jump={jump} fill className="h-full" minHeight={200} />
             ) : (
-              <div className="grid h-full place-items-center text-[13px] text-muted">Open a file on the left.</div>
+              <div className="grid h-full place-items-center text-label text-muted">Open a file on the left.</div>
             )}
           </div>
           {/* Bottom panel */}
           <div className="flex-none border-t border-hairline bg-surface">
-            <div className="flex items-center gap-1 px-2">
+            <div className="flex items-center gap-1 overflow-x-auto px-2 pr-3 [scrollbar-width:none]">
               {([["problems", `Problems${allProblems.length ? ` (${allProblems.length})` : ""}`, AlertTriangle], ["console", `Console${consoleLines.length ? ` (${consoleLines.length})` : ""}`, Terminal], ["versions", "Versions", History], ["settings", "Settings", Pencil], ["reference", "SDK reference", BookOpen]] as const).map(([k, label, Icon]) => (
-                <button key={k} onClick={() => { setPanel(k); setPanelOpen(true); }} className={cn("inline-flex items-center gap-1 border-b-2 px-2 py-1.5 text-[12px] font-semibold", panel === k && panelOpen ? "border-navy text-ink" : "border-transparent text-muted hover:text-ink")}>
+                <button key={k} onClick={() => { setPanel(k); setPanelOpen(true); }} className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 px-2 py-1.5 text-caption font-semibold", panel === k && panelOpen ? "border-navy text-ink" : "border-transparent text-muted hover:text-ink")}>
                   <Icon className="h-3.5 w-3.5" /> {label}
                 </button>
               ))}
               <div className="flex-1" />
-              {panel === "console" && panelOpen && <button onClick={() => setConsole([])} className="text-micro font-semibold text-muted hover:text-ink">Clear</button>}
-              <button onClick={() => setPanelOpen((o) => !o)} className="rounded p-1 text-muted hover:text-ink" aria-label="Toggle panel"><ChevronDown className={cn("h-4 w-4 transition-transform", !panelOpen && "rotate-180")} /></button>
+              {panel === "console" && panelOpen && <button onClick={() => setConsole([])} className="shrink-0 px-1.5 py-1 text-caption font-semibold text-muted hover:text-ink">Clear</button>}
+              <button onClick={() => setPanelOpen((o) => !o)} className="shrink-0 rounded p-1.5 text-muted hover:text-ink" aria-label="Toggle panel"><ChevronDown className={cn("h-4 w-4 transition-transform", !panelOpen && "rotate-180")} /></button>
             </div>
             {panelOpen && (
               <div className="h-[210px] overflow-y-auto border-t border-hairline px-3 py-2 scroll-thin">
@@ -323,7 +329,7 @@ function AppEditor({ initial }: { initial: Project }) {
         {showPreview && (
           <section className="hidden min-h-0 flex-col lg:flex">
             {runtime.error ? (
-              <div className="m-4 rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-[13px] text-status-redText">
+              <div className="m-4 rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-label text-status-redText">
                 <p className="font-bold">{buildProblems.length ? "The draft doesn't build yet." : errorMessage(runtime.error, "Couldn't load the preview.")}</p>
                 {buildProblems.length > 0 && <p className="mt-1">See Problems below.</p>}
               </div>
@@ -337,7 +343,7 @@ function AppEditor({ initial }: { initial: Project }) {
                 initialMode="tablet"
                 toolbarExtra={
                   <div className="w-36">
-                    <Select value={page} onChange={(e) => setPreviewPage(e.target.value)} options={pages.map((p) => ({ value: p.id, label: p.label + (p.hidden ? " (hidden)" : "") }))} className="min-h-7 py-0.5 text-[12px]" />
+                    <Select value={page} onChange={(e) => setPreviewPage(e.target.value)} options={pages.map((p) => ({ value: p.id, label: p.label + (p.hidden ? " (hidden)" : "") }))} className="min-h-7 py-0.5 text-caption" />
                   </div>
                 }
               />
@@ -400,7 +406,7 @@ function TutorialPanel({ project, files, onFiles, onOpenFile, onTry, trying, dir
   if (!raw || unreadable) {
     return (
       <div className="p-4">
-        <div className="rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-[13px] text-status-redText">
+        <div className="rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-label text-status-redText">
           <p className="font-bold">{!raw ? "form.json isn't valid JSON yet." : "form.json's \"tutorial\" isn't in a shape this editor can read."}</p>
           <p className="mt-1">Fix it in form.json first; the tutorial editor picks it up from there.</p>
           <Button size="sm" variant="secondary" className="mt-3" onClick={() => onOpenFile("form.json")}><FileText className="h-3.5 w-3.5" /> Open form.json</Button>
@@ -452,7 +458,7 @@ function FileTree({ files, active, onOpen, onRename, onDelete, problems }: { fil
     else folders.set(f.slice(0, i), [...(folders.get(f.slice(0, i)) ?? []), f]);
   }
   const Row = ({ path, depth }: { path: string; depth: number }) => (
-    <div className={cn("group flex items-center gap-1 pr-1 text-[12.5px]", path === active ? "bg-navsel font-semibold text-ink" : "text-ink hover:bg-rowhover")} style={{ paddingLeft: 10 + depth * 12 }}>
+    <div className={cn("group flex items-center gap-1 pr-1 text-label", path === active ? "bg-navsel font-semibold text-ink" : "text-ink hover:bg-rowhover")} style={{ paddingLeft: 10 + depth * 12 }}>
       <button onClick={() => onOpen(path)} className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left">
         <FileText className={cn("h-3.5 w-3.5 shrink-0", bad.has(path) ? "text-status-redText" : "text-muted")} />
         <span className={cn("truncate", bad.has(path) && "text-status-redText")}>{path.split("/").pop()}</span>
@@ -465,7 +471,7 @@ function FileTree({ files, active, onOpen, onRename, onDelete, problems }: { fil
     <div>
       {[...folders.entries()].map(([dir, list]) => (
         <div key={dir}>
-          <button onClick={() => setClosed((c) => { const n = new Set(c); if (n.has(dir)) n.delete(dir); else n.add(dir); return n; })} className="flex w-full items-center gap-1 px-2 py-1 text-left text-[12.5px] font-semibold text-muted hover:text-ink">
+          <button onClick={() => setClosed((c) => { const n = new Set(c); if (n.has(dir)) n.delete(dir); else n.add(dir); return n; })} className="flex w-full items-center gap-1 px-2 py-1 text-left text-label font-semibold text-muted hover:text-ink">
             <ChevronRight className={cn("h-3 w-3 transition-transform", !closed.has(dir) && "rotate-90")} /> <Folder className="h-3.5 w-3.5" /> {dir}
           </button>
           {!closed.has(dir) && list.map((f) => <Row key={f} path={f} depth={1} />)}
@@ -477,9 +483,9 @@ function FileTree({ files, active, onOpen, onRename, onDelete, problems }: { fil
 }
 
 function Problems({ problems, onOpen }: { problems: FileProblem[]; onOpen: (path: string, line?: number, column?: number) => void }) {
-  if (!problems.length) return <p className="text-[12.5px] text-status-greenText">No problems — the draft builds.</p>;
+  if (!problems.length) return <p className="text-label text-status-greenText">No problems — the draft builds.</p>;
   return (
-    <ul className="space-y-1 font-mono text-[12px]">
+    <ul className="space-y-1 font-mono text-caption">
       {problems.map((p, i) => (
         <li key={i}>
           <button onClick={() => onOpen(p.file, p.line, p.column)} className="text-left hover:underline">
@@ -496,12 +502,12 @@ function Console({ lines }: { lines: ConsoleLine[] }) {
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [lines.length]);
-  if (!lines.length) return <p className="text-[12.5px] text-muted">console.log from pages (in the preview) and server code (ctx.log) shows up here.</p>;
+  if (!lines.length) return <p className="text-label text-muted">console.log from pages (in the preview) and server code (ctx.log) shows up here.</p>;
   return (
-    <div className="font-mono text-[11.5px]">
+    <div className="font-mono text-caption">
       {lines.map((l, i) => (
         <div key={i} className={cn("whitespace-pre-wrap border-b border-hairline/60 py-0.5", l.level === "error" ? "text-status-redText" : l.level === "warn" ? "text-status-amberText" : "text-ink")}>
-          <span className="mr-2 rounded bg-subtle px-1 text-[10px] uppercase text-muted">{l.source}</span>{l.text}
+          <span className="mr-2 rounded bg-subtle px-1 text-micro uppercase text-muted">{l.source}</span>{l.text}
         </div>
       ))}
       <div ref={end} />
@@ -512,9 +518,9 @@ function Console({ lines }: { lines: ConsoleLine[] }) {
 function Versions({ project, dirty, onRestored }: { project: Project; dirty: boolean; onRestored: (row: Project) => void }) {
   const toast = useToast();
   const { data } = useQuery({ queryKey: ["apps", "versions", project.id, project.liveVersion], queryFn: () => projectsApi.versions(project.id) });
-  if (!data?.length) return <p className="text-[12.5px] text-muted">Not published yet. Each publish is kept here and can be restored.</p>;
+  if (!data?.length) return <p className="text-label text-muted">Not published yet. Each publish is kept here and can be restored.</p>;
   return (
-    <ul className="space-y-1 text-[12.5px]">
+    <ul className="space-y-1 text-label">
       {data.map((v) => (
         <li key={v.version} className="flex items-center gap-2">
           <span className="font-semibold text-ink">v{v.version}</span>
@@ -539,7 +545,7 @@ function SettingsPanel({ project, onChange }: { project: Project; onChange: (p: 
   const toast = useToast();
   const current = catalog?.categories.find((c) => c.forms.some((f) => f.id === project.catalogLinkId))?.id ?? "";
   return (
-    <div className="grid max-w-xl gap-3 text-[12.5px]">
+    <div className="grid max-w-xl gap-3 text-label">
       <label className="grid gap-1">
         <span className="font-semibold text-muted">Forms screen category (the card and sidebar entry)</span>
         <Select value={current} onChange={async (e) => {
@@ -557,7 +563,7 @@ function SettingsPanel({ project, onChange }: { project: Project; onChange: (p: 
         <Link to={`/apps/${project.slug}/_notifications`} className="font-semibold text-accent dark:text-white">Open</Link>
       </div>
       <div className="rounded-input border border-hairline p-3">
-        <p className="mb-2 text-[13px] font-semibold text-ink">Who sees entries</p>
+        <p className="mb-2 text-label font-semibold text-ink">Who sees entries</p>
         <WhoSeesEntries formId={project.id} />
       </div>
       <div className="rounded-input border border-hairline p-3">
@@ -574,7 +580,7 @@ function SettingsPanel({ project, onChange }: { project: Project; onChange: (p: 
 
 function Reference() {
   const { data } = useQuery({ queryKey: ["apps", "guide"], queryFn: () => projectsApi.guide(), staleTime: 10 * 60_000 });
-  return <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink">{data ?? "Loading…"}</pre>;
+  return <pre className="whitespace-pre-wrap font-mono text-caption leading-relaxed text-ink">{data ?? "Loading…"}</pre>;
 }
 
 function PublishDialog({ open, onClose, project, dirty, save, onDone, onProblems }: {
@@ -605,7 +611,7 @@ function PublishDialog({ open, onClose, project, dirty, save, onDone, onProblems
       <DialogContent aria-describedby={undefined}>
         <DialogHeader title={project.liveVersion ? `Publish version ${project.liveVersion + 1}` : "Publish this code form"} subtitle="Everyone who can open it gets this version from their next visit." />
         <DialogBody>
-          <label className="mb-1 block text-[12px] font-semibold text-muted">What changed? (for the version history)</label>
+          <label className="mb-1 block text-caption font-semibold text-muted">What changed? (for the version history)</label>
           <Input autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void go()} />
         </DialogBody>
         <DialogFooter>

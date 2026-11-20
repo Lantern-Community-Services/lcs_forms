@@ -73,16 +73,16 @@ export default function Overview() {
             <StatTile label="Per day" value={(data.total / Math.max(1, days.length)).toFixed(1)} />
           </div>
           <Card className="p-4">
-            <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">Entries per day</p>
+            <p className="mb-3 font-heading text-body-lg font-extrabold text-ink">Entries per day</p>
             <DailyBars data={days.map((d) => ({ day: d, meals: data.byDay[d] ?? 0, entries: data.byDay[d] ?? 0, parts: { all: data.byDay[d] ?? 0 } }))} series={[{ key: "all", name: "Entries", slot: 0 }]} />
           </Card>
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="p-4">
-              <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">By site</p>
+              <p className="mb-3 font-heading text-body-lg font-extrabold text-ink">By site</p>
               <RankedBars rows={Object.entries(data.bySite).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))} unit="entries" />
             </Card>
             <Card className="p-4">
-              <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">When</p>
+              <p className="mb-3 font-heading text-body-lg font-extrabold text-ink">When</p>
               <HeatGrid heat={data.heat} />
             </Card>
           </div>

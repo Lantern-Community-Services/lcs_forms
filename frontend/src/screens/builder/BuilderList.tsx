@@ -100,14 +100,14 @@ export function AdminBuilderList() {
                   <input type="checkbox" aria-label={`Select ${f.title}`} checked={picked.has(f.id)} onChange={() => toggle(f.id)} className="h-4 w-4 accent-[rgb(var(--c-brand))]" />
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-panel bg-navsel text-accent dark:text-white"><Icon className="h-[18px] w-[18px]" /></span>
                   <Link to={`/admin/builder/${f.id}`} className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold text-ink">{f.title}</p>
+                    <p className="truncate text-body font-semibold text-ink">{f.title}</p>
                     <p className="truncate text-micro text-muted">
                       {formPath(f.slug, f.access)} · {f.fieldCount} field{f.fieldCount === 1 ? "" : "s"} · {ACCESS[f.access]} · edited {relativeTime(f.updatedAt)}{f.updatedByName ? ` by ${f.updatedByName}` : ""}
                     </p>
                   </Link>
                   <BackupSyncLabel kind="basic" slug={f.slug} />
                   <div className="hidden sm:block"><StatusBadge status={f.status} unpublished={f.unpublishedChanges} /></div>
-                  <Link to={`/f/${f.slug}/entries`} className="hidden w-24 text-right text-[13px] text-muted hover:text-accent md:block">
+                  <Link to={`/f/${f.slug}/entries`} className="hidden w-24 text-right text-label text-muted hover:text-accent md:block">
                     <span className="tabular font-semibold text-ink">{f.entryCount.toLocaleString()}</span> entr{f.entryCount === 1 ? "y" : "ies"}
                   </Link>
                   <RowMenu form={f} run={run} onOpen={() => navigate(`/admin/builder/${f.id}`)} onDelete={() => setDeleting(f)} />
@@ -118,7 +118,7 @@ export function AdminBuilderList() {
         </Card>
       )}
       <div className="mt-3 flex justify-end">
-        <button onClick={() => setArchived(!archived)} className="text-[13px] font-semibold text-accent">{archived ? "Hide archived forms" : "Show archived forms"}</button>
+        <button onClick={() => setArchived(!archived)} className="text-label font-semibold text-accent">{archived ? "Hide archived forms" : "Show archived forms"}</button>
       </div>
 
       <NewFormDialog
@@ -228,14 +228,14 @@ function NewFormDialog({ open, onClose, onCreated, startOutside }: { open: boole
         <DialogBody className="max-h-[70vh] overflow-y-auto">
           <div className="mb-4 inline-flex rounded-input border border-hairline p-0.5">
             {([["template", "Start from a template", Sparkles], ["code", "Write it in code", Code2]] as const).map(([k, label, Icon]) => (
-              <button key={k} onClick={() => setMode(k)} className={cn("inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", mode === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
+              <button key={k} onClick={() => setMode(k)} className={cn("inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-label font-semibold", mode === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
                 <Icon className="h-3.5 w-3.5" /> {label}
               </button>
             ))}
           </div>
           {mode === "template" ? (
             <>
-              <p className="mb-1.5 text-[13px] font-semibold text-ink">Who fills it in?</p>
+              <p className="mb-1.5 text-label font-semibold text-ink">Who fills it in?</p>
               <div className="mb-4 grid gap-2 sm:grid-cols-2">
                 {([
                   ["staff", Users, "Lantern staff", "People signed in to Lantern Forms. You can narrow it to some roles later."],
@@ -249,31 +249,31 @@ function NewFormDialog({ open, onClose, onCreated, startOutside }: { open: boole
                   >
                     <Icon className="mt-0.5 h-4 w-4 shrink-0 text-accent dark:text-white" aria-hidden />
                     <span>
-                      <span className="block text-[14px] font-semibold text-ink">{label}</span>
-                      <span className="mt-0.5 block text-[12.5px] text-muted">{hint}</span>
+                      <span className="block text-body font-semibold text-ink">{label}</span>
+                      <span className="mt-0.5 block text-label text-muted">{hint}</span>
                     </span>
                   </button>
                 ))}
               </div>
               {audience === "outside" && (
-                <p className="mb-4 rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">
+                <p className="mb-4 rounded-input bg-subtle px-3 py-2 text-label text-muted">
                   It's set to <b className="text-ink">Anyone with a share link</b>. Once you publish it, you and every employee who can open it get a link and QR code to hand out; entries come back here. Site and Resident questions don't work on these forms.
                 </p>
               )}
               <Field label="Title" hint="You can change it later."><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={templates.find((t) => t.key === template)?.build().title} /></Field>
-              <p className="mb-1.5 mt-4 text-[13px] font-semibold text-ink">Start from</p>
+              <p className="mb-1.5 mt-4 text-label font-semibold text-ink">Start from</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {templates.map((t) => (
                   <button key={t.key} onClick={() => setTemplate(t.key)} className={cn("rounded-card border p-3 text-left", template === t.key ? "border-navy bg-navsel" : "border-hairline hover:border-strongline")}>
-                    <p className="text-[14px] font-semibold text-ink">{t.name}</p>
-                    <p className="mt-0.5 text-[12.5px] text-muted">{t.blurb}</p>
+                    <p className="text-body font-semibold text-ink">{t.name}</p>
+                    <p className="mt-0.5 text-label text-muted">{t.blurb}</p>
                   </button>
                 ))}
               </div>
             </>
           ) : (
             <>
-              <p className="mb-2 text-[13px] text-muted">Paste or write an lcs-form document. The format is documented under Admin → AI form builder, and the builder's Code tab shows any form as code.</p>
+              <p className="mb-2 text-label text-muted">Paste or write an lcs-form document. The format is documented under Admin → AI form builder, and the builder's Code tab shows any form as code.</p>
               <CodeEditor value={code} onChange={setCode} minHeight={320} />
             </>
           )}
@@ -290,7 +290,7 @@ function NewFormDialog({ open, onClose, onCreated, startOutside }: { open: boole
 
 export function ProblemList({ problems }: { problems: { path: string; message: string }[] }) {
   return (
-    <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-input border border-status-redDot/50 bg-status-redBg p-3 text-[12.5px] text-status-redText">
+    <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-input border border-status-redDot/50 bg-status-redBg p-3 text-label text-status-redText">
       {problems.map((p, i) => (
         <li key={i}><code className="font-semibold">{p.path || "(form)"}</code> — {p.message}</li>
       ))}
@@ -346,7 +346,7 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
         <DialogHeader title="Import forms" subtitle="A Lantern form or bundle (.lcsform.json), or a Gravity Forms export (Forms → Import/Export → Export Forms)." />
         <DialogBody className="max-h-[70vh] overflow-y-auto">
           {result ? (
-            <div className="space-y-3 text-[13.5px]">
+            <div className="space-y-3 text-body">
               {result.created.length > 0 && (
                 <div>
                   <p className="font-semibold text-ink">Imported {result.created.length} form{result.created.length === 1 ? "" : "s"}:</p>
@@ -361,7 +361,7 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
               {result.warnings.length > 0 && (
                 <div className="rounded-input bg-status-amberBg p-3 text-status-amberText">
                   <p className="mb-1 font-semibold">Check these:</p>
-                  <ul className="list-disc space-y-0.5 pl-5 text-[12.5px]">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                  <ul className="list-disc space-y-0.5 pl-5 text-label">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
                 </div>
               )}
             </div>
@@ -374,15 +374,15 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
                 setText(await f.text());
                 e.target.value = "";
               }} />
-              <button onClick={() => fileRef.current?.click()} className="flex w-full flex-col items-center gap-1 rounded-card border border-dashed border-strongline bg-subtle/50 px-4 py-6 text-[13.5px] hover:bg-subtle">
+              <button onClick={() => fileRef.current?.click()} className="flex w-full flex-col items-center gap-1 rounded-card border border-dashed border-strongline bg-subtle/50 px-4 py-6 text-body hover:bg-subtle">
                 <FileUp className="h-6 w-6 text-muted" />
                 <span className="font-semibold text-accent">{fileName || "Choose a .json file"}</span>
                 <span className="text-micro text-muted">or paste the JSON below</span>
               </button>
-              <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="{ … }" className="mt-3 h-40 w-full rounded-input border border-hairline bg-surface p-2 font-mono text-[12px] text-ink" />
-              {kind && <p className={cn("mt-1 text-[12.5px] font-semibold", kind.startsWith("Not") || kind.startsWith("Unrec") ? "text-status-redText" : "text-status-greenText")}>{kind}</p>}
-              <label className="mt-3 flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} /> Publish right away (otherwise they arrive as drafts)</label>
-              <label className="mt-1 flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked={withEntries} onChange={(e) => setWithEntries(e.target.checked)} /> Bring entries too (Lantern bundles exported with entries)</label>
+              <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="{ … }" className="mt-3 h-40 w-full rounded-input border border-hairline bg-surface p-2 font-mono text-caption text-ink" />
+              {kind && <p className={cn("mt-1 text-label font-semibold", kind.startsWith("Not") || kind.startsWith("Unrec") ? "text-status-redText" : "text-status-greenText")}>{kind}</p>}
+              <label className="mt-3 flex items-center gap-2 text-body text-ink"><input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} /> Publish right away (otherwise they arrive as drafts)</label>
+              <label className="mt-1 flex items-center gap-2 text-body text-ink"><input type="checkbox" checked={withEntries} onChange={(e) => setWithEntries(e.target.checked)} /> Bring entries too (Lantern bundles exported with entries)</label>
             </>
           )}
         </DialogBody>

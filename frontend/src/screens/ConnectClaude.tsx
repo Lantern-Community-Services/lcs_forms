@@ -66,16 +66,16 @@ export function ConnectClaudePage() {
           <div className="mt-8"><LoadingState /></div>
         ) : data ? (
           <>
-            <h1 className="mt-6 text-center font-heading text-[22px] font-extrabold text-ink">
+            <h1 className="mt-6 text-center font-heading text-title font-extrabold text-ink">
               Allow {data.client} to read Lantern Forms as you?
             </h1>
-            <p className="mt-2 text-center text-[13px] text-muted">
+            <p className="mt-2 text-center text-label text-muted">
               Signed in as <strong className="text-ink">{data.user.name}</strong> ({data.user.role}) · {data.user.email}
             </p>
 
             <div className="mt-6 rounded-card border border-hairline p-4">
               <p className="kicker mb-2">{data.client} will be able to</p>
-              <ul className="grid gap-2 text-[13.5px] text-ink">
+              <ul className="grid gap-2 text-body text-ink">
                 {CAN.map((c) => (
                   <li key={c} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-status-greenDot" /> {c}</li>
                 ))}
@@ -100,7 +100,7 @@ export function ConnectClaudePage() {
           </>
         ) : (
           <>
-            <h1 className="mt-6 text-center font-heading text-[22px] font-extrabold text-ink">Connect Claude</h1>
+            <h1 className="mt-6 text-center font-heading text-title font-extrabold text-ink">Connect Claude</h1>
             <Problem text={problem ?? "This connection link didn't work. Start again from Claude."} />
           </>
         )}
@@ -111,6 +111,6 @@ export function ConnectClaudePage() {
 
 function Problem({ text }: { text: string }) {
   return (
-    <div className="mt-6 rounded-card border border-status-redDot/30 bg-status-redBg px-3.5 py-3 text-[13px] text-status-redText">{text}</div>
+    <div className="mt-6 rounded-card border border-status-redDot/30 bg-status-redBg px-3.5 py-3 text-label text-status-redText">{text}</div>
   );
 }

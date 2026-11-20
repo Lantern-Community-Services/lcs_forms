@@ -57,7 +57,7 @@ export function GroupFormsSection({ group }: { group: StaffGroup }) {
     <div className="rounded-input border border-hairline">
       <div className="flex items-start gap-2 px-3 py-2.5">
         <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] font-semibold text-ink">Forms</span>
+          <span className="block text-body font-semibold text-ink">Forms</span>
           <span className="block text-micro text-muted">
             {given.length
               ? `Its members see only these ${given.length} form${given.length === 1 ? "" : "s"}, and any given to their other groups or to them.`
@@ -74,7 +74,7 @@ export function GroupFormsSection({ group }: { group: StaffGroup }) {
         given.length > 0 && (
           <ul className="flex flex-wrap gap-1 border-t border-hairline px-3 py-2.5">
             {given.map((k) => (
-              <li key={k} className="rounded-pill bg-subtle px-2 py-0.5 text-[12px] text-ink">
+              <li key={k} className="rounded-pill bg-subtle px-2 py-0.5 text-caption text-ink">
                 {titleOf.get(k) ?? "A form no longer on the catalog"}
               </li>
             ))}
@@ -90,7 +90,7 @@ export function GroupFormsSection({ group }: { group: StaffGroup }) {
               <div key={category} className="mb-1.5">
                 <p className="py-1 text-micro font-bold uppercase tracking-wide text-muted">{category}</p>
                 {rows.map((o) => (
-                  <label key={o.key} className="flex min-h-[32px] cursor-pointer items-center gap-2 rounded-[6px] px-1 text-[13px] text-ink hover:bg-rowhover">
+                  <label key={o.key} className="flex min-h-[32px] cursor-pointer items-center gap-2 rounded-[6px] px-1 text-label text-ink hover:bg-rowhover">
                     <input
                       type="checkbox"
                       checked={editing.includes(o.key)}
@@ -138,7 +138,7 @@ export function PersonForms({ userId, name }: { userId: string; name: string }) 
   if (data.seesAll) {
     return (
       <div className="rounded-input border border-hairline px-3 py-2.5">
-        <span className="block text-[13.5px] font-semibold text-ink">Forms</span>
+        <span className="block text-body font-semibold text-ink">Forms</span>
         <span className="block text-micro text-muted">{first} sees every form, like Admins, whatever is given to their groups.</span>
       </div>
     );
@@ -189,7 +189,7 @@ export function PersonForms({ userId, name }: { userId: string; name: string }) 
     <div className="rounded-input border border-hairline">
       <div className="flex items-start gap-2 px-3 py-2.5">
         <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] font-semibold text-ink">Forms</span>
+          <span className="block text-body font-semibold text-ink">Forms</span>
           <span className="block text-micro text-muted">
             {data.limited
               ? `Their groups have forms, so ${first} sees only those. Tick more to give them, or untick to hide one.`
@@ -213,7 +213,7 @@ export function PersonForms({ userId, name }: { userId: string; name: string }) 
                 const on = f.own ?? f.fromGroups;
                 const note = f.roleOk ? why(f) : "for other roles";
                 return (
-                  <label key={f.key} className="flex min-h-[32px] cursor-pointer items-center gap-2 rounded-[6px] px-1 text-[13px] text-ink hover:bg-rowhover">
+                  <label key={f.key} className="flex min-h-[32px] cursor-pointer items-center gap-2 rounded-[6px] px-1 text-label text-ink hover:bg-rowhover">
                     <input type="checkbox" checked={on && f.roleOk} disabled={busy || !f.roleOk} onChange={(e) => void toggle(f.key, e.target.checked, f.title)} />
                     <span className={on && f.roleOk ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate text-muted"}>{f.title}</span>
                     {note && <span className={f.own !== null ? "text-micro font-semibold text-accent dark:text-white" : "text-micro text-muted"}>{note}</span>}

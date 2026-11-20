@@ -9,17 +9,18 @@ export function Spinner({ className }: { className?: string }) {
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-16 text-muted">
-      <Spinner /> <span className="text-[13.5px]">{label}</span>
+      <Spinner /> <span className="text-body">{label}</span>
     </div>
   );
 }
 
-export function EmptyState({ title, hint, icon }: { title: string; hint?: string; icon?: React.ReactNode }) {
+export function EmptyState({ title, hint, icon, action }: { title: string; hint?: string; icon?: React.ReactNode; /** What to do next: a button or link under the hint. */ action?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
       <div className="mb-1 text-muted">{icon ?? <Inbox className="h-8 w-8" />}</div>
-      <p className="text-[15px] font-semibold text-ink">{title}</p>
-      {hint && <p className="max-w-sm text-[13px] text-muted">{hint}</p>}
+      <p className="text-body-lg font-semibold text-ink">{title}</p>
+      {hint && <p className="max-w-sm text-balance text-label text-muted">{hint}</p>}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { LoadingState, EmptyState } from "@/components/ui/misc";
 import { Card } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
 import { useDeviceKind } from "@/lib/device";
+import { setAppFocus, useAppFocus } from "@/lib/appFocus";
 import { useAuth } from "@/lib/auth";
 import { lazyScreen } from "@/lib/lazyScreen";
 import { cn, errorMessage } from "@/lib/utils";
@@ -38,6 +39,10 @@ export function AppHostPage() {
   // The code editor is desktop only, so no way into it elsewhere.
   const desktop = useDeviceKind() === "desktop";
   const canOpenEditor = desktop;
+  // A multi-step report asked for the whole screen (SDK app.focus): on a phone or tablet the
+  // tabs go (the shell hides the dock). Leaving the page, or the form, gives them back.
+  const fullScreen = useAppFocus() && !desktop;
+  useEffect(() => () => setAppFocus(false), [slug, page]);
   // ?draft=1: the unsaved-to-live draft, for developers — what the code editor's device previews load.
   const draft = search.get("draft") === "1";
   const { data: runtime, isLoading, error } = useAppRuntime(slug, draft);
@@ -106,7 +111,7 @@ export function AppHostPage() {
     : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <FormTabsHeader
+      {!fullScreen && <FormTabsHeader
         title={runtime.form.title}
         className={HEADER_WIDTH[headerWidth]}
         showTabs={!locked && (visible.length > 1 || canRoute)}
@@ -138,7 +143,7 @@ export function AppHostPage() {
             )}
           </>
         }
-      />
+      />}
       {onRouting ? (
         <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
           <Suspense fallback={<LoadingState />}>
@@ -146,8 +151,10 @@ export function AppHostPage() {
           </Suspense>
         </div>
       ) : (
-      /* Like the Roster: the page sits straight on the white main area, in a centered column — no sheet edges or shadow. */
-      <div className={cn("mx-auto min-h-0 w-full flex-1", FRAME_WIDTH[width])}>
+      /* Like the Roster: the page sits straight on the white main area, in a centered column — no sheet edges or shadow.
+         Full screen, the frame still clears the status bar and the home indicator: a frame can't read the
+         safe areas itself, so the host pads them here. */
+      <div className={cn("mx-auto min-h-0 w-full flex-1", FRAME_WIDTH[width])} style={fullScreen ? { paddingTop: "var(--safe-top)", paddingBottom: "var(--safe-bottom)" } : undefined}>
         <AppFrame
           runtime={runtime}
           slug={slug}
@@ -156,6 +163,7 @@ export function AppHostPage() {
           params={params}
           onNavigate={(p, prm) => navigate(`/apps/${slug}/${p}${withDraft(prm)}`)}
           onSetParams={(prm) => setSearch(new URLSearchParams(withDraft(prm).slice(1)), { replace: true })}
+          onFocus={(on) => setAppFocus(on && !desktop)}
           onConsole={relay}
         />
       </div>

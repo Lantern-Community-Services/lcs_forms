@@ -95,13 +95,13 @@ function HmisExport({ from, to, sites, canSsn }: { from: string; to: string; sit
   return (
     <Card className="p-4">
       <p className="kicker mb-1">HMIS export</p>
-      <p className="text-[13px] text-muted">
+      <p className="text-label text-muted">
         HUD's HMIS CSV files (FY2026) for {where}, {fmtDay(from)} to {fmtDay(to)}: clients, enrollments and exits, income and benefits, health
         and disabilities, in one zip to upload to the CoC's HMIS. Each export is logged.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-4">
         {canSsn && (
-          <label className="flex items-center gap-2 text-[13px]">
+          <label className="flex items-center gap-2 text-label">
             <Checkbox checked={ssn} onCheckedChange={(v) => setSsn(v === true)} />
             Include whole Social Security Numbers
           </label>
@@ -141,28 +141,28 @@ function Report({ r }: { r: ResidencyReport }) {
       <Section title="By month">
         {r.months.length ? (
           <Table head={["Month", "Moved in", "Transferred in", "Moved out", "Transferred out"]} rows={r.months.map((m) => [monthName(m.month), m.moveIns, m.transfersIn, m.moveOuts, m.transfersOut])} />
-        ) : <p className="text-[13px] text-muted">No moves in these dates.</p>}
+        ) : <p className="text-label text-muted">No moves in these dates.</p>}
       </Section>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Section title="Why they moved out">
-          {r.reasons.length ? <Table head={["Reason", "People"]} rows={r.reasons.map((x) => [x.label, x.count])} /> : <p className="text-[13px] text-muted">Nobody moved out.</p>}
+          {r.reasons.length ? <Table head={["Reason", "People"]} rows={r.reasons.map((x) => [x.label, x.count])} /> : <p className="text-label text-muted">Nobody moved out.</p>}
         </Section>
         <Section title="Where they went (HUD)">
-          {r.destinations.length ? <Table head={["Destination", "People"]} rows={r.destinations.map((x) => [x.label, x.count])} /> : <p className="text-[13px] text-muted">Nobody moved out.</p>}
+          {r.destinations.length ? <Table head={["Destination", "People"]} rows={r.destinations.map((x) => [x.label, x.count])} /> : <p className="text-label text-muted">Nobody moved out.</p>}
         </Section>
       </div>
 
       <Section title="Checklist done on time" note={`Due in these dates: ${c.due}. Done on time ${pct(c.onTime, c.due)}, late ${pct(c.late, c.due)}, still open ${pct(c.missing, c.due)}${c.skipped ? `, not needed ${c.skipped}` : ""}.`}>
         {c.byTask.length ? (
           <Table head={["Paperwork", "Due", "On time", "Still open"]} rows={c.byTask.map((t) => [t.label, t.due, `${t.onTime} (${pct(t.onTime, t.due)})`, t.missing])} />
-        ) : <p className="text-[13px] text-muted">Nothing was due.</p>}
+        ) : <p className="text-label text-muted">Nothing was due.</p>}
       </Section>
 
       <Section title="Vacant units now">
         {r.vacancies.length ? (
           <Table head={["Site", "Unit", "Type", "Vacant since", "Days"]} rows={r.vacancies.map((v) => [v.siteName, v.label, v.unitType ?? "—", fmtDay(v.vacantSince), v.days ?? "—"])} />
-        ) : <p className="text-[13px] text-muted">No vacant units.</p>}
+        ) : <p className="text-label text-muted">No vacant units.</p>}
       </Section>
     </div>
   );
@@ -172,7 +172,7 @@ function Tile({ label, value, hint }: { label: string; value: React.ReactNode; h
   return (
     <Card className="p-3">
       <p className="text-micro font-semibold text-muted">{label}</p>
-      <p className="mt-0.5 font-heading text-[20px] font-extrabold tabular text-ink">{value}</p>
+      <p className="mt-0.5 font-heading text-title-sm font-extrabold tabular text-ink">{value}</p>
       {hint && <p className="text-micro text-muted">{hint}</p>}
     </Card>
   );
@@ -190,7 +190,7 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 
 function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
   return (
-    <table className="w-full text-left text-[13px]">
+    <table className="w-full text-left text-label">
       <thead>
         <tr className="border-b border-hairline text-micro uppercase tracking-[0.04em] text-muted">
           {head.map((h, i) => <th key={h} className={`py-1.5 pr-3 font-bold ${i > 0 ? "text-right" : ""}`}>{h}</th>)}

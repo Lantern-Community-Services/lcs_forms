@@ -68,6 +68,8 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   const fixed = (roster ? 5 : 4) + (caseload ? 1 : 0); // Home, Roster, (Caseload,) Calendar, All forms, the account slot
   const tabletPins = Math.min(MAX_NAV_PINS, Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed));
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
+  const inForms = pathname === "/forms" || pathname.startsWith("/f/") || pathname.startsWith("/apps/");
+  const pinLit = pins.some((p) => isInternalForm(p.form.url) && lit(p.form.url));
 
   const home = <DockLink key="home" tour="dock-home" to="/home" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/home"} phone={phone} onClick={onCloseLauncher} />;
   const rosterItem = roster && (
@@ -80,10 +82,11 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
     <DockLink key="calendar" tour="dock-calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} onClick={onCloseLauncher} />
   );
   const all = (
-    <DockButton key="all" tour="dock-all" label="All forms" Icon={LayoutGrid} active={launcherOpen} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
+    // In a form (or on Forms) "All forms" is where you are, unless that form has its own pin.
+    <DockButton key="all" tour="dock-all" label="All forms" Icon={LayoutGrid} active={launcherOpen || (inForms && !pinLit)} onClick={onToggleLauncher} phone={phone} expanded={launcherOpen} />
   );
   const account = (
-    <DockAccount key="account" active={menuOpen || pathname === "/profile" || pathname.startsWith("/notifications")} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
+    <DockAccount key="account" active={menuOpen || (!launcherOpen && (pathname === "/profile" || ["/notifications", "/help", "/admin"].some((p) => pathname.startsWith(p))))} open={menuOpen} phone={phone} onClick={() => { onCloseLauncher(); setMenuOpen((o) => !o); }} />
   );
   const pinItems = pins.map((p) => <DockPin key={p.form.id} pin={p} active={!launcherOpen && isInternalForm(p.form.url) && lit(p.form.url)} phone={phone} onClick={onCloseLauncher} />);
 
@@ -155,7 +158,7 @@ function useSize(ref: React.RefObject<HTMLElement | null>): { width: number; hei
 const itemClass = (active: boolean, phone: boolean) =>
   cn(
     "relative flex min-h-[56px] flex-col items-center justify-center gap-[3px] px-1 font-bold transition-colors",
-    phone ? "rounded-[18px] text-[10.5px]" : "w-[78px] rounded-[18px] text-[11.5px]",
+    phone ? "rounded-[18px] text-micro" : "w-[78px] rounded-[18px] text-caption",
     active ? "bg-navy text-navy-fg dark:bg-navsel" : "text-muted hover:bg-navsel/60 hover:text-ink"
   );
 
@@ -163,7 +166,7 @@ function Badge({ count }: { count: number }) {
   return (
     <span
       aria-label={`${count} to review`}
-      className="absolute right-[calc(50%-22px)] top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-pill bg-status-amberBg px-1 text-[10px] font-extrabold text-status-amberText"
+      className="absolute right-[calc(50%-22px)] top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-pill bg-status-amberBg px-1 text-micro font-extrabold text-status-amberText"
     >
       {count > 99 ? "99+" : count}
     </span>
@@ -230,30 +233,30 @@ function AccountMenu({ phone, onClose }: { phone: boolean; onClose: () => void }
         <div className="flex items-center gap-3 border-b border-hairline bg-sidebar px-4 py-3">
           <Avatar name={user?.name ?? "?"} color={user?.avatarColor} />
           <span className="min-w-0">
-            <span className="block truncate text-[14px] font-bold text-ink">{user?.name}</span>
+            <span className="block truncate text-body font-bold text-ink">{user?.name}</span>
             <span className="block truncate text-micro text-muted">{user?.role?.name}</span>
           </span>
         </div>
-        <NavLink to="/notifications" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+        <NavLink to="/notifications" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-body font-semibold text-ink active:bg-rowhover">
           <span className="flex-1">Notifications</span>
           {unread > 0 && <CountBadge count={unread} max={99} label={`${unread} unread`} />}
           <ChevronRight className="h-4 w-4 text-muted" />
         </NavLink>
-        <NavLink to="/help" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+        <NavLink to="/help" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-body font-semibold text-ink active:bg-rowhover">
           <span className="flex-1">Help</span>
           <ChevronRight className="h-4 w-4 text-muted" />
         </NavLink>
         {people && (
-          <NavLink to="/admin/people" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+          <NavLink to="/admin/people" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-body font-semibold text-ink active:bg-rowhover">
             <span className="flex-1">{isSiteSettingsOnly(can) ? "Site settings" : "People & roles"}</span>
             <ChevronRight className="h-4 w-4 text-muted" />
           </NavLink>
         )}
-        <NavLink to="/profile" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-[14px] font-semibold text-ink active:bg-rowhover">
+        <NavLink to="/profile" onClick={onClose} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 text-body font-semibold text-ink active:bg-rowhover">
           <span className="flex-1">Profile &amp; settings</span>
           <ChevronRight className="h-4 w-4 text-muted" />
         </NavLink>
-        <button type="button" onClick={() => void logout()} className="flex min-h-[50px] w-full items-center gap-3 px-4 text-left text-[14px] font-semibold text-status-redText active:bg-rowhover">
+        <button type="button" onClick={() => void logout()} className="flex min-h-[50px] w-full items-center gap-3 px-4 text-left text-body font-semibold text-status-redText active:bg-rowhover">
           <LogOut className="h-[18px] w-[18px]" /> Sign out
         </button>
       </div>
@@ -395,13 +398,13 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
         <div className={cn("flex-none px-4 pb-3", phone ? "pt-2.5" : "pt-5 md:px-6")}>
           {phone && <span className="mx-auto mb-2.5 block h-[5px] w-10 rounded-pill bg-hairline" aria-hidden />}
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="flex-1 font-heading text-[21px] font-extrabold text-ink">All forms</h2>
+            <h2 className="flex-1 font-heading text-title-sm font-extrabold text-ink">All forms</h2>
             <button
               type="button"
               onClick={() => setEditing((e) => !e)}
               aria-pressed={editing}
               className={cn(
-                "flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-bold transition-colors",
+                "flex h-10 items-center gap-1.5 rounded-full px-4 text-body font-bold transition-colors",
                 editing ? "bg-navy text-navy-fg dark:bg-accent" : "bg-navsel/70 text-ink"
               )}
             >
@@ -419,7 +422,7 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
             results.length > 0 ? (
               <div className={cn(TILE_GRID, "pt-1")}>{results.map((r) => tile(r.form, r.Icon, r.form.id))}</div>
             ) : (
-              <p className="py-2 text-[14px] text-muted">No forms match. Try a shorter word.</p>
+              <p className="py-2 text-body text-muted">No forms match. Try a shorter word.</p>
             )
           ) : (
             <div className="grid gap-y-6 pt-1">
@@ -519,7 +522,7 @@ function useSwipeDown(sheetRef: React.RefObject<HTMLDivElement | null>, listRef:
 function Group({ title, Icon, children }: { title: string; Icon?: React.ElementType; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 flex items-center gap-2 text-micro font-extrabold uppercase tracking-[0.04em] text-muted">
+      <h3 className="mb-2 flex items-center gap-2 text-body font-extrabold text-ink">
         {Icon && (
           <span className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-navy text-navy-fg dark:bg-navsel">
             <Icon className="h-3.5 w-3.5" />
@@ -541,13 +544,13 @@ function PinRow({ count, editing, phone, children }: { count: number; editing: b
   const open = Math.max(0, MAX_NAV_PINS - count);
   return (
     <section className="rounded-[18px] bg-sidebar px-2 pb-2 pt-2.5">
-      <h3 className="mb-2 flex items-center gap-1.5 px-1 text-micro font-extrabold uppercase tracking-[0.04em] text-muted">
+      <h3 className="mb-2 flex items-center gap-1.5 px-1 text-body font-extrabold text-ink">
         <Pin className="h-3.5 w-3.5" />
         <span className="flex-1">Pinned</span>
         <span className="font-bold normal-case tracking-normal">{count} of {MAX_NAV_PINS}</span>
       </h3>
       {count === 0 && !editing ? (
-        <p className="px-1 pb-1.5 text-[13px] text-muted">Tap Edit pins, or press and hold a form, to keep it here and in the dock.</p>
+        <p className="px-1 pb-1.5 text-label text-muted">Tap Edit pins, or press and hold a form, to keep it here and in the dock.</p>
       ) : (
         // A phone's five fill the width; a tablet's line up with the tiles below.
         <div className={phone ? "grid grid-cols-5 gap-x-1 gap-y-4" : TILE_GRID}>
@@ -625,7 +628,7 @@ function AppTile({ form, Icon, lit, count, onPick, editing, pinned, markPinned, 
           </span>
         )}
       </span>
-      <span className={cn("line-clamp-2 w-full break-words text-[12px] leading-[15px] text-ink", lit ? "font-extrabold" : "font-semibold")}>
+      <span className={cn("line-clamp-2 w-full break-words text-caption leading-[15px] text-ink", lit ? "font-extrabold" : "font-semibold")}>
         {shortFormName(form.title)}
       </span>
     </>

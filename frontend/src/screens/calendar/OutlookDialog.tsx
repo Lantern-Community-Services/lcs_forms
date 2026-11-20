@@ -92,11 +92,11 @@ export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () =>
     >
       {p && (
         <div className="space-y-6 pb-1">
-          <p className="text-[14px] text-ink">
+          <p className="text-body text-ink">
             Choose which calendar events go to your own Outlook calendar{data?.email ? <> ({data.email})</> : null} and how they arrive. They stay up to date when they change here. Nothing to set up in Outlook.
           </p>
           {data && !data.enabled && (
-            <p className="rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
+            <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
               Sending to Outlook isn't switched on yet. Your choices are kept, and events start arriving once it is.
             </p>
           )}
@@ -109,7 +109,7 @@ export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () =>
                 <Row key={s.id} on={p.siteIds.includes(s.id)} onClick={() => toggleSite(s.id)} title={s.name} />
               ))}
             </ul>
-            {sites.length === 0 && <p className="mt-2 text-[12.5px] text-muted">You aren't assigned to any sites yet, so only every-site events can be added.</p>}
+            {sites.length === 0 && <p className="mt-2 text-label text-muted">You aren't assigned to any sites yet, so only every-site events can be added.</p>}
           </section>
 
           <section>
@@ -148,7 +148,7 @@ export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () =>
           <section className="space-y-2">
             <SectionHead title="Events added quietly" />
             <div className="flex items-center justify-between gap-3 rounded-input border border-hairline px-3 py-2">
-              <span className="text-[13.5px] font-semibold text-ink">Reminder</span>
+              <span className="text-body font-semibold text-ink">Reminder</span>
               <div className="w-[200px]">
                 <Select
                   value={p.reminderMinutes === null ? "none" : String(p.reminderMinutes)}
@@ -170,9 +170,9 @@ export function OutlookDialog({ open, onClose }: { open: boolean; onClose: () =>
 function SectionHead({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
     <div className="mb-1.5 flex items-center justify-between">
-      <p className="text-[12px] font-bold uppercase tracking-[0.04em] text-muted">{title}</p>
+      <p className="text-caption font-bold uppercase tracking-[0.04em] text-muted">{title}</p>
       {action && (
-        <button type="button" onClick={onAction} className="text-[12.5px] font-semibold text-accent dark:text-white">
+        <button type="button" onClick={onAction} className="text-label font-semibold text-accent dark:text-white">
           {action}
         </button>
       )}
@@ -188,7 +188,7 @@ function Row({ on, onClick, title, hint }: { on: boolean; onClick: () => void; t
           {on && <Check className="h-3 w-3 text-white dark:text-navy" strokeWidth={3} />}
         </span>
         <span className="min-w-0">
-          <span className="block text-[14px] font-semibold text-ink">{title}</span>
+          <span className="block text-body font-semibold text-ink">{title}</span>
           {hint && <span className="block text-micro text-muted">{hint}</span>}
         </span>
       </button>
@@ -204,7 +204,7 @@ function CategoryToggle({ on, color, label, onClick }: { on: boolean; color: str
       aria-checked={on}
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border px-3 text-[12.5px] font-semibold transition-colors md:min-h-[32px]",
+        "inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border px-3 text-label font-semibold transition-colors md:min-h-[32px]",
         on ? "border-hairline bg-surface text-ink hover:bg-navsel/60" : "border-dashed border-hairline text-muted line-through decoration-muted/60"
       )}
     >
@@ -218,7 +218,7 @@ function SwitchRow({ on, onChange, title, hint }: { on: boolean; onChange: (v: b
   return (
     <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
       <span>
-        <span className="block text-[13.5px] font-semibold text-ink">{title}</span>
+        <span className="block text-body font-semibold text-ink">{title}</span>
         <span className="block text-micro text-muted">{hint}</span>
       </span>
       <Switch checked={on} onCheckedChange={onChange} className="mt-0.5" />

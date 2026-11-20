@@ -112,18 +112,18 @@ export function DevicePreview({
       <div className="flex flex-none flex-wrap items-center gap-1.5 border-b border-hairline bg-surface px-3 py-1.5">
         <div className="inline-flex rounded-input border border-hairline p-0.5">
           {([["phone", "Phone", Smartphone], ["tablet", "iPad", Tablet], ["desktop", "Desktop", Laptop], ["both", "iPad + phone", null]] as const).map(([m, label, Icon]) => (
-            <button key={m} type="button" onClick={() => update({ mode: m })} className={cn("inline-flex items-center gap-1 rounded-[5px] px-2 py-1 text-[12px] font-semibold", s.mode === m ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
+            <button key={m} type="button" onClick={() => update({ mode: m })} className={cn("inline-flex items-center gap-1 rounded-[5px] px-2 py-1 text-caption font-semibold", s.mode === m ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
               {Icon && <Icon className="h-3.5 w-3.5" />} {label}
             </button>
           ))}
         </div>
         {kinds.map((k) => (
-          <select key={k} value={s[k]} onChange={(e) => update({ [k]: e.target.value } as Partial<Saved>)} aria-label={`${k} model`} className="h-7 rounded-input border border-hairline bg-surface px-1.5 text-[12px] text-ink">
+          <select key={k} value={s[k]} onChange={(e) => update({ [k]: e.target.value } as Partial<Saved>)} aria-label={`${k} model`} className="h-7 rounded-input border border-hairline bg-surface px-1.5 text-caption text-ink">
             {Object.keys(MODELS[k]).map((name) => <option key={name}>{name}</option>)}
           </select>
         ))}
         {s.mode !== "desktop" && (
-          <button type="button" onClick={() => update({ landscape: !s.landscape })} className="inline-flex h-7 items-center gap-1 rounded-input border border-hairline px-2 text-[12px] font-semibold text-ink hover:border-strongline" title="Rotate">
+          <button type="button" onClick={() => update({ landscape: !s.landscape })} className="inline-flex h-7 items-center gap-1 rounded-input border border-hairline px-2 text-caption font-semibold text-ink hover:border-strongline" title="Rotate">
             <RotateCw className="h-3.5 w-3.5" /> {s.landscape ? "Landscape" : "Portrait"}
           </button>
         )}
@@ -201,13 +201,13 @@ function Device({ kind, model, size, outer, scale, landscape, src, reload, onLoa
             {kind === "desktop" ? (
               <div className="flex flex-none items-center gap-1.5 border-b border-[#d9dde5] bg-[#eef0f4] px-3" style={{ height: c.bar }}>
                 <span className="h-3 w-3 rounded-full bg-[#ff5f57]" /><span className="h-3 w-3 rounded-full bg-[#febc2e]" /><span className="h-3 w-3 rounded-full bg-[#28c840]" />
-                <span className="ml-4 flex-1 truncate rounded-md bg-white px-3 py-1 text-[12px] text-[#6a7189]">{location.host}{src}</span>
+                <span className="ml-4 flex-1 truncate rounded-md bg-white px-3 py-1 text-caption text-[#6a7189]">{location.host}{src}</span>
               </div>
             ) : (
               <div className={cn("relative flex flex-none items-center justify-between font-semibold", dark ? "text-[#f2f2f2]" : "text-[#111]")} style={{ height: c.bar, background: bar || "#fbfcfd", padding: kind === "phone" ? "0 30px" : "0 22px", fontSize: kind === "phone" ? 15 : 12 }}>
                 <span>{clock}</span>
                 {kind === "phone" && <span className="absolute left-1/2 top-[11px] h-[34px] w-[120px] -translate-x-1/2 rounded-[20px] bg-black" />}
-                <span className="text-[12px] tracking-[2px]">●●● 100%</span>
+                <span className="text-caption tracking-[2px]">●●● 100%</span>
               </div>
             )}
             <iframe

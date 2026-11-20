@@ -24,6 +24,8 @@ export const theme: Config["theme"] = {
         ink: v("--c-ink"),
         muted: v("--c-muted"),
         hairline: v("--c-hairline"),
+        // A form field's edge: 3:1 against the page, so a field reads as a field (WCAG 1.4.11).
+        fieldline: v("--c-fieldline"),
         divider: v("--c-divider"),
         appbg: v("--c-appbg"),
         surface: v("--c-surface"),
@@ -58,6 +60,11 @@ export const theme: Config["theme"] = {
           redDot: v("--st-red-dot"),
           neutralBg: v("--st-neutral-bg"),
           neutralText: v("--st-neutral-text"),
+          // Solid fills that carry white text (Success / Danger buttons, "Done" chips):
+          // 4.5:1 with white in light and dark. The *Dot colours are for dots, not text.
+          greenFill: v("--st-green-fill"),
+          redFill: v("--st-red-fill"),
+          amberFill: v("--st-amber-fill"),
         },
         aibanner: {
           bg: v("--c-aibanner-bg"),
@@ -85,9 +92,26 @@ export const theme: Config["theme"] = {
         modal: "0 24px 60px rgba(35,42,58,.28)",
         card: "0 1px 2px rgba(35,42,58,.06)",
       },
+      /**
+       * The type scale: one named step per role instead of hand-picked pixel
+       * sizes. The small steps grow by 1px on a phone or tablet (index.css,
+       * html[data-device]), where text is read at arm's length.
+       *   micro 11/12 · caption 12/13 · label 13/14 · body 14/15 · body-lg 15/16
+       *   lead 17 · title-sm 20 · title 24 · display 28
+       */
+      // Sizes only, apart from micro and meta (as before): line heights stay
+      // whatever the element already had (inherited, or its own leading-*).
       fontSize: {
-        micro: ["11px", "1.4"],
-        meta: ["11.5px", "1.4"],
+        micro: ["var(--fs-micro)", "1.4"],
+        meta: ["var(--fs-caption)", "1.4"],
+        caption: "var(--fs-caption)",
+        label: "var(--fs-label)",
+        body: "var(--fs-body)",
+        "body-lg": "var(--fs-body-lg)",
+        lead: "17px",
+        "title-sm": "20px",
+        title: "24px",
+        display: "28px",
       },
       /**
        * Phone chrome: the notch insets folded into ordinary padding, so
@@ -119,9 +143,23 @@ export const FRAME_BREAKPOINTS = { sm: 640, md: 768, lg: 1024, xl: 1280, "2xl": 
 
 type AddVariant = (name: string, selector: string) => void;
 
+/**
+ * `touch:` — on a phone or a tablet (the shell, and a code form's runtime, keep
+ * the device on <html data-device>). Controls use it to reach a 44px target.
+ * `:is()` rather than `:where()`: its specificity lets `touch:` win over `md:`,
+ * which on an iPad would otherwise put the desktop size back.
+ */
+export const TOUCH_SELECTOR = ':is(html[data-device="phone"], html[data-device="tablet"]) &';
+
+/** The app's own Tailwind build: the `touch:` variant. */
+export const touchPlugin = {
+  handler: ({ addVariant }: { addVariant: AddVariant }) => addVariant("touch", TOUCH_SELECTOR),
+};
+
 /** A Tailwind plugin (the handler form works on the plain object API). */
 export const framePlugin = {
   handler: ({ addVariant }: { addVariant: AddVariant }) => {
+    addVariant("touch", TOUCH_SELECTOR);
     const names = Object.keys(FRAME_BREAKPOINTS);
     for (const n of names) addVariant(n, `:where(html[data-bp~="${n}"]) &`);
     for (const n of [...names].reverse()) addVariant(`max-${n}`, `:where(html:not([data-bp~="${n}"])) &`);

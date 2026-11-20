@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { HomeDashboard } from "@/components/home/dashboard/HomeDashboard";
-import { ActivityPanel, AppTiles, PhoneAttention } from "@/components/home/panels";
+import { ActivityPanel, AppTiles } from "@/components/home/panels";
+import { NeedsYouToday, StartFormTiles, useStartForms } from "@/components/home/StartForms";
 import { Page } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { SearchInput } from "@/components/ui/input";
@@ -16,8 +17,9 @@ import { PhoneForms, useCatalogBrowser } from "./Forms";
  *
  * - tablet and desktop: the person's own dashboard of widgets, starting on a
  *   simple default (components/home/dashboard);
- * - phone: one attention banner, then the forms (pinned and by category),
- *   since a phone has no sidebar to reach the Forms page from, then activity.
+ * - phone: "Needs you today" (the first few, the rest a tap away), "Start a
+ *   form" (pinned, then recently used), then the forms by category, since a
+ *   phone has no sidebar to reach the Forms page from, then activity.
  */
 export function HomePage() {
   const { user } = useAuth();
@@ -32,6 +34,8 @@ export function HomePage() {
   }, [homeOnly, homeApps.data]);
   const appTiles = homeApps.data?.tiles ?? [];
   const catalog = useCatalogBrowser();
+  // Three, plus the "All forms" tile: two rows of two on a phone.
+  const startItems = useStartForms(catalog.favoriteForms, home.data?.recentForms, catalog.categories, 3, home.data?.shortcutForms);
 
   const first = user?.name.split(" ")[0];
   const greeting = `${greetingWord()}${first ? `, ${first}` : ""}`;
@@ -44,20 +48,25 @@ export function HomePage() {
   return (
     <div className="flex min-h-full flex-col">
       {/* ── Phone ─────────────────────────────────────────────────────── */}
-      <PhoneHeader title={greeting} subtitle={today} enter>
+      <PhoneHeader title={greeting} subtitle={subtitle} enter>
         <div data-tour="home-search" className="enter-up mt-3">
           <SearchInput value={catalog.q} onChange={(e) => catalog.setQ(e.target.value)} placeholder="Find a form" aria-label="Find a form" />
         </div>
       </PhoneHeader>
 
-      <div className="flex flex-col gap-4 px-4 py-4 md:hidden">
+      <div className="flex flex-col gap-5 px-4 py-4 md:hidden">
         {!catalog.searching && !catalog.pick && (
           <>
-            <PhoneAttention home={home.data} />
+            {/* What needs the person, then the forms they're most likely to start. */}
+            <NeedsYouToday home={home.data} />
+            <section className="enter-up" data-tour="home-start">
+              <h2 className="mb-2 font-heading text-body-lg font-extrabold text-ink">Start a form</h2>
+              <StartFormTiles items={startItems} allFormsCount={catalog.totalForms} />
+            </section>
             <AppTiles tiles={appTiles} />
           </>
         )}
-        <PhoneForms c={catalog} after={<ActivityPanel home={home.data} loading={home.isLoading} failed={home.isError} limit={4} className="mt-1" />} />
+        <PhoneForms c={catalog} hidePinned after={<ActivityPanel home={home.data} loading={home.isLoading} failed={home.isError} limit={4} className="mt-1" />} />
       </div>
 
       {/* ── Tablet and desktop ────────────────────────────────────────── */}
@@ -66,8 +75,8 @@ export function HomePage() {
         <HomeDashboard
           heading={
             <>
-              <h1 className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">{greeting}</h1>
-              <p className="mt-1 text-[13.5px] text-muted">{subtitle}</p>
+              <h1 className="text-title font-heading font-extrabold text-ink xl:text-display">{greeting}</h1>
+              <p className="mt-1 text-body text-muted">{subtitle}</p>
             </>
           }
           ctx={{

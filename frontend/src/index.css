@@ -15,7 +15,8 @@
   --c-surface: 255 255 255;
   --c-sidebar: 251 252 253;
   --c-ink: 35 42 58;
-  --c-muted: 106 113 137;
+  /* Secondary text: 4.5:1 or better on white and on every tinted fill it sits on (navsel, subtle). */
+  --c-muted: 90 97 120;
   --c-hairline: 226 230 238;
   --c-divider: 221 226 234;
   --c-rowhover: 246 248 251;
@@ -26,6 +27,16 @@
   --c-subtle: 241 244 249;    /* light gray fill (was #f4f6f9 / #f8fafc / #f3f5fa) */
   --c-subtle2: 238 241 246;   /* slightly cooler fill (was #eef1f6 / #eef1f5) */
   --c-strongline: 195 205 222;/* stronger border (was #c3cdde / #b9c2d3) */
+  /* A form field's edge: 3:1 against white, so an empty field still reads as one (WCAG 1.4.11). */
+  --c-fieldline: 124 133 152;
+
+  /* The type scale's small steps (tailwind.theme.ts fontSize). They grow by
+     1px on a phone or tablet, below. */
+  --fs-micro: 11px;
+  --fs-caption: 12px;
+  --fs-label: 13px;
+  --fs-body: 14px;
+  --fs-body-lg: 15px;
 
   /* Accent for links / interactive text. Navy in light, lightened in dark so
      it stays readable on dark surfaces (bg-navy buttons keep the fixed navy). */
@@ -38,6 +49,8 @@
   --st-green-bg: 226 239 231;  --st-green-text: 47 107 66;   --st-green-dot: 78 156 107;
   --st-red-bg: 251 232 229;    --st-red-text: 165 55 42;     --st-red-dot: 207 90 72;
   --st-neutral-bg: 236 239 244; --st-neutral-text: 82 90 110;
+  /* Solid fills under white text (Success / Danger buttons, "Done" chips): 4.5:1 or better. */
+  --st-green-fill: 47 107 66;  --st-red-fill: 165 55 42;     --st-amber-fill: 138 90 17;
 
   /* Teal (AI accent). */
   --c-teal: 47 143 127;  --c-teal-tint: 238 247 244;  --c-teal-tintborder: 207 230 223;
@@ -86,7 +99,26 @@
   --tabbar-bottom: max(20px, calc(8px + var(--safe-bottom)));
 }
 
+/* Phones and tablets are read at arm's length: the small type steps grow by 1px.
+   The shell and a code form's runtime both keep the device on <html data-device>. */
+html[data-device="phone"],
+html[data-device="tablet"] {
+  --fs-micro: 12px;
+  --fs-caption: 13px;
+  --fs-label: 14px;
+  --fs-body: 15px;
+  --fs-body-lg: 16px;
+}
+
 .dark {
+  /* Brand fills (primary buttons, the selected dock item, switches) lifted so they
+     stand 3:1 off the near-black page and still carry white text at 6:1. */
+  --c-brand: 80 95 150;
+  --c-brand-600: 70 84 134;
+  --c-brand-700: 60 72 118;
+  --c-fieldline: 112 112 112;
+  --st-green-fill: 34 110 66;  --st-red-fill: 178 64 50;     --st-amber-fill: 150 98 20;
+
   --c-appbg: 8 8 8;
   --c-surface: 15 15 15;
   --c-sidebar: 5 5 5;
@@ -139,7 +171,8 @@
    interactive color. Avatar colors remain personal and never read these tokens. */
 html:not(.dark)[data-theme="ocean"] {
   --c-brand: 14 116 144; --c-brand-600: 12 94 117; --c-brand-700: 10 75 93;
-  --c-sidebar: 239 249 252; --c-navsel: 202 232 241; --c-rowhover: 242 250 253; --c-accent: 14 116 144;
+  /* Accent a step deeper than the brand so the selected nav item's label holds 4.5:1 on its tint. */
+  --c-sidebar: 239 249 252; --c-navsel: 202 232 241; --c-rowhover: 242 250 253; --c-accent: 12 100 125;
 }
 html:not(.dark)[data-theme="plum"] {
   --c-brand: 109 40 115; --c-brand-600: 88 32 93; --c-brand-700: 68 25 72;
@@ -159,11 +192,11 @@ html.dark[data-theme="ocean"] {
   --c-sidebar: 6 20 24; --c-navsel: 18 56 66; --c-rowhover: 18 30 34; --c-accent: 125 200 222;
 }
 html.dark[data-theme="plum"] {
-  --c-brand: 109 40 115; --c-brand-600: 88 32 93; --c-brand-700: 68 25 72;
+  --c-brand: 150 66 158; --c-brand-600: 128 56 135; --c-brand-700: 106 46 112;
   --c-sidebar: 18 8 19; --c-navsel: 54 28 58; --c-rowhover: 30 22 31; --c-accent: 214 170 220;
 }
 html.dark[data-theme="forest"] {
-  --c-brand: 22 101 52; --c-brand-600: 18 81 42; --c-brand-700: 14 62 32;
+  --c-brand: 28 122 63; --c-brand-600: 24 104 54; --c-brand-700: 20 86 45;
   --c-sidebar: 7 18 11; --c-navsel: 22 52 32; --c-rowhover: 20 30 23; --c-accent: 134 205 156;
 }
 
@@ -204,12 +237,13 @@ h6 {
   outline-offset: 0;
 }
 
+/* A card's or section's own heading: sentence case, bold, ink. (It was an 11px all-caps
+   muted label, which read as a template "eyebrow" and was too small to scan.) */
 .kicker {
-  font-size: 11px;
+  font-size: var(--fs-body);
+  line-height: 1.35;
   font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: rgb(var(--c-muted));
+  color: rgb(var(--c-ink));
 }
 
 /* Teal AI tint — dormant unless a field actually carries an AI flag. */
@@ -639,6 +673,9 @@ h6 {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    /* The last item fades at the edge: there's more to scroll to ("Overview" isn't just cut off). */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   }
 
   .chiprow::-webkit-scrollbar {

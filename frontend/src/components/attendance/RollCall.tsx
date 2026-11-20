@@ -183,7 +183,7 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-1 flex flex-none items-center justify-between gap-3 md:mb-3">
-        <p className="text-[13px] text-muted"><strong className="tabular text-ink">{choices.size}</strong> of {roster.length} decided · {presentCount} here{collectSignatures && <> · {signedCount} signed</>}</p>
+        <p className="text-label text-muted"><strong className="tabular text-ink">{choices.size}</strong> of {roster.length} decided · {presentCount} here{collectSignatures && <> · {signedCount} signed</>}</p>
         <Button variant="secondary" size="sm" onClick={undo} disabled={!history.length || Boolean(promptId) || Boolean(pose)} className="min-h-[36px] shrink-0 md:min-h-[40px]"><Undo2 className="h-4 w-4" /> Undo</Button>
       </div>
       <div className="mb-3 h-1.5 flex-none overflow-hidden rounded-pill bg-subtle2 md:mb-5" role="progressbar" aria-valuenow={choices.size} aria-valuemin={0} aria-valuemax={roster.length} aria-label="Roll call progress">
@@ -202,12 +202,12 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
             {searchResults.map((tenant) => <li key={tenant.id} className="border-b border-hairline last:border-0">
               <button type="button" className="flex min-h-[54px] w-full items-center gap-3 px-4 py-2 text-left hover:bg-rowhover" onClick={() => { setJumpId(tenant.id); setSearchOpen(false); setSearch(""); }}>
                 <Avatar name={tenant.displayName} color={tintFor(tenant.id)} size={30} />
-                <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-semibold text-ink">{tenant.displayName}</span><span className="block text-[12px] text-muted">{tenant.unit ? `Unit ${tenant.unit}` : "No unit"}</span></span>
-                <span className="shrink-0 text-[12px] font-semibold text-muted">{status(choices.get(tenant.id), skipped.includes(tenant.id))}</span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-body font-semibold text-ink">{tenant.displayName}</span><span className="block text-caption text-muted">{tenant.unit ? `Unit ${tenant.unit}` : "No unit"}</span></span>
+                <span className="shrink-0 text-caption font-semibold text-muted">{status(choices.get(tenant.id), skipped.includes(tenant.id))}</span>
               </button>
             </li>)}
-            {!searchResults.length && <li className="px-4 py-6 text-center text-[13px] text-muted">No matching residents.</li>}
-          </ul> : <p className="px-4 py-3 text-[12px] text-muted">Search across this site's active roster.</p>}
+            {!searchResults.length && <li className="px-4 py-6 text-center text-label text-muted">No matching residents.</li>}
+          </ul> : <p className="px-4 py-3 text-caption text-muted">Search across this site's active roster.</p>}
         </Card>}
       </div>
 
@@ -216,7 +216,7 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
           edges fade (.deck-band), so the cut is soft, sideways too. */}
       <div className="deck-band -mx-4 -mb-3 flex min-h-0 flex-1 flex-col overflow-y-clip px-4 pb-3 pt-3 md:-mx-6 md:px-6 md:pt-4">
       {top ? <div className="mx-auto flex min-h-0 w-full max-w-[420px] flex-1 flex-col">
-        {jumpId && <div className="mb-2 flex flex-none items-center justify-between text-[12px] text-muted"><span>Search result · roll call resumes afterward</span><button type="button" onClick={() => setJumpId(null)} className="min-h-[36px] px-2 font-semibold text-accent">Back to roll call</button></div>}
+        {jumpId && <div className="mb-2 flex flex-none items-center justify-between text-caption text-muted"><span>Search result · roll call resumes afterward</span><button type="button" onClick={() => setJumpId(null)} className="min-h-[36px] px-2 font-semibold text-accent">Back to roll call</button></div>}
         {/* 392px when there's room; shrinks toward 280px on a short phone. */}
         <div className={cn(DECK_CLASS, "h-auto max-h-[392px] min-h-[280px] flex-[1_1_392px]")}>
           {[...deck].reverse().map((tenant) => {
@@ -253,7 +253,7 @@ export function RollCall({ roster, saving, collectSignatures, onSave }: { roster
 
       {/* No bottom inset of its own: on a phone the sheet reserves the site-wide one beneath it. */}
       <div className={cn("sticky bottom-0 z-10 mt-2 flex flex-none items-center justify-between gap-3 border-t border-hairline bg-surface px-3 py-2 md:mt-4 md:px-4 md:py-3", promptId && "invisible")}>
-        <span className="text-[13px] font-semibold text-ink">{presentCount} here</span>
+        <span className="text-label font-semibold text-ink">{presentCount} here</span>
         <Button onClick={() => void save()} disabled={saving || Boolean(promptId)} className="min-h-[44px] max-w-[240px] flex-1 md:min-h-[48px]">{saving ? "Saving…" : "Save attendance"}</Button>
       </div>
     </div>

@@ -200,7 +200,7 @@ export function TutorialEditor({
         <Card className="p-6 text-center">
           <GraduationCap className="mx-auto h-8 w-8 text-muted" aria-hidden />
           <p className="mt-2 font-heading text-[16px] font-extrabold text-ink">No tutorial yet</p>
-          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted">
+          <p className="mx-auto mt-1 max-w-md text-label text-muted">
             A tutorial walks someone through this form the first time they open it: one thing highlighted at a time, the rest of the screen dimmed and locked. Build it here a step at a time.
           </p>
           <Button
@@ -265,12 +265,12 @@ export function TutorialEditor({
     <div className={cn("mx-auto max-w-[760px] space-y-4", compact ? "p-3" : "p-4 md:p-6")}>
       <div className="flex flex-wrap items-center gap-2">
         <GraduationCap className="h-4 w-4 text-muted" aria-hidden />
-        <p className="font-heading text-[15px] font-extrabold text-ink">Tutorial</p>
-        <span className="text-[12.5px] text-muted">{steps.length} step{steps.length === 1 ? "" : "s"} · version {version}</span>
+        <p className="font-heading text-body-lg font-extrabold text-ink">Tutorial</p>
+        <span className="text-label text-muted">{steps.length} step{steps.length === 1 ? "" : "s"} · version {version}</span>
         {unpublished ? (
-          <span className="rounded bg-status-amberBg px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.03em] text-status-amberText">{live ? "Changed since publish" : "Not live yet"}</span>
+          <span className="rounded bg-status-amberBg px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.03em] text-status-amberText">{live ? "Changed since publish" : "Not live yet"}</span>
         ) : (
-          <span className="rounded bg-status-greenBg px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.03em] text-status-greenText">Live</span>
+          <span className="rounded bg-status-greenBg px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.03em] text-status-greenText">Live</span>
         )}
         <div className="flex-1" />
         <Button variant="secondary" size="sm" onClick={onTry} disabled={trying} title={dirty ? "Saves your changes, then opens the draft with the tutorial running" : "Opens the draft with the tutorial running, in a new tab"}>
@@ -279,7 +279,7 @@ export function TutorialEditor({
       </div>
 
       {general.length > 0 && (
-        <div className="rounded-input bg-status-redBg px-3 py-2 text-[12.5px] text-status-redText">
+        <div className="rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">
           {general.map((p, i) => <p key={i}>{p.message}</p>)}
         </div>
       )}
@@ -350,16 +350,16 @@ export function TutorialEditor({
             onChange={(on) => setT({ version: on ? Math.max(version, liveV + 1) : liveV })}
           />
         ) : (
-          <p className="text-[12.5px] text-muted">Nothing's live yet: once it's published, everyone gets it the first time they open the form.</p>
+          <p className="text-label text-muted">Nothing's live yet: once it's published, everyone gets it the first time they open the form.</p>
         )}
       </Section>
 
       {liveV > 0 && (
         <Section title="Who's been through it" hint={`The live tutorial (version ${liveV}). Anyone can run it again from “Show me how”; that isn't counted twice.`}>
           {stats.isLoading ? (
-            <p className="text-[12.5px] text-muted">Loading…</p>
+            <p className="text-label text-muted">Loading…</p>
           ) : !stats.data?.people ? (
-            <p className="text-[12.5px] text-muted">Nobody yet.</p>
+            <p className="text-label text-muted">Nobody yet.</p>
           ) : (
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-2">
@@ -404,7 +404,7 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
   return (
     <div className="min-w-[96px] rounded-input border border-hairline px-3 py-1.5">
       <p className="text-micro font-semibold text-muted">{label}</p>
-      <p className={cn("font-heading text-[18px] font-extrabold", tone === "green" ? "text-status-greenText" : tone === "amber" ? "text-status-amberText" : "text-ink")}>{value}</p>
+      <p className={cn("font-heading text-lead font-extrabold", tone === "green" ? "text-status-greenText" : tone === "amber" ? "text-status-amberText" : "text-ink")}>{value}</p>
     </div>
   );
 }
@@ -450,7 +450,7 @@ function Segmented<K extends string>({ value, options, onChange, blocked }: { va
             title={why ?? undefined}
             aria-pressed={value === o.key}
             onClick={() => onChange(o.key)}
-            className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-40", value === o.key ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
+            className={cn("rounded-[5px] px-3 py-1 text-label font-semibold disabled:cursor-not-allowed disabled:opacity-40", value === o.key ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
           >
             {o.label}
           </button>
@@ -463,7 +463,7 @@ function Segmented<K extends string>({ value, options, onChange, blocked }: { va
 const Badge = ({ children, tone }: { children: React.ReactNode; tone?: "violet" | "red" | "amber" }) => (
   <span
     className={cn(
-      "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10.5px] font-semibold",
+      "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-micro font-semibold",
       tone === "violet" ? "bg-status-violetBg text-status-violetText" : tone === "red" ? "bg-status-redBg text-status-redText" : tone === "amber" ? "bg-status-amberBg text-status-amberText" : "bg-subtle2 text-muted"
     )}
   >
@@ -505,9 +505,9 @@ function StepCard({ cardRef, ...p }: StepCardProps & { cardRef: (el: HTMLDivElem
   return (
     <div ref={cardRef} className={cn("rounded-card border bg-surface transition-[border-color,box-shadow] duration-150", p.open ? "border-navy ring-2 ring-navy/20 dark:border-accent" : "border-hairline hover:border-strongline")}>
       <div className="group flex items-center gap-2 px-3 py-2">
-        <span className={cn("grid h-6 w-6 flex-none place-items-center rounded-full text-[11.5px] font-bold", p.problems.length ? "bg-status-redBg text-status-redText" : "bg-navsel text-accent dark:text-white")}>{i + 1}</span>
+        <span className={cn("grid h-6 w-6 flex-none place-items-center rounded-full text-caption font-bold", p.problems.length ? "bg-status-redBg text-status-redText" : "bg-navsel text-accent dark:text-white")}>{i + 1}</span>
         <button type="button" onClick={p.onToggle} aria-expanded={p.open} className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-[13.5px] font-semibold text-ink">{s.title.trim() || "Untitled step"}</span>
+          <span className="block truncate text-body font-semibold text-ink">{s.title.trim() || "Untitled step"}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-1 text-micro text-muted">
             <span className="mr-0.5 max-w-full truncate">{pointsAt(s, targets)}</span>
             {code && pageInfo && (s.page || i === 0) && <Badge>on {pageInfo.label}</Badge>}
@@ -545,18 +545,18 @@ function StepCard({ cardRef, ...p }: StepCardProps & { cardRef: (el: HTMLDivElem
           {code && <PagePicker step={s} pages={code.pages} prevPage={p.prevPage} first={i === 0} onChange={p.onChange} />}
           <TargetPicker step={s} targets={targets} page={p.page} onChange={p.onChange} />
           {missingAnchor && (
-            <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+            <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
               data-tour="{s.target}" isn't written in {pageInfo?.file ?? "the page"} or the files it shares. Put it on the element (<code>&lt;div data-tour="{s.target}"&gt;</code>), or pick the step's page; until then the step is skipped.
             </p>
           )}
           <div>
-            <p className="mb-1 text-[12px] font-semibold text-muted">What they do</p>
+            <p className="mb-1 text-caption font-semibold text-muted">What they do</p>
             <Segmented value={action} options={ACTIONS} onChange={(k) => p.onChange({ action: k })} blocked={(k) => actionBlocked(s, targets.kind, k)} />
             <p className="mt-1 text-micro text-muted">{ACTIONS.find((a) => a.key === action)?.hint}</p>
           </div>
           {(s.field || s.target) && (
             <div>
-              <p className="mb-1 text-[12px] font-semibold text-muted">Where the card goes</p>
+              <p className="mb-1 text-caption font-semibold text-muted">Where the card goes</p>
               <Segmented value={s.placement ?? "auto"} options={PLACEMENTS} onChange={(k) => p.onChange({ placement: k })} />
               <p className="mt-1 text-micro text-muted">Next to the highlighted spot. Phones always put it at the top or bottom of the screen.</p>
             </div>
@@ -565,7 +565,7 @@ function StepCard({ cardRef, ...p }: StepCardProps & { cardRef: (el: HTMLDivElem
             <CheckboxList options={p.roles} value={s.roles ?? []} onChange={(v) => p.onChange({ roles: v })} />
           </Row>
           <div>
-            <p className="mb-1 text-[12px] font-semibold text-muted">Only on</p>
+            <p className="mb-1 text-caption font-semibold text-muted">Only on</p>
             <div className="flex flex-wrap gap-1.5">
               {DEVICES.map(({ key, label, Icon }) => {
                 const on = s.devices?.includes(key) ?? false;
@@ -576,7 +576,7 @@ function StepCard({ cardRef, ...p }: StepCardProps & { cardRef: (el: HTMLDivElem
                     aria-pressed={on}
                     onClick={() => p.onChange({ devices: on ? (s.devices ?? []).filter((d) => d !== key) : [...(s.devices ?? []), key] })}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-input border px-2.5 py-1 text-[12.5px] font-semibold",
+                      "inline-flex items-center gap-1.5 rounded-input border px-2.5 py-1 text-label font-semibold",
                       on ? "border-navy bg-navsel text-accent dark:border-accent dark:text-white" : "border-hairline text-muted hover:border-strongline hover:text-ink"
                     )}
                   >
@@ -588,10 +588,10 @@ function StepCard({ cardRef, ...p }: StepCardProps & { cardRef: (el: HTMLDivElem
             <p className="mt-1 text-micro text-muted">None picked: every kind of device.</p>
           </div>
           <Row label="Step name (optional)" hint="Your own name for it, used in progress reports. Letters, digits, - and _.">
-            <Input value={s.id ?? ""} maxLength={64} onChange={(e) => p.onChange({ id: e.target.value.trim() || undefined })} placeholder={`step-${i + 1}`} className="max-w-xs font-mono text-[13px]" />
+            <Input value={s.id ?? ""} maxLength={64} onChange={(e) => p.onChange({ id: e.target.value.trim() || undefined })} placeholder={`step-${i + 1}`} className="max-w-xs font-mono text-label" />
           </Row>
           {p.problems.length > 0 && (
-            <div className="rounded-input bg-status-redBg px-3 py-2 text-[12.5px] text-status-redText">
+            <div className="rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">
               {p.problems.map((x, k) => <p key={k}>{x.message}</p>)}
             </div>
           )}
@@ -700,7 +700,7 @@ function TargetPicker({ step: s, targets, page, onChange }: {
           value={s.target ?? ""}
           onChange={(e) => onChange({ target: e.target.value.trim() || undefined })}
           placeholder="e.g. meal-picker"
-          className="mt-1.5 max-w-xs font-mono text-[13px]"
+          className="mt-1.5 max-w-xs font-mono text-label"
           aria-label="data-tour name"
         />
       )}

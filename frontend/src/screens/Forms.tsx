@@ -113,7 +113,7 @@ export function FormsPage() {
 
   const summary = searching
     ? `${searchResults.length === 0 ? "No forms match" : `${searchResults.length} of ${totalForms} forms match`} “${q.trim()}”`
-    : `${totalForms} ${totalForms === 1 ? "form" : "forms"} · pin the ones you use most and they stay in the sidebar`;
+    : `${totalForms} ${totalForms === 1 ? "form" : "forms"} · pin the ones you use most to keep them one tap away`;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -137,10 +137,10 @@ export function FormsPage() {
             <div className="enter-up flex flex-wrap items-end justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-1">
-                  <h1 id="forms-title" className="text-[23px] font-heading font-extrabold text-ink xl:text-[26px]">Forms</h1>
+                  <h1 id="forms-title" className="text-title font-heading font-extrabold text-ink xl:text-display">Forms</h1>
                   <PageHelp article="filling-forms">Every form open to you, by category. Search, pin the ones you use most, and open one to fill it in.</PageHelp>
                 </div>
-                <p className="mt-1 text-[13.5px] text-muted" aria-live="polite">{summary}</p>
+                <p className="mt-1 text-body text-muted" aria-live="polite">{summary}</p>
               </div>
               <div data-tour="forms-search" className="w-[300px] xl:w-[380px]">
                 <SearchInput ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter forms" aria-label="Filter forms" />
@@ -169,14 +169,14 @@ function ShareStrip({ className }: { className?: string }) {
     <section aria-labelledby="share-strip" className={cn("rounded-card border border-hairline bg-surface p-4", className)}>
       <div className="flex items-center gap-2">
         <QrCode className="h-4 w-4 text-accent dark:text-white" aria-hidden />
-        <h2 id="share-strip" className="font-heading text-[15px] font-extrabold text-ink">Share with people outside Lantern</h2>
+        <h2 id="share-strip" className="font-heading text-body-lg font-extrabold text-ink">Share with people outside Lantern</h2>
       </div>
-      <p className="mt-0.5 text-[12.5px] text-muted">Your own link and QR code for each. Anyone you give it to can fill it in without an account, and you see what they send.</p>
+      <p className="mt-0.5 text-label text-muted">Your own link and QR code for each. Anyone you give it to can fill it in without an account, and you see what they send.</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {data.forms.map((f) => (
-          <Link key={f.id} to={`/f/${f.slug}/share`} className="inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border border-hairline px-3 text-[13px] font-semibold text-ink hover:bg-navsel/60">
+          <Link key={f.id} to={`/f/${f.slug}/share`} className="inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border border-hairline px-3 text-label font-semibold text-ink hover:bg-navsel/60">
             {f.title}
-            <span className="text-[12px] font-medium text-muted">· {f.hasLink ? "my QR code" : "get my link"}</span>
+            <span className="text-caption font-medium text-muted">· {f.hasLink ? "my QR code" : "get my link"}</span>
           </Link>
         ))}
       </div>
@@ -188,7 +188,7 @@ function ShareStrip({ className }: { className?: string }) {
  * The phone's forms: pinned ones in a row, then a tile per category that opens
  * its list (or the filter's matches). Used by the Forms page and the phone's Home.
  */
-export function PhoneForms({ c, after }: { c: CatalogBrowser; after?: React.ReactNode }) {
+export function PhoneForms({ c, after, hidePinned = false }: { c: CatalogBrowser; after?: React.ReactNode; /** Home shows pinned forms in "Start a form" already. */ hidePinned?: boolean }) {
   const { setQ, pick, setPick, searching, searchResults, matchingFlat, categories, favorites, favoriteForms, totalForms } = c;
   if (c.empty) return <>{c.empty}</>;
   if (searching || pick) {
@@ -206,16 +206,16 @@ export function PhoneForms({ c, after }: { c: CatalogBrowser; after?: React.Reac
   }
   return (
     <>
-      {favoriteForms.length > 0 && (
+      {favoriteForms.length > 0 && !hidePinned && (
         <section className="enter-up">
-          <h2 className="mb-2 flex items-center gap-1.5 text-[15px] font-heading font-extrabold text-ink">
+          <h2 className="mb-2 flex items-center gap-1.5 text-body-lg font-heading font-extrabold text-ink">
             <Pin className="h-4 w-4 fill-status-amberDot text-status-amberDot" /> Pinned
           </h2>
           <div className="chiprow -mx-4 flex gap-2 overflow-x-auto px-4">
             {favoriteForms.map((e) => {
               const Icon = formLinkIcon(e.form, e.category.icon);
               return (
-                <FormLinkWrap key={e.form.id} form={e.form} className="flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-pill border border-hairline bg-surface pl-1.5 pr-3.5 text-[13.5px] font-bold text-ink">
+                <FormLinkWrap key={e.form.id} form={e.form} className="flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-pill border border-hairline bg-surface pl-1.5 pr-3.5 text-body font-bold text-ink">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-navsel text-accent dark:text-white">
                     <Icon className="h-4 w-4" />
                   </span>
@@ -228,8 +228,8 @@ export function PhoneForms({ c, after }: { c: CatalogBrowser; after?: React.Reac
       )}
       <section data-tour="home-forms">
         <div className="enter-up mb-2 flex items-baseline justify-between">
-          <h2 className="text-[15px] font-heading font-extrabold text-ink">All forms</h2>
-          <span className="text-[12.5px] text-muted">{totalForms} forms</span>
+          <h2 className="text-body-lg font-heading font-extrabold text-ink">All forms</h2>
+          <span className="text-label text-muted">{totalForms} forms</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
           {categories.map((cat) => {
@@ -245,8 +245,8 @@ export function PhoneForms({ c, after }: { c: CatalogBrowser; after?: React.Reac
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
                 <span>
-                  <span className="block text-[14px] font-bold leading-snug text-ink">{cat.name}</span>
-                  <span className="block text-[12px] text-muted">{cat.forms.length} {cat.forms.length === 1 ? "form" : "forms"}</span>
+                  <span className="block text-body font-bold leading-snug text-ink">{cat.name}</span>
+                  <span className="block text-caption text-muted">{cat.forms.length} {cat.forms.length === 1 ? "form" : "forms"}</span>
                 </span>
               </button>
             );
@@ -346,7 +346,7 @@ function FormCard({ form, category, favorite, onToggleFavorite, showCategory = f
       {form.badge && <Tag tone={form.badge.toLowerCase() === "new" ? "accent" : "amber"}>{form.badge}</Tag>}
     </>
   );
-  const titleClass = "flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-bold leading-snug after:absolute after:inset-0 after:rounded-card";
+  const titleClass = "flex flex-wrap items-center gap-x-2 gap-y-1 text-body-lg font-bold leading-snug after:absolute after:inset-0 after:rounded-card";
 
   return (
     <li
@@ -369,9 +369,9 @@ function FormCard({ form, category, favorite, onToggleFavorite, showCategory = f
         ) : (
           <a href={form.url} target="_blank" rel="noopener noreferrer" className={cn(titleClass, "text-ink")}>{title}</a>
         )}
-        <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-muted">{locked ? formNeeds(form.url)?.hint : form.description}</p>
+        <p className="mt-1 line-clamp-2 text-label leading-snug text-muted">{locked ? formNeeds(form.url)?.hint : form.description}</p>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-hairline pt-2.5 text-[12.5px] font-semibold">
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-hairline pt-2.5 text-label font-semibold">
         {locked ? (
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-muted"><Lock className="h-3.5 w-3.5" /> Needs access</span>
         ) : internal ? (
@@ -392,8 +392,8 @@ function FormCard({ form, category, favorite, onToggleFavorite, showCategory = f
 function NoMatch({ searching, favorites }: { searching: boolean; favorites: boolean }) {
   return (
     <div className="enter-up rounded-card border border-dashed border-strongline bg-surface px-6 py-10 text-center">
-      <p className="text-[15px] font-bold text-ink">{searching ? "No forms match that" : favorites ? "Nothing pinned yet" : "Nothing here"}</p>
-      <p className="mt-1 text-[13px] text-muted">
+      <p className="text-body-lg font-bold text-ink">{searching ? "No forms match that" : favorites ? "Nothing pinned yet" : "Nothing here"}</p>
+      <p className="mt-1 text-label text-muted">
         {searching ? "Try another word, or ask the help desk if a form is missing." : "Tap the star on any form to keep it here."}
       </p>
     </div>
@@ -411,12 +411,12 @@ const sectionId = (id: string) => `forms-${id}`;
 function CategorySections({ c }: { c: CatalogBrowser }) {
   const { q, setQ, pick, setPick, searching, categories, favorites, favoriteForms, cardProps } = c;
   const shown = useMemo(() => filterCatalog(categories, q, null, favorites), [categories, q, favorites]);
-  const grid = "grid gap-3 lg:grid-cols-2 xl:grid-cols-3 xl:gap-3.5";
+  const grid = "grid gap-3 md:grid-cols-2 xl:grid-cols-3 xl:gap-3.5";
 
   const heading = (id: string, label: React.ReactNode, n: number) => (
     <div className="mb-3 flex items-baseline gap-2.5">
-      <h2 id={`${sectionId(id)}-title`} className="flex items-center gap-2 text-[17px] font-heading font-extrabold text-ink xl:text-[19px]">{label}</h2>
-      <span className="text-[13px] text-muted">{n} {n === 1 ? "form" : "forms"}</span>
+      <h2 id={`${sectionId(id)}-title`} className="flex items-center gap-2 text-lead font-heading font-extrabold text-ink xl:text-title-sm">{label}</h2>
+      <span className="text-label text-muted">{n} {n === 1 ? "form" : "forms"}</span>
     </div>
   );
   const cards = (entries: Entry[], showCategory = false) => (
@@ -442,7 +442,7 @@ function CategorySections({ c }: { c: CatalogBrowser }) {
             setQ("");
             setPick(null);
           }}
-          className="enter-up -ml-2 mb-2 inline-flex min-h-[40px] items-center gap-1 rounded-input px-2 text-[13.5px] font-bold text-accent hover:bg-rowhover dark:text-white"
+          className="enter-up -ml-2 mb-2 inline-flex min-h-[40px] items-center gap-1 rounded-input px-2 text-body font-bold text-accent hover:bg-rowhover dark:text-white"
         >
           <ChevronLeft className="h-[18px] w-[18px]" /> All categories
         </button>
@@ -462,14 +462,14 @@ function CategorySections({ c }: { c: CatalogBrowser }) {
     <div className="flex flex-col gap-6 py-4">
       {!searching && favoriteForms.length > 0 && (
         <section aria-labelledby={`${sectionId(FAVORITES)}-title`} className="enter-up">
-          <h2 id={`${sectionId(FAVORITES)}-title`} className="mb-2 flex items-center gap-1.5 text-[14px] font-heading font-extrabold text-ink">
+          <h2 id={`${sectionId(FAVORITES)}-title`} className="mb-2 flex items-center gap-1.5 text-body font-heading font-extrabold text-ink">
             <Pin className="h-4 w-4 fill-status-amberDot text-status-amberDot" /> Pinned
           </h2>
           <div className="flex flex-wrap gap-2">
             {favoriteForms.map((e) => {
               const Icon = formLinkIcon(e.form, e.category.icon);
               return (
-                <FormLinkWrap key={e.form.id} form={e.form} className="flex h-10 items-center gap-2 rounded-pill border border-hairline bg-surface pl-1.5 pr-3.5 text-[13.5px] font-bold text-ink hover:border-strongline hover:bg-rowhover">
+                <FormLinkWrap key={e.form.id} form={e.form} className="flex h-10 items-center gap-2 rounded-pill border border-hairline bg-surface pl-1.5 pr-3.5 text-body font-bold text-ink hover:border-strongline hover:bg-rowhover">
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-navsel text-accent dark:text-white">
                     <Icon className="h-[15px] w-[15px]" />
                   </span>
@@ -481,7 +481,7 @@ function CategorySections({ c }: { c: CatalogBrowser }) {
         </section>
       )}
       {/* Cards in a row share a height (stretch), so the grid stays even however many forms each holds. */}
-      <ul className="grid gap-3.5 lg:grid-cols-2 xl:grid-cols-3 xl:gap-4">
+      <ul className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3 xl:gap-4">
         {shown.map((cat) => (
           <li key={cat.id} className="flex">
             <CategoryCard category={cat} favorites={favorites} onToggleFavorite={(f) => cardProps({ form: f, category: cat }).onToggleFavorite()} limit={searching ? null : CARD_ROWS} onOpen={() => setPick(cat.id)} />
@@ -489,7 +489,7 @@ function CategorySections({ c }: { c: CatalogBrowser }) {
         ))}
       </ul>
       {!searching && (
-        <button type="button" onClick={() => setPick(ALL)} className="enter-up self-start text-[13px] font-semibold text-accent hover:underline dark:text-white">
+        <button type="button" onClick={() => setPick(ALL)} className="enter-up inline-flex min-h-[32px] items-center self-start text-label font-semibold text-accent hover:underline dark:text-white touch:min-h-11">
           See every form with its description
         </button>
       )}
@@ -525,11 +525,11 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span id={`${sectionId(category.id)}-title`} className="text-[15px] font-bold leading-snug text-ink">{category.name}</span>
-            <span className="text-[12px] text-muted">{n} {n === 1 ? "form" : "forms"}</span>
+            <span id={`${sectionId(category.id)}-title`} className="text-body-lg font-bold leading-snug text-ink">{category.name}</span>
+            <span className="text-caption text-muted">{n} {n === 1 ? "form" : "forms"}</span>
           </span>
           {/* Always two lines' room, so the headers line up across a row. */}
-          <span className="mt-0.5 line-clamp-2 block min-h-[2.75em] text-[12.5px] leading-snug text-muted">{category.description}</span>
+          <span className="mt-0.5 line-clamp-2 block min-h-[2.75em] text-label leading-snug text-muted">{category.description}</span>
         </span>
         <ChevronRight className="mt-2.5 h-4 w-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" aria-hidden />
       </button>
@@ -543,7 +543,7 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
               <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-input", locked ? "bg-subtle text-muted" : "bg-navsel text-accent dark:text-white")}>
                 {locked ? <Lock className="h-4 w-4" /> : <RowIcon className="h-4 w-4" />}
               </span>
-              <span className={cn("min-w-0 flex-1 truncate text-[13.5px] font-semibold", locked ? "text-muted" : "text-ink")}>
+              <span className={cn("min-w-0 flex-1 truncate text-body font-semibold", locked ? "text-muted" : "text-ink")}>
                 {form.title}
                 {form.badge && <Tag tone={form.badge.toLowerCase() === "new" ? "accent" : "amber"} className="ml-1.5">{form.badge}</Tag>}
               </span>
@@ -562,14 +562,15 @@ function CategoryCard({ category, favorites, onToggleFavorite, limit, onOpen }: 
                 form={form}
                 favorite={favorites.has(form.id)}
                 onToggle={() => onToggleFavorite(form)}
-                className={cn("h-8 w-8", !favorites.has(form.id) && "opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100")}
+                // A touch screen has no hover: the pin shows, quieter, at finger size.
+                className={cn("h-8 w-8 touch:h-11 touch:w-11", !favorites.has(form.id) && "opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 touch:opacity-60")}
               />
             </li>
           );
         })}
       </ul>
       {limit !== null && n > limit && (
-        <button type="button" onClick={onOpen} className="flex items-center justify-between gap-2 rounded-b-card border-t border-hairline px-4 py-2.5 text-left text-[13px] font-semibold text-accent hover:bg-rowhover dark:text-white">
+        <button type="button" onClick={onOpen} className="flex items-center justify-between gap-2 rounded-b-card border-t border-hairline px-4 py-2.5 text-left text-label font-semibold text-accent hover:bg-rowhover dark:text-white">
           View {n - limit} more <span className="text-muted">({n} in all)</span>
           <ChevronRight className="ml-auto h-4 w-4" aria-hidden />
         </button>
@@ -582,12 +583,12 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
   const { can } = useAuth();
   return (
     <section className="flex flex-col gap-2.5">
-      <button type="button" onClick={onBack} className="enter-up -ml-2 inline-flex min-h-[44px] items-center gap-1 self-start px-2 text-[14px] font-bold text-accent dark:text-white">
+      <button type="button" onClick={onBack} className="enter-up -ml-2 inline-flex min-h-[44px] items-center gap-1 self-start px-2 text-body font-bold text-accent dark:text-white">
         <ChevronLeft className="h-[18px] w-[18px]" /> All forms
       </button>
       <div className="enter-up flex items-baseline gap-2">
-        <h2 className="text-[19px] font-heading font-extrabold text-ink">{title}</h2>
-        <span className="text-[13px] text-muted">{entries.length} {entries.length === 1 ? "form" : "forms"}</span>
+        <h2 className="text-title-sm font-heading font-extrabold text-ink">{title}</h2>
+        <span className="text-label text-muted">{entries.length} {entries.length === 1 ? "form" : "forms"}</span>
       </div>
       {entries.length === 0 ? (
         <NoMatch searching={title === "Results"} favorites={title === "Pinned"} />
@@ -603,12 +604,12 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
                   {locked ? <Lock className="h-[18px] w-[18px]" /> : <Icon className="h-[18px] w-[18px]" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={cn("flex flex-wrap items-center gap-1.5 text-[14.5px] font-bold leading-snug", locked ? "text-muted" : "text-ink")}>
+                  <span className={cn("flex flex-wrap items-center gap-1.5 text-body-lg font-bold leading-snug", locked ? "text-muted" : "text-ink")}>
                     {form.title}
                     {form.badge && <Tag tone={form.badge.toLowerCase() === "new" ? "accent" : "amber"}>{form.badge}</Tag>}
                     {favorites.has(form.id) && <Pin className="h-3 w-3 fill-status-amberDot text-status-amberDot" aria-label="Pinned" />}
                   </span>
-                  <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">{locked ? formNeeds(form.url)?.hint : form.description}</span>
+                  <span className="mt-0.5 block text-label leading-snug text-muted">{locked ? formNeeds(form.url)?.hint : form.description}</span>
                 </span>
                 {!locked &&
                   (internal ? (
@@ -631,7 +632,7 @@ function PhoneFormList({ title, entries, favorites, onBack }: { title: string; e
           })}
         </ul>
       )}
-      <p className="enter-up flex items-center gap-1.5 text-[12px] text-muted">
+      <p className="enter-up flex items-center gap-1.5 text-caption text-muted">
         <ExternalLink className="h-3 w-3" /> Opens the old forms site in a new tab
       </p>
     </section>

@@ -173,7 +173,7 @@ export function SitePicker({
       }}
       aria-haspopup="listbox"
       aria-expanded={open}
-      className="flex min-h-[44px] w-full items-center gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-[14px] font-semibold text-ink hover:border-strongline focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy md:min-h-9"
+      className="flex min-h-[44px] w-full items-center gap-2 rounded-input border border-fieldline bg-surface px-3 text-left text-body font-semibold text-ink hover:bg-rowhover focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy md:min-h-9 touch:min-h-11"
     >
       <MapPin className="h-4 w-4 shrink-0 text-muted" />
       <span className="min-w-0 flex-1 truncate">{selectionLabel(codes, list)}</span>
@@ -190,7 +190,7 @@ export function SitePicker({
       aria-label="Find a site"
       autoFocus={!phone}
       wrapperClassName="mb-2"
-      className="min-h-[40px] md:min-h-9"
+      className="min-h-[40px] md:min-h-9 touch:min-h-11"
     />
   );
   const options = (
@@ -209,7 +209,7 @@ export function SitePicker({
           onClick={() => toggle(s.code)}
         />
       ))}
-      {shown.length === 0 && <p className="px-2 py-3 text-[13px] text-muted">No site matches “{q}”.</p>}
+      {shown.length === 0 && <p className="px-2 py-3 text-label text-muted">No site matches “{q}”.</p>}
     </div>
   );
 
@@ -282,7 +282,7 @@ function Row({
         >
           {checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
         </span>
-        <span className={cn("min-w-0 flex-1 truncate text-[13.5px] text-ink", strong && "font-bold")}>{label}</span>
+        <span className={cn("min-w-0 flex-1 truncate text-body text-ink", strong && "font-bold")}>{label}</span>
         {badge !== undefined && <CountBadge count={badge} className="shrink-0 py-0" />}
         {meta && <span className="shrink-0 text-micro tabular text-muted">{meta}</span>}
       </button>

@@ -128,13 +128,13 @@ function DesktopOnly() {
     );
   }
   return (
-    <div className="flex flex-col items-center px-6 py-10">
+    <div className="flex min-h-[60vh] flex-col items-center justify-center px-6">
       <EmptyState
         icon={<Monitor className="h-8 w-8" />}
         title="Admin is desktop only"
-        hint="Open the app on a computer to change settings, forms, people or sites."
+        hint="Open the app on a computer to change settings, forms or sites. People & roles works here too, from your profile menu."
+        action={<Link to="/home"><Button>Back to Home</Button></Link>}
       />
-      <Link to="/home"><Button>Back to Home</Button></Link>
     </div>
   );
 }

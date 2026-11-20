@@ -66,10 +66,10 @@ export function AdminSettings() {
           </div>
           {!orgWide && <p className="mt-1.5 text-micro text-muted">The org-wide default. Only an Admin can change it; set your own sites below.</p>}
         </Field>
-        <div className="mt-5 border-t border-hairline pt-4 text-[13px] text-muted">
+        <div className="mt-5 border-t border-hairline pt-4 text-label text-muted">
           <p className="font-semibold text-ink">What counts as activity</p>
           <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>A Gravity Form (or any integration) posting the person to <code className="text-[12px]">POST /api/v1/activity</code>.</li>
+            <li>A Gravity Form (or any integration) posting the person to <code className="text-caption">POST /api/v1/activity</code>.</li>
             <li>Staff tapping <b>Keep</b> in the review queue or <b>Still here</b> on a profile.</li>
             <li>Being added to the roster, or restored to it.</li>
           </ul>
@@ -81,8 +81,8 @@ export function AdminSettings() {
           <label className="flex items-start gap-3">
             <Switch className="mt-0.5" checked={data?.caseManagement === "true"} onCheckedChange={(on) => void setCaseManagement(on)} />
             <span>
-              <span className="block text-[14px] font-semibold text-ink">Case management (being built)</span>
-              <span className="mt-0.5 block text-[13px] text-muted">
+              <span className="block text-body font-semibold text-ink">Case management (being built)</span>
+              <span className="mt-0.5 block text-label text-muted">
                 The PlanStreet replacement, built into the roster. While it's being built, keep it on for the dev site and off for
                 the live one: off, the roster works exactly as it always has. So far it adds a Client information section on each
                 resident's page — date of birth, Social Security Number, contact, demographics, veteran status, program and funding,
@@ -161,8 +161,8 @@ function ReplaceWithMadeUpData() {
 
   return (
     <Card className="mt-4 p-5">
-      <p className="text-[14px] font-semibold text-ink">Test site data</p>
-      <p className="mt-1 text-[13px] text-muted">
+      <p className="text-body font-semibold text-ink">Test site data</p>
+      <p className="mt-1 text-label text-muted">
         This is a test site, so its residents and buildings should be made up. Replace removes every resident, entry, photo, attendance record,
         notification and audit event here, takes the old residents' names out of forms and the calendar, renames real sites to made-up ones, and adds a
         made-up roster at every site — with case management on, also units, moves, families and client information. Forms, people and settings stay.
@@ -174,10 +174,10 @@ function ReplaceWithMadeUpData() {
           {running ? "Replacing…" : "Replace with made-up data"}
         </Button>
       </div>
-      {running && <p className="mt-3 text-[13px] text-muted">Replacing, started by {run!.by}. This takes a few minutes; you can leave this page.</p>}
-      {run?.error && <p className="mt-3 text-[13px] text-status-redText">It stopped partway: {run.error}</p>}
+      {running && <p className="mt-3 text-label text-muted">Replacing, started by {run!.by}. This takes a few minutes; you can leave this page.</p>}
+      {run?.error && <p className="mt-3 text-label text-status-redText">It stopped partway: {run.error}</p>}
       {done && (
-        <div className="mt-3 text-[13px] text-muted">
+        <div className="mt-3 text-label text-muted">
           <p>
             Removed {done.residents.removed} residents, {done.entries} entries, {done.files} files and {done.attendance} attendance records. Added {done.residents.added} made-up
             residents.{done.redacted.length > 0 && <> Took names out of {done.redacted.length} forms and records.</>}
@@ -206,8 +206,8 @@ function SiteRules({ orgHours }: { orgHours: string }) {
   return (
     <Card className="mt-4">
       <div className="border-b border-hairline px-5 py-3.5">
-        <p className="font-heading text-[15px] font-extrabold text-ink">Your sites</p>
-        <p className="mt-0.5 text-[13px] text-muted">Leave a site blank to use the default ({orgHours} hours). Shelters often use 24.</p>
+        <p className="font-heading text-body-lg font-extrabold text-ink">Your sites</p>
+        <p className="mt-0.5 text-label text-muted">Leave a site blank to use the default ({orgHours} hours). Shelters often use 24.</p>
       </div>
       <ul>
         {(sites ?? []).map((s) => <SiteRuleRow key={s.id} site={s} />)}
@@ -235,7 +235,7 @@ function SiteRuleRow({ site }: { site: Site }) {
 
   return (
     <li className="flex items-center gap-3 border-b border-hairline px-5 py-2.5 last:border-0">
-      <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{site.name}</span>
+      <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{site.name}</span>
       <Input type="number" min={1} max={1440} placeholder="Default" value={hours} onChange={(e) => setHours(e.target.value)} className="w-28" aria-label={`${site.name} review threshold in hours`} />
       <Button variant="secondary" onClick={save} disabled={hours === saved}>Save</Button>
     </li>
@@ -279,15 +279,15 @@ export function AdminSignInAccess() {
       <PageHeader title="Sign-in access" help={{ article: "admin-sites", text: "Which other email domains may sign in, and whether the welcome tour starts by itself." }} subtitle="Everyone signs in through Lantern's Microsoft Entra ID. Partner organisations can use their own Google Workspace or Microsoft accounts." />
       <Card className="mb-4 p-5">
         <p className="kicker mb-2">New people</p>
-        <p className="text-[13px] text-muted">
+        <p className="text-label text-muted">
           Someone you add by email ahead of time signs straight in. Anyone else who signs in is asked to request access,
           and an Admin approves it, with their role and sites, in <b className="text-ink">People &amp; roles → Requests</b>.
         </p>
         <label className="mt-4 flex items-start gap-3 border-t border-hairline pt-4">
           <Switch className="mt-0.5" checked={data?.welcomeTour !== "false"} onCheckedChange={(on) => void setWelcomeTour(on)} />
           <span>
-            <span className="block text-[14px] font-semibold text-ink">Show new people the welcome tour</span>
-            <span className="mt-0.5 block text-[13px] text-muted">
+            <span className="block text-body font-semibold text-ink">Show new people the welcome tour</span>
+            <span className="mt-0.5 block text-label text-muted">
               The first time someone reaches their home screen (on a computer, and again on a phone or iPad), a short guided tour
               shows them the parts of the site their role can use. They can skip it, and replay it from their Profile.
               Forms' own tutorials are set on each form. To show it to one person again, use their tutorials in People &amp; roles.
@@ -297,14 +297,14 @@ export function AdminSignInAccess() {
       </Card>
       <Card className="mb-4 p-5">
         <p className="kicker mb-2">Admitted domains</p>
-        <p className="mb-3 text-[13px] text-muted">
+        <p className="mb-3 text-label text-muted">
           <b className="text-ink">lanterncommunity.org</b> is always admitted. Add a partner's domain to let their staff request access
           by signing in. To admit one person without their whole domain, add them by email in People &amp; roles instead.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
-          {domains.length === 0 && <span className="text-[13px] text-muted">No partner domains yet.</span>}
+          {domains.length === 0 && <span className="text-label text-muted">No partner domains yet.</span>}
           {domains.map((d) => (
-            <span key={d} className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-subtle px-3 py-1 text-[13px] text-ink">
+            <span key={d} className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-subtle px-3 py-1 text-label text-ink">
               {d}
               <button onClick={() => persist(domains.filter((x) => x !== d))} aria-label={`Remove ${d}`} className="text-muted hover:text-ink"><X className="h-3.5 w-3.5" /></button>
             </span>
@@ -315,7 +315,7 @@ export function AdminSignInAccess() {
           <Button type="submit" disabled={!next.trim()}>Add domain</Button>
         </form>
       </Card>
-      <Card className="p-5 text-[13px] text-muted">
+      <Card className="p-5 text-label text-muted">
         <p className="kicker mb-2">Partner sign-in (Google Workspace &amp; others) — one-time Entra setup</p>
         <ol className="list-decimal space-y-1.5 pl-5">
           <li>

@@ -40,9 +40,9 @@ export function WelcomePage() {
   if (error || !data) {
     return (
       <Frame>
-        <h1 className="text-center font-heading text-[23px] font-extrabold text-ink">Sign in again to continue</h1>
-        <p className="mt-2 text-center text-[13px] text-muted">This page needs a fresh sign-in. It only works for a couple of hours after you sign in.</p>
-        <Link to="/signin" className={`mt-7 inline-flex h-11 w-full items-center justify-center rounded-input font-heading text-[15px] font-semibold text-white ${BRAND_NAVY}`}>
+        <h1 className="text-center font-heading text-title font-extrabold text-ink">Sign in again to continue</h1>
+        <p className="mt-2 text-center text-label text-muted">This page needs a fresh sign-in. It only works for a couple of hours after you sign in.</p>
+        <Link to="/signin" className={`mt-7 inline-flex h-11 w-full items-center justify-center rounded-input font-heading text-body-lg font-semibold text-white ${BRAND_NAVY}`}>
           Back to sign in
         </Link>
       </Frame>
@@ -55,11 +55,11 @@ export function WelcomePage() {
     return (
       <Frame>
         <CheckCircle2 className="mx-auto h-10 w-10 text-status-greenDot" />
-        <h1 className="mt-4 text-center font-heading text-[23px] font-extrabold text-ink">Request sent</h1>
-        <p className="mt-2 text-center text-[13px] text-muted">
+        <h1 className="mt-4 text-center font-heading text-title font-extrabold text-ink">Request sent</h1>
+        <p className="mt-2 text-center text-label text-muted">
           An admin will look at your request and set up your access. We'll let you know, and then you can sign in.
         </p>
-        <Link to="/signin" className="mt-7 block text-center text-[13px] text-muted underline-offset-2 hover:underline">Back to sign in</Link>
+        <Link to="/signin" className="mt-7 block text-center text-label text-muted underline-offset-2 hover:underline">Back to sign in</Link>
       </Frame>
     );
   }
@@ -79,20 +79,20 @@ export function WelcomePage() {
 
   return (
     <Frame>
-      <h1 className="text-center font-heading text-[23px] font-extrabold text-ink">Welcome, {first}</h1>
-      <p className="mt-2 text-center text-[13px] text-muted">
+      <h1 className="text-center font-heading text-title font-extrabold text-ink">Welcome, {first}</h1>
+      <p className="mt-2 text-center text-label text-muted">
         You don't have access to Lantern Forms yet. Request it, and an admin will set it up for you.
       </p>
 
       {problem && (
-        <div className="mt-4 rounded-card border border-status-redDot/30 bg-status-redBg px-3.5 py-3 text-[13px] text-status-redText">{problem}</div>
+        <div className="mt-4 rounded-card border border-status-redDot/30 bg-status-redBg px-3.5 py-3 text-label text-status-redText">{problem}</div>
       )}
 
       <button
         type="button"
         onClick={() => void send()}
         disabled={busy}
-        className={`mt-6 inline-flex h-[52px] w-full items-center justify-center rounded-input font-heading text-[15.5px] font-semibold text-white focus-visible:outline focus-visible:outline-2 disabled:opacity-45 md:h-11 md:text-[15px] ${BRAND_NAVY}`}
+        className={`mt-6 inline-flex h-[52px] w-full items-center justify-center rounded-input font-heading text-body-lg font-semibold text-white focus-visible:outline focus-visible:outline-2 disabled:opacity-45 md:h-11 md:text-body-lg ${BRAND_NAVY}`}
       >
         {busy ? "Sending…" : "Request access"}
       </button>

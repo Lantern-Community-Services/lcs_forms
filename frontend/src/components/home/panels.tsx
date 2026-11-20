@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, PencilLine, Use
 import { formIcon } from "@/lib/formIcons";
 import type { HomeActivityItem, HomeAppTile, HomeAttentionItem, HomeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { reloadHint } from "@/lib/device";
 
 /**
  * The Forms home's panels: what needs the person, what happened lately, code
@@ -15,12 +16,14 @@ const ATTENTION_ICON = { roster: Users, draft: PencilLine } as const;
 
 export function AttentionIcon({ item, size = "md" }: { item: HomeAttentionItem; size?: "sm" | "md" }) {
   const Icon = item.kind === "app" ? formIcon(item.icon ?? "clipboard") : ATTENTION_ICON[item.kind] ?? AlertTriangle;
+  // "N more sites ..." sums up the rest of the list: quieter, so the list isn't a wall of amber.
+  const warn = item.tone === "warn" && !item.id.endsWith(":rest");
   return (
     <span
       className={cn(
         "flex shrink-0 items-center justify-center",
         size === "md" ? "h-10 w-10 rounded-[10px]" : "h-[34px] w-[34px] rounded-[9px]",
-        item.tone === "warn" ? "bg-status-amberBg text-status-amberText" : "bg-navsel text-accent dark:text-white"
+        warn ? "bg-status-amberBg text-status-amberText" : item.tone === "warn" ? "bg-subtle text-muted" : "bg-navsel text-accent dark:text-white"
       )}
     >
       <Icon className={size === "md" ? "h-[19px] w-[19px]" : "h-[17px] w-[17px]"} />
@@ -28,20 +31,32 @@ export function AttentionIcon({ item, size = "md" }: { item: HomeAttentionItem; 
   );
 }
 
-export function PanelHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
+export function PanelHeader({ title, count, tone, children }: { title: string; count?: number; tone?: "warn"; children?: React.ReactNode }) {
   return (
     <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-hairline px-4 py-2.5 xl:px-5">
-      <h2 className="flex items-center gap-2 text-[15px] font-heading font-extrabold text-ink xl:text-[16px]">
+      <h2 className="flex items-center gap-2 text-body-lg font-heading font-extrabold text-ink xl:text-[16px]">
         {title}
-        {count !== undefined && count > 0 && <span className="rounded-pill bg-navy px-2 py-px text-[11.5px] font-bold text-navy-fg">{count}</span>}
+        {count !== undefined && count > 0 && (
+          <span className={cn("inline-flex min-w-[22px] justify-center rounded-pill px-2 py-px text-caption font-bold", tone === "warn" ? "bg-status-amberBg text-status-amberText" : "bg-navy text-navy-fg")}>{count}</span>
+        )}
       </h2>
       {children}
     </div>
   );
 }
 
+/** A panel header's link ("See all", "Calendar"): a chevron and a finger-sized target. */
+export function PanelLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link to={to} className="-my-2 inline-flex min-h-[36px] shrink-0 items-center gap-0.5 text-label font-bold text-accent hover:underline dark:text-white touch:min-h-11">
+      {children}
+      <ChevronRight className="h-4 w-4" aria-hidden />
+    </Link>
+  );
+}
+
 export function PanelNote({ children }: { children: React.ReactNode }) {
-  return <p className="px-4 py-6 text-center text-[13px] text-muted xl:px-5">{children}</p>;
+  return <p className="px-4 py-5 text-label text-muted xl:px-5">{children}</p>;
 }
 
 export function AttentionPanel({ home, loading, failed, compact = false, className }: {
@@ -53,43 +68,46 @@ export function AttentionPanel({ home, loading, failed, compact = false, classNa
   className?: string;
 }) {
   const items = home?.attention ?? [];
+  const warn = items.some((a) => a.tone === "warn");
   return (
     <section id="attention" data-tour="home-attention" className={cn("enter-up flex min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card", className)}>
-      <PanelHeader title="Needs your attention" count={items.length} />
+      <PanelHeader title="Needs your attention" count={items.length} tone={warn ? "warn" : undefined}>
+        {!compact && items.some((a) => a.kind === "roster") && <PanelLink to="/roster/review">Open Review</PanelLink>}
+      </PanelHeader>
       {loading ? (
         <PanelNote>Checking…</PanelNote>
       ) : failed ? (
-        <PanelNote>This didn't load. Refresh the page to try again.</PanelNote>
+        <PanelNote>This didn't load. {reloadHint()}</PanelNote>
       ) : items.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-5 py-7 text-center">
           <CheckCircle2 className="h-6 w-6 text-status-greenDot" />
-          <p className="text-[14px] font-bold text-ink">You're all caught up</p>
-          <p className="text-[12.5px] text-muted">Anything that needs you will show up here.</p>
+          <p className="text-body font-bold text-ink">You're all caught up</p>
+          <p className="text-label text-muted">Anything that needs you will show up here.</p>
         </div>
       ) : (
         <ul>
           {items.map((a, i) => (
-            <li key={a.id} className={cn("border-b border-hairline/70 last:border-b-0", i >= 3 && "hidden xl:block")}>
+            <li key={a.id} className="border-b border-hairline/70 last:border-b-0">
               {/* Tablet: the whole row is the link. Desktop: a row with its own button. */}
               <Link to={a.href} className={cn("flex items-center gap-3 px-4 py-2.5 hover:bg-rowhover", !compact && "xl:hidden")}>
                 <AttentionIcon item={a} size="sm" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold text-ink">{a.title}</span>
-                  <span className="block truncate text-[12px] text-muted">{a.detail}</span>
+                  <span className="block truncate text-body font-bold text-ink">{a.title}</span>
+                  <span className="block truncate text-caption text-muted">{a.detail}</span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
               </Link>
-              <div className={cn("hidden items-center gap-3.5 px-5 py-4", !compact && "xl:flex")}>
+              <div className={cn("hidden items-center gap-3.5 px-5 py-3.5", !compact && "xl:flex")}>
                 <AttentionIcon item={a} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14.5px] font-bold text-ink">{a.title}</span>
-                  <span className="mt-0.5 block text-[13px] text-muted">{a.detail}</span>
+                  <span className="block text-body font-bold text-ink">{a.title}</span>
+                  <span className="mt-0.5 block text-label text-muted">{a.detail}</span>
                 </span>
                 <Link
                   to={a.href}
                   className={cn(
-                    "inline-flex h-9 shrink-0 items-center rounded-input px-4 text-[13px] font-bold",
-                    i === 0 ? "bg-navy text-navy-fg hover:bg-navy-700" : "bg-subtle text-accent hover:bg-subtle2 dark:text-white"
+                    "inline-flex h-9 shrink-0 items-center rounded-input px-4 text-label font-bold",
+                    i === 0 ? "bg-navy text-navy-fg hover:bg-navy-700" : "border border-strongline bg-surface text-ink hover:bg-rowhover"
                   )}
                 >
                   {a.action}
@@ -144,7 +162,7 @@ export function ActivityPanel({ home, loading, failed, limit, wideLimit, classNa
                 aria-pressed={justMe === mine}
                 onClick={() => setJustMe(mine)}
                 className={cn(
-                  "h-8 rounded-[5px] px-3 text-[12.5px]",
+                  "h-8 rounded-[5px] px-3 text-label",
                   justMe === mine ? "bg-surface font-bold text-ink shadow-card" : "font-semibold text-muted hover:text-ink"
                 )}
               >
@@ -157,9 +175,12 @@ export function ActivityPanel({ home, loading, failed, limit, wideLimit, classNa
       {loading ? (
         <PanelNote>Loading…</PanelNote>
       ) : failed ? (
-        <PanelNote>This didn't load. Refresh the page to try again.</PanelNote>
+        <PanelNote>This didn't load. {reloadHint()}</PanelNote>
       ) : items.length === 0 ? (
-        <PanelNote>Nothing yet. Forms you submit will show up here.</PanelNote>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-5 xl:px-5">
+          <p className="text-label text-muted">Nothing yet. Forms you submit will show up here.</p>
+          <Link to="/forms" className="inline-flex min-h-[36px] shrink-0 items-center rounded-input border border-strongline bg-surface px-3.5 text-label font-bold text-ink hover:bg-rowhover touch:min-h-11">Find a form</Link>
+        </div>
       ) : (
         <ul className="py-1">
           {items.map((a, i) => {
@@ -187,7 +208,7 @@ function ActivityRow({ item, at }: { item: HomeActivityItem; at: Date }) {
     <>
       <span
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-micro font-bold",
           item.mine ? "bg-navy text-navy-fg" : "bg-navsel text-accent dark:text-white"
         )}
         aria-hidden
@@ -195,10 +216,10 @@ function ActivityRow({ item, at }: { item: HomeActivityItem; at: Date }) {
         {initials(item.actorName)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] text-ink">
+        <span className="block truncate text-body text-ink">
           {item.verb} <b className="font-bold">{item.subject}</b>
         </span>
-        <span className="block truncate text-[12px] text-muted">{[item.detail, time].filter(Boolean).join(" · ")}</span>
+        <span className="block truncate text-caption text-muted">{[item.detail, time].filter(Boolean).join(" · ")}</span>
       </span>
     </>
   );
@@ -210,24 +231,28 @@ function ActivityRow({ item, at }: { item: HomeActivityItem; at: Date }) {
   );
 }
 
-/** Stat tiles from code forms (form.json "home"), each opening its form. */
+/** Stat tiles from code forms (form.json "home"), each opening its form: icon, what it counts, the number. */
 export function AppTiles({ tiles, className }: { tiles: HomeAppTile[]; className?: string }) {
   if (!tiles.length) return null;
   return (
-    <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-3 xl:gap-4", className)}>
+    <div className={cn("grid gap-3 xl:gap-4", tiles.length === 1 ? "grid-cols-1" : "md:grid-cols-2", className)}>
       {tiles.map((t) => {
         const Icon = formIcon(t.icon ?? "clipboard");
+        // The label usually names the form already ("Petty cash to hand over"); otherwise lead with the form.
+        const label = t.label.toLowerCase().includes(t.formTitle.toLowerCase()) ? t.label : `${t.formTitle} · ${t.label}`;
         return (
-          <Link key={t.id} to={t.href} className="enter-up flex min-w-0 flex-col gap-1 rounded-card border border-hairline bg-surface px-4 py-3.5 shadow-card hover:border-strongline xl:px-5 xl:py-4">
-            <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-muted">
-              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{t.formTitle}</span>
+          <Link key={t.id} to={t.href} className="enter-up flex min-h-[72px] min-w-0 items-center gap-3.5 rounded-card border border-hairline bg-surface px-4 py-3 shadow-card hover:border-strongline xl:px-5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-subtle text-ink">
+              <Icon className="h-5 w-5" aria-hidden />
             </span>
-            <span className="truncate text-[13px] font-semibold text-ink">{t.label}</span>
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="text-[24px] font-heading font-extrabold leading-tight text-ink xl:text-[28px]">{t.value}</span>
-              {t.hint && <span className="truncate text-[12.5px] text-muted">{t.hint}</span>}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-label text-muted">{label}</span>
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="text-title-sm font-heading font-extrabold leading-tight text-ink">{t.value}</span>
+                {t.hint && <span className="truncate text-label text-muted">{t.hint}</span>}
+              </span>
             </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
           </Link>
         );
       })}
@@ -246,10 +271,10 @@ export function PhoneAttention({ home }: { home?: HomeData }) {
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3.5 py-3 text-left">
         <AttentionIcon item={items[0]} size="sm" />
         <span className="min-w-0 flex-1">
-          <span className="block text-[14.5px] font-bold text-ink">
+          <span className="block text-body-lg font-bold text-ink">
             {items.length === 1 ? "1 thing needs your attention" : `${items.length} things need your attention`}
           </span>
-          <span className="block truncate text-[12.5px] text-muted">
+          <span className="block truncate text-label text-muted">
             {items[0].title}
             {items.length > 1 ? `, and ${items.length - 1} more` : ""}
           </span>
@@ -263,8 +288,8 @@ export function PhoneAttention({ home }: { home?: HomeData }) {
               <Link to={a.href} className="flex items-center gap-3 px-3.5 py-3 active:bg-rowhover">
                 <AttentionIcon item={a} size="sm" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-bold text-ink">{a.title}</span>
-                  <span className="block text-[12.5px] text-muted">{a.detail}</span>
+                  <span className="block text-body font-bold text-ink">{a.title}</span>
+                  <span className="block text-label text-muted">{a.detail}</span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
               </Link>

@@ -42,7 +42,7 @@ export function RemoveDialog({
 
   const body = (
     <>
-      <p className="text-[13px] text-muted">
+      <p className="text-label text-muted">
         {where ? `${where}. ` : ""}They'll come off the active roster and out of every form's resident list. You can undo this.
       </p>
       <p className="kicker mb-2 mt-4">Reason</p>
@@ -55,7 +55,7 @@ export function RemoveDialog({
             aria-checked={reason === r}
             onClick={() => setReason(r)}
             className={cn(
-              "min-h-[40px] rounded-pill border px-3.5 text-[13.5px] font-semibold transition-colors",
+              "min-h-[40px] rounded-pill border px-3.5 text-body font-semibold transition-colors",
               reason === r ? "border-navy bg-navsel text-accent dark:text-white" : "border-hairline text-ink hover:bg-rowhover"
             )}
           >

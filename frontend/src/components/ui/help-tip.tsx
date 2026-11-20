@@ -92,7 +92,7 @@ export function HelpTip({ children, label = "What's this?", className }: {
             style={{ left: pos.left, top: pos.top, width: Math.min(WIDTH, window.innerWidth - GUTTER * 2) }}
             className={cn(
               // Not clickable: inside a modal dialog, a press on it would count as outside the dialog.
-              "pointer-events-none fixed z-[1000] rounded-card bg-ink px-3 py-2 text-left text-[12.5px] font-normal leading-snug text-surface shadow-lg",
+              "pointer-events-none fixed z-[1000] rounded-card bg-ink px-3 py-2 text-left text-label font-normal leading-snug text-surface shadow-lg",
               !pos.below && "-translate-y-full"
             )}
           >

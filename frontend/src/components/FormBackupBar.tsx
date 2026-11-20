@@ -94,7 +94,7 @@ function useBackupActions(data: BackupStatus | undefined) {
 function JobButton({ job, onClick, children, variant = "secondary" }: { job: BackupStatus["jobs"][number] | undefined; onClick: () => void; children: React.ReactNode; variant?: "secondary" | "ghost" }) {
   if (job) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-muted">
+      <span className="inline-flex items-center gap-1.5 text-label font-semibold text-muted">
         {job.running ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {RUNNING[job.action]}</> : "Queued"}
       </span>
     );
@@ -164,7 +164,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
   const waiting = data.jobs.length;
 
   return (
-    <div className={cn("mb-4 rounded-card border border-hairline bg-surface text-[13px]", className)}>
+    <div className={cn("mb-4 rounded-card border border-hairline bg-surface text-label", className)}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
         {data.lastError ? <AlertTriangle className="h-4 w-4 shrink-0 text-status-amberText" /> : <CloudUpload className="h-4 w-4 shrink-0 text-muted" />}
         <p className="min-w-0 flex-1 text-muted">
@@ -204,7 +204,7 @@ export function FormBackupBar({ className, kind, listKey }: { className?: string
 
       {mine.length > 0 && (
         <>
-          <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 border-t border-hairline px-4 py-2 text-left text-[13px] font-semibold text-ink hover:bg-rowhover/50">
+          <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 border-t border-hairline px-4 py-2 text-left text-label font-semibold text-ink hover:bg-rowhover/50">
             <ChevronDown className={cn("h-4 w-4 text-muted transition-transform", !open && "-rotate-90")} />
             {[
               behind.length && `${behind.length} need${behind.length === 1 ? "s" : ""} sync`,

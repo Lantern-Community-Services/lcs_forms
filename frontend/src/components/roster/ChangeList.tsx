@@ -62,7 +62,7 @@ export function ChangeList({ event, className }: { event: Pick<AuditEvent, "acti
   const lines = changeLines(event);
   if (!lines.length) return null;
   return (
-    <ul className={className ?? "mt-0.5 space-y-0.5 text-[12.5px] text-muted"}>
+    <ul className={className ?? "mt-0.5 space-y-0.5 text-label text-muted"}>
       {lines.map((l) => (
         <li key={l.label}>
           <span className="font-semibold">{l.label}:</span> <span className="line-through decoration-muted/60">{l.from}</span> <span aria-hidden>→</span>

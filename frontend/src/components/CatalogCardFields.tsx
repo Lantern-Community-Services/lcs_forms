@@ -49,8 +49,8 @@ export function CatalogCardFields({ linkId }: { linkId: string }) {
   return (
     <div className="space-y-4 rounded-input border border-hairline p-3">
       <div className="flex items-center gap-3">
-        <p className="min-w-0 flex-1 text-[13px] font-semibold text-ink">Its card on the Forms screen</p>
-        <label className="flex items-center gap-2 text-[12.5px] text-ink">
+        <p className="min-w-0 flex-1 text-label font-semibold text-ink">Its card on the Forms screen</p>
+        <label className="flex items-center gap-2 text-label text-ink">
           <Switch checked={draft.active} onCheckedChange={(active) => setDraft({ ...draft, active })} aria-label="Visible to staff" />
           Visible to staff
         </label>
@@ -70,7 +70,7 @@ export function CatalogCardFields({ linkId }: { linkId: string }) {
         </Field>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <Link to={`/admin/forms/card/${linkId}`} className="mr-auto text-[12.5px] font-semibold text-accent dark:text-white">Everything about the card</Link>
+        <Link to={`/admin/forms/card/${linkId}`} className="mr-auto text-label font-semibold text-accent dark:text-white">Everything about the card</Link>
         <Button size="sm" onClick={() => void save()} disabled={busy || !changed}>Save the card</Button>
       </div>
     </div>

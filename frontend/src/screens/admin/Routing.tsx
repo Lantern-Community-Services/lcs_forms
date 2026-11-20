@@ -143,16 +143,16 @@ export function RoutingFormsList() {
                 <Link to={`/admin/notifications/forms/${f.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-rowhover">
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-[14px] font-semibold text-ink">{f.title}</span>
+                      <span className="truncate text-body font-semibold text-ink">{f.title}</span>
                       {f.kind === "code" && <Tag tone="neutral">Code form</Tag>}
                       {f.status === "draft" && <Tag tone="amber">Draft</Tag>}
                     </span>
-                    <span className="mt-0.5 block text-[12.5px] text-muted">
+                    <span className="mt-0.5 block text-label text-muted">
                       {f.routes ? `${f.routes} route${f.routes === 1 ? "" : "s"}${f.enabled < f.routes ? ` (${f.enabled} on)` : ""}` : "Nobody is told"}
                       {f.usingDefaults ? (f.routes ? " · the form's defaults" : "") : f.updatedAt ? ` · changed ${relativeTime(f.updatedAt)}${f.updatedByName ? ` by ${f.updatedByName}` : ""}` : ""}
                     </span>
                   </span>
-                  <span className="text-[13px] font-semibold text-accent">Edit</span>
+                  <span className="text-label font-semibold text-accent">Edit</span>
                 </Link>
               </li>
             ))}
@@ -229,7 +229,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
   return (
     <Page className="max-w-[920px] pb-24">
       {!inForm && (
-        <button type="button" onClick={() => navigate("/admin/notifications")} className="mb-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+        <button type="button" onClick={() => navigate("/admin/notifications")} className="mb-2 inline-flex items-center gap-1 text-label font-semibold text-accent">
           <ArrowLeft className="h-3.5 w-3.5" /> All forms
         </button>
       )}
@@ -244,7 +244,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
         }
       />
 
-      <Card className="mb-5 p-4 text-[13px] text-muted">
+      <Card className="mb-5 p-4 text-label text-muted">
         {data.usingDefaults ? (
           <p>{routes.length ? <>These are the routes <b className="text-ink">{data.form.title}</b> ships with. Change anything and save to make them this form's own.</> : <>Nobody is told about this form yet. Add a route under an event below.</>}</p>
         ) : (
@@ -269,8 +269,8 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
           <section key={ev.id} className="mb-6">
             <div className="mb-2 flex items-end gap-3 px-1">
               <div className="min-w-0 flex-1">
-                <p className="font-heading text-[15px] font-extrabold text-ink">{ev.label}</p>
-                {ev.description && <p className="text-[12.5px] text-muted">{ev.description}</p>}
+                <p className="font-heading text-body-lg font-extrabold text-ink">{ev.label}</p>
+                {ev.description && <p className="text-label text-muted">{ev.description}</p>}
               </div>
               <Button variant="secondary" size="sm" onClick={() => add(ev)}><Plus className="h-4 w-4" /> Add a route</Button>
             </div>
@@ -291,7 +291,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
                 ))}
               </div>
             ) : (
-              <p className="rounded-card border border-dashed border-hairline px-4 py-3 text-[13px] text-muted">Nobody is told.</p>
+              <p className="rounded-card border border-dashed border-hairline px-4 py-3 text-label text-muted">Nobody is told.</p>
             )}
           </section>
         );
@@ -307,7 +307,7 @@ export function RoutingEditor({ formId: id, inForm = false, onRulesMoved }: { fo
 
       {dirty && (
         <div className="sticky bottom-0 z-10 -mx-4 mt-5 flex items-center justify-between gap-3 border-t border-hairline bg-surface px-4 py-3 md:-mx-7 md:px-7">
-          <span className="text-[13.5px] font-semibold text-ink">Unsaved changes</span>
+          <span className="text-body font-semibold text-ink">Unsaved changes</span>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setRoutes(data.routes)} disabled={busy}>Undo</Button>
             <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
@@ -351,7 +351,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
     <Card className={cn("p-0", !route.enabled && "opacity-70")}>
       <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
         <Switch checked={route.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label={route.enabled ? "Turn this route off" : "Turn this route on"} />
-        <input value={route.name} onChange={(e) => set({ name: e.target.value })} aria-label="Route name" className="min-w-0 flex-1 bg-transparent font-heading text-[15px] font-extrabold text-ink outline-none focus:underline" />
+        <input value={route.name} onChange={(e) => set({ name: e.target.value })} aria-label="Route name" className="min-w-0 flex-1 bg-transparent font-heading text-body-lg font-extrabold text-ink outline-none focus:underline" />
         {route.urgent && <Tag tone="red">Urgent</Tag>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -368,7 +368,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
       <div className="grid gap-4 px-4 py-4 md:px-5">
         <Row label="At">
           <div className="flex flex-wrap items-center gap-1.5">
-            {route.sites?.length ? route.sites.map((c) => <Pill key={c} onRemove={() => set({ sites: route.sites!.filter((x) => x !== c) })}>{siteName(c)}</Pill>) : <span className="text-[13.5px] text-ink">Every site</span>}
+            {route.sites?.length ? route.sites.map((c) => <Pill key={c} onRemove={() => set({ sites: route.sites!.filter((x) => x !== c) })}>{siteName(c)}</Pill>) : <span className="text-body text-ink">Every site</span>}
             <Button variant="ghost" size="sm" onClick={() => setPicking("sites")}>Choose sites</Button>
           </div>
         </Row>
@@ -413,7 +413,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
             <Button variant="ghost" size="sm" onClick={() => setRules([...rules, { field: fields[0].id, op: "is", value: "" }])}>
               <Plus className="h-3.5 w-3.5" /> {rules.length ? "Another condition" : "Add a condition"}
             </Button>
-            {!rules.length && <span className="ml-1 text-[12.5px] text-muted">Always, for every {event.label.toLowerCase().replace(/^(a|an|the) /, "")}.</span>}
+            {!rules.length && <span className="ml-1 text-label text-muted">Always, for every {event.label.toLowerCase().replace(/^(a|an|the) /, "")}.</span>}
           </div>
         </Row>
 
@@ -426,7 +426,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
                 ))}
               </ul>
             ) : (
-              <p className="text-[13px] font-semibold text-status-amberText">Nobody yet.</p>
+              <p className="text-label font-semibold text-status-amberText">Nobody yet.</p>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -471,7 +471,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
               <Input value={route.label ?? ""} onChange={(e) => set({ label: e.target.value || undefined })} placeholder={`Called in their settings: ${route.name || "the route's name"}`} aria-label="What people see it called" maxLength={120} />
               <Input value={route.description ?? ""} onChange={(e) => set({ description: e.target.value || undefined })} placeholder="A line on what it's for (optional)" aria-label="What it's for" maxLength={300} />
             </div>
-            <p className="text-[12px] text-muted">
+            <p className="text-caption text-muted">
               Everyone on this route sees it on their Profile → Notifications{route.label || route.name ? ` as “${route.label || route.name}”` : ""}, and{" "}
               {route.email === "always"
                 ? "gets it in the app and by email at once, and can't change it. Keep Locked for what everyone must see straight away."
@@ -484,11 +484,11 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
         </Row>
 
         <Row label="Priority">
-          <label className="flex items-start gap-2 pt-1 text-[13px] text-ink">
+          <label className="flex items-start gap-2 pt-1 text-label text-ink">
             <Switch checked={route.urgent ?? false} onCheckedChange={(v) => set({ urgent: v || undefined })} className="mt-0.5" aria-label="Urgent" />
             <span>
               Urgent
-              <span className="block text-[12px] text-muted">
+              <span className="block text-caption text-muted">
                 For what can't wait, like an incident. It's red in their bell and stays at the top of their notifications until read, and it's emailed straight away even to people who get a daily summary. Keep it for the few that need it, or people stop noticing.
               </span>
             </span>
@@ -500,7 +500,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
         {!route.template && (
           <Row label="Subject">
             <Input value={route.subject ?? ""} onChange={(e) => set({ subject: e.target.value || undefined })} placeholder="The form's own subject" className="max-w-[420px]" aria-label="Subject" />
-            <p className="mt-1 text-[12px] text-muted">Optional. Can use {"{form}"}, {"{site}"}, {"{title}"} and {"{date}"}. Never put a resident's name here: it's the email subject.</p>
+            <p className="mt-1 text-caption text-muted">Optional. Can use {"{form}"}, {"{site}"}, {"{title}"} and {"{date}"}. Never put a resident's name here: it's the email subject.</p>
           </Row>
         )}
 
@@ -529,7 +529,7 @@ function RouteCard({ route, event, roles, sites, formId, emailFields, onChange, 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5 md:grid-cols-[110px_1fr] md:gap-4">
-      <p className="pt-1.5 text-[12px] font-bold uppercase tracking-wide text-muted">{label}</p>
+      <p className="pt-1.5 text-caption font-bold uppercase tracking-wide text-muted">{label}</p>
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -537,7 +537,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function Pill({ children, onRemove }: { children: React.ReactNode; onRemove?: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-pill bg-navsel px-2.5 py-0.5 text-[12.5px] font-semibold text-ink">
+    <span className="inline-flex items-center gap-1 rounded-pill bg-navsel px-2.5 py-0.5 text-label font-semibold text-ink">
       {children}
       {onRemove && <button type="button" onClick={onRemove} aria-label="Remove" className="text-muted hover:text-ink"><X className="h-3 w-3" /></button>}
     </span>
@@ -627,10 +627,10 @@ function RecipientRow({ r, event, roles, siteName, onChange }: { r: Recipient; e
       )}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[13.5px] font-semibold text-ink">{title}</span>
+          <span className="truncate text-body font-semibold text-ink">{title}</span>
           {r.kind === "person" && <AccountBadge acct={acct} known={known} />}
         </span>
-        {sub && <span className="block truncate text-[12px] text-muted">{sub}</span>}
+        {sub && <span className="block truncate text-caption text-muted">{sub}</span>}
       </span>
       {r.kind === "role" && !roles.find((x) => x.key === r.role)?.everySite && (
         <Select value={r.siteOnly === false ? "all" : "site"} onChange={(e) => onChange({ ...r, siteOnly: e.target.value === "site" ? undefined : false })} className="w-40" aria-label="Where">
@@ -679,16 +679,16 @@ function WhoGetsIt({ route, sites, formId }: { route: Route; sites: Site[]; form
   return (
     <div className="rounded-input bg-subtle px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12.5px] font-semibold text-ink">Who'd be told for an event at</span>
+        <span className="text-label font-semibold text-ink">Who'd be told for an event at</span>
         <Select value={site} onChange={(e) => setSite(e.target.value)} className="w-56" aria-label="Site">
           <option value="">No site</option>
           {sites.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
         </Select>
         <Button variant="secondary" size="sm" onClick={check} disabled={busy || !route.to.length}><Search className="h-3.5 w-3.5" /> {busy ? "Checking…" : "Check"}</Button>
       </div>
-      {err && <p className="mt-2 text-[12.5px] text-status-redText">{err}</p>}
+      {err && <p className="mt-2 text-label text-status-redText">{err}</p>}
       {plan && (
-        <div className="mt-2 text-[12.5px] text-ink">
+        <div className="mt-2 text-label text-ink">
           {plan.people.length + plan.emails.length ? (
             <p>
               {plan.people.map((p) => p.name).join(", ")}
@@ -756,7 +756,7 @@ function PersonDialog({ open, sites, taken, onClose, onAdd }: { open: boolean; s
         <DialogHeader title="Add someone" subtitle="Staff with an account are told in the app and by email. Anyone else gets an email with a link." />
         <DialogBody>
           <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search staff, or type an email address" className="!pl-9" autoFocus />
-          <button type="button" onClick={() => setShowSites(!showSites)} className="mt-2 text-[12.5px] font-semibold text-accent">
+          <button type="button" onClick={() => setShowSites(!showSites)} className="mt-2 text-label font-semibold text-accent">
             {only.length ? `Only for events at ${only.length} site${only.length === 1 ? "" : "s"}` : "Every site"} · change
           </button>
           {showSites && <CheckboxList options={sites.map((s) => ({ value: s.code, label: s.name }))} value={only} onChange={setOnly} className="mt-2 max-h-[180px] overflow-y-auto" />}
@@ -770,12 +770,12 @@ function PersonDialog({ open, sites, taken, onClose, onAdd }: { open: boolean; s
                   <Avatar name={p.name} color={p.avatarColor} size={30} className={cn(p.status !== "active" && "opacity-70")} />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-[13.5px] font-semibold text-ink">{p.name}</span>
+                      <span className="truncate text-body font-semibold text-ink">{p.name}</span>
                       {p.status !== "active" && <ToneBadge tone="amber">Pending</ToneBadge>}
                     </span>
-                    <span className="block truncate text-[12px] text-muted">{p.roleName} · {p.email}{p.status !== "active" ? " · hasn't signed in yet" : ""}</span>
+                    <span className="block truncate text-caption text-muted">{p.roleName} · {p.email}{p.status !== "active" ? " · hasn't signed in yet" : ""}</span>
                   </span>
-                  {has(p.email) ? <span className="text-[12px] text-muted">Added</span> : <Plus className="h-4 w-4 text-muted" />}
+                  {has(p.email) ? <span className="text-caption text-muted">Added</span> : <Plus className="h-4 w-4 text-muted" />}
                 </button>
               </li>
             ))}
@@ -832,7 +832,7 @@ function TeamDialog({ taken, onClose, onAdd }: { taken: Recipient[]; onClose: ()
           {left.length ? (
             <GroupChecklist groups={left} titles={titles ?? []} value={picked} onChange={setPicked} />
           ) : (
-            <p className="text-[13px] text-muted">{groups?.length ? "Every group is on this route already." : "No groups yet. Add them in People & roles → Groups."}</p>
+            <p className="text-label text-muted">{groups?.length ? "Every group is on this route already." : "No groups yet. Add them in People & roles → Groups."}</p>
           )}
           <Field label="Where">
             <Select value={where} onChange={(e) => setWhere(e.target.value as "all" | "site")}>
@@ -898,7 +898,7 @@ function NotificationsSummary({ formId, routes }: { formId: string; routes: Rout
   ].filter(Boolean);
   return (
     <div className="mb-5 flex flex-wrap gap-2" aria-label="At a glance">
-      {parts.map((p) => <span key={p} className="rounded-pill bg-subtle px-3 py-1 text-[12.5px] font-semibold text-ink">{p}</span>)}
+      {parts.map((p) => <span key={p} className="rounded-pill bg-subtle px-3 py-1 text-label font-semibold text-ink">{p}</span>)}
     </div>
   );
 }
@@ -935,14 +935,14 @@ function MoveRules({ formId, rules, unsaved, onMoved }: { formId: string; rules:
   }
   return (
     <Card className="mb-5 border-status-amberText/40 p-4">
-      <p className="text-[14px] font-semibold text-ink">
+      <p className="text-body font-semibold text-ink">
         This form also has {rules.length} notification rule{rules.length === 1 ? "" : "s"} saved in the form
       </p>
-      <p className="mt-0.5 text-[12.5px] text-muted">
+      <p className="mt-0.5 text-label text-muted">
         {rules.map((r) => `${r.name}${r.enabled ? "" : " (off)"}`).join(", ")}. Move {rules.length === 1 ? "it here as a route" : "them here as routes"} so everything about who's told is in one place, with the same people, conditions, subject, What to do and answers.
       </p>
       {preview && (
-        <div className="mt-3 space-y-1 rounded-input bg-subtle px-3 py-2 text-[12.5px]">
+        <div className="mt-3 space-y-1 rounded-input bg-subtle px-3 py-2 text-label">
           <p className="font-semibold text-ink">They'd become: {preview.routes.map((r) => r.name).join(", ") || "nothing"}</p>
           {preview.notes.map((n, i) => <p key={i} className="text-status-amberText">{n}</p>)}
         </div>
@@ -950,7 +950,7 @@ function MoveRules({ formId, rules, unsaved, onMoved }: { formId: string; rules:
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {!preview && <Button size="sm" variant="secondary" onClick={() => void look()}>See what would change</Button>}
         {preview && <Button size="sm" onClick={() => void move()} disabled={busy || unsaved || !preview.routes.length}>{busy ? "Moving…" : "Move them into routing"}</Button>}
-        {preview && unsaved && <span className="text-[12.5px] text-muted">Save your changes to the routes first.</span>}
+        {preview && unsaved && <span className="text-label text-muted">Save your changes to the routes first.</span>}
       </div>
     </Card>
   );
@@ -978,9 +978,9 @@ function Wording({ kind, value, onChange, emailFields }: { kind: TemplateKind; v
         className="max-w-[420px]"
         options={[...options.map((o) => ({ value: o.key, label: `${o.name}${o.urgent ? " (always urgent)" : ""}${o.hidden ? " (hidden)" : ""}` })), { value: "", label: kind === "report" ? "This report's own wording" : "This route's own wording" }]}
       />
-      {value && data && !t && <p className="mt-1 text-[12px] text-status-amberText">The template “{value}” is gone, so this uses its own wording until you pick another.</p>}
+      {value && data && !t && <p className="mt-1 text-caption text-status-amberText">The template “{value}” is gone, so this uses its own wording until you pick another.</p>}
       {t ? (
-        <div className="mt-2 max-w-[560px] space-y-0.5 rounded-input bg-subtle px-3 py-2 text-[12.5px] text-ink">
+        <div className="mt-2 max-w-[560px] space-y-0.5 rounded-input bg-subtle px-3 py-2 text-label text-ink">
           {t.description && <p className="text-muted">{t.description}</p>}
           <p><span className="font-semibold">Subject:</span> {t.subject || "the event's own title"}</p>
           {t.whatToDo && <p><span className="font-semibold">What to do:</span> {t.whatToDo}</p>}
@@ -994,7 +994,7 @@ function Wording({ kind, value, onChange, emailFields }: { kind: TemplateKind; v
           </p>
         </div>
       ) : (
-        <p className="mt-1 text-[12px] text-muted">{kind === "report" ? "This report's own What to do, below." : "This route's own subject and What to do, below."}</p>
+        <p className="mt-1 text-caption text-muted">{kind === "report" ? "This report's own What to do, below." : "This route's own subject and What to do, below."}</p>
       )}
     </Row>
   );
@@ -1038,12 +1038,12 @@ function EmailParts({ whatToDo, fields, emailFields, onChange, preview, answersL
             aria-label="What to do"
             className="max-w-[560px]"
           />
-          <p className="mt-1 text-[12px] text-muted">Shown at the top of the email, so people know what's expected of them. No resident details.</p>
+          <p className="mt-1 text-caption text-muted">Shown at the top of the email, so people know what's expected of them. No resident details.</p>
         </Row>
       )}
       <Row label={answersLabel}>
         <CheckboxList options={emailFields.map((f) => ({ value: f.id, label: f.label }))} value={fields ?? []} onChange={(v) => onChange({ fields: v.length ? v : undefined })} className="max-w-[560px]" />
-        <p className="mt-1 text-[12px] text-muted">
+        <p className="mt-1 text-caption text-muted">
           Shown to Lantern addresses only; anyone else gets the email without them. Residents, names, contact details, signatures, files and paragraphs can't be chosen.
         </p>
         {preview && (
@@ -1073,7 +1073,7 @@ function EmailPreviewDialog({ preview, onClose }: { preview: EmailPreview; onClo
                 role="radio"
                 aria-checked={who === k}
                 onClick={() => setWho(k)}
-                className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", who === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
+                className={cn("rounded-[5px] px-3 py-1.5 text-label font-semibold", who === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
               >
                 {label}
               </button>
@@ -1201,13 +1201,13 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
   return (
     <section className="mb-6 mt-8">
       <div className="mb-2 px-1">
-        <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up</p>
-        <p className="text-[12.5px] text-muted">Keep each new entry open until the people it's for mark it done, with what they did. Whoever filed it is told, and they're reminded until it's done.</p>
+        <p className="font-heading text-body-lg font-extrabold text-ink">Follow-up</p>
+        <p className="text-label text-muted">Keep each new entry open until the people it's for mark it done, with what they did. Whoever filed it is told, and they're reminded until it's done.</p>
       </div>
       <Card className={cn("p-0", !f.enabled && "opacity-80")}>
         <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
           <Switch checked={f.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label="Track follow-ups" />
-          <p className="min-w-0 flex-1 text-[14px] font-semibold text-ink">{f.enabled ? "Entries are followed up" : "Not followed up"}</p>
+          <p className="min-w-0 flex-1 text-body font-semibold text-ink">{f.enabled ? "Entries are followed up" : "Not followed up"}</p>
           {f.enabled && typeof data.open === "number" && <Tag tone={data.open ? "amber" : "neutral"}>{data.open} open</Tag>}
         </div>
         {f.enabled && (
@@ -1217,7 +1217,7 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
                 {f.doers.map((t, i) => (
                   <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ doers: next ? f.doers.map((x, j) => (j === i ? next : x)) : f.doers.filter((_, j) => j !== i) })} />
                 ))}
-                {!f.doers.length && <li className="px-3 py-2 text-[13px] text-muted">Nobody yet.</li>}
+                {!f.doers.length && <li className="px-3 py-2 text-label text-muted">Nobody yet.</li>}
               </ul>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1230,7 +1230,7 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
                   <DropdownMenuItem onSelect={() => pick("doers", "title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <p className="mt-1 text-[12px] text-muted">They can mark entries done and get the reminders. Admins always can.</p>
+              <p className="mt-1 text-caption text-muted">They can mark entries done and get the reminders. Admins always can.</p>
             </Row>
             <Row label="Checklist">
               <ChecklistEditor items={f.checklist} saved={(data.checklist ?? []).map((c) => c.id)} fields={fields} onChange={(checklist) => set({ checklist })} />
@@ -1240,7 +1240,7 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
                 {f.alsoTell.map((t, i) => (
                   <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ alsoTell: next ? f.alsoTell.map((x, j) => (j === i ? next : x)) : f.alsoTell.filter((_, j) => j !== i) })} />
                 ))}
-                {!f.alsoTell.length && <li className="px-3 py-2 text-[13px] text-muted">Only whoever filed it.</li>}
+                {!f.alsoTell.length && <li className="px-3 py-2 text-label text-muted">Only whoever filed it.</li>}
               </ul>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1253,9 +1253,9 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
                   <DropdownMenuItem onSelect={() => pick("alsoTell", "title")}><Briefcase className="h-4 w-4" /> Everyone with a position</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <p className="mt-1 text-[12px] text-muted">Told when it's done, with each item and who did it, besides whoever filed it.</p>
+              <p className="mt-1 text-caption text-muted">Told when it's done, with each item and who did it, besides whoever filed it.</p>
               {f.checklist.length > 0 && (
-                <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
+                <label className="mt-2 flex items-center gap-2 text-label text-ink">
                   <Switch checked={f.tellEachItem} onCheckedChange={(v) => set({ tellEachItem: v })} />
                   Tell them as each item is ticked off, too
                 </label>
@@ -1276,14 +1276,14 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
               </div>
             </Row>
             <Row label="When it's done">
-              <label className="flex items-center gap-2 pt-1 text-[13px] text-ink">
+              <label className="flex items-center gap-2 pt-1 text-label text-ink">
                 <Switch checked={f.tellSubmitter} onCheckedChange={(v) => set({ tellSubmitter: v })} />
                 Tell whoever filed it, with the note of what was done
               </label>
             </Row>
             <Row label="What to do">
               <Textarea value={f.whatToDo ?? ""} onChange={(e) => set({ whatToDo: e.target.value || undefined })} rows={2} maxLength={500} placeholder="e.g. Set up their accounts, then mark it done." className="max-w-[560px]" />
-              <p className="mt-1 text-[12px] text-muted">Shown in the reminder emails.</p>
+              <p className="mt-1 text-caption text-muted">Shown in the reminder emails.</p>
             </Row>
             <Row label="They fill in">
               <DoneFieldsEditor
@@ -1308,7 +1308,7 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
                       placeholder="Leave empty to send the usual “it's done” email with what they filled in."
                     />
                   </Field>
-                  <p className="text-[12px] text-muted">
+                  <p className="text-caption text-muted">
                     Emailed to whoever filed it when it's marked done, in these words. Tags:{" "}
                     {[...(f.doneFields ?? []).map((d) => d.id), "done_by", "filed_by", "form", "site", "note"].map((t) => `{${t}}`).join(" ")}, and any of the form's answers by field id.
                     {(f.doneFields ?? []).some((d) => d.type === "password") && " A password tag only fills the message, never the subject."}
@@ -1316,13 +1316,13 @@ function FollowUpSection({ formId, roles, sites, fields }: { formId: string; rol
                 </div>
               </Row>
             )}
-            <p className="text-[12px] text-muted">Applies to entries saved after it's turned on.</p>
+            <p className="text-caption text-muted">Applies to entries saved after it's turned on.</p>
           </div>
         )}
       </Card>
       {dirty && (
         <div className="mt-3 flex items-center justify-end gap-2">
-          <span className="mr-auto text-[13px] font-semibold text-ink">Unsaved follow-up changes</span>
+          <span className="mr-auto text-label font-semibold text-ink">Unsaved follow-up changes</span>
           <Button variant="secondary" onClick={() => setF(data)} disabled={busy}>Undo</Button>
           <Button onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save follow-up"}</Button>
         </div>
@@ -1357,11 +1357,11 @@ function DoneFieldsEditor({ fields, saved, onChange, onPreset }: { fields: DoneF
             <li key={i} className="flex flex-wrap items-center gap-2 px-3 py-2">
               <Input value={d.label} onChange={(e) => put(i, { label: e.target.value })} maxLength={80} placeholder="e.g. Email address" aria-label="Label" className="min-w-[160px] flex-1" />
               <Select value={d.type} onChange={(e) => put(i, { type: e.target.value as DoneFieldType })} options={DONE_TYPES} aria-label="Kind" className="w-[220px]" />
-              <label className="flex items-center gap-1.5 text-[12.5px] text-ink">
+              <label className="flex items-center gap-1.5 text-label text-ink">
                 <Switch checked={d.required} onCheckedChange={(v) => put(i, { required: v })} aria-label="Required" /> Required
               </label>
               <Input value={d.defaultValue ?? ""} onChange={(e) => put(i, { defaultValue: e.target.value || undefined })} maxLength={300} placeholder="Starts as (optional)" aria-label="Starts as" className="basis-full" />
-              <code className="text-[11.5px] text-muted">{`{${d.id}}`}</code>
+              <code className="text-caption text-muted">{`{${d.id}}`}</code>
               <Button variant="ghost" size="sm" aria-label="Remove" onClick={() => onChange(fields.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
             </li>
           ))}
@@ -1377,7 +1377,7 @@ function DoneFieldsEditor({ fields, saved, onChange, onPreset }: { fields: DoneF
           </Button>
         )}
       </div>
-      <p className="mt-1 text-[12px] text-muted">
+      <p className="mt-1 text-caption text-muted">
         Kept on the entry and shown in its entries and exports, so you can see the account that was made. A password is emailed to whoever filed it once and never kept.
       </p>
     </div>
@@ -1413,7 +1413,7 @@ function ChecklistEditor({ items, saved, fields, onChange }: { items: CheckItem[
                   <Input value={c.label} onChange={(e) => put(i, { label: e.target.value })} maxLength={160} placeholder="e.g. Laptop collected" aria-label="Item" className="min-w-[200px] flex-1" />
                   <Button variant="ghost" size="sm" aria-label="Remove" onClick={() => onChange(items.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+                <div className="flex flex-wrap items-center gap-2 text-label text-muted">
                   <span>Only when</span>
                   <Select
                     value={c.when?.field ?? ""}
@@ -1433,7 +1433,7 @@ function ChecklistEditor({ items, saved, fields, onChange }: { items: CheckItem[
                               key={v}
                               type="button"
                               onClick={() => put(i, { when: { field: field.id, values: on ? c.when!.values.filter((x) => x !== v) : [...c.when!.values, v] } })}
-                              className={cn("rounded-full border px-2 py-0.5 text-[12px]", on ? "border-navy bg-navy text-navy-fg" : "border-hairline text-ink hover:border-ink")}
+                              className={cn("rounded-full border px-2 py-0.5 text-caption", on ? "border-navy bg-navy text-navy-fg" : "border-hairline text-ink hover:border-ink")}
                             >
                               {v}
                             </button>
@@ -1443,7 +1443,7 @@ function ChecklistEditor({ items, saved, fields, onChange }: { items: CheckItem[
                     </>
                   )}
                 </div>
-                {c.when && !c.when.values.length && <p className="text-[12px] text-status-redText">Pick at least one answer, or set it back to Always.</p>}
+                {c.when && !c.when.values.length && <p className="text-caption text-status-redText">Pick at least one answer, or set it back to Always.</p>}
               </li>
             );
           })}
@@ -1452,7 +1452,7 @@ function ChecklistEditor({ items, saved, fields, onChange }: { items: CheckItem[
       <Button variant="ghost" size="sm" disabled={items.length >= 25} onClick={() => onChange([...items, { id: doneId("item", items.map((x) => x.id)), label: "" }])}>
         <Plus className="h-4 w-4" /> Add an item
       </Button>
-      <p className="mt-1 text-[12px] text-muted">
+      <p className="mt-1 text-caption text-muted">
         Each is ticked off on its own and kept with who did it and when. Ticking the last one marks the entry done (unless there are required fields to fill in). Use the form's answers in a label as tags, e.g. {"{delegate_to}"}.
       </p>
     </div>
@@ -1561,8 +1561,8 @@ function ReportsSection({ formId, emailFields, roles, sites }: { formId: string;
     <section className="mb-6 mt-8">
       <div className="mb-2 flex items-end gap-3 px-1">
         <div className="min-w-0 flex-1">
-          <p className="font-heading text-[15px] font-extrabold text-ink">Weekly summary reports</p>
-          <p className="text-[12.5px] text-muted">The past week's entries, emailed on a day and time: a count, a table of the answers you choose (Lantern addresses only), and a button to the entries.</p>
+          <p className="font-heading text-body-lg font-extrabold text-ink">Weekly summary reports</p>
+          <p className="text-label text-muted">The past week's entries, emailed on a day and time: a count, a table of the answers you choose (Lantern addresses only), and a button to the entries.</p>
         </div>
         <Button variant="secondary" size="sm" onClick={add}><Plus className="h-4 w-4" /> Add a report</Button>
       </div>
@@ -1583,11 +1583,11 @@ function ReportsSection({ formId, emailFields, roles, sites }: { formId: string;
           ))}
         </div>
       ) : (
-        <p className="rounded-card border border-dashed border-hairline px-4 py-3 text-[13px] text-muted">No summary reports.</p>
+        <p className="rounded-card border border-dashed border-hairline px-4 py-3 text-label text-muted">No summary reports.</p>
       )}
       {dirty && (
         <div className="mt-3 flex items-center justify-end gap-2">
-          <span className="mr-auto text-[13px] font-semibold text-ink">Unsaved report changes</span>
+          <span className="mr-auto text-label font-semibold text-ink">Unsaved report changes</span>
           <Button variant="secondary" onClick={() => setReports(data.reports)} disabled={busy}>Undo</Button>
           <Button onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save reports"}</Button>
         </div>
@@ -1615,7 +1615,7 @@ function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPrev
       <div className="flex items-center gap-3 border-b border-hairline px-4 py-3 md:px-5">
         <Switch checked={report.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label={report.enabled ? "Turn this report off" : "Turn this report on"} />
         <Mail className="h-4 w-4 shrink-0 text-muted" />
-        <input value={report.name} onChange={(e) => set({ name: e.target.value })} aria-label="Report name" className="min-w-0 flex-1 bg-transparent font-heading text-[15px] font-extrabold text-ink outline-none focus:underline" />
+        <input value={report.name} onChange={(e) => set({ name: e.target.value })} aria-label="Report name" className="min-w-0 flex-1 bg-transparent font-heading text-body-lg font-extrabold text-ink outline-none focus:underline" />
         <Button variant="ghost" size="icon" aria-label="Remove report" onClick={() => onChange(null)}><Trash2 className="h-4 w-4" /></Button>
       </div>
       <div className="grid gap-4 px-4 py-4 md:px-5">
@@ -1623,7 +1623,7 @@ function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPrev
           <div className="flex flex-wrap items-center gap-2">
             <Select value={String(report.day)} onChange={(e) => set({ day: Number(e.target.value) })} className="w-40" aria-label="Day" options={DAYS.map((d, i) => ({ value: String(i), label: `Every ${d}` }))} />
             <Select value={String(report.hour)} onChange={(e) => set({ hour: Number(e.target.value) })} className="w-32" aria-label="Time" options={Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }))} />
-            <span className="text-[12px] text-muted">New York time{report.nextRun && saved ? ` · next ${formatDateTime(report.nextRun)}` : ""}{report.lastSentAt ? ` · last sent ${relativeTime(report.lastSentAt)}` : ""}</span>
+            <span className="text-caption text-muted">New York time{report.nextRun && saved ? ` · next ${formatDateTime(report.nextRun)}` : ""}{report.lastSentAt ? ` · last sent ${relativeTime(report.lastSentAt)}` : ""}</span>
           </div>
         </Row>
         <Row label="Sites">
@@ -1631,11 +1631,11 @@ function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPrev
             <option value="all">One report for every site</option>
             <option value="site">One report per site, to that site's people</option>
           </Select>
-          <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
+          <label className="mt-2 flex items-center gap-2 text-label text-ink">
             <Switch checked={report.includeEmpty} onCheckedChange={(v) => set({ includeEmpty: v })} />
             Send it even when there were no entries
           </label>
-          <label className="mt-2 flex items-center gap-2 text-[13px] text-ink">
+          <label className="mt-2 flex items-center gap-2 text-label text-ink">
             <Switch checked={report.stillOpen ?? false} onCheckedChange={(v) => set({ stillOpen: v })} />
             Keep listing older entries still pending follow-up, until they're done
           </label>
@@ -1645,7 +1645,7 @@ function ReportCard({ report, saved, emailFields, roles, sites, onChange, onPrev
             {report.to.map((t, i) => (
               <RecipientRow key={i} r={t} event={REPORT_EVENT} roles={roles} siteName={siteName} onChange={(next) => set({ to: next ? report.to.map((x, j) => (j === i ? next : x)) : report.to.filter((_, j) => j !== i) })} />
             ))}
-            {!report.to.length && <li className="px-3 py-2 text-[13px] text-muted">Nobody yet.</li>}
+            {!report.to.length && <li className="px-3 py-2 text-label text-muted">Nobody yet.</li>}
           </ul>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1689,7 +1689,7 @@ function ReportRunDialog({ run, onClose }: { run: ReportRun; onClose: () => void
         <DialogHeader title="This week's report" subtitle="A preview: nothing was sent." />
         <DialogBody className="max-h-[72vh] space-y-3 overflow-y-auto">
           {run.emails.length ? (
-            <ul className="divide-y divide-hairline rounded-input border border-hairline text-[13px]">
+            <ul className="divide-y divide-hairline rounded-input border border-hairline text-label">
               {run.emails.map((e, i) => (
                 <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                   <span className="min-w-0 flex-1 truncate font-semibold text-ink">{e.to}</span>
@@ -1699,9 +1699,9 @@ function ReportRunDialog({ run, onClose }: { run: ReportRun; onClose: () => void
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-muted">It wouldn't send anything this week{run.notes.length ? "" : ": there were no entries"}.</p>
+            <p className="text-label text-muted">It wouldn't send anything this week{run.notes.length ? "" : ": there were no entries"}.</p>
           )}
-          {run.notes.map((n, i) => <p key={i} className="text-[12.5px] text-status-amberText">{n}</p>)}
+          {run.notes.map((n, i) => <p key={i} className="text-label text-status-amberText">{n}</p>)}
           {run.preview && <iframe title="Report preview" sandbox="" srcDoc={run.preview} className="h-[520px] w-full rounded-input border border-hairline bg-white" />}
         </DialogBody>
         <DialogFooter>
@@ -1724,28 +1724,28 @@ function SentEmails({ formId }: { formId: string }) {
   const items = data?.items ?? [];
   return (
     <section className="mt-8">
-      <p className="mb-2 px-1 font-heading text-[15px] font-extrabold text-ink">Emails sent</p>
+      <p className="mb-2 px-1 font-heading text-body-lg font-extrabold text-ink">Emails sent</p>
       <Card className="p-0">
         {items.length ? (
           <ul className="divide-y divide-hairline">
             {items.map((e) => (
               <li key={e.id} className="px-4 py-2.5 md:px-5">
                 <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{e.subject}</span>
-                  <span className="text-[12px] text-muted" title={formatDateTime(e.createdAt)}>{relativeTime(e.createdAt)}</span>
+                  <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{e.subject}</span>
+                  <span className="text-caption text-muted" title={formatDateTime(e.createdAt)}>{relativeTime(e.createdAt)}</span>
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-caption text-muted">
                   <span className="truncate">{e.to}</span>
                   <span>· {KIND_LABEL[e.kind] ?? e.kind}</span>
                   <Tag tone={e.status === "sent" ? "accent" : e.status === "failed" ? "red" : "neutral"}>{e.status === "sent" ? "Sent" : e.status === "failed" ? "Failed" : "Not sent"}</Tag>
                   {e.withAnswers && <Tag tone="neutral">With answers</Tag>}
                 </div>
-                {e.error && <p className="mt-0.5 text-[12px] text-status-redText">{e.error}</p>}
+                {e.error && <p className="mt-0.5 text-caption text-status-redText">{e.error}</p>}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="px-4 py-3 text-[13px] text-muted md:px-5">No emails yet.</p>
+          <p className="px-4 py-3 text-label text-muted md:px-5">No emails yet.</p>
         )}
       </Card>
     </section>
@@ -1758,22 +1758,22 @@ function RecentSends({ items }: { items: LogItem[] }) {
   if (!items.length) return null;
   return (
     <section className="mt-8">
-      <p className="mb-2 px-1 font-heading text-[15px] font-extrabold text-ink">Recently sent</p>
+      <p className="mb-2 px-1 font-heading text-body-lg font-extrabold text-ink">Recently sent</p>
       <Card className="p-0">
         <ul className="divide-y divide-hairline">
           {items.map((l) => (
             <li key={l.id} className="px-4 py-2.5 md:px-5">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-[13.5px] font-semibold text-ink">{l.title || l.event}</span>
-                <span className="text-[12px] text-muted" title={formatDateTime(l.at)}>{relativeTime(l.at)}</span>
+                <span className="text-body font-semibold text-ink">{l.title || l.event}</span>
+                <span className="text-caption text-muted" title={formatDateTime(l.at)}>{relativeTime(l.at)}</span>
               </div>
               {l.routes.map((p, i) => (
-                <p key={i} className="text-[12.5px] text-muted">
+                <p key={i} className="text-label text-muted">
                   <span className="font-semibold text-ink">{p.routeName}</span> → {[...p.people.map((x) => x.name), ...p.emails].join(", ") || "nobody"}
                   {p.notes.length ? <span className="text-status-amberText"> · {p.notes.join(" ")}</span> : null}
                 </p>
               ))}
-              {l.failures?.map((f) => <p key={f} className="text-[12.5px] text-status-redText">{f}</p>)}
+              {l.failures?.map((f) => <p key={f} className="text-label text-status-redText">{f}</p>)}
             </li>
           ))}
         </ul>

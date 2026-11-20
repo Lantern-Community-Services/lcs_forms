@@ -14,7 +14,7 @@ export function HighAcuityToggle({ checked, onChange, disabled, className }: {
 }) {
   return (
     <div className={cn("flex min-h-[44px] items-center gap-2.5 md:min-h-9", className)}>
-      <label className="flex cursor-pointer items-center gap-2.5 text-[13.5px] font-semibold text-ink">
+      <label className="flex cursor-pointer items-center gap-2.5 text-body font-semibold text-ink">
         <Checkbox checked={checked} onCheckedChange={(v) => onChange(v === true)} disabled={disabled} className="h-5 w-5" />
         High Acuity
       </label>
@@ -28,9 +28,9 @@ export function HighAcuityFlag({ className }: { className?: string }) {
   return (
     <span
       title="High Acuity"
-      className={cn("shrink-0 rounded-pill bg-status-redBg px-1.5 py-px text-[10.5px] font-bold uppercase tracking-[0.03em] text-status-redText", className)}
+      className={cn("shrink-0 rounded-pill bg-status-redBg px-2 py-px text-micro font-bold text-status-redText", className)}
     >
-      High Acuity
+      High acuity
     </span>
   );
 }

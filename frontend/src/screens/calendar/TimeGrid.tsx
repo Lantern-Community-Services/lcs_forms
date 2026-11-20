@@ -69,7 +69,7 @@ export function TimeGrid({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Day headings and the all-day row. The same scrollbar gutter as the hours below, so the columns line up. */}
-      <div className="flex-none overflow-y-hidden border-b border-hairline [scrollbar-gutter:stable]">
+      <div className="flex-none overflow-y-hidden border-b border-hairline scroll-thin [scrollbar-gutter:stable]">
         <div className="grid" style={{ gridTemplateColumns: `${GUTTER} ${cols}` }}>
           <div />
           {days.map((d) => (
@@ -81,7 +81,7 @@ export function TimeGrid({
               className="flex flex-col items-center gap-0.5 border-l border-hairline py-1.5 disabled:cursor-default"
             >
               <span className={cn("text-micro font-bold uppercase tracking-[0.04em]", d === today ? "text-accent dark:text-white" : "text-muted")}>{DAY_SHORT[weekdayOf(d)]}</span>
-              <span className={cn("flex h-8 w-8 items-center justify-center rounded-full text-[17px] font-extrabold tabular", d === today ? "bg-navy text-navy-fg dark:bg-white dark:text-navy" : "text-ink")}>
+              <span className={cn("flex h-8 w-8 items-center justify-center rounded-full text-lead font-extrabold tabular", d === today ? "bg-navy text-navy-fg dark:bg-white dark:text-navy" : "text-ink")}>
                 {+d.slice(8, 10)}
               </span>
             </button>
@@ -114,7 +114,7 @@ export function TimeGrid({
                       type="button"
                       onClick={() => setExpanded(true)}
                       style={{ gridColumn: `${i + 1} / span 1`, gridRow: limit }}
-                      className="pointer-events-auto mx-[2px] truncate rounded-[4px] px-1.5 text-left text-[11.5px] font-bold text-muted hover:bg-navsel hover:text-ink"
+                      className="pointer-events-auto mx-[2px] truncate rounded-[4px] px-1.5 text-left text-caption font-bold text-muted hover:bg-navsel hover:text-ink"
                     >
                       +{n} more
                     </button>
@@ -130,7 +130,7 @@ export function TimeGrid({
         <div className="grid" style={{ gridTemplateColumns: `${GUTTER} ${cols}`, height: 24 * HOUR_PX }}>
           <div className="relative">
             {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
-              <span key={h} className="absolute right-2 -translate-y-1/2 text-[10.5px] font-semibold tabular text-muted" style={{ top: h * HOUR_PX }}>
+              <span key={h} className="absolute right-2 -translate-y-1/2 text-micro font-semibold tabular text-muted" style={{ top: h * HOUR_PX }}>
                 {formatTime(timeOf(h * 60))}
               </span>
             ))}
@@ -154,7 +154,7 @@ function AllDayBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onO
       title={occ.pending ? `${occ.title} (needs approval)` : occ.title}
       style={{ gridColumn: `${seg.start + 1} / ${seg.end + 2}`, gridRow: seg.lane + 1, background: color.tint, borderLeftColor: seg.fromBefore ? "transparent" : color.solid }}
       className={cn(
-        "pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1 border-l-[3px] px-1.5 text-left text-[12px] font-semibold leading-none text-ink hover:brightness-95",
+        "pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1 border-l-[3px] px-1.5 text-left text-caption font-semibold leading-none text-ink hover:brightness-95",
         seg.fromBefore ? "rounded-l-none" : "rounded-l-[4px]",
         seg.toAfter ? "rounded-r-none" : "rounded-r-[4px]",
         occ.pending && "cal-pending"
@@ -244,7 +244,7 @@ function DayColumn({
     >
       {sel && (
         <div
-          className="pointer-events-none absolute inset-x-[2px] z-20 rounded-[5px] border-2 border-navy bg-navy/15 px-1.5 py-0.5 text-[11.5px] font-bold leading-[15px] text-ink dark:border-white dark:bg-white/15"
+          className="pointer-events-none absolute inset-x-[2px] z-20 rounded-[5px] border-2 border-navy bg-navy/15 px-1.5 py-0.5 text-caption font-bold leading-[15px] text-ink dark:border-white dark:bg-white/15"
           style={{ top: (sel.from / 60) * HOUR_PX + 1, height: ((sel.to - sel.from) / 60) * HOUR_PX - 2 }}
         >
           {formatTime(timeOf(sel.from))} – {formatTime(timeOf(sel.to % (24 * 60)))}
@@ -271,7 +271,7 @@ function DayColumn({
               background: `color-mix(in srgb, ${color.solid} 18%, rgb(var(--c-surface)))`,
               borderLeftColor: color.solid,
             }}
-            className={cn("absolute overflow-hidden rounded-[5px] border-l-[3px] px-1.5 py-1 text-left text-[12px] leading-[15px] text-ink shadow-card hover:brightness-95", p.occ.pending && "cal-pending")}
+            className={cn("absolute overflow-hidden rounded-[5px] border-l-[3px] px-1.5 py-1 text-left text-caption leading-[15px] text-ink shadow-card hover:brightness-95", p.occ.pending && "cal-pending")}
           >
             {short ? (
               <span className="block truncate font-semibold">
@@ -283,7 +283,7 @@ function DayColumn({
                   <span className="line-clamp-2">{p.occ.title}</span>
                   {p.occ.repeats && <Repeat className="h-3 w-3 shrink-0 opacity-50" aria-label="Repeats" />}
                 </span>
-                <span className="block truncate text-[11px] font-medium text-muted">
+                <span className="block truncate text-micro font-medium text-muted">
                   {p.occ.pending && "Needs approval · "}
                   {formatTime(p.occ.startTime!)} – {formatTime(p.occ.endTime!)}
                   {p.occ.location ? ` · ${p.occ.location}` : ""}

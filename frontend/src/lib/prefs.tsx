@@ -1,5 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { currentDeviceKind } from "./device";
 import { readStorage, writeStorage } from "./storage";
+
+// The device on <html data-device>: `touch:` controls and the type scale's touch
+// steps key on it (as they do in a code form's frame). Set before the first paint.
+if (typeof document !== "undefined") document.documentElement.dataset.device = currentDeviceKind();
 
 export type ThemeName = "lantern" | "ocean" | "plum" | "forest" | "custom";
 
@@ -55,6 +60,20 @@ function blend(color: [number, number, number], against: [number, number, number
   return color.map((v, i) => Math.round(v * amount + against[i] * (1 - amount))).join(" ");
 }
 
+/**
+ * In dark mode a deep colour sinks into the near-black page (a navy button at
+ * 1.6:1 against it). Lift it toward white until the fill stands 3:1 off the
+ * page, as the built-in themes' dark versions do (index.css).
+ */
+function liftForDark(color: [number, number, number]): [number, number, number] {
+  const page = luminance([15, 15, 15]);
+  let c = color;
+  for (let i = 0; i < 16 && (luminance(c) + 0.05) / (page + 0.05) < 3; i++) {
+    c = c.map((v) => Math.round(v * 0.9 + 255 * 0.1)) as [number, number, number];
+  }
+  return c;
+}
+
 /** Local display preferences intentionally stay separate from profile data. */
 export function PrefsProvider({ children }: { children: ReactNode }) {
   const [dark, setDark] = useState(() => readBool("ln.dark", window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false));
@@ -67,6 +86,20 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     writeStorage("ln.dark", dark ? "1" : "0");
   }, [dark]);
 
+  // Kept current as the window crosses a breakpoint or rotates. Read straight from
+  // the browser (currentDeviceKind), not useDeviceKind, whose first render says
+  // "desktop" and would flash desktop-size controls on a phone.
+  useLayoutEffect(() => {
+    const update = () => {
+      document.documentElement.dataset.device = currentDeviceKind();
+    };
+    update();
+    const queries = ["(max-width: 767px)", "(min-width: 768px) and (pointer: coarse)"].map((q) => window.matchMedia?.(q));
+    queries.forEach((q) => q?.addEventListener?.("change", update));
+    return () => queries.forEach((q) => q?.removeEventListener?.("change", update));
+  }, []);
+
+
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
@@ -77,7 +110,8 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const color = rgb(customThemeColor);
+    const picked = rgb(customThemeColor);
+    const color = dark ? liftForDark(picked) : picked;
     const light = isLight(color);
     root.style.setProperty("--c-brand", color.join(" "));
     root.style.setProperty("--c-brand-600", blend(color, [0, 0, 0], 0.82));

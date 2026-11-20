@@ -31,7 +31,7 @@ export const DropdownMenuItem = forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "flex cursor-pointer items-center gap-2 rounded-input px-2.5 py-2 text-[13.5px] text-ink outline-none",
+      "flex cursor-pointer items-center gap-2 rounded-input px-2.5 py-2 text-body text-ink outline-none",
       "focus:bg-rowhover data-[disabled]:opacity-50 data-[disabled]:pointer-events-none",
       className
     )}
@@ -48,7 +48,7 @@ export const DropdownMenuCheckboxItem = forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "flex cursor-pointer items-center gap-2 rounded-input px-2.5 py-2 text-[13.5px] text-ink outline-none",
+      "flex cursor-pointer items-center gap-2 rounded-input px-2.5 py-2 text-body text-ink outline-none",
       "focus:bg-rowhover data-[disabled]:opacity-50 data-[disabled]:pointer-events-none",
       className
     )}

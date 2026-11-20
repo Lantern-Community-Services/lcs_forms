@@ -22,7 +22,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
           role="radio"
           aria-checked={value === k}
           onClick={() => onChange(k)}
-          className={cn("rounded-[5px] px-3 py-1.5 text-[13px] font-semibold", value === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
+          className={cn("rounded-[5px] px-3 py-1.5 text-label font-semibold", value === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}
         >
           {label}
         </button>
@@ -46,13 +46,13 @@ export function GroupChecklist({ groups, titles, value, onChange }: { groups: St
             <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-rowhover">
               <input type="checkbox" checked={on} onChange={() => onChange(on ? value.filter((v) => v !== g.id) : [...value, g.id])} className="mt-[3px]" />
               <span className="min-w-0 flex-1">
-                <span className="block text-[13.5px] font-semibold text-ink">
+                <span className="block text-body font-semibold text-ink">
                   {g.name}
                   <span className="ml-1.5 font-normal text-muted">
                     {g.members.length} {g.members.length === 1 ? "person" : "people"}
                   </span>
                 </span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-muted">
+                <span className="mt-0.5 block text-caption leading-snug text-muted">
                   {positions.length ? positions.join(" · ") : "No positions join it; people are added by hand."}
                 </span>
               </span>
@@ -94,13 +94,13 @@ export function SiteTypeChecklist({ sites, value, onChange }: { sites: { name: s
             <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-rowhover">
               <input type="checkbox" checked={on} onChange={() => onChange(on ? value.filter((v) => v !== c.value) : [...value, c.value])} className="mt-[3px]" />
               <span className="min-w-0 flex-1">
-                <span className="block text-[13.5px] font-semibold text-ink">
+                <span className="block text-body font-semibold text-ink">
                   Everyone at {c.label.toLowerCase()}
                   <span className="ml-1.5 font-normal text-muted">
                     {names.length} {names.length === 1 ? "site" : "sites"}
                   </span>
                 </span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-muted">{names.length ? names.join(" · ") : "No active sites of this type."}</span>
+                <span className="mt-0.5 block text-caption leading-snug text-muted">{names.length ? names.join(" · ") : "No active sites of this type."}</span>
               </span>
             </label>
           </li>
@@ -139,8 +139,8 @@ export function PositionsDropdown({ groups, titles, value, onChange }: { groups:
         aria-expanded={open}
         className="flex min-h-[40px] w-full items-center gap-2 rounded-input border border-hairline bg-surface px-3 text-left hover:border-strongline"
       >
-        <span className="text-[13.5px] font-semibold text-ink">Positions</span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-muted">
+        <span className="text-body font-semibold text-ink">Positions</span>
+        <span className="min-w-0 flex-1 truncate text-label text-muted">
           {value.length ? `${value.length} picked` : "Any position (pick to limit it to job titles)"}
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
@@ -149,7 +149,7 @@ export function PositionsDropdown({ groups, titles, value, onChange }: { groups:
       {value.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {value.map((t) => (
-            <span key={t} className="flex items-center gap-1 rounded-pill bg-subtle py-0.5 pl-2.5 pr-1 text-[12.5px] font-semibold text-ink">
+            <span key={t} className="flex items-center gap-1 rounded-pill bg-subtle py-0.5 pl-2.5 pr-1 text-label font-semibold text-ink">
               {t}
               <span className="font-normal text-muted">· {people.get(t.toLowerCase()) ?? 0}</span>
               <button type="button" onClick={() => toggle(t)} aria-label={`Remove ${t}`} className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-surface">
@@ -189,7 +189,7 @@ export function PositionsDropdown({ groups, titles, value, onChange }: { groups:
                 <ul className="grid gap-x-4 px-3 py-1.5 sm:grid-cols-2">
                   {sec.items.map((t) => (
                     <li key={t.title}>
-                      <label className="flex min-h-[34px] cursor-pointer items-start gap-2 py-1 text-[13px] text-ink">
+                      <label className="flex min-h-[34px] cursor-pointer items-start gap-2 py-1 text-label text-ink">
                         <input type="checkbox" checked={picked.has(t.title.toLowerCase())} onChange={() => toggle(t.title)} className="mt-[3px]" />
                         <span className="min-w-0 flex-1 leading-snug">
                           {t.title}
@@ -201,7 +201,7 @@ export function PositionsDropdown({ groups, titles, value, onChange }: { groups:
                 </ul>
               </section>
             ))}
-            {!sections.length && !canAddTyped && <p className="px-3 py-3 text-[13px] text-muted">No positions match.</p>}
+            {!sections.length && !canAddTyped && <p className="px-3 py-3 text-label text-muted">No positions match.</p>}
             {canAddTyped && (
               <button
                 type="button"
@@ -212,7 +212,7 @@ export function PositionsDropdown({ groups, titles, value, onChange }: { groups:
                 className="flex w-full items-center gap-2 border-t border-hairline px-3 py-2.5 text-left hover:bg-rowhover"
               >
                 <Plus className="h-4 w-4 text-muted" />
-                <span className="min-w-0 flex-1 text-[13px] text-ink">Add “{typed}” as a position</span>
+                <span className="min-w-0 flex-1 text-label text-ink">Add “{typed}” as a position</span>
                 <span className="text-micro text-muted">not on the list</span>
               </button>
             )}
@@ -256,7 +256,7 @@ export function PeoplePicker({ people, value, onChange }: {
       {value.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {value.map((id) => (
-            <span key={id} className="flex items-center gap-1 rounded-pill bg-navsel py-0.5 pl-2.5 pr-1 text-[12.5px] font-semibold text-ink">
+            <span key={id} className="flex items-center gap-1 rounded-pill bg-navsel py-0.5 pl-2.5 pr-1 text-label font-semibold text-ink">
               {byId.get(id)?.name ?? "Someone who's gone"}
               <button type="button" onClick={() => onChange(value.filter((v) => v !== id))} aria-label={`Remove ${byId.get(id)?.name ?? "them"}`} className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-surface">
                 <X className="h-3 w-3" />
@@ -278,7 +278,7 @@ export function PeoplePicker({ people, value, onChange }: {
                 }}
                 className="flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left hover:bg-rowhover"
               >
-                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{p.name}</span>
+                <span className="min-w-0 flex-1 truncate text-label font-semibold text-ink">{p.name}</span>
                 <span className="truncate text-micro text-muted">{p.title || p.email}</span>
               </button>
             </li>

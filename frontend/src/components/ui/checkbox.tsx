@@ -11,7 +11,7 @@ export const Checkbox = forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      "peer h-4 w-4 shrink-0 rounded-[4px] border border-strongline bg-surface",
+      "peer h-4 w-4 shrink-0 rounded-[4px] border border-fieldline bg-surface touch:h-5 touch:w-5",
       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy",
       "data-[state=checked]:bg-navy data-[state=checked]:border-navy data-[state=checked]:text-navy-fg",
       "data-[state=indeterminate]:bg-navy data-[state=indeterminate]:border-navy data-[state=indeterminate]:text-navy-fg",
@@ -40,7 +40,7 @@ export function CheckboxList({ options, value, onChange, className }: {
   return (
     <div className={cn("grid grid-cols-1 gap-1 rounded-input border border-hairline p-2 sm:grid-cols-2", className)}>
       {options.map((o) => (
-        <label key={o.value} className="flex min-h-[32px] items-center gap-2 text-[13px] text-ink">
+        <label key={o.value} className="flex min-h-[32px] items-center gap-2 text-label text-ink touch:min-h-11">
           <input
             type="checkbox"
             checked={value.includes(o.value)}

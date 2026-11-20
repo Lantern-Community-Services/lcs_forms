@@ -58,7 +58,7 @@ export function UnitsPage() {
         subtitle="Every unit at your supportive sites, who lives there, and which are vacant."
         actions={<SitePicker codes={codes} onChange={setCodes} className="w-full md:w-[260px]" />}
       />
-      <label className="mb-3 flex items-center gap-2 text-[13px] text-muted">
+      <label className="mb-3 flex items-center gap-2 text-label text-muted">
         <Switch checked={retired} onCheckedChange={setRetired} /> Show retired units
       </label>
       {unitSites.length === 0 ? (
@@ -74,7 +74,7 @@ export function UnitsPage() {
             <Card key={site.id} className="mb-4 overflow-hidden">
               <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-4 py-3">
                 <span className="min-w-0 flex-1">
-                  <span className="block font-heading text-[15px] font-bold text-ink">{site.name}</span>
+                  <span className="block font-heading text-body-lg font-bold text-ink">{site.name}</span>
                   <span className="block text-micro text-muted">
                     {units.filter((u) => u.active).length} units · {vacant} vacant{meta?.households ? " · households" : ""}
                   </span>
@@ -90,15 +90,15 @@ export function UnitsPage() {
                 )}
               </div>
               {units.length === 0 ? (
-                <p className="px-4 py-6 text-[13px] text-muted">
+                <p className="px-4 py-6 text-label text-muted">
                   No units yet. {manage ? "Set them up from the roster's unit numbers, paste a list, or add them one by one." : "A Site Manager sets them up."}
                 </p>
               ) : (
                 <ul>
                   {units.map((u) => (
                     <li key={u.id} className={cn("flex flex-wrap items-center gap-3 border-b border-hairline px-4 py-2.5 last:border-0", !u.active && "opacity-60")}>
-                      <span className="w-[64px] shrink-0 font-heading text-[14px] font-extrabold tabular text-ink">{u.label}</span>
-                      <span className="min-w-0 flex-1 text-[13px]">
+                      <span className="w-[64px] shrink-0 font-heading text-body font-extrabold tabular text-ink">{u.label}</span>
+                      <span className="min-w-0 flex-1 text-label">
                         {u.vacant ? (
                           <span className="italic text-muted">{u.active ? `Vacant${u.vacantSince ? ` since ${fmtDay(u.vacantSince)}` : ""}` : "Retired"}</span>
                         ) : (
