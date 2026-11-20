@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import { CheckCircle2, CircleHelp, CloudOff, Lock } from "lucide-react";
 import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useCaseManagement } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
 import { FORM_DRAFT_PREFIX, isOnline } from "@/lib/offline";
 import { Page } from "@/components/shell/AppShell";
@@ -59,8 +59,11 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   const draftKey = user && !publicView && !shareToken && !locked ? `${FORM_DRAFT_PREFIX}${user.id}:${slug}` : undefined;
   // They're also kept in the person's account, to carry on with on any device (serverDrafts.tsx):
   // a published form filled in signed in, never one open to the public or by link (the server checks too).
+  // For now only while case management is on (Admin → Settings), with the rest of the PlanStreet work:
+  // otherwise they stay on the device, as before.
+  const caseManagement = useCaseManagement();
   const accessMode = data?.doc.settings.access?.mode ?? "signed_in";
-  const inAccount = Boolean(draftKey && data && !data.form.isDraft && !data.closed && data.doc.settings.saveDrafts !== false && accessMode !== "public" && accessMode !== "link");
+  const inAccount = Boolean(caseManagement && draftKey && data && !data.form.isDraft && !data.closed && data.doc.settings.saveDrafts !== false && accessMode !== "public" && accessMode !== "link");
   const drafts = useDraftPick({ slug, draftKey, doc: data?.doc, formVersion: data?.form.version ?? null, enabled: inAccount && !done, round });
 
   // The form's tutorial (its "tutorial"): the first time someone opens it, and from "Show me how".

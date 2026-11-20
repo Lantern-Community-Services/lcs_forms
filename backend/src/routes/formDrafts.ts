@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { asyncHandler, badRequest } from "../http.js";
+import { asyncHandler, badRequest, notFound } from "../http.js";
+import { caseManagementEnabled } from "../services/settings.js";
 import { DRAFT_ID, discardDraft, draftForm, draftFull, draftSummary, listDrafts, ownDraft, saveDraft } from "../services/formDrafts.js";
 
 /**
@@ -9,6 +10,15 @@ import { DRAFT_ID, discardDraft, draftForm, draftFull, draftSummary, listDrafts,
  * router; every route is the signed-in person's own drafts and nobody else's.
  */
 export const formDraftsRouter = Router({ mergeParams: true });
+
+// For now only while case management is on (Admin → Settings), with the rest of the PlanStreet
+// work; otherwise unfinished answers stay on the device, as before (the app doesn't ask).
+formDraftsRouter.use(
+  asyncHandler(async (_req, _res, next) => {
+    if (!(await caseManagementEnabled())) throw notFound("Saving unfinished answers to your account is part of case management, which is turned off.");
+    next();
+  })
+);
 
 const idOf = (raw: string) => {
   if (!DRAFT_ID.test(raw)) throw badRequest("That isn't a draft id.");
