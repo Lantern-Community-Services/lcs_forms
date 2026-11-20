@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { CheckboxList } from "@/components/ui/checkbox";
 import { CodeEditor } from "@/components/formkit/CodeEditor";
+import { useCaseManagement } from "@/lib/auth";
 import { ConditionalEditor } from "./ConditionalEditor";
 import { IconPicker } from "@/components/IconPicker";
 import { useForms, useSites, useUsers } from "@/lib/queries";
@@ -82,6 +83,8 @@ export function SettingsPanel({
 }) {
   const s = doc.settings;
   const set = (patch: Partial<FormSettings>) => onChange({ ...doc, settings: clean({ ...s, ...patch }) });
+  // Unfinished answers go to people's accounts only while case management is on (FillPage.tsx).
+  const draftsInAccount = useCaseManagement();
   const roles = (reference?.roles ?? []).filter((r) => r.key !== "admin").map((r) => ({ value: r.key, label: r.name }));
   const { data: catalog } = useForms(true);
   const currentCategory = catalog?.categories.find((c) => c.forms.some((f) => f.id === form.catalogLinkId))?.id ?? "";
@@ -102,7 +105,7 @@ export function SettingsPanel({
           <IconPicker value={s.icon ?? null} onChange={(icon) => set({ icon: icon ?? undefined })} />
         </Row>
         <Toggle label="Progress bar" hint="On forms with page breaks." checked={s.progressBar !== false} onChange={(v) => set({ progressBar: v ? undefined : false })} />
-        <Toggle label="Keep unfinished answers" hint="Saved on the device, and for people signed in also to their account, so they can carry on later or on another device. Signatures and files stay on the device." checked={s.saveDrafts !== false} onChange={(v) => set({ saveDrafts: v ? undefined : false })} />
+        <Toggle label="Keep unfinished answers" hint={draftsInAccount ? "Saved on the device, and for people signed in also to their account, so they can carry on later or on another device. Signatures and files stay on the device." : "Saved on the device, so a reload or a dropped connection doesn't lose them."} checked={s.saveDrafts !== false} onChange={(v) => set({ saveDrafts: v ? undefined : false })} />
       </Section>
 
       <Section title="Who can fill it in">
