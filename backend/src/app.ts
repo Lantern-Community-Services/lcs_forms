@@ -10,6 +10,7 @@ import { loadUser, requireAuth, viewAsLimits } from "./auth/middleware.js";
 import { authRouter } from "./routes/auth.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { residencyRouter } from "./routes/residency.js";
+import { applicantsRouter } from "./routes/applicants.js";
 import { attendanceRouter } from "./routes/attendance.js";
 import { sitesRouter } from "./routes/sites.js";
 import { activityRouter } from "./routes/activity.js";
@@ -163,6 +164,7 @@ export function createApp() {
   app.use("/api/calendar", calendarRouter);
   app.use("/api/tenants", tenantsRouter);
   app.use("/api/residency", residencyRouter);
+  app.use("/api/applicants", applicantsRouter);
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/sites", sitesRouter);
   app.use("/api/activity", activityRouter);
