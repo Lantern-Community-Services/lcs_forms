@@ -5,6 +5,7 @@ import { retireLegacyCatalog } from "./services/formCatalog.js";
 import { migrateLegacyRoles } from "./services/permissions.js";
 import { migrateSettingKeys } from "./services/settings.js";
 import { backfillFormerNames } from "./services/nameHistory.js";
+import { backfillEntryTenants } from "./services/clientTimeline.js";
 import { startGeoip } from "./services/geoip.js";
 import { syncSuperAdmins } from "./services/superAdmins.js";
 import { ensureSiteLocations } from "./services/siteLocations.js";
@@ -19,6 +20,7 @@ import { loadLook } from "./services/emailLook.js";
 import { startFollowUpReminders } from "./services/followUp.js";
 import { startSignOffReminders } from "./services/signOff.js";
 import { startChecklistReminders } from "./services/checklist.js";
+import { startDraftSweep } from "./services/formDrafts.js";
 import { loadTestPrograms } from "./services/testDataSites.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
@@ -53,6 +55,8 @@ startEmailReports();
 startFollowUpReminders();
 startSignOffReminders();
 startChecklistReminders();
+// Unfinished form answers saved to people's accounts, dropped after a month untouched.
+startDraftSweep();
 
 // A test site's made-up sites have made-up programs (services/testDataSites.ts).
 if (testSite) void loadTestPrograms();
@@ -75,6 +79,11 @@ startGeoip();
 backfillFormerNames()
   .then((n) => n && console.log(`  Roster: kept the earlier names of ${n} renamed residents for search.`))
   .catch((err) => console.error("[roster] could not fill in earlier names:", err));
+
+// Once: older basic-form entries learn which resident they're about (residents' timelines).
+backfillEntryTenants()
+  .then((n) => n && console.log(`  Forms: linked ${n} older entries to the resident they're about.`))
+  .catch((err) => console.error("[forms] could not link older entries to residents:", err));
 
 // Staff groups (which limited forms each person sees): the starting set on an
 // empty table, then the in-memory copy, kept fresh once a minute.

@@ -28,20 +28,38 @@ export interface ScheduleItem {
   every?: Every;
   /** Due this many days after moving out (made by the move-out). */
   afterMoveOut?: number;
+  /**
+   * Only an entry whose answer to `field` is one of `values` does this task: one
+   * HMIS form serves three tasks, told apart by its data collection stage.
+   */
+  when?: { field: string; values: string[] };
 }
+
+/** The HMIS Assessment's "At what point is this data being collected?" (HUD's codes). */
+const HMIS_STAGE = "data_collection_stage";
+/** A Psychosocial filed with "tenant not available" records why it wasn't done; it doesn't do it. */
+const PSYCHOSOCIAL_DONE = { field: "available", values: ["yes"] };
 
 export const SCHEDULE: readonly ScheduleItem[] = [
   { key: "initial_assessment", label: "Initial Assessment", forms: ["initial-assessment"], afterMoveIn: 3 },
   { key: "face_sheet", label: "Face Sheet", forms: ["face-sheet"], afterMoveIn: 3 },
-  { key: "hmis_project_start", label: "HMIS Project Start Assessment", forms: ["hmis-assessment"], afterMoveIn: 30 },
-  { key: "psychosocial", label: "Psychosocial", forms: ["psychosocial"], afterMoveIn: 30 },
+  { key: "hmis_project_start", label: "HMIS Project Start Assessment", forms: ["hmis-assessment"], afterMoveIn: 30, when: { field: HMIS_STAGE, values: ["1"] } },
+  { key: "psychosocial", label: "Psychosocial", forms: ["psychosocial"], afterMoveIn: 30, when: PSYCHOSOCIAL_DONE },
   { key: "housing_assessment", label: "Housing Assessment", forms: ["housing-assessment"], every: "month" },
-  { key: "hmis_annual", label: "HMIS Annual Assessment", forms: ["hmis-assessment"], every: "year" },
-  { key: "psychosocial_annual", label: "Annual Psychosocial", forms: ["psychosocial"], every: "year" },
+  { key: "hmis_annual", label: "HMIS Annual Assessment", forms: ["hmis-assessment"], every: "year", when: { field: HMIS_STAGE, values: ["5"] } },
+  { key: "psychosocial_annual", label: "Annual Psychosocial", forms: ["psychosocial"], every: "year", when: PSYCHOSOCIAL_DONE },
   { key: "face_sheet_annual", label: "Annual Face Sheet", forms: ["face-sheet"], every: "year" },
-  { key: "hmis_project_exit", label: "HMIS Project Exit Assessment", forms: ["hmis-assessment"], afterMoveOut: 7 },
+  { key: "hmis_project_exit", label: "HMIS Project Exit Assessment", forms: ["hmis-assessment"], afterMoveOut: 7, when: { field: HMIS_STAGE, values: ["3"] } },
 ];
 const BY_KEY = new Map(SCHEDULE.map((s) => [s.key, s]));
+
+/** Whether an entry's answers meet an item's `when` (an item without one takes any entry). */
+export function answersFit(item: Pick<ScheduleItem, "when">, answers: Record<string, unknown> | null | undefined): boolean {
+  if (!item.when) return true;
+  const v = answers?.[item.when.field];
+  const given = Array.isArray(v) ? v.map(String) : v === undefined || v === null ? [] : [String(v)];
+  return given.some((x) => item.when!.values.includes(x));
+}
 
 // ── Days ─────────────────────────────────────────────────────────────────
 
@@ -166,10 +184,12 @@ export async function settleTask(
 
 /**
  * A form entry about a resident was filed: tick off the earliest open task that
- * form does. Quiet when there's nothing to tick (most forms) or it fails.
+ * form does, among the ones its answers fit (`when`): an HMIS entry ticks the
+ * task for its stage, a Psychosocial the tenant wasn't available for ticks none.
+ * Quiet when there's nothing to tick (most forms) or it fails.
  */
-export async function completeForForm(opts: { tenantId: string; formSlug: string; entryId: string; at: Date; byName: string }) {
-  const keys = SCHEDULE.filter((s) => s.forms.includes(opts.formSlug)).map((s) => s.key);
+export async function completeForForm(opts: { tenantId: string; formSlug: string; entryId: string; at: Date; byName: string; answers?: Record<string, unknown> | null }) {
+  const keys = SCHEDULE.filter((s) => s.forms.includes(opts.formSlug) && answersFit(s, opts.answers)).map((s) => s.key);
   if (!keys.length) return null;
   try {
     const task = await prisma.tenantTask.findFirst({ where: { tenantId: opts.tenantId, status: "open", key: { in: keys } }, orderBy: { dueOn: "asc" } });

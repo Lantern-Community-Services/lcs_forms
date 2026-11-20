@@ -182,6 +182,14 @@ export interface SignOff {
   fields?: string[];
   /** What the signer is asked to do, in the request (plain text). */
   whatToDo?: string;
+  /**
+   * The id of another sign-off on the form that's signed first (a Program
+   * Director's before a Vice President's). Its people are asked only once that
+   * one is signed, or at once when this entry doesn't need that one.
+   */
+  after?: string;
+  /** Others who may sign it too once it has waited `afterDays` (from when it could first be signed); they're asked once. */
+  backup?: { by: { kind: string; [key: string]: unknown }[]; afterDays: number };
 }
 
 /** Questions answered after filing: each sign-off signature, and the questions its signer fills in. */
@@ -275,6 +283,13 @@ export interface FormSettings {
   customCss?: string;
   /** Catalog icon key (see FORM_ICONS). */
   icon?: string;
+  /**
+   * A clinical record (diagnoses, medications, substance use, risk): its entries, their files
+   * and exports are only for Admins and people who can see client information (clients.view),
+   * on top of who sees entries; opening and exporting them is audited; its answers never go in
+   * an email; exports carry the 42 CFR Part 2 notice (backend forms/clinical.ts).
+   */
+  clinical?: boolean;
 }
 
 export interface FormDoc {
@@ -1393,6 +1408,23 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
         else if (other.signOff) problems.push({ path: at, message: "That's a sign-off itself." });
         else if (doc.fields.some((x) => x !== f && x.signOff?.fields?.includes(id))) problems.push({ path: at, message: `“${other.label || id}” is filled in by another sign-off's signer already.` });
       });
+      if (f.signOff.after !== undefined) {
+        const first = doc.fields.find((x) => x.id === f.signOff!.after);
+        if (f.signOff.after === f.id) problems.push({ path: `${p}.signOff.after`, message: "A sign-off can't wait for itself." });
+        else if (!first || first.type !== "signature" || !first.signOff) problems.push({ path: `${p}.signOff.after`, message: `"${f.signOff.after}" isn't another sign-off on this form.` });
+        else {
+          // Following "after" from here must end, not come back round (A after B after A would never be signable).
+          const seen = new Set([f.id]);
+          for (let at: Field | undefined = first; at?.signOff?.after; at = doc.fields.find((x) => x.id === at!.signOff!.after)) {
+            if (seen.has(at.signOff.after)) {
+              problems.push({ path: `${p}.signOff.after`, message: "These sign-offs wait for each other in a circle, so none could be signed." });
+              break;
+            }
+            seen.add(at.id);
+          }
+        }
+      }
+      if (f.signOff.backup && !f.signOff.backup.by?.length) problems.push({ path: `${p}.signOff.backup.by`, message: "Say who the backup is: at least one person, role, group or position." });
     }
   });
   (doc.settings.notifications ?? []).forEach((n, i) => {
@@ -1401,6 +1433,7 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
       const f = doc.fields.find((x) => x.id === id);
       if (!f) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `There's no field "${id}" on this form.` });
       else if (!canEmailField(f)) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `“${f.label || id}” can't go in an email: ${f.type} answers stay behind sign-in.` });
+      else if (doc.settings.clinical) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `This is a clinical record, so its answers can't go in an email. Take “${f.label || id}” out.` });
     });
     if (n.enabled && n.kind === "email" && !n.to) problems.push({ path: `settings.notifications[${i}].to`, message: "An email notification needs a To address." });
     if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length && !n.groups?.length && !n.titles?.length) {

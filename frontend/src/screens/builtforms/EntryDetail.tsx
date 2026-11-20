@@ -125,6 +125,7 @@ export function BuiltFormEntryPage() {
           </p>
         )}
         {entry.updatedByName && <p className="mt-2 text-micro text-muted">Last edited by {entry.updatedByName}, {formatDateTime(entry.updatedAt)}</p>}
+        {data.clinicalNotice && <p className="mt-2 text-micro text-muted print:hidden">Clinical record. Who opens or exports it is recorded.</p>}
       </Card>
 
       <Card className="mb-4 p-5">
@@ -158,6 +159,9 @@ export function BuiltFormEntryPage() {
           }
         />
       )}
+
+      {/* A clinical record leaves the site with its 42 CFR Part 2 notice. */}
+      {data.clinicalNotice && <p className="hidden text-[9px] leading-snug text-ink print:mt-4 print:block">{data.clinicalNotice}</p>}
 
       <Card className="p-5 print:hidden">
         <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">Notes</p>
@@ -421,9 +425,7 @@ function SignOffPanel({ slug, id, signOffs, onSigned }: { slug: string; id: stri
             {s.signed ? <CheckCircle2 className="h-5 w-5 shrink-0 text-status-greenText" /> : <Circle className="h-5 w-5 shrink-0 text-muted" />}
             <div className="min-w-0 flex-1">
               <p className="text-[13.5px] font-semibold text-ink">{s.label}</p>
-              <p className="text-micro text-muted">
-                {s.signed ? `Signed by ${s.signed.byName}, ${formatDateTime(s.signed.at)}` : `Waiting for ${s.who}.${s.cantSignWhy ? ` ${s.cantSignWhy}` : ""}`}
-              </p>
+              <p className="text-micro text-muted">{signOffLine(s)}</p>
             </div>
             {s.canSign && <Button size="sm" onClick={() => setSigning(s)}><PenLine className="h-4 w-4" /> Sign</Button>}
           </li>
@@ -432,6 +434,15 @@ function SignOffPanel({ slug, id, signOffs, onSigned }: { slug: string; id: stri
       {signing && <SignDialog slug={slug} id={id} signOff={signing} onClose={() => setSigning(null)} onSigned={onSigned} />}
     </Card>
   );
+}
+
+/** Where one sign-off stands, in a line: who signed it, what it waits for, who's asked. */
+function signOffLine(s: SignOffState): string {
+  if (s.signed) return `Signed by ${s.signed.byName}${s.signed.backup ? " (backup)" : ""}, ${formatDateTime(s.signed.at)}`;
+  if (s.after) return `After ${s.after}. Then ${s.who} sign it.`;
+  const days = s.backup ? `${s.backup.afterDays} day${s.backup.afterDays === 1 ? "" : "s"}` : "";
+  const backup = !s.backup ? "" : s.backup.asked ? ` Its backup can sign it too now: ${s.backup.who}.` : ` If it waits ${days}, it goes to ${s.backup.who} too.`;
+  return `Waiting for ${s.who}.${backup}${s.cantSignWhy ? ` ${s.cantSignWhy}` : ""}`;
 }
 
 const todayNY = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });

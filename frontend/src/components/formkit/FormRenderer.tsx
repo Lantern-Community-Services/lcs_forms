@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { SignaturePad, type SignaturePadHandle } from "@/components/attendance/SignaturePad";
 import { CodeBlockFrame } from "./CodeBlockFrame";
 import { LocatedSiteSelect } from "./LocatedSiteSelect";
+import { draftStatusText, readLocalDraft, startFromLocal, useDraftKeeper, type StartDraft } from "./serverDrafts";
 import { useSites, useTenants } from "@/lib/queries";
 import { FillShareContext, fillApi } from "@/lib/builder";
 import { ApiError, api } from "@/lib/api";
@@ -30,6 +31,8 @@ export interface SubmitExtra {
   honeypot: string;
   /** Seconds from the first answer to submitting (kept with a saved draft), or null when nothing was touched. */
   fillSeconds: number | null;
+  /** The draft in the person's account these answers were kept as (serverDrafts.tsx): the server removes it once they're filed. */
+  draftId: string | null;
 }
 
 /**
@@ -48,6 +51,9 @@ export function FormRenderer({
   submitting,
   serverErrors,
   draftKey,
+  draftAccount,
+  startDraft,
+  resumedDraft,
   disabled,
   submitLabel,
   onValuesChange,
@@ -63,49 +69,43 @@ export function FormRenderer({
   serverErrors?: Errors;
   /** localStorage key to keep unfinished answers under. */
   draftKey?: string;
+  /**
+   * Also keep them in the person's account, to carry on with on another device
+   * (serverDrafts.tsx): the form's slug and the version shown. Needs draftKey.
+   */
+  draftAccount?: { slug: string; formVersion: number | null } | null;
+  /** The draft picked as the form opened (serverDrafts.tsx useDraftPick); null: a new one; left out: this device's copy, if any. */
+  startDraft?: StartDraft | null;
+  /** startDraft was picked from the list (the device's slot becomes that draft). */
+  resumedDraft?: boolean;
   disabled?: boolean;
   submitLabel?: string;
   onValuesChange?: (values: Values) => void;
 }) {
   const saveDrafts = mode === "fill" && doc.settings.saveDrafts !== false && Boolean(draftKey);
   const fresh = () => ({ ...initialValues(doc, { user }), ...(initial ?? {}) });
-  const [values, setValues] = useState<Values>(() => {
-    if (saveDrafts) {
-      try {
-        const saved = JSON.parse(localStorage.getItem(draftKey!) ?? "null");
-        if (saved?.values && typeof saved.startedAt === "number") return saved.values as Values;
-      } catch {
-        /* storage blocked — start fresh */
-      }
-    }
-    return fresh();
+  // What it opens with: the draft picked, or else this device's copy. A copy of only
+  // auto-filled answers (no startedAt) isn't "unfinished answers" (lib: readLocalDraft).
+  const [opened] = useState<StartDraft | null>(() => {
+    if (!saveDrafts) return null;
+    if (startDraft !== undefined) return startDraft;
+    const local = readLocalDraft(draftKey);
+    return local ? startFromLocal(local) : null;
   });
+  const [values, setValues] = useState<Values>(() => opened?.values ?? fresh());
   // When the person first answered something: the start of the entry's time to fill (backend forms/fillMeta.ts).
-  const startedAt = useRef<number | null>(null);
-  if (startedAt.current === null && saveDrafts) {
-    try {
-      const at = JSON.parse(localStorage.getItem(draftKey!) ?? "null")?.startedAt;
-      if (typeof at === "number") startedAt.current = at;
-    } catch {
-      /* storage blocked */
-    }
-  }
+  const startedAt = useRef<number | null>(opened?.startedAt ?? null);
   const touched = () => {
     startedAt.current ??= Date.now();
   };
-  const [restored] = useState(() => {
-    if (!saveDrafts) return false;
-    try {
-      // A draft of only auto-filled answers (no startedAt) isn't "unfinished answers".
-      return typeof JSON.parse(localStorage.getItem(draftKey!) ?? "null")?.startedAt === "number";
-    } catch {
-      return false;
-    }
-  });
-  const [siteCode, setSiteCode] = useState<string | null>(null);
+  // Restored on its own (not picked from the list of saved drafts): say so, with a way out.
+  const [restored, setRestored] = useState(() => Boolean(opened) && startDraft === undefined);
+  const keeper = useDraftKeeper({ draftKey: saveDrafts ? draftKey : undefined, account: saveDrafts ? draftAccount ?? null : null, doc, start: opened, resumed: Boolean(resumedDraft) });
+  const [siteCode, setSiteCode] = useState<string | null>(opened?.siteCode ?? null);
   const [errors, setErrors] = useState<Errors>({});
   const [codeErrors, setCodeErrors] = useState<Record<string, string>>({});
-  const [page, setPage] = useState(0);
+  // Back on the page they stopped at; the site question is on the first, so that's where to start without one.
+  const [page, setPage] = useState(() => (opened && (opened.siteCode || !doc.settings.requireSite) ? opened.page : 0));
   const [honeypot, setHoneypot] = useState("");
   const topRef = useRef<HTMLFormElement>(null);
 
@@ -119,19 +119,28 @@ export function FormRenderer({
   const current = pages[Math.min(page, pages.length - 1)] ?? pages[0];
   const last = page >= pages.length - 1;
 
+  // What it opened with isn't a change to save.
+  const openedWith = useRef({ values, siteCode, page });
   useEffect(() => {
     onValuesChange?.(computed);
     // Nothing typed or picked yet: defaults and auto-fills ({user:name}, {date:today}, the site) aren't a draft.
     if (!saveDrafts || startedAt.current === null) return;
-    const t = setTimeout(() => {
-      try {
-        localStorage.setItem(draftKey!, JSON.stringify({ values, savedAt: Date.now(), startedAt: startedAt.current }));
-      } catch {
-        /* full or blocked: drafts are a convenience */
-      }
-    }, 400);
+    const o = openedWith.current;
+    if (values === o.values && siteCode === o.siteCode && page === o.page) return;
+    // On the device now; in the person's account a few seconds later (serverDrafts.tsx).
+    const t = setTimeout(() => keeper.changed({ values, startedAt: startedAt.current!, siteCode, page }), 400);
     return () => clearTimeout(t);
-  }, [values]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [values, siteCode, page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A send that failed (no answer, or answers to fix) and they're still here: saving the draft carries on.
+  const wasSubmitting = useRef(false);
+  useEffect(() => {
+    if (submitting) wasSubmitting.current = true;
+    else if (wasSubmitting.current) {
+      wasSubmitting.current = false;
+      keeper.release();
+    }
+  }, [submitting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** auto: filled in by the form itself (the only site, the site you're at, a repeater's first row), not by the person. */
   const set = (id: string, v: unknown, auto?: boolean) => {
@@ -172,20 +181,20 @@ export function FormRenderer({
       if (firstBad >= 0 && firstBad !== page) setPage(firstBad);
       return;
     }
-    onSubmit?.(computed, { siteCode, codeErrors, honeypot, fillSeconds: startedAt.current === null ? null : (Date.now() - startedAt.current) / 1000 });
+    onSubmit?.(computed, { siteCode, codeErrors, honeypot, fillSeconds: startedAt.current === null ? null : (Date.now() - startedAt.current) / 1000, draftId: keeper.submitting() });
   }
 
+  const inAccount = saveDrafts && Boolean(draftAccount);
   function startOver() {
-    try {
-      localStorage.removeItem(draftKey!);
-    } catch {
-      /* ignore */
-    }
+    if (inAccount && !window.confirm("Discard these answers? They're removed from your account on every device.")) return;
+    keeper.discard();
     setValues(fresh());
     setErrors({});
     setPage(0);
+    setRestored(false);
     startedAt.current = null;
   }
+  const draftStatus = inAccount ? draftStatusText(keeper.status) : null;
 
   const scope = useMemo(() => `lcsf-${Math.abs(hash(doc.title + (slug ?? ""))).toString(36)}`, [doc.title, slug]);
   const merge = { values: computed, doc, user, html: true };
@@ -270,6 +279,13 @@ export function FormRenderer({
           </Button>
         )}
       </div>
+
+      {draftStatus && (
+        <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted" data-tour="form-draft-status">
+          <span>{draftStatus}</span>
+          <button type="button" onClick={startOver} className="font-semibold text-accent underline-offset-2 hover:underline">Discard draft</button>
+        </p>
+      )}
     </form>
   );
 }

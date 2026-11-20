@@ -203,7 +203,8 @@ export function ChecklistCard({ tasks, canTick }: { tasks: TaskRow[]; canTick: b
 }
 
 /** One open task: due date, and Done / Not needed. */
-export function TaskLine({ task, canTick, showResident = false }: { task: TaskRow; canTick: boolean; showResident?: boolean }) {
+/** `formLink`: a link to the form that does it (the caseload's to-do list). */
+export function TaskLine({ task, canTick, showResident = false, formLink = false }: { task: TaskRow; canTick: boolean; showResident?: boolean; formLink?: boolean }) {
   const toast = useToast();
   const refresh = useResidencyRefresh();
   const [mode, setMode] = useState<null | "done" | "skipped">(null);
@@ -238,7 +239,12 @@ export function TaskLine({ task, canTick, showResident = false }: { task: TaskRo
               {task.resident.displayName}{task.resident.unit ? <span className="font-normal text-muted"> · {task.resident.unit}</span> : null}
             </Link>
           )}
-          <span className="block text-[13.5px] text-ink">{task.label}</span>
+          <span className="block text-[13.5px] text-ink">
+            {task.label}
+            {formLink && task.forms[0] && (
+              <Link to={`/f/${task.forms[0]}`} className="ml-2 text-[12.5px] font-semibold text-accent hover:underline dark:text-white">Open form</Link>
+            )}
+          </span>
           <span className={cn("block text-micro", overdue ? "font-semibold text-status-redText" : "text-muted")}>
             {fmtDay(task.dueOn)}{dueText ? ` · ${dueText}` : ""}{showResident && task.caseLead ? ` · case lead ${task.caseLead.name}` : ""}
           </span>

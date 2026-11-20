@@ -28,6 +28,7 @@ import { registerRoutingTools } from "./routingTools.js";
 import { registerTutorialTools } from "../tutorials/mcpTools.js";
 import { registerOps } from "../ops/index.js";
 import { summarize } from "../ops/forms.js";
+import { keyMakerCan } from "../ops/principal.js";
 import { PERSON_INSTRUCTIONS, registerPersonTools } from "../ops/person.js";
 import { resourceMetadataUrl } from "../oauth/router.js";
 
@@ -89,6 +90,9 @@ Sign-off (signature, signed after filing by someone else — a supervisor, a lic
   The question is left out when the form is filled in; once the entry is filed, the people in "by" are asked to sign it on the entry (in the app and by email), and reminded every 3 days (3 times) until they do. Whoever filed it is told when every sign-off is in.
   "by" takes a notification route's kinds of people, at the entry's site: { "kind": "role", "role": "site_manager" } (siteOnly false: everyone with the role), { "kind": "title", "title": "Program Director", "siteOnly": true }, { "kind": "group", "group": "<staff group id>" }, { "kind": "person", "email": "…" }, { "kind": "field", "field": "<a question holding an email>" }.
   "fields": other top-level questions the signer fills in as they sign (text, number, date…: a license number, the date signed); they're left out of filling too. The question's own conditional still decides whether an entry needs it. Nobody signs off their own entry; Admins can sign any other.
+  "after": "<id of another sign-off on the form>": signed in order (a Program Director's, then a Vice President's). It can't be signed until that one is, and its people are asked only then, not at filing; the entry shows "After <that one>" meanwhile. When the entry doesn't need that one (its conditional hides it), this one is signed at once. No circles.
+  "backup": { "by": [people], "afterDays": 1–30 }: once it has waited afterDays since it could first be signed, these people are asked (once) and may sign it too; the entry and its note say it was signed by a backup. Reminders to "by" go on as before.
+  Example: { "id": "vp_signature", "type": "signature", "label": "Vice President", "signOff": { "by": [{ "kind": "title", "title": "Vice President", "siteOnly": true }], "after": "pd_signature", "backup": { "by": [{ "kind": "role", "role": "admin", "siteOnly": false }], "afterDays": 3 } } }
 
 ## Calculations ("calculation" field, "expression")
 {qty} * {price}, + - * / % ^, comparisons == != > < >= <=, && || !, "text".
@@ -108,6 +112,7 @@ submitLabel; progressBar; saveDrafts (default true); customCss; icon (catalog ic
 access: { mode: "signed_in" | "roles" | "public" | "link", roles: [role keys] }  ("link": anyone, but only through an employee's own share link at /s/<token>; public and link forms can't use site/resident fields);
 entriesRoles: [role keys that can read entries; Admin always can];
 requireSite: true to ask which site the entry is for (entries are then limited to that site's staff);
+clinical: true for a clinical record (diagnoses, medications, substance use, suicide/homicide risk: a Psychosocial, a Face Sheet). On top of who sees entries, its entries, their files, exports and the entry tools (list_entries, get_entry, export_entries, count_entries) are only for Admins and people who can see client information (clients.view) — not even their own entries otherwise. Every opening and export is audited (entry.viewed, entries.exported); its answers never go in an email (routes, rules and reports can't pick its fields); exports carry the 42 CFR Part 2 notice; its sign-offs only go to people who can see it;
 limits: { maxEntries, perUser: { count, period: day|week|month|ever }, opensAt, closesAt (ISO), closedMessage };
 confirmation: { type: "message"|"redirect", message (HTML, merge tags), url, showSummary };
 notifications: [{ id, name, enabled, kind: "email"|"webhook"|"notify", to, subject, url, secret, roles, siteOnly, body, link, conditional }].
@@ -418,7 +423,8 @@ function buildServer(key: ResolvedKey, principal: CurrentUser, from?: CallFrom):
     // Entries for every site come with the bundle: not for a key limited to one site (like export_code_form).
     if (entries && key.siteId) throw new HttpError(403, "A key limited to one site can't export entries with forms: use list_entries, which keeps to its site.");
     const ids = await Promise.all(forms.map(async (f) => (await findForm(f)).id));
-    return exportForms(ids, { entries });
+    // A clinical record's entries only when the admin who made the key can see client information (forms/clinical.ts).
+    return exportForms(ids, { entries, clinical: { sees: await keyMakerCan(key, "clients.view"), actor } });
   }, { readOnlyHint: true });
 
   tool(

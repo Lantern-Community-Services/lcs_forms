@@ -16,6 +16,7 @@ import { BuiltFormHeader } from "./FormHeader";
 import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { useToast } from "@/components/ui/toast";
 import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit/FormRenderer";
+import { DraftChooser, useDraftPick } from "@/components/formkit/serverDrafts";
 import { FillShareContext, fillApi, submitErrors, useFillForm } from "@/lib/builder";
 import { ApiError, api } from "@/lib/api";
 import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
@@ -56,13 +57,18 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   // never signed out (/p/), by share link, or while the form is handed to a resident (locked), where
   // the next person to open it could be anyone. Removed at sign-out and when someone else signs in (lib/offline.ts).
   const draftKey = user && !publicView && !shareToken && !locked ? `${FORM_DRAFT_PREFIX}${user.id}:${slug}` : undefined;
+  // They're also kept in the person's account, to carry on with on any device (serverDrafts.tsx):
+  // a published form filled in signed in, never one open to the public or by link (the server checks too).
+  const accessMode = data?.doc.settings.access?.mode ?? "signed_in";
+  const inAccount = Boolean(draftKey && data && !data.form.isDraft && !data.closed && data.doc.settings.saveDrafts !== false && accessMode !== "public" && accessMode !== "link");
+  const drafts = useDraftPick({ slug, draftKey, doc: data?.doc, formVersion: data?.form.version ?? null, enabled: inAccount && !done, round });
 
   // The form's tutorial (its "tutorial"): the first time someone opens it, and from "Show me how".
   const values = useRef<Values>({});
   const tutorial = useFormTutorial({
     formId: data?.form.id ?? null,
     tutorial: data?.doc.tutorial,
-    ready: Boolean(data) && !done && !data?.closed,
+    ready: Boolean(data) && !done && !data?.closed && drafts.state.phase === "ready",
     scope: (p) => p === `/f/${slug}` || p === `/p/${slug}`,
     build: (record) =>
       data?.doc.tutorial
@@ -102,7 +108,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   /** No connection: keep it on the device; lib/fillQueue.ts uploads it later. */
   async function saveOnDevice(values: Values, extra: SubmitExtra) {
     try {
-      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, shareToken: shareToken ?? null });
+      await enqueueFill({ clientId, slug, title: doc.title, userId: publicView ? null : (user?.id ?? null), values, siteCode: extra.siteCode, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, shareToken: shareToken ?? null, draftId: extra.draftId });
     } catch {
       toast("No connection, and this device couldn't keep the entry. Try again once the internet is back.", "error");
       return;
@@ -120,7 +126,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
     try {
       // A file attached offline is only on the device, so the queue (which uploads it first) has to send this.
       if (canQueue && (!isOnline() || hasLocalFiles(values))) return await saveOnDevice(values, extra);
-      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, website_hp: extra.honeypot || undefined, ...(shareToken ? { shareToken } : {}) });
+      const res = await fillApi.submit(slug, { values, siteCode: extra.siteCode, clientId, codeErrors: extra.codeErrors, formVersion: form.version, deviceKind: entryDeviceKind(), fillSeconds: extra.fillSeconds, website_hp: extra.honeypot || undefined, ...(shareToken ? { shareToken } : {}), ...(extra.draftId ? { draftId: extra.draftId } : {}) });
       clearDraft();
       const conf = doc.settings.confirmation;
       if (conf?.type === "redirect" && conf.url) {
@@ -166,6 +172,18 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
             <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} locked={locked} />
           ) : data.closed ? (
             <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-[14px] text-ink">{data.closed}</div>
+          ) : drafts.state.phase === "checking" ? (
+            <LoadingState label="Looking for unfinished answers…" />
+          ) : drafts.state.phase === "choose" ? (
+            <DraftChooser
+              choices={drafts.state.choices}
+              opening={drafts.opening}
+              onResume={async (c) => {
+                if (!(await drafts.resume(c))) toast("Couldn't open those answers. Check the connection and try again.", "error");
+              }}
+              onStartNew={drafts.startNew}
+              onDiscard={drafts.discard}
+            />
           ) : (
             <FillShareContext.Provider value={shareToken ?? null}>
               {data.share && <p className="mb-4 text-[12.5px] text-muted">Shared with you by {data.share.sharedBy} at Lantern Community Services.</p>}
@@ -175,6 +193,9 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
                 slug={slug}
                 user={data.user}
                 draftKey={draftKey}
+                draftAccount={inAccount ? { slug, formVersion: form.version } : null}
+                startDraft={drafts.state.start}
+                resumedDraft={drafts.state.resumed}
                 onSubmit={submit}
                 submitting={submitting}
                 serverErrors={serverErrors}

@@ -78,6 +78,8 @@ export const exportSpec = z
   pdfTables: z.boolean().optional(),
   /** PDF only: records laid out as their paper form, each from a new page, after any tables. */
   documents: z.array(exportDocument).max(25).optional(),
+  /** PDF only: a line at the foot of every page, under the page footer (a clinical record's 42 CFR Part 2 notice). */
+  notice: z.string().max(200).optional(),
 })
   .refine((s) => s.sheets.length > 0 || (s.format === "pdf" && Boolean(s.documents?.length)), {
     message: "Give at least one table (a PDF can have documents instead).",
@@ -292,6 +294,7 @@ function pdf(spec: ExportSpec, by: string, at: Date): Promise<Buffer> {
     doc.fillColor(MUTED).font("Helvetica").fontSize(8);
     doc.text(footers[i] ? `${footers[i]} · Confidential` : "Confidential — may contain resident information.", x, y, { width: w / 2, lineBreak: false });
     doc.text(`Page ${i + 1} of ${range.count}`, x + w / 2, y, { width: w / 2, align: "right", lineBreak: false });
+    if (spec.notice) doc.font("Helvetica-Bold").fontSize(7).fillColor(INK).text(spec.notice, x, y + 10, { width: w, lineBreak: false });
     doc.page.margins.bottom = margin;
   }
   doc.end();

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./auth/csrf.js";
 import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env.js";
@@ -10,6 +11,9 @@ import { loadUser, requireAuth, viewAsLimits } from "./auth/middleware.js";
 import { authRouter } from "./routes/auth.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { residencyRouter } from "./routes/residency.js";
+import { applicantsRouter } from "./routes/applicants.js";
+import { caseloadRouter } from "./routes/caseload.js";
+import { clientRecordRouter } from "./routes/clientRecord.js";
 import { attendanceRouter } from "./routes/attendance.js";
 import { sitesRouter } from "./routes/sites.js";
 import { activityRouter } from "./routes/activity.js";
@@ -128,6 +132,8 @@ export function createApp() {
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   app.use(compressJson);
   app.use(cookieParser());
+  // Changes made with a sign-in cookie must come from this app's own pages (auth/csrf.ts).
+  app.use(csrfProtection);
   app.use(loadUser);
   // Someone viewing the site as another person only reads, unless acting as them (auth/middleware.ts).
   app.use(viewAsLimits);
@@ -162,7 +168,10 @@ export function createApp() {
   app.use("/api/home", homeRouter);
   app.use("/api/calendar", calendarRouter);
   app.use("/api/tenants", tenantsRouter);
+  app.use("/api/tenants", clientRecordRouter);
   app.use("/api/residency", residencyRouter);
+  app.use("/api/applicants", applicantsRouter);
+  app.use("/api/caseload", caseloadRouter);
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/sites", sitesRouter);
   app.use("/api/activity", activityRouter);

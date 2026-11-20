@@ -102,7 +102,7 @@ export function SettingsPanel({
           <IconPicker value={s.icon ?? null} onChange={(icon) => set({ icon: icon ?? undefined })} />
         </Row>
         <Toggle label="Progress bar" hint="On forms with page breaks." checked={s.progressBar !== false} onChange={(v) => set({ progressBar: v ? undefined : false })} />
-        <Toggle label="Keep unfinished answers" hint="Saved on the device, so a reload or a dropped connection doesn't lose them." checked={s.saveDrafts !== false} onChange={(v) => set({ saveDrafts: v ? undefined : false })} />
+        <Toggle label="Keep unfinished answers" hint="Saved on the device, and for people signed in also to their account, so they can carry on later or on another device. Signatures and files stay on the device." checked={s.saveDrafts !== false} onChange={(v) => set({ saveDrafts: v ? undefined : false })} />
       </Section>
 
       <Section title="Who can fill it in">
@@ -133,6 +133,15 @@ export function SettingsPanel({
 
       <Section title="Who sees entries" hint="Saved straight away, not with Publish. Admins always see every entry.">
         <WhoSeesEntries formId={form.id} />
+      </Section>
+
+      <Section title="Privacy">
+        <Toggle
+          label="Clinical record"
+          hint="For diagnoses, medications, substance use or risk. Its entries, files and exports are then only for Admins and people who can see client information, even the ones they filed. Who opens or exports one is recorded, its answers never go in emails, and exports carry the 42 CFR Part 2 notice. Takes effect when you publish."
+          checked={Boolean(s.clinical)}
+          onChange={(v) => set({ clinical: v || undefined })}
+        />
       </Section>
 
       <Section title="Limits & schedule">

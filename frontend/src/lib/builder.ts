@@ -141,7 +141,8 @@ export interface SignOffState {
   id: string;
   label: string;
   state: "waiting" | "signed";
-  signed: { byId: string | null; byName: string; at: string } | null;
+  /** backup: signed by one of its backup people. */
+  signed: { byId: string | null; byName: string; at: string; backup?: boolean } | null;
   /** Who signs it, in words. */
   who: string;
   whatToDo: string | null;
@@ -150,6 +151,10 @@ export interface SignOffState {
   canSign: boolean;
   /** Why this person can't (they filed it). */
   cantSignWhy: string | null;
+  /** The sign-off it waits for (its label) while that one isn't signed; nobody is asked yet. */
+  after?: string | null;
+  /** Who else is asked if it waits afterDays, and whether they have been (they can sign it too then). */
+  backup?: { who: string; afterDays: number; asked: boolean } | null;
 }
 
 export interface EntryList {
@@ -198,6 +203,8 @@ export interface EntryDetail {
   followUpDoneBefore?: boolean;
   /** The signatures it needs after filing, and whether this person can sign each now. */
   signOffs?: SignOffState[];
+  /** A clinical record (settings.clinical): the 42 CFR Part 2 notice it's printed with. */
+  clinicalNotice?: string | null;
 }
 
 /** A follow-up checklist item on one entry (backend services/followUp.ts). */
@@ -322,7 +329,8 @@ export const builderApi = {
 
 export const fillApi = {
   /** formVersion: the published version the page showed, so a late upload is checked against the fields the person saw. */
-  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string; shareToken?: string }) =>
+  /** draftId: the draft in the person's account these answers were kept as; removed once they're filed. */
+  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string; shareToken?: string; draftId?: string }) =>
     api.post<{ id: string; duplicate: boolean; values: Values }>(`/f/${slug}/submit`, body),
   upload: async (slug: string, fieldId: string, file: File, share?: string | null) => {
     const url = `${API_BASE}/f/${slug}/files?field=${encodeURIComponent(fieldId)}${share ? `&share=${encodeURIComponent(share)}` : ""}`;

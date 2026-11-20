@@ -11,6 +11,10 @@ import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { signEntry, signOffView } from "../services/signOff.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
+import { dropSubmittedDraft } from "../services/formDrafts.js";
+import { formDraftsRouter } from "./formDrafts.js";
+import { actorOf } from "../services/audit.js";
+import { CLINICAL_REFUSAL, PART2_NOTICE, auditClinicalView, clinicalBlocked, isClinicalForm } from "../forms/clinical.js";
 import {
   canSeeEntry, canArchiveEntries, docForViewer, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
   entryScope, inOrder, liveDoc, NEWEST, saveUpload, sortedEntryIds, submitEntry, updateEntry, type EntryFilter, type EntrySort,
@@ -67,8 +71,8 @@ fillRouter.get(
       doc: docForViewer(doc, req.user),
       closed: form.liveSchema ? await closedReason(form, doc, req.user) : "This form hasn't been published yet — you're seeing the draft because you're an admin. Submitting is off.",
       user: req.user ? { name: req.user.name, email: req.user.email } : null,
-      // Everyone signed in sees at least their own entries; entriesReach says how many more.
-      canReadEntries: Boolean(req.user),
+      // Everyone signed in sees at least their own entries; entriesReach says how many more. A clinical record's: only with clients.view.
+      canReadEntries: Boolean(req.user) && !clinicalBlocked(form, req.user),
       entriesReach: entryReachOf(form, doc, req.user),
       isAdmin: isFormAdmin(req.user),
       ...(share ? { share: { sharedBy: share.link.userName, expiresAt: share.link.expiresAt } } : {}),
@@ -89,7 +93,12 @@ const submitBody = z.object({
   website_hp: z.string().optional(),
   /** Came through an employee's share link (/s/<token>). */
   shareToken: z.string().max(64).optional(),
+  /** The saved draft these answers were carried on from (routes/formDrafts.ts): removed once filed. */
+  draftId: z.string().max(64).optional(),
 });
+
+// The person's unfinished answers, saved to their account.
+fillRouter.use("/:slug/drafts", formDraftsRouter);
 
 fillRouter.post(
   "/:slug/submit",
@@ -117,6 +126,7 @@ fillRouter.post(
       fillSeconds: body.fillSeconds,
     });
     if (share && !duplicate) await linkUsed(share.link);
+    if (!share) await dropSubmittedDraft(form, req.user, body.draftId);
     // A retry gets its entry back; a clientId someone else's entry holds gets only "it's in"
     // (no id, no answers), like a code form's guest (apps/runtime.ts guestReceipt).
     res.status(duplicate ? 200 : 201).json(mine ? { id: entry.id, duplicate, values: JSON.parse(entry.data) } : { id: "", duplicate });
@@ -153,6 +163,8 @@ async function readable(req: Request) {
   const form = await findForm(req.params.slug);
   const doc = liveDoc(form) ?? readDoc(form.draftSchema);
   if (!canUseBuiltForm(req.user, form.id)) throw forbidden("You can't see this form's entries.");
+  // A clinical record (forms/clinical.ts): said plainly here; canSeeEntry and visibleWhere keep to it too.
+  if (clinicalBlocked(form, req.user)) throw forbidden(CLINICAL_REFUSAL);
   return { form, doc, reach: entryReachOf(form, doc, req.user)! };
 }
 
@@ -230,7 +242,7 @@ const exportHandler = asyncHandler(async (req, res) => {
   const { form, doc, reach } = await readable(req);
   const format = req.query.format === "xlsx" ? "xlsx" : req.query.format === "pdf" ? "pdf" : "csv";
   const where = { AND: [entryWhere(form, req.user, filterOf(req)), await visibleWhere(form, req.user, reach)] };
-  const file = await exportEntries(form, doc, where, format, { sort: sortOf(req), by: req.user?.name });
+  const file = await exportEntries(form, doc, where, format, { sort: sortOf(req), by: req.user?.name, user: req.user, actor: actorOf(req) });
   res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
   res.type(file.mime).send(file.body);
 });
@@ -252,6 +264,8 @@ fillRouter.get(
   asyncHandler(async (req, res) => {
     const { form, doc: liveOrDraft, reach } = await readable(req);
     const entry = await entryIn(req, form, reach);
+    // Who opened a clinical record, and when (never its answers).
+    if (isClinicalForm(form)) await auditClinicalView(actorOf(req), form, entry);
     const follow = entry.followUp ? await loadFollowUp(form) : null;
     const [doc, notes, sites, neighbours] = await Promise.all([
       docForEntry(form, entry.formVersion),
@@ -279,6 +293,8 @@ fillRouter.get(
       followUpDoneBefore: entry.followUp === "open" ? await wasDoneBefore(entry.id) : false,
       // Signatures signed after filing: each one it needs, and whether this person can sign it now.
       signOffs: entry.signOff ? await signOffView(form, doc, entry, req.user) : [],
+      // A clinical record: printed with the 42 CFR Part 2 notice (forms/clinical.ts).
+      clinicalNotice: isClinicalForm(form) ? PART2_NOTICE : null,
       canVoid: canVoidEntries(form, liveOrDraft, req.user),
       canArchive: canArchiveEntries(form, liveOrDraft, req.user, reach),
       isAdmin: isFormAdmin(req.user),
@@ -427,7 +443,8 @@ fillRouter.get(
     if (!file) throw notFound("No such file.");
     if (file.entryId) {
       req.params.id = file.entryId;
-      await entryIn(req, form, reach);
+      const entry = await entryIn(req, form, reach);
+      if (isClinicalForm(form)) await auditClinicalView(actorOf(req), form, entry, { fileId: file.id });
     } else if (reach !== "all") throw forbidden("You can't see this file.");
     const inline = /^(image\/|application\/pdf$)/.test(file.mime) && req.query.download !== "1";
     res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(file.name)}"`);

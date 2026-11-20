@@ -66,6 +66,17 @@ async function requestWithMeta<T>(method: string, path: string, body?: unknown, 
   }
 }
 
+/**
+ * The CSRF token the server set (backend auth/csrf.ts), sent back on every
+ * request that changes something. The server also accepts a change whose Origin
+ * is this app, so a request without it still works; this is the second check.
+ */
+export function csrfHeaders(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const m = /(?:^|;\s*)lcs_csrf=([a-f0-9]{64})(?:;|$)/.exec(document.cookie);
+  return m ? { "X-CSRF-Token": m[1] } : {};
+}
+
 async function send<T>(method: string, path: string, body?: unknown): Promise<{ data: T; cachedAt: number | null }> {
   let res: Response;
   const started = performance.now();
@@ -73,7 +84,7 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<{ 
     res = await fetch(`${BASE}${path}`, {
       method,
       credentials: "include",
-      headers: body instanceof FormData ? {} : { "Content-Type": "application/json" },
+      headers: { ...(method === "GET" ? {} : csrfHeaders()), ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }) },
       body: body instanceof FormData ? body : body != null ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
@@ -124,7 +135,7 @@ export const api = {
     const res = await fetch(`${BASE}${path}`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...csrfHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (!res.ok) {

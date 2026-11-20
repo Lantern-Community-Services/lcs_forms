@@ -26,6 +26,7 @@ import {
   updateUnit,
 } from "../services/residency.js";
 import { addDays, listTasks, settleTask, taskOut, todayNY, type TaskView } from "../services/checklist.js";
+import { buildHmisExport } from "../services/hmisExport.js";
 
 /**
  * Units, moving in and out, being away, the move-in checklist and its reports
@@ -346,5 +347,49 @@ residencyRouter.get(
     const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : addDays(to, -364);
     if (from > to) throw badRequest("From must be before To.");
     res.json({ ...(await residencyReport(sites, from, to)), sites: sites.map((s) => ({ id: s.id, code: s.code, name: s.name })) });
+  })
+);
+
+/**
+ * The HUD HMIS CSV export (services/hmisExport.ts): a zip for the CoC's HMIS.
+ * It is client information, so it needs clients.view (Admins, or the per-person
+ * switch); whole SSNs need clients.ssn as well. Every export is audited with its
+ * dates, sites and whether SSNs were in it — never what was in it.
+ */
+residencyRouter.post(
+  "/hmis-export",
+  requirePermission("roster.view"),
+  asyncHandler(async (req, res) => {
+    if (!can(req, "clients.view")) throw forbidden("An HMIS export holds client information. Ask an Admin for the Client information switch.");
+    const ymdStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date.");
+    const body = z
+      .object({ from: ymdStr, to: ymdStr, sites: z.array(z.string().max(255)).max(200).optional(), includeSsn: z.boolean().optional() })
+      .parse(req.body);
+    if (body.from > body.to) throw badRequest("From must be before To.");
+    if (body.from < "1990-01-01") throw badRequest("From is too long ago.");
+    const includeSsn = body.includeSsn === true;
+    if (includeSsn && !can(req, "clients.ssn")) throw forbidden("Only Admins can export whole Social Security Numbers.");
+    const sites = (await sitesInScope(req, body.sites?.join(","))).filter((s) => s.siteType === "supportive");
+    if (!sites.length) throw badRequest("Pick at least one supportive site: the HMIS export covers people living in units.");
+
+    const out = await buildHmisExport({
+      sites,
+      from: body.from,
+      to: body.to,
+      includeSsn,
+      contact: { name: req.user!.name, email: req.user!.email ?? null },
+    });
+    const names = sites.map((s) => s.name);
+    await audit({
+      actor: actorOf(req),
+      action: "hmis.exported",
+      siteId: sites.length === 1 ? sites[0].id : null,
+      summary: `Exported HMIS CSV files for ${names.length > 3 ? `${names.length} sites` : names.join(", ")}, ${body.from} to ${body.to}${includeSsn ? ", with whole SSNs" : ""}`,
+      changes: { from: body.from, to: body.to, sites: sites.map((s) => s.code), includeSsn, exportId: out.exportId, clients: out.counts.Client, enrollments: out.counts.Enrollment },
+    });
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(out.zip);
   })
 );

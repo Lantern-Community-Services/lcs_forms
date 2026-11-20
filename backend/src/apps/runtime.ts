@@ -214,7 +214,7 @@ const ENTRY_META = {
   clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, deviceKind: true, fillSeconds: true, voidedAt: true, voidedByName: true, voidReason: true, archivedAt: true, archivedByName: true,
   starred: true, updatedByName: true, createdAt: true, updatedAt: true,
   followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpChecks: true, followUpRemindedAt: true, followUpReminders: true,
-  signOff: true, signOffs: true, signOffRemindedAt: true, signOffReminders: true,
+  signOff: true, signOffs: true, signOffRemindedAt: true, signOffReminders: true, signOffBackupAt: true,
   shareLinkId: true, sharedById: true, sharedByName: true,
 } satisfies Prisma.FormEntrySelect;
 
@@ -482,7 +482,7 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
     );
   }
   // The move-in checklist: this form's task for them is done (services/checklist.ts).
-  if (tenant && !app.draft) await completeForForm({ tenantId: tenant.id, formSlug: app.form.slug, entryId: entry.id, at: occurredAt, byName: entry.createdByName ?? "Someone" });
+  if (tenant && !app.draft) await completeForForm({ tenantId: tenant.id, formSlug: app.form.slug, entryId: entry.id, at: occurredAt, byName: entry.createdByName ?? "Someone", answers: data });
   const out = entryOut(entry, await siteMap());
   if (app.build.server) {
     void runHook(app, user, "afterCreate", out).then((r) => {

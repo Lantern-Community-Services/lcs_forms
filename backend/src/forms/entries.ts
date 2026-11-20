@@ -27,6 +27,9 @@ import { readDoc, versionDoc } from "./service.js";
 import { buildExport } from "../apps/exports.js";
 import type { ExportDocument } from "../apps/exportDocuments.js";
 import { deviceLabel, fillMeta, fillMinutes } from "./fillMeta.js";
+import { entryTenantId } from "./entryTenant.js";
+import { CLINICAL_REFUSAL, PART2_NOTICE, PART2_NOTICE_SHORT, auditClinicalExport, clinicalBlocked, isClinicalForm } from "./clinical.js";
+import type { Actor } from "../services/audit.js";
 
 /**
  * Filling in a built form and reading the entries back.
@@ -154,9 +157,9 @@ export function entryReachOf(form: BuiltForm, doc: FormDoc, user: Viewer): "all"
   return entryReach(form.id, legacyReadersOf(doc), user);
 }
 
-/** Sees every entry (exports, voiding, reading it from another form). */
+/** Sees every entry (exports, voiding, reading it from another form). A clinical record's: only with clients.view (forms/clinical.ts). */
 export function canReadEntries(form: BuiltForm, doc: FormDoc, user: Viewer): boolean {
-  return entryReachOf(form, doc, user) === "all";
+  return entryReachOf(form, doc, user) === "all" && !clinicalBlocked(form, user);
 }
 
 /**
@@ -182,6 +185,8 @@ async function notifiedEntryIds(form: BuiltForm, userId: string): Promise<string
 
 /** The entries of a form this person may see, as a where (on top of their sites, entryScope). */
 export async function visibleWhere(form: BuiltForm, user: Viewer, reach: "all" | "site" | "own"): Promise<Prisma.FormEntryWhereInput> {
+  // A clinical record (forms/clinical.ts): none at all without clients.view, not even their own.
+  if (clinicalBlocked(form, user)) return { id: { in: [] } };
   if (!user || reach === "all") return {};
   // Their own, and what came through their share link.
   const mine: Prisma.FormEntryWhereInput[] = [{ createdById: user.userId }, { sharedById: user.userId }];
@@ -197,9 +202,11 @@ export async function canSeeEntry(
   form: BuiltForm,
   user: Viewer,
   reach: "all" | "site" | "own",
-  entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null } & Partial<Pick<FormEntry, "signOff" | "signOffs" | "data" | "formVersion">>
+  entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null } & Partial<Pick<FormEntry, "signOff" | "signOffs" | "data" | "formVersion" | "createdAt">>
 ): Promise<boolean> {
   if (!user) return false;
+  // A clinical record (forms/clinical.ts): only Admins and people with clients.view, whatever else would let them in.
+  if (clinicalBlocked(form, user)) return false;
   if (reach === "all" || entry.createdById === user.userId || (entry.sharedById && entry.sharedById === user.userId)) return true;
   if (reach === "site" && (!user.siteIds || (entry.siteId && user.siteIds.includes(entry.siteId)))) return true;
   if ((await notifiedEntryIds(form, user.userId)).includes(entry.id)) return true;
@@ -382,6 +389,7 @@ export async function submitEntry(input: SubmitInput) {
         formVersion: filled.version,
         data: JSON.stringify(values),
         siteId,
+        tenantId: entryTenantId(filled.doc, values),
         source: input.source,
         // None sent (the MCP server): the database makes one.
         clientId: input.clientId || undefined,
@@ -415,7 +423,7 @@ export async function submitEntry(input: SubmitInput) {
       await recordActivity({ tenantId: r.id, source: "form", label: form.title, externalRef: `${entry.id}:${f.id}`, occurredAt: entry.createdAt, recordedBy: actorName }).catch((err) =>
         console.error(`[forms] roster activity for entry ${entry.id} failed:`, err)
       );
-      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName });
+      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName, answers: values });
     }
   }
 
@@ -739,7 +747,7 @@ export async function updateEntry(form: BuiltForm, entry: FormEntry, incoming: V
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
   const changed = doc.fields.filter((f) => isInputField(f) && JSON.stringify(before[f.id] ?? null) !== JSON.stringify(values[f.id] ?? null));
   if (!changed.length) return entry;
-  const updated = await prisma.formEntry.update({ where: { id: entry.id }, data: { data: JSON.stringify(values), updatedByName: editorName } });
+  const updated = await prisma.formEntry.update({ where: { id: entry.id }, data: { data: JSON.stringify(values), updatedByName: editorName, tenantId: entryTenantId(doc, values) } });
   await prisma.formEntryNote.create({
     data: {
       entryId: entry.id,
@@ -781,14 +789,18 @@ export async function exportEntries(
   doc: FormDoc,
   where: Prisma.FormEntryWhereInput,
   format: "csv" | "xlsx" | "pdf",
-  opts: { sort?: EntrySort; by?: string } = {}
+  opts: { sort?: EntrySort; by?: string; user: Viewer; actor: Actor }
 ) {
+  // A clinical record (forms/clinical.ts): only for Admins and people with clients.view; each export is audited and carries the 42 CFR Part 2 notice.
+  const clinical = isClinicalForm(form);
+  if (clinical && clinicalBlocked(form, opts.user)) throw forbidden(CLINICAL_REFUSAL);
   if (format === "pdf" && (await prisma.formEntry.count({ where })) > PDF_MAX_ENTRIES) {
     throw badRequest(`A PDF can hold up to ${PDF_MAX_ENTRIES} entries. Tick the ones you need, or narrow the filters.`);
   }
   const rows = await sortedEntries(doc, where, opts.sort ?? NEWEST, 50_000);
+  if (clinical) await auditClinicalExport(opts.actor, form, rows.map((e) => e.id), format);
   const sites = new Map((await prisma.site.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
-  if (format === "pdf") return entriesPdf(form, rows, sites, opts.by ?? "Lantern Forms");
+  if (format === "pdf") return entriesPdf(form, rows, sites, opts.by ?? "Lantern Forms", clinical);
   const cols = exportColumns(doc);
   // Follow-up: its state, and what was filled in when it was marked done (never a password).
   const tracked = rows.some((e) => e.followUp);
@@ -822,7 +834,8 @@ export async function exportEntries(
     // Answers are typed by whoever filled the form in (signed out, on a public form): text that
     // starts like a formula stays text (services/spreadsheetSafe.ts). Numbers stay numbers.
     // A leading BOM so Excel opens the UTF-8 correctly.
-    const text = "﻿" + [header, ...data].map((r) => r.map((c) => esc(typeof c === "string" ? formulaSafe(c) : String(c ?? ""))).join(",")).join("\r\n");
+    // A clinical record's notice goes last, on a line of its own.
+    const text = "﻿" + [header, ...data, ...(clinical ? [[], [PART2_NOTICE]] : [])].map((r) => r.map((c) => esc(typeof c === "string" ? formulaSafe(c) : String(c ?? ""))).join(",")).join("\r\n");
     return { filename: `${base}.csv`, mime: "text/csv; charset=utf-8", body: Buffer.from(text, "utf8") };
   }
   const wb = new ExcelJS.Workbook();
@@ -831,6 +844,11 @@ export async function exportEntries(
   ws.addRow(header);
   ws.getRow(1).font = { bold: true };
   for (const r of data) ws.addRow(r);
+  if (clinical) {
+    ws.addRow([]);
+    const notice = ws.addRow([PART2_NOTICE]);
+    notice.font = { italic: true };
+  }
   ws.columns.forEach((c, i) => (c.width = Math.min(50, Math.max(12, header[i].length + 2))));
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: header.length } };
   const buf = Buffer.from(await wb.xlsx.writeBuffer());
@@ -844,7 +862,7 @@ const SIGNATURE_URL = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
 const WIDE = new Set(["textarea", "address", "repeater", "likert", "multiselect", "checkbox", "file"]);
 
 /** Each entry as its paper form: a title block, then its answers in labelled boxes under their sections. */
-async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string, string>, by: string) {
+async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string, string>, by: string, clinical = false) {
   const docs = new Map<number, FormDoc>();
   const follow = rows.some((e) => e.followUp) ? await loadFollowUp(form) : null;
   const documents: ExportDocument[] = [];
@@ -924,6 +942,7 @@ async function entriesPdf(form: BuiltForm, rows: FormEntry[], sites: Map<string,
   }
   // One entry: named for it; several: for the form and the day.
   const filename = `${form.slug}-${rows.length === 1 ? rows[0].id : `entries-${new Date().toISOString().slice(0, 10)}`}`;
-  const file = await buildExport({ format: "pdf", filename, title: form.title, sheets: [], documents }, by);
+  // A clinical record: § 2.32's short notice at the foot of every page (forms/clinical.ts).
+  const file = await buildExport({ format: "pdf", filename, title: form.title, sheets: [], documents, ...(clinical ? { notice: PART2_NOTICE_SHORT } : {}) }, by);
   return { filename: file.filename, mime: file.mime, body: file.body };
 }
