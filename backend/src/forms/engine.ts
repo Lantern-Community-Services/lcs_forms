@@ -1010,6 +1010,18 @@ function choiceLabel(f: Field, value: unknown): string {
   return hit ? hit.label : asText(value);
 }
 
+/**
+ * A Site question's answer is kept as the site's code (rules and routing
+ * compare codes, {field:value} gives it); a person reads the site's name. Each
+ * side tells the engine the names it knows: the server's site list
+ * (services/siteNames.ts), the app's (lib/siteNames.ts). A code it doesn't know
+ * shows as itself.
+ */
+let siteNameOf: (code: string) => string | undefined = () => undefined;
+export function setSiteNameLookup(lookup: (code: string) => string | undefined) {
+  siteNameOf = lookup;
+}
+
 /** One answer as a person reads it — used by entries, exports, emails and merge tags. */
 export function formatValue(f: Field, value: unknown): string {
   if (isEmptyValue(value)) return "";
@@ -1050,6 +1062,10 @@ export function formatValue(f: Field, value: unknown): string {
     case "resident": {
       const o = value as { name?: string; unit?: string };
       return [o.name, o.unit ? `(${o.unit})` : ""].filter(Boolean).join(" ");
+    }
+    case "site": {
+      const code = asText(value);
+      return siteNameOf(code) ?? code;
     }
     case "calculation": {
       if (typeof value !== "number") return asText(value);

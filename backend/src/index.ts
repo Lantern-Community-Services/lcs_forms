@@ -21,6 +21,7 @@ import { startFollowUpReminders } from "./services/followUp.js";
 import { startSignOffReminders } from "./services/signOff.js";
 import { startChecklistReminders } from "./services/checklist.js";
 import { startDraftSweep } from "./services/formDrafts.js";
+import { startSiteNames } from "./services/siteNames.js";
 import { loadTestPrograms } from "./services/testDataSites.js";
 import { fileStorageLabel } from "./services/fileStore.js";
 import { accessReady, ensureStartingGroups, startAccessRefresh } from "./services/staffGroups.js";
@@ -57,6 +58,8 @@ startSignOffReminders();
 startChecklistReminders();
 // Unfinished form answers saved to people's accounts, dropped after a month untouched.
 startDraftSweep();
+// Site answers read as the site's name in exports, emails and merge tags.
+startSiteNames();
 
 // A test site's made-up sites have made-up programs (services/testDataSites.ts).
 if (testSite) void loadTestPrograms();

@@ -116,10 +116,13 @@ export function BuiltFormEntriesPage() {
     setPage(0);
   }, [filterKey]);
 
-  const columns: Field[] = useMemo(
-    () => (data?.doc.fields ?? []).filter((f) => isInputField(f) && !["signature", "file", "code", "repeater", "likert", "hidden", "consent"].includes(f.type)).slice(0, 4),
-    [data?.doc]
-  );
+  const columns: Field[] = useMemo(() => {
+    const doc = data?.doc;
+    // A form that doesn't ask for its site up front takes the entry's site from its first Site
+    // question (backend forms/entries.ts), which the Site column already shows.
+    const entrySite = doc && !doc.settings.requireSite ? doc.fields.find((f) => f.type === "site") : undefined;
+    return (doc?.fields ?? []).filter((f) => f !== entrySite && isInputField(f) && !["signature", "file", "code", "repeater", "likert", "hidden", "consent"].includes(f.type)).slice(0, 4);
+  }, [data?.doc]);
   const siteOptions = data?.sites ?? [];
   const hasSites = siteOptions.length > 0 || data?.items.some((e) => e.site);
   // What was filled in when follow-ups were marked done (IT's new account, say): a column each, passwords never.

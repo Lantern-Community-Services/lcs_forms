@@ -2,6 +2,7 @@ import { sendFile } from "./upload";
 import { createContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "./api";
+import { rememberSites } from "./siteNames";
 import type { Field, FieldTypeInfo, FormDoc, Values } from "./formEngine";
 
 /** Built forms: the admin builder's reads and writes, and filling in / reading entries. */
@@ -294,16 +295,17 @@ export function useFillForm(slug: string | undefined, share?: string | null) {
   });
 }
 
+// Entries name their site, so a Site question's answer can show its name (lib/siteNames.ts).
 export function useEntries(slug: string, qs: string) {
   return useQuery({
     queryKey: builderKeys.entries(slug, qs),
-    queryFn: () => api.get<EntryList>(`/f/${slug}/entries?${qs}`),
+    queryFn: () => api.get<EntryList>(`/f/${slug}/entries?${qs}`).then((d) => (rememberSites(d.items.map((e) => e.site)), d)),
     placeholderData: (prev) => prev,
   });
 }
 
 export function useEntry(slug: string, id: string) {
-  return useQuery({ queryKey: builderKeys.entry(slug, id), queryFn: () => api.get<EntryDetail>(`/f/${slug}/entries/${id}`) });
+  return useQuery({ queryKey: builderKeys.entry(slug, id), queryFn: () => api.get<EntryDetail>(`/f/${slug}/entries/${id}`).then((d) => (rememberSites([d.entry.site]), d)) });
 }
 
 export const builderApi = {
