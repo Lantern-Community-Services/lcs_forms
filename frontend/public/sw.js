@@ -79,7 +79,9 @@ function bypassApi(url) {
     /\/files\//.test(p) ||
     // Unfinished answers saved to the person's account (components/formkit/serverDrafts.tsx): a stored list
     // could offer a draft already filed elsewhere, and the device keeps its own copy anyway.
-    /^\/api\/f\/[^/]+\/drafts(\/|$)/.test(p)
+    /^\/api\/f\/[^/]+\/drafts(\/|$)/.test(p) ||
+    // A resident's documents (an ID, a lease): never kept on the device.
+    /^\/api\/tenants\/[^/]+\/documents\//.test(p)
   );
 }
 

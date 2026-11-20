@@ -8,9 +8,19 @@ import { cutoff } from "../services/roster.js";
 import { sitesInScope } from "../services/siteScope.js";
 import { auditView } from "../services/audit.js";
 import { reviewsRoster } from "../services/permissions.js";
+import { PROFILE_AUDIT_ACTIONS } from "../services/clientProfile.js";
 
 export const activityRouter = Router();
 activityRouter.use(requireAuth);
+
+/**
+ * Client-information events (what was changed and its old and new values, SSN
+ * looks, documents) are for people who may see client information, like the
+ * resident page's own history (routes/tenants.ts). Anyone else with the roster
+ * would otherwise read client information here.
+ */
+const clientInfoHidden = (permissions: readonly string[]): Prisma.AuditEventWhereInput[] =>
+  permissions.includes("clients.view") ? [] : [{ action: { notIn: [...PROFILE_AUDIT_ACTIONS] } }];
 
 /** Audit log, newest first, keyset-paged with ?before=<iso>. */
 activityRouter.get(
@@ -29,6 +39,7 @@ activityRouter.get(
     where.AND = [
       ...(req.user!.permissions.includes("audit.view") ? [] : [{ action: { startsWith: "tenant." } }]),
       ...(action ? [{ action }] : []),
+      ...clientInfoHidden(req.user!.permissions),
     ];
     if (typeof req.query.before === "string") where.createdAt = { lt: new Date(req.query.before) };
 
@@ -82,7 +93,7 @@ activityRouter.get(
         _count: { _all: true },
       }),
       prisma.auditEvent.findMany({
-        where: { siteId: { in: siteIds }, action: { startsWith: "tenant." } },
+        where: { siteId: { in: siteIds }, action: { startsWith: "tenant." }, AND: clientInfoHidden(req.user!.permissions) },
         orderBy: { createdAt: "desc" },
         take: 12,
       }),

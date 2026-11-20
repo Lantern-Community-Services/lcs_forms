@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { BarChart3, Download } from "lucide-react";
+import { BarChart3, Download, FileArchive } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/label";
 import { EmptyState, LoadingState } from "@/components/ui/misc";
+import { useToast } from "@/components/ui/toast";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { errorMessage } from "@/lib/utils";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { fmtDay, todayLocal, useResidencyFor, useResidencyReport, type ResidencyReport } from "@/lib/residency";
 
@@ -21,7 +26,8 @@ const monthName = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString
 /**
  * Move-ins and move-outs (case management): by month and site, why people left
  * and where they went, how long they stayed, the units empty now, and how much
- * of the checklist got done on time. Downloadable as a spreadsheet (CSV).
+ * of the checklist got done on time. Downloadable as a spreadsheet (CSV), and
+ * for people who see client information, as HUD's HMIS CSV files (HmisExport).
  */
 export function MovesPage() {
   const { codes, setCodes, selected, param } = useSiteSelection();
@@ -30,6 +36,8 @@ export function MovesPage() {
   const [from, setFrom] = useState(yearAgo());
   const [to, setTo] = useState(todayLocal());
   const { data, isLoading } = useResidencyReport(param, from, to, on && from <= to);
+  const { can } = useAuth();
+  const supportive = selected.filter((s) => residencyFor(s));
 
   return (
     <Page className="max-w-[1040px]">
@@ -52,9 +60,57 @@ export function MovesPage() {
       ) : isLoading || !data ? (
         <LoadingState />
       ) : (
-        <Report r={data} />
+        <div className="grid gap-4">
+          {can("clients.view") && <HmisExport from={from} to={to} sites={supportive} canSsn={can("clients.ssn")} />}
+          <Report r={data} />
+        </div>
       )}
     </Page>
+  );
+}
+
+/**
+ * HUD's HMIS CSV files for the dates and sites above, as one zip to upload to
+ * the CoC's HMIS (backend services/hmisExport.ts). Client information, so only
+ * for people who see it; whole SSNs only for Admins, and only when ticked.
+ */
+function HmisExport({ from, to, sites, canSsn }: { from: string; to: string; sites: { code: string; name: string }[]; canSsn: boolean }) {
+  const toast = useToast();
+  const [ssn, setSsn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const where = sites.length === 1 ? sites[0].name : `${sites.length} sites`;
+
+  async function run() {
+    setBusy(true);
+    try {
+      await api.download("/residency/hmis-export", { from, to, sites: sites.map((s) => s.code), includeSsn: canSsn && ssn }, `hmis-csv-${from}-to-${to}.zip`);
+      toast("HMIS files downloaded.");
+    } catch (e) {
+      toast(errorMessage(e, "Couldn't make the HMIS files."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <p className="kicker mb-1">HMIS export</p>
+      <p className="text-[13px] text-muted">
+        HUD's HMIS CSV files (FY2026) for {where}, {fmtDay(from)} to {fmtDay(to)}: clients, enrollments and exits, income and benefits, health
+        and disabilities, in one zip to upload to the CoC's HMIS. Each export is logged.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        {canSsn && (
+          <label className="flex items-center gap-2 text-[13px]">
+            <Checkbox checked={ssn} onCheckedChange={(v) => setSsn(v === true)} />
+            Include whole Social Security Numbers
+          </label>
+        )}
+        <Button variant="secondary" onClick={run} disabled={busy || !sites.length || from > to} className="min-h-[40px]">
+          <FileArchive className="h-4 w-4" /> {busy ? "Making the files…" : "Download HMIS files (zip)"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

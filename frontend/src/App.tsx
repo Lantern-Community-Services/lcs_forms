@@ -22,6 +22,8 @@ import { ReviewPage } from "./screens/Review";
 import { UnitsPage } from "./screens/residency/Units";
 import { ChecklistPage } from "./screens/residency/Checklist";
 import { MovesPage } from "./screens/residency/Moves";
+import { ApplicantsPage } from "./screens/residency/Applicants";
+import { CaseloadPage, CaseloadSection, CaseloadTasksPage, UnassignedPage } from "./screens/Caseload";
 import { TenantDetailPage } from "./screens/TenantDetail";
 import { ActivityPage } from "./screens/Activity";
 import { AttendancePage } from "./screens/Attendance";
@@ -188,6 +190,8 @@ function RosterSection() {
         { to: "/roster", label: "Residents", end: true },
         ...(reviews ? [{ to: "/roster/review", label: "Review", count: reviewCount }] : []),
         ...(caseManagement ? [{ to: "/roster/checklist", label: "Checklist" }, { to: "/roster/moves", label: "Move-ins & outs" }] : []),
+        // Applicants: roster managers move them along; client information sees them.
+        ...(caseManagement && (can("roster.edit") || can("clients.view")) ? [{ to: "/roster/applicants", label: "Applicants" }] : []),
         ...(caseManagement && (reviews || can("sites.manage")) ? [{ to: "/roster/units", label: "Units" }] : []),
         { to: "/roster/attendance", label: "Attendance" },
         { to: "/roster/activity", label: "Activity" },
@@ -266,11 +270,18 @@ export function App() {
             <Route path="/roster/units" element={<UnitsPage />} />
             <Route path="/roster/checklist" element={<ChecklistPage />} />
             <Route path="/roster/moves" element={<MovesPage />} />
+            <Route path="/roster/applicants" element={<ApplicantsPage />} />
             <Route path="/roster/reports" element={<Moved to="/roster/moves" />} />
           </Route>
           {/* Detail screens sit outside the tabs: they carry their own way back. */}
           <Route path="/roster/attendance/:id" element={<AttendanceDetailPage />} />
           <Route path="/tenants/:id" element={<TenantDetailPage />} />
+          {/* Case management: a case lead's residents and to-do list (it checks who may see it). */}
+          <Route element={<CaseloadSection />}>
+            <Route path="/caseload" element={<CaseloadPage />} />
+            <Route path="/caseload/tasks" element={<CaseloadTasksPage />} />
+            <Route path="/caseload/unassigned" element={<UnassignedPage />} />
+          </Route>
 
           {/* Where these screens lived before they became Roster tabs — kept so
               bookmarks and saved landing pages still land somewhere. */}

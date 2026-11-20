@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { Bell, BookOpen, CalendarDays, CircleHelp, Contact, Home, LayoutGrid, Settings, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, BookOpen, CalendarDays, CircleHelp, ClipboardList, Contact, Home, LayoutGrid, Settings, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { useShowCaseload } from "@/lib/caseload";
 import { ARTICLES, TASKS, allowed } from "@/lib/help/content";
 import { ADMIN_GROUPS } from "./ConfigLayout";
 import { ADMIN_AREA, useAuth } from "@/lib/auth";
@@ -42,6 +43,7 @@ export function useGlobalSearch(q: string, categories: NavCategory[]): SearchHit
   const { can } = useAuth();
   const words = useMemo(() => q.trim().toLowerCase().split(/\s+/).filter(Boolean), [q]);
   const rosterUser = can("roster.view");
+  const showCaseload = useShowCaseload();
   // Only fetched once someone is actually looking for a resident.
   const { data: tenants } = useTenants(undefined, "active", rosterUser && words.join("").length >= 2);
 
@@ -59,13 +61,14 @@ export function useGlobalSearch(q: string, categories: NavCategory[]): SearchHit
       ...ARTICLES.filter((a) => allowed(a.needs, can)).map((a) => ({ to: `/help/${a.id}`, label: `Help: ${a.title}`, Icon: BookOpen, words: `${a.summary} ${a.words ?? ""}` })),
     ];
     if (rosterUser) list.splice(2, 0, { to: "/roster", label: "Roster", Icon: Contact, words: "residents tenants review attendance" });
+    if (showCaseload) list.splice(3, 0, { to: "/caseload", label: "Caseload", Icon: ClipboardList, words: "my residents case lead to do tasks activities unassigned" });
     if (ADMIN_AREA.some(can)) {
       list.push({ to: "/admin", label: "Admin", Icon: Settings, words: "settings people roles sites" });
       // Every Admin screen this person can open, so "form builder" or "external forms" finds it.
       for (const g of ADMIN_GROUPS) for (const i of g.items) if (i.needs.some(can)) list.push({ to: i.to, label: `Admin: ${i.label}`, Icon: Settings, words: `${g.group} admin` });
     }
     return list;
-  }, [can, rosterUser]);
+  }, [can, rosterUser, showCaseload]);
 
   return useMemo(() => {
     if (!words.length) return { pages: [], forms: [], residents: [], residentTotal: 0, first: null };

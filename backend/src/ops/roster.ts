@@ -4,6 +4,10 @@ import { tenantsRouter, ARCHIVE_REASONS } from "../routes/tenants.js";
 import { attendanceRouter } from "../routes/attendance.js";
 import { activityRouter } from "../routes/activity.js";
 import { residencyRouter } from "../routes/residency.js";
+import { applicantsRouter } from "../routes/applicants.js";
+import { CLOSE_REASONS, MOVE_STAGES, STAGES } from "../services/applicants.js";
+import { caseloadRouter } from "../routes/caseload.js";
+import { clientRecordRouter } from "../routes/clientRecord.js";
 import { decodeCsv, importTenants, MAX_IMPORT_ROWS, readRows } from "../services/tenantImport.js";
 import { defineOp, int, flag } from "./registry.js";
 
@@ -26,6 +30,22 @@ const residentFields = {
   notes: z.string().max(2000).nullable().optional(),
   externalId: z.string().max(80).nullable().optional().describe("The resident's id in the property-management system"),
   highAcuity: z.boolean().optional().describe("Elevated needs: more frequent check-ins, closer case management"),
+};
+
+/** Applicants' details; routes/applicants.ts checks them again. */
+const applicantFields = {
+  firstName: z.string().max(80),
+  middleName: z.string().max(80).nullable().optional(),
+  lastName: z.string().max(80).optional(),
+  preferredName: z.string().max(80).nullable().optional(),
+  dateOfBirth: z.string().nullable().optional().describe("YYYY-MM-DD"),
+  phone: z.string().max(40).nullable().optional(),
+  email: z.string().max(200).nullable().optional(),
+  program: z.string().max(255).nullable().optional(),
+  referralSource: z.string().max(80).nullable().optional(),
+  referralAgency: z.string().max(255).nullable().optional().describe("Who referred them: agency, worker or contact"),
+  referralDate: z.string().nullable().optional().describe("YYYY-MM-DD"),
+  eligibilityNotes: z.string().max(4000).nullable().optional(),
 };
 
 /** Attendance signatures are PNG data URLs: report whether one is there, not the image. */
@@ -428,6 +448,29 @@ export const rosterOps = [
   }),
 
   defineOp({
+    name: "get_timeline",
+    description:
+      "A resident's whole record, newest first: the form entries about them that the key's maker could open (form, when, who filed it, site, follow-up and sign-off state, note count, link), with their moves in and out, transfers, time away, checklist items done and documents added. Paged: pass `next` back as before. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/timeline" },
+    shape: { id: residentId, before: z.string().max(20_000).optional().describe("Paging: the `next` value from the last page"), limit: int(1, 100).optional() },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(clientRecordRouter, { method: "GET", path: `/${id(a.id)}/timeline`, query: { before: a.before, limit: a.limit?.toString() } }),
+  }),
+
+  defineOp({
+    name: "list_client_documents",
+    description: "The documents on a resident's record (ID, lease, consent / release, benefits, income, medical, other): kind, label, file name, type, size, who added it and when. The files themselves aren't sent. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/documents" },
+    shape: { id: residentId },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(clientRecordRouter, { method: "GET", path: `/${id(a.id)}/documents` }),
+  }),
+
+  defineOp({
     name: "list_checklist",
     description: "Move-in checklist tasks at supportive sites: view overdue, due (next two weeks, overdue included, the default), open, or done (last 90 days). mine: only residents the key's maker is case lead for.",
     scope: "roster:read",
@@ -436,6 +479,30 @@ export const rosterOps = [
     shape: { site, view: z.enum(["overdue", "due", "open", "done"]).optional(), mine: z.boolean().optional() },
     annotations: { readOnlyHint: true },
     run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/tasks", query: { site: a.site, view: a.view, mine: a.mine ? "1" : undefined } }),
+  }),
+
+  defineOp({
+    name: "list_caseload",
+    description:
+      "A case lead's caseload (PlanStreet's My Activities): the residents whose client information names them case lead, each with site, unit, moved-in date, whether they're away, their open checklist (how many overdue, the next one due) and their last Contact Form. Defaults to the key's maker; lead (a staff id, from list_people) shows someone else's, at the key's sites, for a Site Manager's or Admin's key. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/caseload" },
+    shape: { lead: z.string().optional().describe("Another case lead's staff id") },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(caseloadRouter, { method: "GET", path: "/", query: { lead: a.lead } }),
+  }),
+
+  defineOp({
+    name: "list_caseload_tasks",
+    description:
+      "Every open checklist task for a case lead's caseload, each marked when: overdue, week (due in the next 7 days) or later, with the form that does it. Tick one off with update_checklist_task. lead as in list_caseload.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/caseload/tasks" },
+    shape: { lead: z.string().optional().describe("Another case lead's staff id") },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(caseloadRouter, { method: "GET", path: "/tasks", query: { lead: a.lead } }),
   }),
 
   defineOp({
@@ -457,6 +524,82 @@ export const rosterOps = [
     shape: { site, from: z.string().optional(), to: z.string().optional() },
     annotations: { readOnlyHint: true },
     run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/report", query: { site: a.site, from: a.from, to: a.to } }),
+  }),
+
+  // ── Applicants (case management): referral to accepted ──
+  defineOp({
+    name: "list_applicants",
+    description:
+      "People referred for a unit at supportive sites (PlanStreet's Applicants): name, date of birth, contact, program, referral (source, who referred them, date), eligibility notes, stage and how long they've been at it, the viewing date, why it closed, the resident they became, and every stage change. status: open (the default: still in the pipeline, or accepted and not moved in yet), closed (ineligible, rejected, declined, withdrawn, or moved in) or all. Each has the version update_applicant and accept_applicant need. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/applicants" },
+    shape: {
+      site,
+      status: z.enum(["open", "closed", "all"]).optional(),
+      stage: z.enum(STAGES).optional(),
+      program: z.string().max(255).optional().describe("Only applicants referred to this program (residency_options programs)"),
+    },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(applicantsRouter, { method: "GET", path: "/", query: { site: a.site, status: a.status, stage: a.stage, program: a.program } }),
+  }),
+
+  defineOp({
+    name: "add_applicant",
+    description:
+      "Add someone referred for a unit at a supportive site. They start at Referred, on the referral date (today if none). program: one of that site's programs (residency_options programs); referralSource: HASA, DSS/HRA, Property Management, ACS or HPD; referralAgency: who referred them, in words.",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/applicants" },
+    shape: { site: z.string().describe("Site code or id"), ...applicantFields },
+    run: (ctx, a) => ctx.route(applicantsRouter, { method: "POST", path: "/", body: a }),
+  }),
+
+  defineOp({
+    name: "update_applicant",
+    description:
+      "Change an applicant's details (site moves them to another supportive site), and/or move them to a stage: referred, eligibility_review, eligible, viewing_scheduled (needs viewingDate), or closed — ineligible, rejected, declined (they turned it down) or withdrawn — which needs a reason (Other needs a note). date: the day of the move (default today). A closed applicant can be moved back to an open stage. Accepting is accept_applicant. Pass the version from list_applicants: if someone changed them since, it's refused. Reasons: " +
+      Object.entries(CLOSE_REASONS).map(([stage, list]) => `${stage}: ${list.join(" | ")}`).join("; ") +
+      ".",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "PATCH", path: "/applicants/:id" },
+    shape: {
+      id: z.string().describe("The applicant's id"),
+      version: z.number().int().describe("From list_applicants"),
+      site: z.string().optional().describe("Move them to this supportive site (code or id)"),
+      ...applicantFields,
+      firstName: applicantFields.firstName.optional(),
+      stage: z.enum(MOVE_STAGES).optional(),
+      date: z.string().optional().describe("YYYY-MM-DD: when they reached the stage"),
+      viewingDate: z.string().optional().describe("YYYY-MM-DD: viewing_scheduled only"),
+      reason: z.string().max(120).optional().describe("Closed stages only"),
+      note: z.string().max(2000).optional(),
+    },
+    run: async (ctx, { id: aid, version, stage, date, viewingDate, reason, note, ...details }) => {
+      let current: { version: number } | null = null;
+      if (Object.values(details).some((v) => v !== undefined)) {
+        current = await ctx.route(applicantsRouter, { method: "PATCH", path: `/${id(aid)}`, body: { version, ...details } });
+      }
+      if (!stage) return current ?? { error: "Nothing to change: pass details or a stage." };
+      return ctx.route(applicantsRouter, { method: "POST", path: `/${id(aid)}/stage`, body: { version: current?.version ?? version, stage, date, viewingDate, reason, note } });
+    },
+  }),
+
+  defineOp({
+    name: "accept_applicant",
+    description:
+      "Accept an eligible applicant (eligible or viewing_scheduled): they go on the site's roster as a resident who isn't moved in yet, and their date of birth, contact, program and referral are copied into their client information. Returns the applicant, the new resident and which client information fields were filled. Moving in is then move_in with the resident's id.",
+    scope: "roster:write",
+    as: "creator",
+    http: { method: "POST", path: "/applicants/:id/accept" },
+    shape: {
+      id: z.string().describe("The applicant's id"),
+      version: z.number().int().describe("From list_applicants"),
+      date: z.string().optional().describe("YYYY-MM-DD: when they were accepted (default today)"),
+      note: z.string().max(2000).optional(),
+    },
+    run: (ctx, { id: aid, ...body }) => ctx.route(applicantsRouter, { method: "POST", path: `/${id(aid)}/accept`, body }),
   }),
 ];
 

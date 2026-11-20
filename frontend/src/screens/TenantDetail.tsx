@@ -17,6 +17,7 @@ import { RemoveDialog } from "@/components/roster/RemoveDialog";
 import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
 import { HighAcuityFlag, HighAcuityToggle } from "@/components/roster/HighAcuity";
 import { ClientInfoCard } from "@/components/roster/ClientInfo";
+import { DocumentsCard, TimelineCard } from "@/components/roster/ClientRecord";
 import { ResidencyCards } from "@/components/residency/ResidencyCards";
 import { useResidencyFor } from "@/lib/residency";
 import { useRosterActions } from "@/components/roster/useRosterActions";
@@ -237,6 +238,12 @@ export function TenantDetailPage() {
         {/* Part of the case management rework: only when it's on for this site (Admin → Settings). */}
         {units && <ResidencyCards tenant={t} />}
         {caseManagement && <ClientInfoCard tenant={t} />}
+        {caseManagement && can("clients.view") && (
+          <>
+            <DocumentsCard tenant={t} />
+            <TimelineCard tenant={t} />
+          </>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="page-list-item-enter p-5" style={{ animationDelay: "70ms" }}>
