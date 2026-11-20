@@ -157,6 +157,8 @@ const settings = z.object({
   saveDrafts: z.boolean().optional(),
   customCss: z.string().max(100_000).optional(),
   icon: z.string().max(40).optional(),
+  /** A clinical record: entries only for Admins and people who can see client information (forms/clinical.ts). */
+  clinical: z.boolean().optional(),
 }).strict();
 
 export const formDocSchema = z.object({

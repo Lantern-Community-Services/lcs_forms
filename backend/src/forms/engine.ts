@@ -282,6 +282,13 @@ export interface FormSettings {
   customCss?: string;
   /** Catalog icon key (see FORM_ICONS). */
   icon?: string;
+  /**
+   * A clinical record (diagnoses, medications, substance use, risk): its entries, their files
+   * and exports are only for Admins and people who can see client information (clients.view),
+   * on top of who sees entries; opening and exporting them is audited; its answers never go in
+   * an email; exports carry the 42 CFR Part 2 notice (backend forms/clinical.ts).
+   */
+  clinical?: boolean;
 }
 
 export interface FormDoc {
@@ -1425,6 +1432,7 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
       const f = doc.fields.find((x) => x.id === id);
       if (!f) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `There's no field "${id}" on this form.` });
       else if (!canEmailField(f)) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `“${f.label || id}” can't go in an email: ${f.type} answers stay behind sign-in.` });
+      else if (doc.settings.clinical) problems.push({ path: `settings.notifications[${i}].fields[${j}]`, message: `This is a clinical record, so its answers can't go in an email. Take “${f.label || id}” out.` });
     });
     if (n.enabled && n.kind === "email" && !n.to) problems.push({ path: `settings.notifications[${i}].to`, message: "An email notification needs a To address." });
     if (n.enabled && n.kind === "notify" && !n.to?.trim() && !n.roles?.length && !n.groups?.length && !n.titles?.length) {

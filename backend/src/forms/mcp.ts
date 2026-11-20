@@ -28,6 +28,7 @@ import { registerRoutingTools } from "./routingTools.js";
 import { registerTutorialTools } from "../tutorials/mcpTools.js";
 import { registerOps } from "../ops/index.js";
 import { summarize } from "../ops/forms.js";
+import { keyMakerCan } from "../ops/principal.js";
 import { PERSON_INSTRUCTIONS, registerPersonTools } from "../ops/person.js";
 import { resourceMetadataUrl } from "../oauth/router.js";
 
@@ -111,6 +112,7 @@ submitLabel; progressBar; saveDrafts (default true); customCss; icon (catalog ic
 access: { mode: "signed_in" | "roles" | "public" | "link", roles: [role keys] }  ("link": anyone, but only through an employee's own share link at /s/<token>; public and link forms can't use site/resident fields);
 entriesRoles: [role keys that can read entries; Admin always can];
 requireSite: true to ask which site the entry is for (entries are then limited to that site's staff);
+clinical: true for a clinical record (diagnoses, medications, substance use, suicide/homicide risk: a Psychosocial, a Face Sheet). On top of who sees entries, its entries, their files, exports and the entry tools (list_entries, get_entry, export_entries, count_entries) are only for Admins and people who can see client information (clients.view) — not even their own entries otherwise. Every opening and export is audited (entry.viewed, entries.exported); its answers never go in an email (routes, rules and reports can't pick its fields); exports carry the 42 CFR Part 2 notice; its sign-offs only go to people who can see it;
 limits: { maxEntries, perUser: { count, period: day|week|month|ever }, opensAt, closesAt (ISO), closedMessage };
 confirmation: { type: "message"|"redirect", message (HTML, merge tags), url, showSummary };
 notifications: [{ id, name, enabled, kind: "email"|"webhook"|"notify", to, subject, url, secret, roles, siteOnly, body, link, conditional }].
@@ -421,7 +423,8 @@ function buildServer(key: ResolvedKey, principal: CurrentUser, from?: CallFrom):
     // Entries for every site come with the bundle: not for a key limited to one site (like export_code_form).
     if (entries && key.siteId) throw new HttpError(403, "A key limited to one site can't export entries with forms: use list_entries, which keeps to its site.");
     const ids = await Promise.all(forms.map(async (f) => (await findForm(f)).id));
-    return exportForms(ids, { entries });
+    // A clinical record's entries only when the admin who made the key can see client information (forms/clinical.ts).
+    return exportForms(ids, { entries, clinical: { sees: await keyMakerCan(key, "clients.view"), actor } });
   }, { readOnlyHint: true });
 
   tool(

@@ -15,6 +15,7 @@ import {
 import { mailConfigured } from "../services/mailer.js";
 import { ROLES } from "../services/permissions.js";
 import { MCP_GUIDE } from "../forms/mcp.js";
+import { seesClinical } from "../forms/clinical.js";
 
 /**
  * Admin → Form builder. Everything here needs forms.manage, which only the
@@ -84,7 +85,7 @@ builderRouter.get(
   asyncHandler(async (req, res) => {
     const ids = String(req.query.ids ?? "").split(",").filter(Boolean);
     if (!ids.length) throw badRequest("Pick at least one form.");
-    const bundle = await exportForms(ids, { entries: req.query.entries === "1", live: req.query.live === "1" });
+    const bundle = await exportForms(ids, { entries: req.query.entries === "1", live: req.query.live === "1", clinical: { sees: seesClinical(req.user), actor: actorOf(req) } });
     const name = bundle.forms.length === 1 ? bundle.forms[0].slug : `lantern-forms-${bundle.forms.length}`;
     res.setHeader("Content-Disposition", `attachment; filename="${name}.lcsform.json"`);
     res.type("application/json").send(JSON.stringify(bundle, null, 2));

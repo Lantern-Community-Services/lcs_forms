@@ -6,7 +6,8 @@ import { ENTRY_CREATED, type Recipient, type Route } from "../forms/routingSchem
 import { fieldError, isEmptyValue, signOffFieldIds, visibleFieldIds, type Field, type FormDoc, type Values } from "../forms/engine.js";
 import { planRoutes } from "./routing.js";
 import { notify, type TypeRule } from "./notifications.js";
-import { ROLES } from "./permissions.js";
+import { ROLES, permissionsFor, roleFor } from "./permissions.js";
+import { isClinicalForm } from "../forms/clinical.js";
 
 /**
  * Sign-off: a signature question signed after the entry is filed, by someone
@@ -167,7 +168,12 @@ async function siteOf(siteId: string | null) {
 
 type SignEntry = Pick<FormEntry, "id" | "data" | "siteId" | "createdById">;
 
-/** The people a list of recipients names for this entry (at its site), whoever filed it left out. */
+/**
+ * The people a list of recipients names for this entry (at its site), whoever
+ * filed it left out. On a clinical record (forms/clinical.ts), only those who
+ * can see client information (clients.view): signing it means reading it, and
+ * nobody else may open its entries, so nobody else is asked or may sign.
+ */
 async function peopleFor(form: BuiltForm, by: Recipient[], entry: SignEntry) {
   if (!by.length) return [];
   const values = JSON.parse(entry.data) as Values;
@@ -180,7 +186,14 @@ async function peopleFor(form: BuiltForm, by: Recipient[], entry: SignEntry) {
     submitterId: entry.createdById,
     entryId: entry.id,
   });
-  return (plan?.people ?? []).filter((p) => p.id !== entry.createdById);
+  const people = (plan?.people ?? []).filter((p) => p.id !== entry.createdById);
+  if (!people.length || !isClinicalForm(form)) return people;
+  const rows = await prisma.user.findMany({
+    where: { id: { in: people.map((p) => p.id) }, status: "active" },
+    select: { id: true, roleKey: true, calendarEditor: true, rosterEditor: true, clientInfoAccess: true, globalAdmin: true, viewAsEnabled: true },
+  });
+  const sees = new Set(rows.filter((u) => permissionsFor(roleFor(u.roleKey), u).includes("clients.view")).map((u) => u.id));
+  return people.filter((p) => sees.has(p.id));
 }
 
 /** The people who may sign this sign-off on this entry (at its site), whoever filed it left out. */

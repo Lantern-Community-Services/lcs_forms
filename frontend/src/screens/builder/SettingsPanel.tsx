@@ -135,6 +135,15 @@ export function SettingsPanel({
         <WhoSeesEntries formId={form.id} />
       </Section>
 
+      <Section title="Privacy">
+        <Toggle
+          label="Clinical record"
+          hint="For diagnoses, medications, substance use or risk. Its entries, files and exports are then only for Admins and people who can see client information, even the ones they filed. Who opens or exports one is recorded, its answers never go in emails, and exports carry the 42 CFR Part 2 notice. Takes effect when you publish."
+          checked={Boolean(s.clinical)}
+          onChange={(v) => set({ clinical: v || undefined })}
+        />
+      </Section>
+
       <Section title="Limits & schedule">
         <div className="grid gap-4 sm:grid-cols-2">
           <Row label="Most entries in total" hint="Empty = no limit."><Input type="number" min={1} value={s.limits?.maxEntries ?? ""} onChange={(e) => set({ limits: { ...s.limits, maxEntries: e.target.value ? Number(e.target.value) : undefined } })} /></Row>

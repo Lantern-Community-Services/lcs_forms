@@ -11,6 +11,7 @@ import { FORM_ICONS } from "../routes/forms.js";
 import { FORMAT, FORMAT_VERSION, emptyForm, type FormDoc } from "./engine.js";
 import { parseFormDoc, type DocProblem } from "./schema.js";
 import { convertGravityForms, looksLikeGravityForms } from "./gravityImport.js";
+import { CLINICAL_REFUSAL, auditClinicalExport, isClinicalForm } from "./clinical.js";
 
 /**
  * Built forms: create, save, publish, version, duplicate, import and export.
@@ -357,14 +358,20 @@ export interface ExportedForm {
   entries?: { id: string; createdAt: string; createdByName: string; source: string; status: string; site: string | null; values: Record<string, unknown> }[];
 }
 
-/** A bundle of forms (and optionally their entries), as one JSON file. */
-export async function exportForms(ids: string[], opts: { entries?: boolean; live?: boolean } = {}) {
+/**
+ * A bundle of forms (and optionally their entries), as one JSON file. A clinical record's entries
+ * (forms/clinical.ts) come only when `clinical` says whoever asked can see them, and are audited.
+ */
+export async function exportForms(ids: string[], opts: { entries?: boolean; live?: boolean; clinical?: { sees: boolean; actor: Actor } } = {}) {
   const forms = await prisma.builtForm.findMany({ where: { id: { in: ids } }, orderBy: { title: "asc" } });
   const out: ExportedForm[] = [];
   for (const f of forms) {
     const item: ExportedForm = { slug: f.slug, status: f.status, form: readDoc(opts.live && f.liveSchema ? f.liveSchema : f.draftSchema) };
     if (opts.entries) {
+      const clinical = isClinicalForm(f);
+      if (clinical && !opts.clinical?.sees) throw new HttpError(403, `“${f.title}”: ${CLINICAL_REFUSAL}`);
       const rows = await prisma.formEntry.findMany({ where: { formId: f.id }, orderBy: { createdAt: "asc" } });
+      if (clinical) await auditClinicalExport(opts.clinical!.actor, f, rows.map((e) => e.id), "json");
       const sites = await prisma.site.findMany({ select: { id: true, code: true } });
       const code = new Map(sites.map((s) => [s.id, s.code]));
       item.entries = rows.map((e) => ({
