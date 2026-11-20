@@ -147,6 +147,7 @@ model Tenant {
   stays             Stay[]
   absences          TenantAbsence[]
   tasks             TenantTask[]
+  documents         ClientDocument[]
 
   @@index([siteId, status, attentionClockAt])
   @@index([siteId, status, unit])
@@ -319,6 +320,38 @@ model TenantTask {
 
   @@index([siteId, status, dueOn])
   @@index([tenantId, status])
+}
+
+/// A document kept on a resident's record (PlanStreet's case attachments): an ID,
+/// a lease, a signed release (services/clientDocuments.ts). The bytes are kept the
+/// way uploaded files are (services/fileStore.ts): in Blob Storage when it's set up,
+/// else in `data`. Seen with clients.view, added and removed with clients.edit.
+/// Removing one only marks it (removedAt): the audit log still names it.
+model ClientDocument {
+  id            String    @id @default(cuid()) @db.NVarChar(64)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.NVarChar(64)
+  /// The resident's site when it was added. Who may see it follows where the resident is now.
+  siteId        String?   @db.NVarChar(64)
+  /// id | lease | consent | benefits | income | medical | other (clientDocuments.ts DOCUMENT_KINDS)
+  kind          String    @db.NVarChar(40)
+  /// What it is, in staff's words ("Lease renewal 2026"). Empty: the file's name stands in.
+  label         String?   @db.NVarChar(200)
+  name          String    @db.NVarChar(255)
+  mime          String    @db.NVarChar(255)
+  size          Int
+  /// The bytes, when they're kept in the database.
+  data          Bytes?
+  /// The blob's name in the files container, when they're in Blob Storage.
+  storageKey    String?   @db.NVarChar(512)
+  createdById   String?   @db.NVarChar(64)
+  createdByName String    @db.NVarChar(255)
+  createdAt     DateTime  @default(now())
+  removedAt     DateTime?
+  removedById   String?   @db.NVarChar(64)
+  removedByName String?   @db.NVarChar(255)
+
+  @@index([tenantId, removedAt])
 }
 
 /// Immutable record of who changed a roster and why.
@@ -818,6 +851,8 @@ model FormEntry {
   @@index([formId, status])
   @@index([formId, occurredAt])
   @@index([formId, tenantId, occurredAt])
+  /// Which forms have entries about a resident (their timeline: services/clientTimeline.ts).
+  @@index([tenantId, formId])
   /// A site's entries over some days (code forms' per-site lookups: Hot Foods' Record screen).
   @@index([formId, siteId, occurredAt])
   @@index([siteId])

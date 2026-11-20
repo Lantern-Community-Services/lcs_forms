@@ -11,6 +11,7 @@ import { authRouter } from "./routes/auth.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { residencyRouter } from "./routes/residency.js";
 import { caseloadRouter } from "./routes/caseload.js";
+import { clientRecordRouter } from "./routes/clientRecord.js";
 import { attendanceRouter } from "./routes/attendance.js";
 import { sitesRouter } from "./routes/sites.js";
 import { activityRouter } from "./routes/activity.js";
@@ -163,6 +164,7 @@ export function createApp() {
   app.use("/api/home", homeRouter);
   app.use("/api/calendar", calendarRouter);
   app.use("/api/tenants", tenantsRouter);
+  app.use("/api/tenants", clientRecordRouter);
   app.use("/api/residency", residencyRouter);
   app.use("/api/caseload", caseloadRouter);
   app.use("/api/attendance", attendanceRouter);

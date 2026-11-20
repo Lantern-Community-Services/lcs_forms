@@ -44,6 +44,8 @@ export const SETTING_DEFAULTS = {
   siteLocationsSeeded: "",
   /** Set once the default calendar categories have been written; see calendar.ts. */
   calendarCategoriesSeeded: "",
+  /** Set once older basic-form entries were given the resident they're about (FormEntry.tenantId); see clientTimeline.ts. */
+  entryTenantsFilled: "",
   /** Test sites only: the made-up programs for their made-up sites (JSON); see testDataSites.ts. */
   testPrograms: "",
 } as const;
