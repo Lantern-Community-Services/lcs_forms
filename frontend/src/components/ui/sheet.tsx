@@ -43,7 +43,7 @@ SheetContent.displayName = "SheetContent";
 export function SheetHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
     <div className="flex flex-none items-center gap-2 border-b border-hairline py-3 pl-5 pr-3">
-      <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-[19px] font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
+      <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-title-sm font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
       {action ?? (
         <DialogPrimitive.Close
           aria-label="Close"

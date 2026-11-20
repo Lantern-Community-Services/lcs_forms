@@ -173,13 +173,13 @@ export function ExportEntriesDialog({
       <div className="flex flex-col gap-4">
         {showDates && (
           <>
-            {s.dates && s.dates.label && <p className="-mb-2 text-[13px] font-semibold text-ink">{s.dates.label}</p>}
+            {s.dates && s.dates.label && <p className="-mb-2 text-label font-semibold text-ink">{s.dates.label}</p>}
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-[13px] font-semibold text-ink">
+              <label className="flex flex-col gap-1 text-label font-semibold text-ink">
                 From
                 <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
               </label>
-              <label className="flex flex-col gap-1 text-[13px] font-semibold text-ink">
+              <label className="flex flex-col gap-1 text-label font-semibold text-ink">
                 To
                 <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
               </label>
@@ -193,7 +193,7 @@ export function ExportEntriesDialog({
                     setFrom(presetFrom(p.key));
                     setTo(p.key === "all" ? "" : nyToday());
                   }}
-                  className="min-h-[32px] rounded-pill border border-hairline px-3 text-[12.5px] font-semibold text-ink hover:bg-navsel"
+                  className="min-h-[32px] rounded-pill border border-hairline px-3 text-label font-semibold text-ink hover:bg-navsel"
                 >
                   {p.label}
                 </button>
@@ -204,18 +204,18 @@ export function ExportEntriesDialog({
         {/* Hidden for someone with one site: there's nothing to pick. */}
         {s.sites !== false && <SitePicker codes={sites} onChange={setSites} counts={false} office />}
         {s.search && (
-          <label className="flex flex-col gap-1 text-[13px] font-semibold text-ink">
+          <label className="flex flex-col gap-1 text-label font-semibold text-ink">
             Containing
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="A name, a word…" maxLength={120} />
           </label>
         )}
         {filterDefs.map((f) =>
           f.type === "check" ? (
-            <label key={f.id} className="flex items-center gap-2 text-[13.5px] text-ink">
+            <label key={f.id} className="flex items-center gap-2 text-body text-ink">
               <Checkbox checked={filters[f.id] === true} onCheckedChange={(v) => setFilter(f.id, v === true)} /> {f.label}
             </label>
           ) : f.type === "select" ? (
-            <label key={f.id} className="flex flex-col gap-1 text-[13px] font-semibold text-ink">
+            <label key={f.id} className="flex flex-col gap-1 text-label font-semibold text-ink">
               {f.label}
               <Select
                 value={(filters[f.id] as string[] | undefined)?.[0] ?? ""}
@@ -226,7 +226,7 @@ export function ExportEntriesDialog({
             </label>
           ) : (
             <div key={f.id} className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-semibold text-ink">{f.label}</span>
+              <span className="text-label font-semibold text-ink">{f.label}</span>
               <div className="flex flex-wrap gap-1.5">
                 {(f.options ?? []).map((o) => {
                   const cur = (filters[f.id] as string[] | undefined) ?? [];
@@ -243,14 +243,14 @@ export function ExportEntriesDialog({
         )}
         {s.mine !== false &&
           (ownOnly ? (
-            <p className="text-[13px] text-muted">This form only lets you export the entries you filed.</p>
+            <p className="text-label text-muted">This form only lets you export the entries you filed.</p>
           ) : (
-            <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <label className="flex items-center gap-2 text-body text-ink">
               <Checkbox checked={mine} onCheckedChange={(v) => setMine(v === true)} /> Only entries I filed
             </label>
           ))}
         {s.voided && (
-          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+          <label className="flex items-center gap-2 text-body text-ink">
             <Checkbox checked={voided} onCheckedChange={(v) => setVoided(v === true)} /> Include voided entries
           </label>
         )}
@@ -267,16 +267,16 @@ export function ExportEntriesDialog({
               >
                 {busy === format ? <Loader2 className="h-5 w-5 animate-spin text-muted" /> : <Icon className="h-5 w-5 text-muted" />}
                 <span className="flex-1">
-                  <span className="block text-[14px] font-semibold text-ink">{label}</span>
-                  <span className="block text-[12.5px] text-muted">{format === "pdf" && paper ? "Each entry as its paper form" : hint}</span>
+                  <span className="block text-body font-semibold text-ink">{label}</span>
+                  <span className="block text-label text-muted">{format === "pdf" && paper ? "Each entry as its paper form" : hint}</span>
                 </span>
                 <Download className="h-4 w-4 text-muted" />
               </button>
             );
           })}
         </div>
-        {s.note && <p className="text-[13px] text-ink">{s.note}</p>}
-        <p className="text-[12px] text-muted">{formats.includes("pdf") ? "A PDF holds up to 300 entries. " : ""}Exports may contain resident information: keep them private.</p>
+        {s.note && <p className="text-label text-ink">{s.note}</p>}
+        <p className="text-caption text-muted">{formats.includes("pdf") ? "A PDF holds up to 300 entries. " : ""}Exports may contain resident information: keep them private.</p>
       </div>
     </ResponsiveDialog>
   );

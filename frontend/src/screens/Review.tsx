@@ -16,6 +16,7 @@ import { rosterApi, useReviewQueue } from "@/lib/queries";
 import { useToast } from "@/components/ui/toast";
 import { SitePicker, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
+import { useDeviceKind } from "@/lib/device";
 import { useTourSample } from "@/lib/tour/store";
 import { errorMessage, formatDate, formatDay, quietFor, relativeTime, tintFor, toggled } from "@/lib/utils";
 import type { Tenant } from "@/lib/types";
@@ -44,6 +45,7 @@ let decisionSeq = 0;
  */
 export function ReviewPage() {
   const { can } = useAuth();
+  const touch = useDeviceKind() !== "desktop";
   const { codes, setCodes, selected, param } = useSiteSelection();
   const { data, isLoading } = useReviewQueue(param);
   const multiSite = selected.length > 1;
@@ -226,7 +228,7 @@ export function ReviewPage() {
           <PageHeader
             title="Review"
             help={{ article: "roster", text: "Residents nobody has recorded anything for in a while. Mark each one still here or no longer here, so the roster stays right." }}
-            subtitle={`${subtitle}. Swipe or use ← ↓ → to decide.`}
+            subtitle={touch ? `${subtitle}.` : `${subtitle}. The arrow keys work too.`}
             actions={<SitePicker codes={codes} onChange={setCodes} className="w-[260px]" />}
           />
         </div>
@@ -253,7 +255,7 @@ export function ReviewPage() {
         ) : (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr] lg:items-start">
             <div>
-              <div className="flex min-h-[40px] items-center justify-between gap-3 text-[13px] text-muted">
+              <div className="flex min-h-[40px] items-center justify-between gap-3 text-label text-muted">
                 <p className="min-w-0">
                   <strong className="tabular text-ink">{queue.length}</strong> to review
                   {done > 0 && <> · {done} done</>}
@@ -288,7 +290,8 @@ export function ReviewPage() {
               </div>
 
               {(canAct || canRemove) && (
-                <div className="mt-5 flex items-center justify-center gap-6">
+                <div className="mt-5 flex items-end justify-center gap-6">
+                  {/* Labels on one line: the smaller Skip circle sits lower, not its label higher. */}
                   <RoundAction label="Remove" tone="red" disabled={!canRemove || Boolean(pose)} onClick={() => askRemove(top)}>
                     <X className="h-7 w-7" strokeWidth={2.6} />
                   </RoundAction>
@@ -296,14 +299,16 @@ export function ReviewPage() {
                   <RoundAction label="Skip" tone="blue" size="sm" disabled={Boolean(pose) || queue.length < 2} onClick={() => skip(top)}>
                     <ChevronsDown className="h-6 w-6" strokeWidth={2.4} />
                   </RoundAction>
-                  <RoundAction label="Keep" tone="green" tour="review-keep" disabled={!canAct || Boolean(pose)} onClick={() => void doKeep(top)}>
+                  <RoundAction label="Still here" tone="green" tour="review-keep" disabled={!canAct || Boolean(pose)} onClick={() => void doKeep(top)}>
                     <Check className="h-7 w-7" strokeWidth={2.6} />
                   </RoundAction>
                 </div>
               )}
               <p className="mt-3 text-center text-micro text-muted">
                 {canAct || canRemove
-                  ? "Swipe left to remove · down to skip · right if they're still here"
+                  ? touch
+                    ? "Swipe left to remove · down to skip · right if they're still here"
+                    : "Arrow keys: left to remove · down to skip · right if they're still here"
                   : "You can look through who needs review. Your Site Manager decides who stays."}
               </p>
               </div>
@@ -318,24 +323,25 @@ export function ReviewPage() {
                   <li key={t.id} className="flex items-center gap-3 border-b border-hairline px-4 py-2.5 last:border-0">
                     <Avatar name={t.displayName} color={tintFor(t.id)} size={30} />
                     <Link to={`/tenants/${t.id}`} className="min-w-0 flex-1">
-                      <p className="truncate text-[13.5px] font-semibold text-ink">{t.displayName}</p>
+                      <p className="truncate text-body font-semibold text-ink">{t.displayName}</p>
                       <p className="truncate text-micro text-muted">
                         {[t.unit && `Unit ${t.unit}`, multiSite && t.site?.name, t.sentToReview ? "sent back to review" : `quiet ${quietFor(t.hoursQuiet)}`].filter(Boolean).join(" · ")}
                       </p>
                     </Link>
+                    {/* The usual answer is the green one; removing is a quiet icon (it asks first). */}
                     {canRemove && (
-                      <Button size="sm" variant="secondary" onClick={() => askRemove(t)} title="Remove">
-                        <X className="h-3.5 w-3.5" />
+                      <Button size="icon" variant="ghost" onClick={() => askRemove(t)} title="Remove" aria-label={`Remove ${t.displayName}`} className="h-8 w-8 text-muted hover:bg-status-redBg hover:text-status-redText">
+                        <X className="h-4 w-4" />
                       </Button>
                     )}
                     {canAct && (
-                      <Button size="sm" variant="secondary" onClick={() => void doKeep(t)} title="Keep">
-                        <Check className="h-3.5 w-3.5" />
+                      <Button size="sm" variant="secondary" onClick={() => void doKeep(t)} title="Still here" aria-label={`${t.displayName} is still here`} className="border-status-greenDot/40 bg-status-greenBg text-status-greenText hover:bg-status-greenBg">
+                        <Check className="h-3.5 w-3.5" /> Still here
                       </Button>
                     )}
                   </li>
                 ))}
-                {queue.length === 1 && <li className="px-4 py-6 text-center text-[13px] text-muted">This is the last one.</li>}
+                {queue.length === 1 && <li className="px-4 py-6 text-center text-label text-muted">This is the last one.</li>}
               </ul>
             </Card>
           </div>
@@ -358,7 +364,7 @@ function UndoButton({ last, busy, onUndo }: { last?: Decision; busy: boolean; on
       onClick={onUndo}
       disabled={busy}
       title={`Undo ${VERB[last.kind]} of ${last.tenant.displayName} (Ctrl/⌘+Z)`}
-      className="inline-flex min-h-[40px] max-w-[60%] shrink-0 items-center gap-1.5 rounded-pill border border-hairline bg-surface px-3 text-[12.5px] font-semibold text-ink shadow-card transition-colors hover:border-strongline disabled:opacity-50"
+      className="inline-flex min-h-[40px] max-w-[60%] shrink-0 items-center gap-1.5 rounded-pill border border-hairline bg-surface px-3 text-label font-semibold text-ink shadow-card transition-colors hover:border-strongline disabled:opacity-50"
     >
       <Undo2 className="h-3.5 w-3.5 shrink-0 text-accent dark:text-white" />
       <span className="truncate">
@@ -409,7 +415,7 @@ function ReviewCard({
       <span className="flex-1" />
       <Link
         to={`/tenants/${t.id}`}
-        className="inline-flex min-h-[40px] items-center gap-1 text-[13px] font-semibold text-accent dark:text-white"
+        className="inline-flex min-h-[40px] items-center gap-1 text-label font-semibold text-accent dark:text-white touch:min-h-11"
       >
         Open profile <ChevronRight className="h-4 w-4" />
       </Link>

@@ -39,7 +39,7 @@ const timeText = (t: string) => {
 };
 
 const triggerClass =
-  "flex w-full min-h-[48px] items-center gap-2.5 rounded-input border bg-surface px-3 text-left text-[14px] text-ink md:text-[16px] hover:border-strongline focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy focus-visible:border-navy";
+  "flex w-full min-h-[48px] items-center gap-2.5 rounded-input border bg-surface px-3 text-left text-body text-ink md:text-[16px] hover:bg-rowhover focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy focus-visible:border-navy";
 
 // ── The popover (or sheet on a phone) ─────────────────────────────────────
 
@@ -107,7 +107,7 @@ function Trigger({ icon, text, placeholder, open, invalid, onOpen, onClear, labe
         aria-expanded={open}
         aria-label={label}
         onClick={onOpen}
-        className={cn(triggerClass, invalid ? "border-status-redDot" : "border-hairline", open && "border-navy outline outline-2 outline-navy", onClear && text && "pr-10")}
+        className={cn(triggerClass, invalid ? "border-status-redDot" : "border-fieldline", open && "border-navy outline outline-2 outline-navy", onClear && text && "pr-10")}
       >
         <span className="shrink-0 text-muted">{icon}</span>
         <span className={cn("min-w-0 flex-1 truncate", !text && "text-muted")}>{text || placeholder}</span>
@@ -190,12 +190,12 @@ export function DatePicker({
           <button type="button" aria-label="Previous month" disabled={!canBack} onClick={() => setMonth(shiftMonth(month, -1))} className="grid h-9 w-9 place-items-center rounded-full text-ink hover:bg-rowhover disabled:opacity-30">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <b className="font-heading text-[15px] font-extrabold text-ink">{MONTHS_LONG[m - 1]} {y}</b>
+          <b className="font-heading text-body-lg font-extrabold text-ink">{MONTHS_LONG[m - 1]} {y}</b>
           <button type="button" aria-label="Next month" disabled={!canNext} onClick={() => setMonth(shiftMonth(month, 1))} className="grid h-9 w-9 place-items-center rounded-full text-ink hover:bg-rowhover disabled:opacity-30">
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
-        <div className="grid grid-cols-7 text-center text-[11.5px] font-bold uppercase tracking-wide text-muted">
+        <div className="grid grid-cols-7 text-center text-caption font-bold uppercase tracking-wide text-muted">
           {WEEK.map((d) => <span key={d} className="py-1">{d}</span>)}
         </div>
         <div className="grid grid-cols-7 gap-y-0.5">
@@ -212,7 +212,7 @@ export function DatePicker({
                 aria-pressed={chosen}
                 onClick={() => pick(d)}
                 className={cn(
-                  "mx-auto grid h-10 w-10 place-items-center rounded-full text-[14px] tabular-nums",
+                  "mx-auto grid h-10 w-10 place-items-center rounded-full text-body tabular-nums",
                   chosen ? "bg-navy font-extrabold text-white dark:bg-white dark:text-navy" : off ? "text-muted/40" : inMonth ? "font-semibold text-ink hover:bg-rowhover" : "text-muted hover:bg-rowhover",
                   d === today && !chosen && "ring-[1.5px] ring-inset ring-navy dark:ring-white",
                 )}
@@ -225,7 +225,7 @@ export function DatePicker({
         {quick.length > 0 && (
           <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-hairline pt-2.5">
             {quick.map((q) => (
-              <button key={q.label} type="button" onClick={() => pick(q.day)} className={cn("min-h-[34px] rounded-pill border px-3 text-[13px] font-bold", q.day === value ? "border-navy bg-navsel text-ink" : "border-hairline text-ink hover:bg-rowhover")}>
+              <button key={q.label} type="button" onClick={() => pick(q.day)} className={cn("min-h-[34px] rounded-pill border px-3 text-label font-bold", q.day === value ? "border-navy bg-navsel text-ink" : "border-hairline text-ink hover:bg-rowhover")}>
                 {q.label}
               </button>
             ))}
@@ -346,16 +346,16 @@ export function TimePicker({
             }}
             placeholder="Type a time, e.g. 9:30am"
             aria-label="Type a time"
-            className="min-h-[40px] w-full min-w-0 rounded-input border border-hairline bg-surface px-3 text-[14px] text-ink placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+            className="min-h-[40px] w-full min-w-0 rounded-input border border-hairline bg-surface px-3 text-body text-ink placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
           />
           {now && (
-            <button type="button" onClick={() => pick(nowTime())} className="shrink-0 rounded-input border border-hairline px-3 text-[13px] font-bold text-ink hover:bg-rowhover">
+            <button type="button" onClick={() => pick(nowTime())} className="shrink-0 rounded-input border border-hairline px-3 text-label font-bold text-ink hover:bg-rowhover">
               Now
             </button>
           )}
         </div>
         {typed && (
-          <button type="button" disabled={!parsed} onClick={() => parsed && pick(parsed)} className="mb-2 w-full rounded-[8px] bg-navsel px-3 py-2 text-left text-[14px] font-bold text-ink disabled:bg-subtle disabled:font-semibold disabled:text-muted">
+          <button type="button" disabled={!parsed} onClick={() => parsed && pick(parsed)} className="mb-2 w-full rounded-[8px] bg-navsel px-3 py-2 text-left text-body font-bold text-ink disabled:bg-subtle disabled:font-semibold disabled:text-muted">
             {parsed ? `Use ${timeText(parsed)}` : "Try 9:30am or 14:00"}
           </button>
         )}
@@ -369,10 +369,10 @@ export function TimePicker({
                 data-time={t}
                 aria-pressed={chosen}
                 onClick={() => pick(t)}
-                className={cn("flex w-full items-center justify-between rounded-[8px] px-3 py-2 text-left text-[14px] tabular-nums", chosen ? "bg-navy font-extrabold text-white dark:bg-white dark:text-navy" : "font-semibold text-ink hover:bg-rowhover")}
+                className={cn("flex w-full items-center justify-between rounded-[8px] px-3 py-2 text-left text-body tabular-nums", chosen ? "bg-navy font-extrabold text-white dark:bg-white dark:text-navy" : "font-semibold text-ink hover:bg-rowhover")}
               >
                 <span>{timeText(t)}</span>
-                {after && <span className={cn("text-[12.5px] font-medium", chosen ? "text-white/80 dark:text-navy/70" : "text-muted")}>{lasts(t)}</span>}
+                {after && <span className={cn("text-label font-medium", chosen ? "text-white/80 dark:text-navy/70" : "text-muted")}>{lasts(t)}</span>}
               </button>
             );
           })}
@@ -393,8 +393,8 @@ export function DetailList({ className, children }: { className?: string; childr
 export function DetailRow({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <div className={cn("grid gap-0.5 border-b border-hairline py-2.5 last:border-b-0 sm:grid-cols-[132px_minmax(0,1fr)] sm:gap-4", className)}>
-      <dt className="text-[13px] font-semibold text-muted">{label}</dt>
-      <dd className="min-w-0 break-words text-[14.5px] text-ink">{children}</dd>
+      <dt className="text-label font-semibold text-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-body-lg text-ink">{children}</dd>
     </div>
   );
 }

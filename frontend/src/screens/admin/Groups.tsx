@@ -60,16 +60,16 @@ export function AdminGroups() {
                       <UsersRound className="h-[18px] w-[18px]" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] font-bold text-ink">{g.name}</span>
-                      <span className="block text-[12.5px] text-muted">
+                      <span className="block text-body-lg font-bold text-ink">{g.name}</span>
+                      <span className="block text-label text-muted">
                         {g.members.length} {g.members.length === 1 ? "person" : "people"}
                         {g.members.some((m) => m.via === "added") && ` · ${g.members.filter((m) => m.via === "added").length} added by hand`}
                         {g.forms.length > 0 && ` · sees only ${g.forms.length} form${g.forms.length === 1 ? "" : "s"}`}
                       </span>
                     </span>
                   </div>
-                  {g.description && <p className="text-[13px] leading-snug text-muted">{g.description}</p>}
-                  <PositionList titles={(titles ?? []).filter((t) => t.groupIds.includes(g.id))} className="mt-auto" />
+                  {g.description && <p className="text-label leading-snug text-muted">{g.description}</p>}
+                  <PositionList titles={(titles ?? []).filter((t) => t.groupIds.includes(g.id))} className="mt-3" />
                 </Card>
               </button>
             </li>
@@ -83,13 +83,13 @@ export function AdminGroups() {
 
 /** The positions in a group, as small pills; or a note that nobody joins from their title. */
 function PositionList({ titles, className }: { titles: JobTitle[]; className?: string }) {
-  if (!titles.length) return <p className={cn("text-[12px] leading-snug text-muted", className)}>No positions join it: people are added by hand.</p>;
+  if (!titles.length) return <p className={cn("text-caption leading-snug text-muted", className)}>No positions join it: people are added by hand.</p>;
   return (
     <div className={className}>
-      <p className="mb-1 text-micro font-bold uppercase tracking-wide text-muted">Positions · {titles.length}</p>
+      <p className="mb-1 text-caption font-semibold text-muted">{titles.length === 1 ? "1 position" : `${titles.length} positions`}</p>
       <ul className="flex flex-wrap gap-1">
         {titles.map((t) => (
-          <li key={t.title} className="rounded-pill bg-subtle px-2 py-0.5 text-[12px] text-ink">
+          <li key={t.title} className="rounded-pill bg-subtle px-2 py-0.5 text-caption text-ink">
             {t.title}
             {t.people > 0 && <span className="ml-1 text-muted">· {t.people}</span>}
           </li>
@@ -124,7 +124,7 @@ function SeeEverything({ groups }: { groups: StaffGroup[] }) {
   return (
     <Card className="mb-4 p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <p className="min-w-0 flex-1 text-[13.5px] text-ink">
+        <p className="min-w-0 flex-1 text-body text-ink">
           <span className="font-semibold">{names.length ? names.join(", ") : "No group"}</span> see{names.length === 1 ? "s" : ""} every form and every entry, like Admins, whatever each form's own settings say.
         </p>
         {can("admins.manage") && !editing && <Button size="sm" variant="secondary" onClick={() => setEditing(current)}>Change</Button>}
@@ -234,7 +234,7 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
             </Field>
             {preview.length > 0 && (
               <div className="-mt-2 grid gap-2">
-                <p className="text-[12px] text-muted">Matches job titles with {rulesPhrase(preview)}.</p>
+                <p className="text-caption text-muted">Matches job titles with {rulesPhrase(preview)}.</p>
                 <PositionList titles={titles.filter((t) => titleMatches(t.title, preview))} />
               </div>
             )}
@@ -244,7 +244,7 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
             {group && (
               <div className="rounded-input border border-hairline">
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <span className="text-[13.5px] font-semibold text-ink">People in it</span>
+                  <span className="text-body font-semibold text-ink">People in it</span>
                   <span className="text-micro text-muted">Changes to people save straight away.</span>
                 </div>
                 <div className="border-t border-hairline px-3 py-2.5">
@@ -255,7 +255,7 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
                         <li key={u.id} className="flex items-center gap-2.5 py-1">
                           <Avatar name={u.name} color={u.avatarColor} />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-semibold text-ink">{u.name}</span>
+                            <span className="block truncate text-label font-semibold text-ink">{u.name}</span>
                             <span className="block truncate text-micro text-muted">{u.title || u.email}</span>
                           </span>
                           <Button
@@ -275,13 +275,13 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
                   )}
                 </div>
                 {group.members.length === 0 ? (
-                  <p className="border-t border-hairline px-3 py-2.5 text-[13px] text-muted">Nobody yet.</p>
+                  <p className="border-t border-hairline px-3 py-2.5 text-label text-muted">Nobody yet.</p>
                 ) : (
                   <ul className="max-h-[260px] overflow-y-auto">
                     {group.members.map((m) => (
                       <li key={m.id} className="flex items-center gap-2.5 border-t border-hairline px-3 py-2">
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-ink">{m.name}</span>
+                          <span className="block truncate text-label font-semibold text-ink">{m.name}</span>
                           <span className="block truncate text-micro text-muted">{m.title || m.email}</span>
                         </span>
                         <Tag tone={m.via === "added" ? "accent" : "neutral"}>{m.via === "added" ? "Added by hand" : "From job title"}</Tag>
@@ -306,7 +306,7 @@ function GroupDialog({ group, titles, onClose }: { group: StaffGroup | null; tit
                       {group.removed.map((m) => (
                         <li key={m.id} className="flex items-center gap-2.5 border-t border-hairline px-3 py-2">
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] text-muted">{m.name}</span>
+                            <span className="block truncate text-label text-muted">{m.name}</span>
                             <span className="block truncate text-micro text-muted">{m.title}</span>
                           </span>
                           <Button type="button" size="sm" variant="ghost" onClick={() => void setPerson(m.id, null, `${m.name} is back in ${group.name}.`)}>

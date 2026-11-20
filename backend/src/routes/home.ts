@@ -31,6 +31,8 @@ export interface AttentionItem {
   tone: Tone;
   title: string;
   detail: string;
+  /** A shorter pair for a phone's list: the site, then what needs doing. */
+  short?: { title: string; detail: string };
   action: string;
   href: string;
 }
@@ -83,6 +85,7 @@ async function rosterAttention(sites: ScopedSite[]): Promise<{ items: AttentionI
       tone: "warn",
       title: `${plural(n, "resident")} at ${s.name} ${n === 1 ? "needs" : "need"} a check-in`,
       detail: `No form activity in ${quietFor(s.attentionHours ?? orgHours)}. Keep or archive each one.`,
+      short: { title: s.name, detail: `${plural(n, "resident")} ${n === 1 ? "needs" : "need"} a check-in` },
       action: "Review",
       href: `/roster/review?site=${encodeURIComponent(s.code)}`,
     }));
@@ -94,6 +97,7 @@ async function rosterAttention(sites: ScopedSite[]): Promise<{ items: AttentionI
       tone: "warn",
       title: `${plural(rest.length, "more site")} with residents to check in`,
       detail: `${plural(people, "resident")} across ${rest.slice(0, 2).map((x) => x.s.name).join(", ")}${rest.length > 2 ? " and others" : ""}.`,
+      short: { title: `${plural(rest.length, "more site")}`, detail: `${plural(people, "resident")} to check in` },
       action: "Review all",
       href: "/roster/review",
     });

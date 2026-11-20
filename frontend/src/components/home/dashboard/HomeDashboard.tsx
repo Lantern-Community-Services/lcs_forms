@@ -134,7 +134,7 @@ export function HomeDashboard({ heading, ctx }: { heading: React.ReactNode; ctx:
               )}
             </>
           ) : (
-            <Button variant="ghost" size="sm" onClick={() => start()} data-tour="home-edit" className="text-muted">
+            <Button variant="secondary" size="sm" onClick={() => start()} data-tour="home-edit">
               <PencilLine className="h-4 w-4" /> Customize
             </Button>
           )}
@@ -142,7 +142,7 @@ export function HomeDashboard({ heading, ctx }: { heading: React.ReactNode; ctx:
       </div>
 
       {editing && !blank && (
-        <p className="enter-up mb-3 rounded-input border border-dashed border-strongline bg-subtle px-4 py-2.5 text-[13px] text-muted" role="status">
+        <p className="enter-up mb-3 rounded-input border border-dashed border-strongline bg-subtle px-4 py-2.5 text-label text-muted" role="status">
           Drag a widget to move it (on an iPad, press and hold it first). Pick S, M, L or Full for its width. Saved on this device only.
         </p>
       )}
@@ -156,7 +156,9 @@ export function HomeDashboard({ heading, ctx }: { heading: React.ReactNode; ctx:
         />
       )}
       {visible.length > 0 && (
-        <div ref={gridRef} className="relative mb-7 grid grid-cols-6 items-stretch gap-3.5 xl:grid-cols-12 xl:gap-5">
+        // Each widget is as tall as its content: stretched to the tallest in its row, a short
+        // list (one upcoming event) left a box of empty space under it.
+        <div ref={gridRef} className="relative mb-7 grid grid-cols-6 items-start gap-3.5 xl:grid-cols-12 xl:gap-5">
           {visible.map((it, i) => {
             const def = WIDGET_BY_ID.get(it.id)!;
             const lifted = dragging === it.id;
@@ -510,7 +512,7 @@ function EditBar({ def, size, first, last, onResize, onNudge, onRemove }: {
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className="min-w-0 flex-1 truncate px-1 text-[12.5px] font-bold text-ink">{def.title}</span>
+      <span className="min-w-0 flex-1 truncate px-1 text-label font-bold text-ink">{def.title}</span>
       {def.sizes.length > 1 && (
         <div className="flex shrink-0 rounded-[7px] bg-subtle p-[2px]" role="group" aria-label={`${def.title} width`}>
           {def.sizes
@@ -524,7 +526,7 @@ function EditBar({ def, size, first, last, onResize, onNudge, onRemove }: {
                 aria-pressed={size === s}
                 title={SIZE_LABEL[s].long}
                 className={cn(
-                  "h-7 min-w-[28px] rounded-[5px] px-1.5 text-[11.5px]",
+                  "h-7 min-w-[28px] rounded-[5px] px-1.5 text-caption",
                   size === s ? "bg-surface font-bold text-ink shadow-card" : "font-semibold text-muted hover:text-ink"
                 )}
               >
@@ -567,8 +569,8 @@ function PresetCards({ presetList, current, onPick, big = false }: { presetList:
             )}
           >
             <PresetSketch items={p.items} big={big} />
-            <span className={cn("font-bold text-ink", big ? "text-[14.5px]" : "text-[13px]")}>{p.title}</span>
-            <span className={cn("leading-snug text-muted", big ? "text-[12.5px]" : "text-[11.5px]")}>{p.description}</span>
+            <span className={cn("font-bold text-ink", big ? "text-body-lg" : "text-label")}>{p.title}</span>
+            <span className={cn("leading-snug text-muted", big ? "text-label" : "text-caption")}>{p.description}</span>
           </button>
         );
       })}
@@ -585,7 +587,7 @@ function EmptyDashboard({ editing, presetList, onPreset, onBuild }: { editing: b
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-[16px] font-heading font-extrabold text-ink">Your dashboard is empty</h2>
-          <p className="text-[13px] text-muted">Start from a layout, or build your own from the widget list. You can change it any time.</p>
+          <p className="text-label text-muted">Start from a layout, or build your own from the widget list. You can change it any time.</p>
         </div>
         <Button variant="secondary" onClick={onBuild}>
           <Plus className="h-4 w-4" /> Build my own
@@ -632,8 +634,8 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
     >
       <div className="flex items-center gap-2 border-b border-hairline px-4 py-3 pt-safe-top">
         <div className="min-w-0 flex-1">
-          <h2 className="text-[17px] font-heading font-extrabold text-ink">Customize Home</h2>
-          <p className="text-[12px] leading-snug text-muted">Drag widgets on the page to move them. Hide this panel to see the whole page.</p>
+          <h2 className="text-lead font-heading font-extrabold text-ink">Customize Home</h2>
+          <p className="text-caption leading-snug text-muted">Drag widgets on the page to move them. Hide this panel to see the whole page.</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Hide the panel" title="Hide the panel (your changes stay)" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input text-muted hover:bg-subtle hover:text-ink">
           <X className="h-[18px] w-[18px]" />
@@ -647,7 +649,7 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
 
         <h3 className="mb-2 text-micro font-bold uppercase tracking-[0.08em] text-muted">Add widgets</h3>
         {toAdd.length === 0 ? (
-          <p className="rounded-input bg-subtle px-3 py-4 text-center text-[13px] text-muted">Every widget is on your dashboard.</p>
+          <p className="rounded-input bg-subtle px-3 py-4 text-center text-label text-muted">Every widget is on your dashboard.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {toAdd.map((w) => (
@@ -661,8 +663,8 @@ function WidgetPalette({ available, placed, ctx, presetList, current, unchanged,
                 <div className="flex items-center gap-3 border-t border-hairline px-3 py-2.5">
                   <w.icon className="h-[18px] w-[18px] shrink-0 text-muted" aria-hidden />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13.5px] font-bold text-ink">{w.title}</span>
-                    <span className="block text-[12px] leading-snug text-muted">{w.description}</span>
+                    <span className="block text-body font-bold text-ink">{w.title}</span>
+                    <span className="block text-caption leading-snug text-muted">{w.description}</span>
                   </span>
                   <Button size="sm" variant="secondary" onClick={() => onAdd(w)} aria-label={`Add ${w.title}`}>
                     <Plus className="h-3.5 w-3.5" /> Add

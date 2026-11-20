@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { openDatabase } from "./idb";
 import { isOnline, offlineEnabled, onReconnect } from "./offline";
 import type { Tenant } from "./types";
 
@@ -70,21 +71,21 @@ const FULL_EVERY = 12 * 3600_000;
 // ── Storage ──────────────────────────────────────────────────────────────
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
+/**
+ * The kept copy's database, or null when this device's storage can't be used
+ * (private mode, or it didn't answer in time): the roster then comes from the
+ * server, and storage is tried again next time.
+ */
 function db() {
-  dbPromise ??= new Promise((resolve) => {
-    try {
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => {
-        const rows = req.result.createObjectStore(ROWS, { keyPath: "id" });
-        rows.createIndex("site", "siteCode");
-        req.result.createObjectStore(META);
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
+  dbPromise ??= openDatabase(DB_NAME, 1, (d) => {
+    const rows = d.createObjectStore(ROWS, { keyPath: "id" });
+    rows.createIndex("site", "siteCode");
+    d.createObjectStore(META);
+  }).catch(() => {
+    // Try again later, not on the very next call: one load reads and then writes,
+    // and two waits back to back would double the delay before the list shows.
+    setTimeout(() => (dbPromise = null), 30_000);
+    return null;
   });
   return dbPromise;
 }

@@ -39,8 +39,8 @@ export function SignaturePanel({
     <div ref={rootRef} className="flex scroll-mt-2 flex-col">
       <div className="flex flex-none items-start gap-2 pb-3">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[19px] font-heading font-extrabold text-ink">{tenantName}</h2>
-          <p className="mt-0.5 text-[13px] text-muted">
+          <h2 className="truncate text-title-sm font-heading font-extrabold text-ink">{tenantName}</h2>
+          <p className="mt-0.5 text-label text-muted">
             {alreadySigned ? "Already signed — sign again to replace it." : "Sign here to confirm they're present."}
           </p>
         </div>

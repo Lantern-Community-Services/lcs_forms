@@ -19,7 +19,7 @@ export function TestSiteBar({ top }: { top: boolean }) {
     <div
       role="note"
       className={cn(
-        "flex flex-none items-center justify-center gap-2 border-b border-status-amberDot/40 bg-status-amberBg px-4 pb-1.5 text-[12.5px] text-status-amberText md:px-7",
+        "flex flex-none items-center justify-center gap-2 border-b border-status-amberDot/40 bg-status-amberBg px-4 pb-1.5 text-label text-status-amberText md:px-7",
         top ? "pt-[max(6px,var(--safe-top))]" : "pt-1.5"
       )}
     >

@@ -494,6 +494,18 @@ function whereLabel(allSites: boolean, siteNames: string[]): string {
   return siteNames.length <= 3 ? siteNames.join(", ") : `${siteNames.length} sites`;
 }
 
+/** " for Amber Hall" — or nothing for an event with no site, so the log never reads "for on". */
+function forWhere(allSites: boolean, siteNames: string[]): string {
+  const where = whereLabel(allSites, siteNames);
+  return where ? ` for ${where}` : "";
+}
+
+/** "Mon, Nov 23" from "2026-11-23", as the rest of the site writes days. */
+function dayWords(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 async function siteNames(ids: string[]) {
   return (await prisma.site.findMany({ where: { id: { in: ids } }, select: { name: true }, orderBy: { name: "asc" } })).map((s) => s.name);
 }
@@ -515,7 +527,7 @@ export async function createEvent(req: Request, input: EventInput, owner?: FormO
     actor: actorOf(req),
     action: "calendar.event_created",
     siteId: siteIds.length === 1 ? siteIds[0] : null,
-    summary: `Added "${ev.title}" to the calendar for ${whereLabel(ev.allSites, await siteNames(siteIds))}${rule ? ` (${describeRule(ev.startDate, rule)})` : ` on ${ev.startDate}`}${ev.pending ? ", waiting on approval" : ""}`,
+    summary: `Added "${ev.title}" to the calendar${forWhere(ev.allSites, await siteNames(siteIds))}${rule ? ` (${describeRule(ev.startDate, rule)})` : ` on ${dayWords(ev.startDate)}`}${ev.pending ? ", waiting on approval" : ""}`,
     changes: { eventId: ev.id },
   });
   await noteCalendarChange([ev.id]);

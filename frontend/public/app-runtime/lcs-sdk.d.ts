@@ -86,6 +86,13 @@ declare module "@lcs/sdk" {
     /** Change this page's URL parameters without a reload (filters, selection). */
     setParams(params: Record<string, string>): void;
     toast(message: string, tone?: "success" | "error"): void;
+    /**
+     * Full screen while a multi-step report is filled in: on a phone or tablet the site hides its
+     * dock and this form's tabs, so the page has the whole screen. Show your own way out (a close
+     * button) and your Next. `focus(false)` gives them back; leaving the page does too. Nothing
+     * happens on a computer. Older sites lack it: call it as `app.focus?.(true)`.
+     */
+    focus?(on: boolean): void;
     /** Hand the person a file to save. Content is text, or base64 with `base64: true`. */
     download(filename: string, content: string, opts?: { mime?: string; base64?: boolean }): void;
     /**
@@ -688,7 +695,8 @@ declare module "@lcs/charts" {
   /** Horizontal bars, biggest first as given. `lead` goes before the name (e.g. an Avatar). */
   export function RankedBars(props: { rows: { name: string; value: number; note?: string; color?: string; lead?: React.ReactNode }[]; unit: string; limit?: number }): React.JSX.Element;
   /** 7 rows (Sunday first, to Saturday) × 24 hours of counts. ctx.time.partsOf's weekday counts from Monday: use heat[(weekday + 1) % 7]. */
-  export function HeatGrid(props: { heat: number[][] }): React.JSX.Element;
+  /** `unit` names what is counted in tooltips and labels ("incidents"); meals by default. `empty`: the line shown with nothing to draw. */
+  export function HeatGrid(props: { heat: number[][]; unit?: string; empty?: string }): React.JSX.Element;
   export function StatTile(props: { label: string; value: string; hint?: string; icon?: React.ReactNode; accent?: string }): React.JSX.Element;
   /**
    * Change over time: one line per series (up to 8, each its own palette slot), crosshair + tooltip.

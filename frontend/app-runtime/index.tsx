@@ -83,9 +83,9 @@ class Boundary extends React.Component<{ children: React.ReactNode }, { error: E
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="m-4 rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-[13px] text-status-redText">
+      <div className="m-4 rounded-card border border-status-redDot/50 bg-status-redBg p-4 text-label text-status-redText">
         <p className="font-bold">This page hit an error.</p>
-        <pre className="mt-2 whitespace-pre-wrap font-mono text-[12px]">{this.state.error.message}</pre>
+        <pre className="mt-2 whitespace-pre-wrap font-mono text-caption">{this.state.error.message}</pre>
         <button className="mt-3 font-semibold underline" onClick={() => this.setState({ error: null })}>Try again</button>
       </div>
     );

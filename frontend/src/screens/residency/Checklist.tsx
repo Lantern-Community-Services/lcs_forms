@@ -51,13 +51,13 @@ export function ChecklistPage() {
               role="tab"
               aria-selected={view === k}
               onClick={() => setView(k)}
-              className={cn("min-h-[36px] rounded-[5px] px-3 text-[12.5px] font-bold", view === k ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink")}
+              className={cn("min-h-[36px] rounded-[5px] px-3 text-label font-bold", view === k ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink")}
             >
               {label}
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
+        <label className="flex items-center gap-2 text-label text-muted">
           <Switch checked={mine} onCheckedChange={(v) => setMine(v ? "1" : "")} /> Only residents I'm case lead for
         </label>
       </div>
@@ -76,7 +76,7 @@ export function ChecklistPage() {
             <ul className="divide-y divide-hairline">
               {view === "done"
                 ? items.map((t) => (
-                    <li key={t.id} className="py-2.5 text-[13px]">
+                    <li key={t.id} className="py-2.5 text-label">
                       <span className="font-semibold text-ink">{t.resident?.displayName}</span>
                       <span className="text-muted"> · {t.label}</span>
                       <span className="block text-micro text-muted">

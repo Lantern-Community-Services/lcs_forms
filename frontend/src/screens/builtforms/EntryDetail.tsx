@@ -74,7 +74,7 @@ export function BuiltFormEntryPage() {
     <Page className="max-w-[900px]">
       <DesktopBackLink to={`/f/${slug}/entries`}>{data.form.title}: entries</DesktopBackLink>
       <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
-        <h1 className="mr-auto font-heading text-[22px] font-extrabold text-ink">{data.form.title}</h1>
+        <h1 className="mr-auto font-heading text-title font-extrabold text-ink">{data.form.title}</h1>
         <Button variant="secondary" size="icon" disabled={!data.newerId} onClick={() => navigate(`/f/${slug}/entries/${data.newerId}`)} aria-label="Newer entry"><ChevronLeft className="h-4 w-4" /></Button>
         <Button variant="secondary" size="icon" disabled={!data.olderId} onClick={() => navigate(`/f/${slug}/entries/${data.olderId}`)} aria-label="Older entry"><ChevronRight className="h-4 w-4" /></Button>
         <Button variant="secondary" onClick={() => act(() => fillApi.star(slug, id, !entry.starred), entry.starred ? "Unstarred." : "Starred.")}>
@@ -105,7 +105,7 @@ export function BuiltFormEntryPage() {
       </div>
 
       <Card className="mb-4 p-4">
-        <div className="grid gap-3 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 text-label sm:grid-cols-2 lg:grid-cols-3">
           <Meta label="Submitted" value={formatDateTime(entry.createdAt)} />
           <Meta label="By" value={entry.createdByName} />
           {entry.sharedByName && <Meta label="Through the link of" value={entry.sharedByName} />}
@@ -115,12 +115,12 @@ export function BuiltFormEntryPage() {
           <Meta label="Time to fill" value={fillTimeText(entry.fillSeconds)} />
         </div>
         {entry.status === "voided" && (
-          <p className="mt-3 rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">
+          <p className="mt-3 rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">
             <ToneBadge tone="red">Void</ToneBadge> <span className="ml-1">{entry.voidReason}</span> — {entry.voidedByName}, {formatDateTime(entry.voidedAt)}
           </p>
         )}
         {entry.archivedAt && (
-          <p className="mt-3 rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+          <p className="mt-3 rounded-input bg-subtle px-3 py-2 text-label text-muted">
             <ToneBadge tone="neutral">Archived</ToneBadge> <span className="ml-1">by {entry.archivedByName}, {formatDateTime(entry.archivedAt)}</span>
           </p>
         )}
@@ -131,7 +131,7 @@ export function BuiltFormEntryPage() {
       <Card className="mb-4 p-5">
         {editing ? (
           <>
-            <p className="mb-4 rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Editing as an admin. Fields hidden from the person filling in are shown too. Every change is written to the notes.</p>
+            <p className="mb-4 rounded-input bg-subtle px-3 py-2 text-label text-muted">Editing as an admin. Fields hidden from the person filling in are shown too. Every change is written to the notes.</p>
             <FormRenderer doc={doc} slug={slug} mode="edit" initial={entry.values} user={null} onSubmit={(v) => saveEdit(v)} submitting={saving} serverErrors={editErrors} submitLabel="Save changes" />
             <Button variant="ghost" className="mt-2" onClick={() => setEditing(false)}>Cancel</Button>
           </>
@@ -161,14 +161,14 @@ export function BuiltFormEntryPage() {
       )}
 
       {/* A clinical record leaves the site with its 42 CFR Part 2 notice. */}
-      {data.clinicalNotice && <p className="hidden text-[9px] leading-snug text-ink print:mt-4 print:block">{data.clinicalNotice}</p>}
+      {data.clinicalNotice && <p className="hidden text-micro leading-snug text-ink print:mt-4 print:block">{data.clinicalNotice}</p>}
 
       <Card className="p-5 print:hidden">
-        <p className="mb-3 font-heading text-[15px] font-extrabold text-ink">Notes</p>
-        {data.notes.length === 0 && <p className="mb-3 text-[13px] text-muted">No notes yet.</p>}
+        <p className="mb-3 font-heading text-body-lg font-extrabold text-ink">Notes</p>
+        {data.notes.length === 0 && <p className="mb-3 text-label text-muted">No notes yet.</p>}
         <ul className="mb-4 space-y-3">
           {data.notes.map((n) => (
-            <li key={n.id} className={cn("rounded-input px-3 py-2 text-[13.5px]", n.kind === "system" ? "bg-subtle text-muted" : "border border-hairline text-ink")}>
+            <li key={n.id} className={cn("rounded-input px-3 py-2 text-body", n.kind === "system" ? "bg-subtle text-muted" : "border border-hairline text-ink")}>
               <p className="whitespace-pre-wrap">{n.body}</p>
               <p className="mt-1 text-micro text-muted">{n.authorName} · {formatDateTime(n.createdAt)}</p>
             </li>
@@ -263,9 +263,9 @@ function FollowUpPanel({
     <Card className={cn("mb-4 p-5 print:hidden", f.status === "open" ? "border-status-amberText/40" : "")}>
       <div className="mb-3 flex items-center gap-2">
         {f.status === "open" ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
-        <p className="font-heading text-[15px] font-extrabold text-ink">Follow-up: {f.status === "open" ? "open" : "done"}</p>
+        <p className="font-heading text-body-lg font-extrabold text-ink">Follow-up: {f.status === "open" ? "open" : "done"}</p>
         {f.status === "open" && f.reminders > 0 && <span className="text-micro text-muted">· {f.reminders} reminder{f.reminders === 1 ? "" : "s"} sent</span>}
-        {counted.length > 0 && <span className="ml-auto text-[12.5px] font-semibold text-muted">{counted.length - left.length} of {counted.length} done</span>}
+        {counted.length > 0 && <span className="ml-auto text-label font-semibold text-muted">{counted.length - left.length} of {counted.length} done</span>}
       </div>
       {checklist.length > 0 && (
         <ul className="mb-3 divide-y divide-hairline rounded-input border border-hairline">
@@ -285,7 +285,7 @@ function FollowUpPanel({
                   {c.done ? <CheckCircle2 className="h-5 w-5 text-status-greenText" /> : c.removed ? <MinusCircle className="h-5 w-5 text-muted" /> : <Circle className="h-5 w-5 text-muted" />}
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className={cn("text-[13.5px] text-ink", (c.done || c.removed) && "text-muted line-through decoration-hairline")}>{c.label}</p>
+                  <p className={cn("text-body text-ink", (c.done || c.removed) && "text-muted line-through decoration-hairline")}>{c.label}</p>
                   {c.done ? (
                     <p className="text-micro text-muted">Done by {c.done.byName}, {formatDateTime(c.done.at)}</p>
                   ) : c.removed ? (
@@ -299,7 +299,7 @@ function FollowUpPanel({
                     type="button"
                     disabled={busy}
                     onClick={() => void remove(c)}
-                    className="shrink-0 rounded-input px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-subtle hover:text-ink"
+                    className="shrink-0 rounded-input px-2 py-1 text-label font-semibold text-muted hover:bg-subtle hover:text-ink"
                     title={c.removed ? "Put it back on this person's list" : "Not needed for this person: take it off the list"}
                   >
                     {c.removed ? "Put back" : "Remove"}
@@ -312,11 +312,11 @@ function FollowUpPanel({
       )}
       {f.status === "done" ? (
         <>
-          <p className="text-[13.5px] text-ink">
+          <p className="text-body text-ink">
             Done by <span className="font-semibold">{f.doneByName}</span>{f.doneAt ? `, ${formatDateTime(f.doneAt)}` : ""}.
           </p>
           {!!f.values?.length && (
-            <dl className="mt-2 grid gap-x-4 gap-y-2 rounded-input border border-hairline px-3 py-2.5 text-[13.5px] sm:grid-cols-[minmax(140px,auto)_1fr]">
+            <dl className="mt-2 grid gap-x-4 gap-y-2 rounded-input border border-hairline px-3 py-2.5 text-body sm:grid-cols-[minmax(140px,auto)_1fr]">
               {f.values.map((v) => (
                 <div key={v.id} className="contents">
                   <dt className="text-muted">{v.label}</dt>
@@ -327,7 +327,7 @@ function FollowUpPanel({
               ))}
             </dl>
           )}
-          {f.note && <p className="mt-2 whitespace-pre-wrap rounded-input bg-subtle px-3 py-2 text-[13.5px] text-ink">{f.note}</p>}
+          {f.note && <p className="mt-2 whitespace-pre-wrap rounded-input bg-subtle px-3 py-2 text-body text-ink">{f.note}</p>}
           {canDo && (
             <div className="mt-3">
               <Button variant="secondary" size="sm" disabled={busy} onClick={() => void run(false)}><RotateCcw className="h-4 w-4" /> Open it again</Button>
@@ -336,7 +336,7 @@ function FollowUpPanel({
         </>
       ) : canDo ? (
         <>
-          <p className="mb-3 text-[13px] text-muted">
+          <p className="mb-3 text-label text-muted">
             {checklist.length
               ? `Tick each item off as it's done, or remove one this person doesn't need. ${fields.some((d) => d.required || d.type === "password") ? "Then fill this in." : "Ticking the last one marks it done."}`
               : quiet
@@ -344,7 +344,7 @@ function FollowUpPanel({
                 : `When it's done, fill this in. ${entry.createdByName} is told.`}
           </p>
           {doneBefore && (
-            <label className="mb-3 flex items-start gap-2.5 rounded-input bg-subtle px-3 py-2.5 text-[13px] text-ink">
+            <label className="mb-3 flex items-start gap-2.5 rounded-input bg-subtle px-3 py-2.5 text-label text-ink">
               <Checkbox className="mt-0.5" checked={tellAgain} onCheckedChange={(v) => setTellAgain(v === true)} />
               <span>
                 <span className="font-semibold">Email {entry.createdByName} and everyone told again</span>
@@ -389,9 +389,9 @@ function FollowUpPanel({
           </Field>
           <div className="mt-2 flex items-center justify-end gap-3">
             {left.length > 0 ? (
-              <span className="text-[12.5px] text-muted">{left.length} item{left.length === 1 ? "" : "s"} still to tick off</span>
+              <span className="text-label text-muted">{left.length} item{left.length === 1 ? "" : "s"} still to tick off</span>
             ) : (
-              missing.length > 0 && <span className="text-[12.5px] text-muted">Fill in {missing.map((d) => d.label).join(", ")}</span>
+              missing.length > 0 && <span className="text-label text-muted">Fill in {missing.map((d) => d.label).join(", ")}</span>
             )}
             <Button disabled={busy || missing.length > 0 || left.length > 0} onClick={() => void run(true)}>
               <CheckCircle2 className="h-4 w-4" /> {busy && hasPassword ? "Sending…" : "Mark as done"}
@@ -399,7 +399,7 @@ function FollowUpPanel({
           </div>
         </>
       ) : (
-        <p className="text-[13px] text-muted">Waiting for the people it's for to mark it done.</p>
+        <p className="text-label text-muted">Waiting for the people it's for to mark it done.</p>
       )}
     </Card>
   );
@@ -417,14 +417,14 @@ function SignOffPanel({ slug, id, signOffs, onSigned }: { slug: string; id: stri
     <Card className={cn("mb-4 p-5 print:hidden", waiting.length ? "border-status-amberText/40" : "")}>
       <div className="mb-3 flex items-center gap-2">
         {waiting.length ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
-        <p className="font-heading text-[15px] font-extrabold text-ink">{waiting.length ? `Sign-off: waiting for ${waiting.length === 1 ? "a signature" : `${waiting.length} signatures`}` : "Signed off"}</p>
+        <p className="font-heading text-body-lg font-extrabold text-ink">{waiting.length ? `Sign-off: waiting for ${waiting.length === 1 ? "a signature" : `${waiting.length} signatures`}` : "Signed off"}</p>
       </div>
       <ul className="divide-y divide-hairline rounded-input border border-hairline">
         {signOffs.map((s) => (
           <li key={s.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
             {s.signed ? <CheckCircle2 className="h-5 w-5 shrink-0 text-status-greenText" /> : <Circle className="h-5 w-5 shrink-0 text-muted" />}
             <div className="min-w-0 flex-1">
-              <p className="text-[13.5px] font-semibold text-ink">{s.label}</p>
+              <p className="text-body font-semibold text-ink">{s.label}</p>
               <p className="text-micro text-muted">{signOffLine(s)}</p>
             </div>
             {s.canSign && <Button size="sm" onClick={() => setSigning(s)}><PenLine className="h-4 w-4" /> Sign</Button>}
@@ -492,7 +492,7 @@ function SignDialog({ slug, id, signOff, onClose, onSigned }: { slug: string; id
                 return (
                   <Field key={f.id} label={`${f.label || f.id}${f.required ? "" : " (optional)"}`} hint={errors[f.id] ?? f.description}>
                     {choices.length ? (
-                      <select aria-label={f.label} value={answers[f.id] ?? ""} onChange={(e) => set(e.target.value)} className="h-11 w-full rounded-input border border-strongline bg-surface px-3 text-[14px] md:h-9">
+                      <select aria-label={f.label} value={answers[f.id] ?? ""} onChange={(e) => set(e.target.value)} className="h-11 w-full rounded-input border border-strongline bg-surface px-3 text-body md:h-9">
                         <option value="">Choose…</option>
                         {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
@@ -512,7 +512,7 @@ function SignDialog({ slug, id, signOff, onClose, onSigned }: { slug: string; id
               })}
             </div>
           )}
-          <p className="mb-1.5 text-[13px] font-semibold text-ink">Signature</p>
+          <p className="mb-1.5 text-label font-semibold text-ink">Signature</p>
           <div className={cn("overflow-hidden rounded-card border bg-white", errors[signOff.id] ? "border-status-redDot" : "border-hairline")}>
             <SignaturePad ref={pad} onChangeEmpty={setEmpty} className="h-40 w-full" />
           </div>

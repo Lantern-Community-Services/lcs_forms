@@ -75,7 +75,7 @@ export function WhoSeesEntries({ formId, className }: { formId: string; classNam
   return (
     <section className={cn("space-y-3", className)}>
       {legacy && !draft && (
-        <div className="rounded-input bg-status-amberBg px-3 py-2.5 text-[12.5px] leading-snug text-status-amberText">
+        <div className="rounded-input bg-status-amberBg px-3 py-2.5 text-label leading-snug text-status-amberText">
           <p>
             This form still uses its old rule: <b>{data.legacyReaders.filter((k) => allRoles?.some((r) => r.key === k)).map(roleName).join(", ") || "only Admins"}</b> see every entry, and everyone else sees only their own.
             Review it to choose who sees what.
@@ -94,13 +94,13 @@ export function WhoSeesEntries({ formId, className }: { formId: string; classNam
       {draft && (
         <>
           <div>
-            <p className="mb-1.5 text-[12.5px] font-semibold text-ink">Everyone who can open the form sees</p>
+            <p className="mb-1.5 text-label font-semibold text-ink">Everyone who can open the form sees</p>
             <Segmented
               value={draft.mode}
               options={[["own", "Only their own"], ["site", "Their sites' entries"], ["everyone", "Every entry"]]}
               onChange={(mode) => setDraft({ ...draft, mode })}
             />
-            <p className="mt-1.5 text-[12px] text-muted">
+            <p className="mt-1.5 text-caption text-muted">
               {draft.mode === "own"
                 ? "Each person sees the entries they filed, and nobody else's."
                 : draft.mode === "site"
@@ -109,23 +109,23 @@ export function WhoSeesEntries({ formId, className }: { formId: string; classNam
             </p>
           </div>
           <div className="space-y-2">
-            <p className="text-[12.5px] font-semibold text-ink">These people see every entry</p>
+            <p className="text-label font-semibold text-ink">These people see every entry</p>
             {groups?.length ? <GroupChecklist groups={groups} titles={titles ?? []} value={draft.seeAll.groupIds} onChange={(groupIds) => setDraft({ ...draft, seeAll: { ...draft.seeAll, groupIds } })} /> : null}
             <PositionsDropdown groups={groups ?? []} titles={titles ?? []} value={draft.seeAll.titles} onChange={(t) => setDraft({ ...draft, seeAll: { ...draft.seeAll, titles: t } })} />
             <PeoplePicker people={people ?? []} value={draft.seeAll.userIds} onChange={(userIds) => setDraft({ ...draft, seeAll: { ...draft.seeAll, userIds } })} />
             <div>
-              <p className="mb-1 text-[12px] text-muted">Roles</p>
+              <p className="mb-1 text-caption text-muted">Roles</p>
               <CheckboxList options={roles} value={draft.seeAll.roles} onChange={(r) => setDraft({ ...draft, seeAll: { ...draft.seeAll, roles: r } })} />
             </div>
           </div>
-          <label className="flex items-start gap-2 text-[13px] text-ink">
+          <label className="flex items-start gap-2 text-label text-ink">
             <Switch checked={draft.notified} onCheckedChange={(notified) => setDraft({ ...draft, notified })} className="mt-0.5" />
             <span>
               People this form notifies can open the entries they're told about
-              <span className="block text-[12px] text-muted">So the links in its emails and follow-ups work for the people they go to.</span>
+              <span className="block text-caption text-muted">So the links in its emails and follow-ups work for the people they go to.</span>
             </span>
           </label>
-          <p className="text-[12px] text-muted">Admins always see every entry. Only people who see every entry can export or void them.</p>
+          <p className="text-caption text-muted">Admins always see every entry. Only people who see every entry can export or void them.</p>
         </>
       )}
       {(changed || (draft && legacy)) && (
@@ -134,7 +134,7 @@ export function WhoSeesEntries({ formId, className }: { formId: string; classNam
           <Button type="button" size="sm" onClick={() => void save()} disabled={busy || !draft}>{busy ? "Saving…" : "Save who sees entries"}</Button>
         </div>
       )}
-      {!legacy && !changed && data.updatedAt && <p className="text-[12px] text-muted">Changed {relativeTime(data.updatedAt)}{data.updatedByName ? ` by ${data.updatedByName}` : ""}.</p>}
+      {!legacy && !changed && data.updatedAt && <p className="text-caption text-muted">Changed {relativeTime(data.updatedAt)}{data.updatedByName ? ` by ${data.updatedByName}` : ""}.</p>}
     </section>
   );
 }

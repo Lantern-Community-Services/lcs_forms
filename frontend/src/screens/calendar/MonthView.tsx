@@ -107,7 +107,7 @@ function WeekRow({
                 }}
                 aria-label={`Show ${longDay(day)}`}
                 className={cn(
-                  "flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[12.5px] font-bold tabular hover:bg-navsel",
+                  "flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-label font-bold tabular hover:bg-navsel",
                   day === today ? "bg-navy text-navy-fg hover:bg-navy dark:bg-white dark:text-navy" : out ? "text-muted" : "text-ink"
                 )}
               >
@@ -131,7 +131,7 @@ function WeekRow({
               type="button"
               onClick={() => onDay(week[i])}
               style={{ gridColumn: `${i + 1} / span 1`, gridRow: lanes }}
-              className="pointer-events-auto mx-[2px] truncate rounded-[4px] px-1.5 text-left text-[11.5px] font-bold text-muted hover:bg-navsel hover:text-ink"
+              className="pointer-events-auto mx-[2px] truncate rounded-[4px] px-1.5 text-left text-caption font-bold text-muted hover:bg-navsel hover:text-ink"
             >
               +{n} more
             </button>
@@ -158,7 +158,7 @@ function MonthBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onOp
         title={label}
         style={{ ...place, background: color.tint, borderLeftColor: seg.fromBefore ? "transparent" : color.solid }}
         className={cn(
-          "pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1 border-l-[3px] px-1.5 text-left text-[12px] font-semibold leading-none text-ink hover:brightness-95",
+          "pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1 border-l-[3px] px-1.5 text-left text-caption font-semibold leading-none text-ink hover:brightness-95",
           seg.fromBefore ? "rounded-l-none" : "rounded-l-[4px]",
           seg.toAfter ? "rounded-r-none" : "rounded-r-[4px]",
           occ.pending && "cal-pending"
@@ -176,7 +176,7 @@ function MonthBar({ seg, colors, onOpen }: { seg: Segment; colors: ColorOf; onOp
       onClick={() => onOpen(occ)}
       title={label}
       style={place}
-      className={cn("pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1.5 rounded-[4px] px-1.5 text-left text-[12px] leading-none text-ink hover:bg-navsel", occ.pending && "opacity-80")}
+      className={cn("pointer-events-auto mx-[2px] flex min-w-0 items-center gap-1.5 rounded-[4px] px-1.5 text-left text-caption leading-none text-ink hover:bg-navsel", occ.pending && "opacity-80")}
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={occ.pending ? { boxShadow: `inset 0 0 0 1.5px ${color.solid}` } : { background: color.solid }} />
       <span className="shrink-0 font-semibold tabular text-muted">{formatTime(occ.startTime!)}</span>
@@ -225,7 +225,7 @@ export function MonthCompact({
       >
         <div className="grid grid-cols-7">
           {DAY_SHORT.map((d) => (
-            <div key={d} className="py-1.5 text-center text-[10.5px] font-bold uppercase text-muted">{d.slice(0, 1)}</div>
+            <div key={d} className="py-1.5 text-center text-micro font-bold uppercase text-muted">{d.slice(0, 1)}</div>
           ))}
         </div>
         <div className="grid grid-cols-7 gap-y-0.5">
@@ -244,8 +244,8 @@ export function MonthCompact({
               >
                 <span
                   className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-full text-[14px] font-bold tabular",
-                    picked ? "bg-navy text-navy-fg dark:bg-white dark:text-navy" : day === today ? "text-accent ring-2 ring-navy/40 dark:text-white dark:ring-white/50" : out ? "text-muted/70" : "text-ink"
+                    "flex h-7 w-7 items-center justify-center rounded-full text-body font-bold tabular",
+                    picked ? "bg-navy text-navy-fg dark:bg-white dark:text-navy" : day === today ? "text-accent ring-2 ring-navy/40 dark:text-white dark:ring-white/50" : out ? "text-muted" : "text-ink"
                   )}
                 >
                   {+day.slice(8, 10)}

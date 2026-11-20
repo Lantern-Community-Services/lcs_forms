@@ -225,30 +225,30 @@ function LiveStrip({ live }: { live: Summary["live"] }) {
   return (
     <div>
       {!live.enabled && (
-        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
+        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
           <TriangleAlert className="h-4 w-4 shrink-0" /> The dev log is off on this server (DEVLOG=false): nothing new is being recorded.
         </p>
       )}
       {mismatch && (
-        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
+        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
           <TriangleAlert className="h-4 w-4 shrink-0" /> This page ({WEB_VERSION}) is a different build from the server ({live.version}). Reload to get the latest.
         </p>
       )}
       {live.lastFlushError && (
-        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">
+        <p className="mb-3 flex items-center gap-2 rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">
           <TriangleAlert className="h-4 w-4 shrink-0" /> The last write to the dev log failed: {live.lastFlushError}
         </p>
       )}
       <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-card border border-hairline bg-surface px-4 py-3">
-        <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted">This server, right now</p>
+        <p className="w-full text-body font-extrabold text-ink">This server, right now</p>
         {items.map(([label, value]) => (
           <div key={label} className="min-w-0">
-            <p className="text-[11.5px] text-muted">{label}</p>
-            <p className="truncate text-[14px] font-semibold text-ink tabular">{value}</p>
+            <p className="text-caption text-muted">{label}</p>
+            <p className="truncate text-body font-semibold text-ink tabular">{value}</p>
           </div>
         ))}
       </div>
-      <p className="mt-1.5 text-[11.5px] text-muted">
+      <p className="mt-1.5 text-caption text-muted">
         Counted by the minute and written once a minute, so the last minute shows up a minute late. Slow means over {ms(live.slowRequestMs)} for a request and {ms(live.slowQueryMs)} for a query. Kept {live.retentionDays} days.
       </p>
     </div>
@@ -309,10 +309,10 @@ function SeriesCharts({ data }: { data: Summary }) {
           <Card key={c.title} className="p-4">
             <div className="mb-2 flex items-baseline justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[13.5px] font-bold text-ink">{c.title}</p>
-                <p className="text-[11.5px] text-muted">{c.note}</p>
+                <p className="text-body font-bold text-ink">{c.title}</p>
+                <p className="text-caption text-muted">{c.note}</p>
               </div>
-              <p className="shrink-0 text-[11.5px] text-muted tabular">peak <span className="font-semibold text-ink">{peak == null ? "—" : c.fmt(peak)}</span></p>
+              <p className="shrink-0 text-caption text-muted tabular">peak <span className="font-semibold text-ink">{peak == null ? "—" : c.fmt(peak)}</span></p>
             </div>
             <TimeChart times={s.map((p) => p.at)} values={c.values} kind={c.kind} fmt={c.fmt} long={long} label={c.title} />
           </Card>
@@ -394,7 +394,7 @@ function TimeChart({ times, values, kind, fmt, long, label }: {
           {t.map((v) => (
             <g key={v}>
               <line x1={PAD.left} x2={width - PAD.right} y1={y(v)} y2={y(v)} className="stroke-hairline" strokeWidth={1} />
-              <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-[10.5px] tabular">{fmt(v)}</text>
+              <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-micro tabular">{fmt(v)}</text>
             </g>
           ))}
           {hover !== null && <line x1={cx(hover)} x2={cx(hover)} y1={PAD.top} y2={PAD.top + plotH} className="stroke-strongline" strokeWidth={1} />}
@@ -420,14 +420,14 @@ function TimeChart({ times, values, kind, fmt, long, label }: {
           )}
           {times.map((at, i) =>
             i % every === 0 ? (
-              <text key={at} x={cx(i)} y={H - 5} textAnchor="middle" className="fill-muted text-[10.5px]">{timeLabel(at, long)}</text>
+              <text key={at} x={cx(i)} y={H - 5} textAnchor="middle" className="fill-muted text-micro">{timeLabel(at, long)}</text>
             ) : null
           )}
         </svg>
       )}
       {hover !== null && (
         <div
-          className="pointer-events-none absolute top-0 z-10 w-max -translate-x-1/2 rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-[12px] shadow-panel"
+          className="pointer-events-none absolute top-0 z-10 w-max -translate-x-1/2 rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-caption shadow-panel"
           style={{ left: Math.min(Math.max(cx(hover), 70), width - 70) }}
         >
           <p className="text-muted">{new Date(times[hover]).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
@@ -460,16 +460,16 @@ function RoutesTable({ routes }: { routes: Summary["routes"] }) {
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-hairline px-4 py-3">
-        <p className="text-[14px] font-bold text-ink">Routes</p>
-        <p className="text-[12px] text-muted">Every API route the site answered. Total time is where the server spends its effort: start there.</p>
+        <p className="text-body font-bold text-ink">Routes</p>
+        <p className="text-caption text-muted">Every API route the site answered. Total time is where the server spends its effort: start there.</p>
       </div>
       {routes.length === 0 ? (
-        <p className="px-4 py-6 text-[13px] text-muted">No requests in this range yet.</p>
+        <p className="px-4 py-6 text-label text-muted">No requests in this range yet.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-[12.5px]">
+          <table className="w-full min-w-[760px] text-label">
             <thead>
-              <tr className="border-b border-hairline text-left text-[11px] uppercase tracking-wide text-muted">
+              <tr className="border-b border-hairline text-left text-micro uppercase tracking-wide text-muted">
                 {ROUTE_COLUMNS.map((c, i) => (
                   <th key={c.label} className={cn("px-3 py-2 font-semibold", i > 0 && "text-right")}>
                     {c.key ? (
@@ -486,7 +486,7 @@ function RoutesTable({ routes }: { routes: Summary["routes"] }) {
             <tbody>
               {shown.map((r) => (
                 <tr key={r.name} className="border-b border-hairline last:border-0 hover:bg-rowhover">
-                  <td className="max-w-[340px] truncate px-3 py-2 font-mono text-[12px] text-ink" title={r.name}>{r.name}</td>
+                  <td className="max-w-[340px] truncate px-3 py-2 font-mono text-caption text-ink" title={r.name}>{r.name}</td>
                   <td className="px-3 py-2 text-right tabular text-ink">{num(r.calls)}</td>
                   <td className="px-3 py-2 text-right tabular text-ink">{ms(r.avgMs)}</td>
                   <td className="px-3 py-2 text-right tabular font-semibold text-ink">{ms(r.p95Ms)}</td>
@@ -513,19 +513,19 @@ function BrowsersTable({ browsers }: { browsers: Summary["browsers"] }) {
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-hairline px-4 py-3">
-        <p className="text-[14px] font-bold text-ink">Page loads, by device</p>
-        <p className="text-[12px] text-muted">
+        <p className="text-body font-bold text-ink">Page loads, by device</p>
+        <p className="text-caption text-muted">
           75th percentile: three loads in four were at least this fast. First answer, first paint, the page's main content shown, fully loaded, and script downloaded.
           {browsers.capped && ` The latest ${num(browsers.sampled)} loads.`}
         </p>
       </div>
       {browsers.devices.length === 0 ? (
-        <p className="px-4 py-6 text-[13px] text-muted">No page loads reported in this range.</p>
+        <p className="px-4 py-6 text-label text-muted">No page loads reported in this range.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-[12.5px]">
+          <table className="w-full min-w-[520px] text-label">
             <thead>
-              <tr className="border-b border-hairline text-left text-[11px] uppercase tracking-wide text-muted">
+              <tr className="border-b border-hairline text-left text-micro uppercase tracking-wide text-muted">
                 <th className="px-3 py-2 font-semibold">Device</th>
                 <th className="px-3 py-2 text-right font-semibold">Loads</th>
                 <th className="px-3 py-2 text-right font-semibold">Answer</th>
@@ -559,15 +559,15 @@ function ServersTable({ instances, live }: { instances: Summary["instances"]; li
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-hairline px-4 py-3">
-        <p className="text-[14px] font-bold text-ink">Servers</p>
-        <p className="text-[12px] text-muted">Each copy of the API that ran in this range. A new one, or uptime starting over, is a restart or a deploy.</p>
+        <p className="text-body font-bold text-ink">Servers</p>
+        <p className="text-caption text-muted">Each copy of the API that ran in this range. A new one, or uptime starting over, is a restart or a deploy.</p>
       </div>
       {instances.length === 0 ? (
-        <p className="px-4 py-6 text-[13px] text-muted">Nothing recorded yet: the first minute is written a minute after the server starts.</p>
+        <p className="px-4 py-6 text-label text-muted">Nothing recorded yet: the first minute is written a minute after the server starts.</p>
       ) : (
-        <table className="w-full text-[12.5px]">
+        <table className="w-full text-label">
           <thead>
-            <tr className="border-b border-hairline text-left text-[11px] uppercase tracking-wide text-muted">
+            <tr className="border-b border-hairline text-left text-micro uppercase tracking-wide text-muted">
               <th className="px-3 py-2 font-semibold">Server</th>
               <th className="px-3 py-2 text-right font-semibold">Last seen</th>
               <th className="px-3 py-2 text-right font-semibold">Up for</th>
@@ -578,9 +578,9 @@ function ServersTable({ instances, live }: { instances: Summary["instances"]; li
           <tbody>
             {instances.map((i) => (
               <tr key={i.instance} className="border-b border-hairline last:border-0">
-                <td className="px-3 py-2 font-mono text-[12px] text-ink">
+                <td className="px-3 py-2 font-mono text-caption text-ink">
                   {i.instance}
-                  {i.instance === live.instance && <span className="ml-1.5 font-sans text-[11px] text-muted">(this one)</span>}
+                  {i.instance === live.instance && <span className="ml-1.5 font-sans text-micro text-muted">(this one)</span>}
                 </td>
                 <td className="px-3 py-2 text-right text-ink">{relativeTime(i.lastSeen)}</td>
                 <td className="px-3 py-2 text-right tabular text-ink">{duration(i.uptimeSec)}</td>
@@ -620,8 +620,8 @@ function EventLog({ range, counts }: { range: RangeKey; counts: Record<string, n
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-hairline px-4 py-3">
-        <p className="text-[14px] font-bold text-ink">Events</p>
-        <p className="text-[12px] text-muted">Server errors and warnings, slow requests and queries, server starts, and what browsers report. Newest first.</p>
+        <p className="text-body font-bold text-ink">Events</p>
+        <p className="text-caption text-muted">Server errors and warnings, slow requests and queries, server starts, and what browsers report. Newest first.</p>
         <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center">
           <div className="chiprow -mx-1 flex min-w-0 flex-1 gap-1.5 px-1">
             {FILTERS.map((f) => (
@@ -645,7 +645,7 @@ function EventLog({ range, counts }: { range: RangeKey; counts: Record<string, n
       {query.isLoading ? (
         <LoadingState />
       ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-[13px] text-muted">Nothing here for this range.</p>
+        <p className="px-4 py-6 text-label text-muted">Nothing here for this range.</p>
       ) : (
         <ul>
           {rows.map((r) => <EventRow key={r.id} row={r} />)}
@@ -678,17 +678,17 @@ function EventRow({ row }: { row: DevEventRow }) {
     <li className="border-b border-hairline last:border-0">
       <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-rowhover">
         {open ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted" />}
-        <span className="w-[86px] shrink-0 text-[12px] text-muted" title={formatDateTime(row.createdAt)}>{relativeTime(row.createdAt)}</span>
+        <span className="w-[86px] shrink-0 text-caption text-muted" title={formatDateTime(row.createdAt)}>{relativeTime(row.createdAt)}</span>
         <ToneBadge tone={tone} className="shrink-0">{KIND_LABEL[row.kind] ?? row.kind}</ToneBadge>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] text-ink">{row.message || row.path || "—"}</span>
-          {row.path && row.message && <span className="block truncate font-mono text-[11.5px] text-muted">{row.path}</span>}
+          <span className="block truncate text-label text-ink">{row.message || row.path || "—"}</span>
+          {row.path && row.message && <span className="block truncate font-mono text-caption text-muted">{row.path}</span>}
         </span>
-        {row.durationMs != null && <span className="shrink-0 text-[12px] tabular text-ink">{ms(row.durationMs)}</span>}
-        {row.status != null && <span className={cn("shrink-0 text-[12px] tabular", row.status >= 500 ? "font-bold text-status-redText" : "text-muted")}>{row.status}</span>}
+        {row.durationMs != null && <span className="shrink-0 text-caption tabular text-ink">{ms(row.durationMs)}</span>}
+        {row.status != null && <span className={cn("shrink-0 text-caption tabular", row.status >= 500 ? "font-bold text-status-redText" : "text-muted")}>{row.status}</span>}
       </button>
       {open && (
-        <div className="space-y-2 px-4 pb-3 pl-11 text-[12px]">
+        <div className="space-y-2 px-4 pb-3 pl-11 text-caption">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-muted">
             <dt>When</dt><dd className="text-ink">{formatDateTime(row.createdAt)}</dd>
             {row.userEmail && (<><dt>Person</dt><dd className="text-ink">{row.userEmail}</dd></>)}
@@ -696,11 +696,11 @@ function EventRow({ row }: { row: DevEventRow }) {
             {row.instance && (<><dt>Server</dt><dd className="font-mono text-ink">{row.instance}</dd></>)}
           </dl>
           {row.message && row.message.length > 120 && (
-            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-input bg-subtle p-2 font-mono text-[11.5px] text-ink">{row.message}</pre>
+            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-input bg-subtle p-2 font-mono text-caption text-ink">{row.message}</pre>
           )}
-          {stack && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-input bg-subtle p-2 font-mono text-[11.5px] text-ink">{stack}</pre>}
+          {stack && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-input bg-subtle p-2 font-mono text-caption text-ink">{stack}</pre>}
           {rest && Object.keys(rest).length > 0 && (
-            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-input bg-subtle p-2 font-mono text-[11.5px] text-ink">{JSON.stringify(rest, null, 2)}</pre>
+            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-input bg-subtle p-2 font-mono text-caption text-ink">{JSON.stringify(rest, null, 2)}</pre>
           )}
         </div>
       )}

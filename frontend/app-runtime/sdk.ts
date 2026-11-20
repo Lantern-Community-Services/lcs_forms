@@ -102,6 +102,12 @@ export const app = {
   navigate: (page: string, params?: Record<string, string>) => void call("app.navigate", page, params ?? {}),
   setParams: (params: Record<string, string>) => void call("app.setParams", params),
   toast: (message: string, tone?: "success" | "error") => void call("app.toast", message, tone ?? "success"),
+  /**
+   * Full screen while a multi-step report is filled in: on a phone or tablet the
+   * site hides its dock and this form's tabs (the page shows its own close and
+   * Next). `focus(false)` to give them back; leaving the page does too.
+   */
+  focus: (on: boolean) => void call("app.focus", Boolean(on)),
   download: (filename: string, content: string, opts?: { mime?: string; base64?: boolean }) => void call("app.download", filename, content, opts ?? {}),
   /** No spec: the browser prints the page. A spec: the server's PDF of it (charts redrawn for paper) is printed. */
   print: (spec?: Json): Promise<void> => (spec ? call<void>("app.print", spec) : Promise.resolve(window.print())),

@@ -25,8 +25,12 @@ export function LockFormButton({ base, title, className }: { base: string; title
       type="button"
       data-tour="form-lock"
       onClick={() => lockForm({ base, title, userId: user.id })}
-      className={cn("inline-flex min-h-[32px] items-center gap-1 text-[12.5px] font-semibold text-accent dark:text-white md:text-[13px]", className)}
+      className={cn(
+        "inline-flex min-h-[32px] items-center gap-1 text-label font-semibold text-accent dark:text-white md:text-label touch:min-h-11 touch:min-w-11 touch:justify-center",
+        className
+      )}
       title={`Hand this device to a resident: hides the ${chrome} so only this form stays open`}
+      aria-label={`Hide ${chrome}: hand this device to a resident with only this form open`}
     >
       <EyeOff className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Hide {chrome}</span>
     </button>
@@ -37,12 +41,12 @@ export function LockFormButton({ base, title, className }: { base: string; title
 export function LockedBar({ lock }: { lock: FormLock }) {
   const chrome = useChromeName();
   return (
-    <div className="flex flex-none items-center gap-2 border-b border-hairline bg-sidebar px-4 pb-1.5 pt-[max(6px,var(--safe-top))] text-[13px] md:px-7">
+    <div className="flex flex-none items-center gap-2 border-b border-hairline bg-sidebar px-4 pb-1.5 pt-[max(6px,var(--safe-top))] text-label md:px-7">
       <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted" />
       <span className="min-w-0 flex-1 truncate text-muted">
         Locked to <span className="font-semibold text-ink">{lock.title}</span>
       </span>
-      <button type="button" onClick={unlockForm} className="inline-flex min-h-[36px] shrink-0 items-center gap-1 px-1 font-semibold text-accent dark:text-white">
+      <button type="button" onClick={unlockForm} className="inline-flex min-h-[36px] shrink-0 items-center gap-1 px-1 font-semibold text-accent dark:text-white touch:min-h-11">
         <Eye className="h-3.5 w-3.5" /> Show {chrome}
       </button>
     </div>

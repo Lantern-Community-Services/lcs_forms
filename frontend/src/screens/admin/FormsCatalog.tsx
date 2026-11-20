@@ -160,8 +160,8 @@ export function AdminFormsCatalog() {
             <Card key={cat.id} className="overflow-hidden">
               <div className="flex items-center gap-2 border-b border-hairline bg-subtle/60 px-4 py-2.5">
                 <Icon className="h-4 w-4 shrink-0 text-muted" />
-                <p className="min-w-0 flex-1 truncate text-[14.5px] font-heading font-extrabold text-ink">
-                  {cat.name} <span className="ml-1 text-[12px] font-semibold text-muted tabular">{cat.forms.length}</span>
+                <p className="min-w-0 flex-1 truncate text-body-lg font-heading font-extrabold text-ink">
+                  {cat.name} <span className="ml-1 text-caption font-semibold text-muted tabular">{cat.forms.length}</span>
                 </p>
                 {audienceLabel(cat.audience) && (
                   <Tag tone="accent" title={`Only ${audienceLabel(cat.audience)} (and Admins) see this category and its forms`} className="max-w-[45%] truncate">
@@ -201,7 +201,7 @@ export function AdminFormsCatalog() {
                 {cat.forms.map((f, fi) => (
                   <li key={f.id} className={cn("flex items-center gap-2 border-b border-hairline px-4 py-2.5 last:border-0", !f.active && "bg-subtle/40")}>
                     <div className="min-w-0 flex-1">
-                      <p className={cn("flex flex-wrap items-center gap-x-2 text-[13.5px] font-semibold", f.active ? "text-ink" : "text-muted")}>
+                      <p className={cn("flex flex-wrap items-center gap-x-2 text-body font-semibold", f.active ? "text-ink" : "text-muted")}>
                         {f.title}
                         {f.badge && <Tag>{f.badge}</Tag>}
                         {!f.active && (
@@ -247,7 +247,7 @@ export function AdminFormsCatalog() {
                   </li>
                 ))}
                 <li>
-                  <button onClick={() => navigate(`/admin/forms/card/new?category=${cat.id}`)} className="flex min-h-[40px] w-full items-center gap-2 px-4 text-[13px] font-semibold text-accent hover:bg-rowhover dark:text-white">
+                  <button onClick={() => navigate(`/admin/forms/card/new?category=${cat.id}`)} className="flex min-h-[40px] w-full items-center gap-2 px-4 text-label font-semibold text-accent hover:bg-rowhover dark:text-white">
                     <Plus className="h-4 w-4" /> Add a form to {cat.name}
                   </button>
                 </li>
@@ -279,7 +279,7 @@ export function AdminFormsCatalog() {
                     options={[["everyone", "Everyone"], ["limited", "Only some people"]]}
                     onChange={(v) => setCategory({ ...category, limited: v === "limited" })}
                   />
-                  <p className="text-[12.5px] leading-snug text-muted">
+                  <p className="text-label leading-snug text-muted">
                     {category.limited
                       ? "Only the groups, positions and sites you pick see this category and open the forms in it. Each form's own limit still applies on top. Admins always see everything."
                       : "Everyone sees this category. Each form can still be limited on its own."}
@@ -290,7 +290,7 @@ export function AdminFormsCatalog() {
                         {groups?.length ? (
                           <GroupChecklist groups={groups} titles={jobTitles ?? []} value={category.groupIds} onChange={(groupIds) => setCategory({ ...category, groupIds })} />
                         ) : (
-                          <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+                          <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
                         )}
                       </Field>
                       <Field label="Positions">
@@ -350,6 +350,8 @@ function EntryAccessNotice() {
     queryFn: () => api.get<{ forms: { id: string; title: string; kind: string; reviewed: boolean; legacyReaders: string[] }[] }>("/forms/entry-access"),
   });
   const { data: allRoles } = useRoles();
+  // Folded to its first line: open, the list could fill the screen before the catalog it sits above.
+  const [open, setOpen] = useState(false);
   const old = (data?.forms ?? []).filter((f) => !f.reviewed);
   if (!old.length) return null;
   const roleName = (k: string) => allRoles?.find((r) => r.key === k)?.name ?? k;
@@ -357,19 +359,22 @@ function EntryAccessNotice() {
   const known = (keys: string[]) => keys.filter((k) => allRoles?.some((r) => r.key === k));
   return (
     <Card className="mb-4 border-status-amberText/40 p-4">
-      <p className="text-[14px] font-semibold text-ink">
+      <p className="text-body font-semibold text-ink">
         {old.length} form{old.length === 1 ? " still uses its" : "s still use their"} old rule for who sees entries
       </p>
-      <p className="mt-0.5 text-[12.5px] text-muted">The roles listed see every entry; everyone else sees only their own. Review each in its editor, under Who sees entries.</p>
-      <ul className="mt-2 divide-y divide-hairline">
+      <p className="mt-0.5 text-label text-muted">The roles listed see every entry; everyone else sees only their own. Review each in its editor, under Who sees entries.</p>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mt-2 inline-flex min-h-[36px] items-center gap-1 text-label font-semibold text-accent dark:text-white touch:min-h-11">
+        {open ? "Hide the list" : `Show the ${old.length} form${old.length === 1 ? "" : "s"}`}
+      </button>
+      {open && <ul className="mt-1 divide-y divide-hairline">
         {old.map((f) => (
           <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
-            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{f.title}</span>
-            <span className="text-[12px] text-muted">{known(f.legacyReaders).map(roleName).join(", ") || "Only Admins"} see every entry</span>
-            <Link to={f.kind === "code" ? `/admin/apps/${f.id}` : `/admin/builder/${f.id}`} className="text-[12.5px] font-semibold text-accent dark:text-white">Review</Link>
+            <span className="min-w-0 flex-1 truncate text-label font-semibold text-ink">{f.title}</span>
+            <span className="text-caption text-muted">{known(f.legacyReaders).map(roleName).join(", ") || "Only Admins"} see every entry</span>
+            <Link to={f.kind === "code" ? `/admin/apps/${f.id}` : `/admin/builder/${f.id}`} className="text-label font-semibold text-accent dark:text-white">Review</Link>
           </li>
         ))}
-      </ul>
+      </ul>}
     </Card>
   );
 }

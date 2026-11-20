@@ -207,7 +207,7 @@ export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVi
             onClick={() => setOpen(true)}
             aria-label={`${c.title}. ${c.detail ?? ""} Show what's saved on this device.`}
             className={cn(
-              "relative flex min-h-[38px] max-w-[min(640px,100%)] items-center gap-2 overflow-hidden rounded-pill border px-4 py-1.5 text-left text-[13px] font-semibold shadow-panel backdrop-blur",
+              "relative flex min-h-[38px] max-w-[min(640px,100%)] items-center gap-2 overflow-hidden rounded-pill border px-4 py-1.5 text-left text-label font-semibold shadow-panel backdrop-blur",
               "transition-[transform,opacity] duration-[240ms] ease-out motion-reduce:transition-opacity",
               shown ? "pointer-events-auto translate-y-0 opacity-100" : "-translate-y-3 opacity-0 motion-reduce:translate-y-0",
               c.tone
@@ -240,7 +240,7 @@ export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVi
             }
           />
           <SheetBody>
-            <p className="text-[13.5px] text-muted">
+            <p className="text-body text-muted">
               {conn.online
                 ? "Entries filled in without a connection upload on their own."
                 : "There's no connection. Keep filling in forms: each entry is kept on this device and uploads on its own when the internet is back."}
@@ -248,7 +248,7 @@ export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVi
             </p>
             <SnapshotSummary className="mt-3" />
             {!conn.online && !conn.ready && (
-              <p className="mt-2 text-[13.5px] font-semibold text-status-redText">
+              <p className="mt-2 text-body font-semibold text-status-redText">
                 This device can't open the app without a connection. Don't close or reload it until the connection is back.
               </p>
             )}
@@ -264,19 +264,19 @@ export function OfflineBar({ state }: { state: ReturnType<typeof useOfflineBarVi
               </Group>
             )}
             {box.others > 0 && (
-              <p className="mt-4 text-[12.5px] text-muted">
+              <p className="mt-4 text-label text-muted">
                 {plural(box.others, "entry", "entries")} by someone else {box.others === 1 ? "is" : "are"} also on this device. They upload when that person signs in here.
               </p>
             )}
             {!failed && !waiting && (
-              <p className="mt-6 flex items-center justify-center gap-2 text-[14px] font-semibold text-status-greenText">
+              <p className="mt-6 flex items-center justify-center gap-2 text-body font-semibold text-status-greenText">
                 <CheckCircle2 className="h-5 w-5" /> Nothing waiting. Everything is uploaded.
               </p>
             )}
           </SheetBody>
           {(failed > 0 || waiting > 0) && (
             <SheetFooter className="pb-3">
-              <Button className="min-h-[52px] flex-1 text-[15px]" onClick={() => (failed ? box.retry() : box.upload())} disabled={box.syncing || (!failed && !conn.online)}>
+              <Button className="min-h-[52px] flex-1 text-body-lg" onClick={() => (failed ? box.retry() : box.upload())} disabled={box.syncing || (!failed && !conn.online)}>
                 <RefreshCw className={cn("h-4 w-4", box.syncing && "animate-spin")} /> {failed ? "Retry all" : "Upload now"}
               </Button>
             </SheetFooter>
@@ -301,7 +301,7 @@ export function SnapshotSummary({ className }: { className?: string }) {
   else if (snap.fresh >= snap.total && snap.completeAt) text = `The whole site is saved on this device for offline use, up to date as of ${clock(snap.completeAt)}.`;
   else text = `Saving the site on this device for offline use, a little at a time while you work: ${snap.fresh} of ${snap.total} screens ready.`;
   return (
-    <p className={cn("flex items-start gap-2 text-[13px] text-muted", className)}>
+    <p className={cn("flex items-start gap-2 text-label text-muted", className)}>
       {conn.ready && snap.total > 0 && snap.fresh >= snap.total ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-status-greenText" /> : <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />}
       <span>{text}</span>
     </p>
@@ -311,8 +311,8 @@ export function SnapshotSummary({ className }: { className?: string }) {
 function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section className="mt-4">
-      <h3 className="text-[13px] font-bold uppercase tracking-wide text-muted">{title}</h3>
-      {hint && <p className="mt-0.5 text-[12.5px] text-muted">{hint}</p>}
+      <h3 className="text-label font-bold uppercase tracking-wide text-muted">{title}</h3>
+      {hint && <p className="mt-0.5 text-label text-muted">{hint}</p>}
       <ul className="mt-2 divide-y divide-hairline rounded-card border border-hairline">{children}</ul>
     </section>
   );
@@ -322,11 +322,11 @@ function OutboxRow({ row }: { row: Row }) {
   return (
     <li className="flex items-center gap-3 px-3 py-2.5">
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14.5px] font-semibold text-ink">{row.form}</span>
-        <span className="block text-[12.5px] text-muted">
+        <span className="block truncate text-body-lg font-semibold text-ink">{row.form}</span>
+        <span className="block text-label text-muted">
           {row.label} · {clock(row.at)}
         </span>
-        {row.error && <span className="mt-0.5 block text-[12.5px] font-semibold text-status-redText">{row.error}</span>}
+        {row.error && <span className="mt-0.5 block text-label font-semibold text-status-redText">{row.error}</span>}
       </span>
       {row.error && row.discard && (
         <button

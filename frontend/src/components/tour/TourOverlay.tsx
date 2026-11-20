@@ -518,8 +518,8 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
           {/* Taking a while: never leave someone with a spinner and no way out (no Escape key on an iPad). */}
           {stuck && (
             <>
-              <span className="text-[13px] text-muted">Still loading…</span>
-              <button type="button" onClick={() => live.current.skip()} className="min-h-[32px] rounded-input px-2 text-[13px] font-semibold text-accent hover:bg-rowhover dark:text-white">
+              <span className="text-label text-muted">Still loading…</span>
+              <button type="button" onClick={() => live.current.skip()} className="min-h-[32px] rounded-input px-2 text-label font-semibold text-accent hover:bg-rowhover dark:text-white">
                 End the {kind}
               </button>
             </>
@@ -552,34 +552,34 @@ export function TourOverlay({ tour, index, onIndex, onEnd }: {
           }
         >
           <div className="mb-1.5 flex items-center justify-between gap-3">
-            <p className="kicker min-w-0 truncate">{tour.title}</p>
+            <p className="min-w-0 truncate text-caption font-semibold text-muted">{tour.title}</p>
             <span className="shrink-0 text-micro font-semibold tabular-nums text-muted">{counter}</span>
           </div>
-          <h2 id="tour-step-title" className="font-heading text-[17px] font-extrabold leading-snug text-ink">{step.title}</h2>
+          <h2 id="tour-step-title" className="font-heading text-lead font-extrabold leading-snug text-ink">{step.title}</h2>
           {step.body && (
-            <div id="tour-step-body" className="mt-1.5 space-y-2 text-[14px] leading-relaxed text-muted">
+            <div id="tour-step-body" className="mt-1.5 space-y-2 text-body leading-relaxed text-muted">
               <Body text={step.body} />
             </div>
           )}
           {lost && (
-            <p className="mt-3 rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+            <p className="mt-3 rounded-input bg-subtle px-3 py-2 text-label text-muted">
               This part of the page didn&apos;t show up. Press Next to go on.
             </p>
           )}
           {action === "click" && (
-            <p className="mt-3 flex items-center gap-2 rounded-input bg-navsel px-3 py-2 text-[13px] font-semibold text-accent dark:text-white">
+            <p className="mt-3 flex items-center gap-2 rounded-input bg-navsel px-3 py-2 text-label font-semibold text-accent dark:text-white">
               <MousePointerClick className="h-4 w-4 shrink-0" /> {touch ? "Tap" : "Click"} the highlighted spot to go on.
             </p>
           )}
           {action === "fill" && (
-            <p className={cn("mt-3 flex items-center gap-2 rounded-input px-3 py-2 text-[13px] font-semibold", filled ? "bg-status-greenBg text-status-greenText" : "bg-navsel text-accent dark:text-white")}>
+            <p className={cn("mt-3 flex items-center gap-2 rounded-input px-3 py-2 text-label font-semibold", filled ? "bg-status-greenBg text-status-greenText" : "bg-navsel text-accent dark:text-white")}>
               {filled ? <Check className="h-4 w-4 shrink-0" /> : <PencilLine className="h-4 w-4 shrink-0" />}
               {filled ? (last ? "That's it. Press Done." : "Got it. Press Next.") : "Fill this in to go on."}
             </p>
           )}
           <div className="mt-4 flex items-center gap-2">
             {!last && (
-              <button type="button" onClick={() => live.current.skip()} className="-ml-1 rounded-input px-1 py-1 text-[13px] font-semibold text-muted hover:text-ink" aria-label={`Skip the ${kind}`}>
+              <button type="button" onClick={() => live.current.skip()} className="-ml-1 rounded-input px-1 py-1 text-label font-semibold text-muted hover:text-ink" aria-label={`Skip the ${kind}`}>
                 Skip
               </button>
             )}

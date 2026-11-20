@@ -43,7 +43,7 @@ export function NotificationsLayout() {
   return (
     <Page className="max-w-[960px]">
       <PageHeader title="Notifications" subtitle="Who each form tells and when, what the emails say, and every email sent." help={{ article: "admin-notifications", text: "Every form's notifications in one place, the organization's email templates, the site's own emails, how emails look, and every email sent." }} />
-      <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto border-b border-hairline px-1" aria-label="Notifications">
+      <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-y-hidden border-b border-hairline px-1" aria-label="Notifications">
         {tabs.map((t) => (
           <NavLink
             key={t.to}
@@ -51,7 +51,7 @@ export function NotificationsLayout() {
             end={t.end}
             className={({ isActive }) =>
               cn(
-                "-mb-px flex min-h-[42px] shrink-0 items-center whitespace-nowrap border-b-2 px-3 text-[13.5px] font-semibold",
+                "-mb-px flex min-h-[42px] shrink-0 items-center whitespace-nowrap border-b-2 px-3 text-body font-semibold",
                 isActive ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink"
               )
             }
@@ -120,7 +120,7 @@ export function NotificationsTypesTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 text-[13px] text-muted">
+      <Card className="p-4 text-label text-muted">
         Every notification people can get. Each person sees the ones that could reach them on <span className="font-semibold text-ink">Profile → Notifications</span> and
         chooses how they get each one (in the app, by email as it arrives, in their daily summary, or not at all), within what's set here.
         <span className="mt-2 block">
@@ -131,19 +131,19 @@ export function NotificationsTypesTab() {
 
       <Card className="p-0">
         <div className="border-b border-hairline px-5 py-3">
-          <p className="font-heading text-[15px] font-extrabold text-ink">From the site</p>
-          <p className="text-[12.5px] text-muted">What people get before they choose, and how much they may change.</p>
+          <p className="font-heading text-body-lg font-extrabold text-ink">From the site</p>
+          <p className="text-label text-muted">What people get before they choose, and how much they may change.</p>
         </div>
         <ul className="divide-y divide-hairline">
           {data.system.map((t) => (
             <li key={t.key} className="px-5 py-4">
               <div className="min-w-0">
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="text-[14px] font-semibold text-ink">{t.label}</span>
+                  <span className="text-body font-semibold text-ink">{t.label}</span>
                   {t.changed && <Tag tone="accent">Changed</Tag>}
                 </span>
-                <span className="mt-0.5 block text-[12.5px] text-muted">{t.description}</span>
-                <span className="mt-1 block text-[12px] text-muted">
+                <span className="mt-0.5 block text-label text-muted">{t.description}</span>
+                <span className="mt-1 block text-caption text-muted">
                   {CHOICE_HINT[t.rule.choice]}
                   {t.customised ? ` ${changedBy(t.customised)}.` : ""}
                 </span>
@@ -156,7 +156,7 @@ export function NotificationsTypesTab() {
                   className="w-[130px]"
                   options={(Object.keys(CHOICE_WORDS) as TypeChoice[]).map((c) => ({ value: c, label: CHOICE_WORDS[c] }))}
                 />
-                <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                <label className="flex items-center gap-2 text-label text-muted">
                   <Switch
                     checked={t.rule.inApp}
                     disabled={t.rule.choice !== "optional"}
@@ -190,8 +190,8 @@ export function NotificationsTypesTab() {
 
       <Card className="p-0">
         <div className="border-b border-hairline px-5 py-3">
-          <p className="font-heading text-[15px] font-extrabold text-ink">From forms</p>
-          <p className="text-[12.5px] text-muted">
+          <p className="font-heading text-body-lg font-extrabold text-ink">From forms</p>
+          <p className="text-label text-muted">
             Each route of each form is a notification of its own, and so are a form's follow-up reminders. Set what people can change on the route, under the form's notifications.
           </p>
           {data.forms.length > 6 && <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form or notification" aria-label="Find a form or notification" className="mt-3" />}
@@ -201,12 +201,12 @@ export function NotificationsTypesTab() {
             {forms.map((f) => (
               <li key={f.id} className="px-5 py-3">
                 <div className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{f.title}</span>
-                  <Link to={`/admin/notifications/forms/${f.id}`} className="text-[13px] font-semibold text-accent dark:text-white">Edit routes</Link>
+                  <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{f.title}</span>
+                  <Link to={`/admin/notifications/forms/${f.id}`} className="text-label font-semibold text-accent dark:text-white">Edit routes</Link>
                 </div>
                 <ul className="mt-1.5 space-y-1">
                   {f.types.map((t) => (
-                    <li key={t.key} className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px]", !t.enabled && "opacity-60")}>
+                    <li key={t.key} className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-label", !t.enabled && "opacity-60")}>
                       <span className="font-semibold text-ink">{t.label}</span>
                       {t.routeName && t.routeName !== t.label && <span className="text-muted">(route “{t.routeName}”)</span>}
                       <Tag tone={t.choice === "locked" ? "neutral" : "accent"}>{CHOICE_WORDS[t.choice]}</Tag>
@@ -229,7 +229,7 @@ export function NotificationsTypesTab() {
             ))}
           </ul>
         ) : (
-          <p className="px-5 py-4 text-[13px] text-muted">{data.forms.length ? "No forms match. Try a shorter word." : "No form tells anyone yet. Add routes under a form's notifications."}</p>
+          <p className="px-5 py-4 text-label text-muted">{data.forms.length ? "No forms match. Try a shorter word." : "No form tells anyone yet. Add routes under a form's notifications."}</p>
         )}
       </Card>
     </div>
@@ -260,7 +260,7 @@ export function NotificationsTemplatesTab() {
   ];
   return (
     <div className="space-y-6">
-      <Card className="flex flex-wrap items-center gap-3 p-4 text-[13px] text-muted">
+      <Card className="flex flex-wrap items-center gap-3 p-4 text-label text-muted">
         <p className="min-w-0 flex-1">
           The organization's email wording. Each route and weekly report picks a template, or keeps its own wording. Changing a template changes every email that uses it.
           {data.canEdit ? " Presets ship with the site: change one and you can always put it back." : " Only Super Admins make or change templates."}
@@ -276,8 +276,8 @@ export function NotificationsTemplatesTab() {
         return (
           <section key={g.kind}>
             <div className="mb-2 px-1">
-              <p className="font-heading text-[15px] font-extrabold text-ink">{g.title}</p>
-              <p className="text-[12.5px] text-muted">{g.hint}</p>
+              <p className="font-heading text-body-lg font-extrabold text-ink">{g.title}</p>
+              <p className="text-label text-muted">{g.hint}</p>
             </div>
             <Card className="p-0">
               <ul className="divide-y divide-hairline">
@@ -286,19 +286,19 @@ export function NotificationsTemplatesTab() {
                     <Link to={`/admin/notifications/templates/${t.key}`} className={cn("flex items-center gap-3 px-5 py-3 hover:bg-rowhover", t.hidden && "opacity-60")}>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-[14px] font-semibold text-ink">{t.name}</span>
+                          <span className="truncate text-body font-semibold text-ink">{t.name}</span>
                           {t.preset && <Tag tone="accent">{t.changed ? "Preset, changed" : "Preset"}</Tag>}
                           {t.urgent && <Tag tone="red">Urgent</Tag>}
                           {t.hidden && <Tag tone="neutral"><EyeOff className="h-3 w-3" /> Hidden</Tag>}
                           {(t.key === data.defaults.message || t.key === data.defaults.report) && <Tag tone="neutral">New {t.kind === "report" ? "reports" : "routes"} start here</Tag>}
                         </span>
-                        <span className="mt-0.5 block truncate text-[12.5px] text-muted">{t.description || t.subject || "No subject"}</span>
-                        <span className="mt-0.5 block text-[12px] text-muted">
+                        <span className="mt-0.5 block truncate text-label text-muted">{t.description || t.subject || "No subject"}</span>
+                        <span className="mt-0.5 block text-caption text-muted">
                           {usesLine(t.uses)} · <span className="font-mono">{t.key}</span>
                           {t.revision > 1 && t.updatedByName ? ` · changed ${relativeTime(t.updatedAt)} by ${t.updatedByName}` : ""}
                         </span>
                       </span>
-                      <span className="text-[13px] font-semibold text-accent dark:text-white">{data.canEdit ? "Edit" : "View"}</span>
+                      <span className="text-label font-semibold text-accent dark:text-white">{data.canEdit ? "Edit" : "View"}</span>
                     </Link>
                   </li>
                 ))}
@@ -432,7 +432,7 @@ export function TemplateEditorPage() {
               </Field>
             ))}
             <div>
-              <p className="mb-1.5 text-[12.5px] font-semibold text-muted">Tags {canEdit ? "(click one to add it where you were typing)" : ""}</p>
+              <p className="mb-1.5 text-label font-semibold text-muted">Tags {canEdit ? "(click one to add it where you were typing)" : ""}</p>
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((t) => (
                   <button
@@ -442,13 +442,13 @@ export function TemplateEditorPage() {
                     onClick={() => insertTag(t.tag)}
                     title={t.means}
                     aria-label={`Add ${t.tag}: ${t.means}`}
-                    className="rounded-pill border border-hairline bg-subtle px-2.5 py-1 font-mono text-[12px] text-ink hover:border-strongline disabled:cursor-default"
+                    className="rounded-pill border border-hairline bg-subtle px-2.5 py-1 font-mono text-caption text-ink hover:border-strongline disabled:cursor-default"
                   >
                     {t.tag}
                   </button>
                 ))}
               </div>
-              <ul className="mt-2 space-y-0.5 text-[12px] text-muted">
+              <ul className="mt-2 space-y-0.5 text-caption text-muted">
                 {tags.map((t) => <li key={t.tag}><span className="font-mono text-ink">{t.tag}</span> {t.means}</li>)}
               </ul>
             </div>
@@ -461,11 +461,11 @@ export function TemplateEditorPage() {
                   <CheckboxList options={all.details.map((d) => ({ value: d.id, label: d.label }))} value={draft.details} onChange={(v) => set({ details: v })} />
                 </fieldset>
               </Field>
-              <label className="flex items-start gap-2 text-[13px] text-ink">
+              <label className="flex items-start gap-2 text-label text-ink">
                 <Switch checked={draft.urgent} onCheckedChange={(v) => set({ urgent: v })} disabled={!canEdit} className="mt-0.5" aria-label="Always urgent" />
                 <span>
                   Always urgent
-                  <span className="block text-[12px] text-muted">Red in the bell, at the top of their notifications until read, and emailed straight away, whatever the route says.</span>
+                  <span className="block text-caption text-muted">Red in the bell, at the top of their notifications until read, and emailed straight away, whatever the route says.</span>
                 </span>
               </label>
             </Card>
@@ -475,16 +475,16 @@ export function TemplateEditorPage() {
             <Card className="space-y-3 p-5">
               <p className="kicker">Where it's used</p>
               {saved!.uses.length ? (
-                <ul className="divide-y divide-hairline text-[13px]">
+                <ul className="divide-y divide-hairline text-label">
                   {saved!.uses.map((u, i) => (
                     <li key={i} className="flex flex-wrap items-center gap-x-2 py-1.5">
                       <span className="min-w-0 flex-1 text-ink">{u.form}: <span className="text-muted">{u.kind === "report" ? "weekly report" : u.kind === "route" ? "route" : ""} “{u.name}”</span></span>
-                      {u.formId && <Link to={`/admin/notifications/forms/${u.formId}`} className="text-[12.5px] font-semibold text-accent dark:text-white">Open</Link>}
+                      {u.formId && <Link to={`/admin/notifications/forms/${u.formId}`} className="text-label font-semibold text-accent dark:text-white">Open</Link>}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-[13px] text-muted">Nothing uses it yet. Pick it under Wording on a route{draft.kind === "report" ? " or weekly report" : ""}.</p>
+                <p className="text-label text-muted">Nothing uses it yet. Pick it under Wording on a route{draft.kind === "report" ? " or weekly report" : ""}.</p>
               )}
               {canEdit && (
                 <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
@@ -550,7 +550,7 @@ function TemplatePreview({ draft, systemKey }: { draft: TemplateDraft; systemKey
         <p className="kicker mr-auto">What it looks like</p>
         <div className="inline-flex rounded-input border border-hairline p-0.5" role="radiogroup" aria-label="Who gets it">
           {([["inside", "A Lantern address"], ["outside", "Anyone else"]] as const).map(([k, label]) => (
-            <button key={k} type="button" role="radio" aria-checked={who === k} onClick={() => setWho(k)} className={cn("rounded-[5px] px-2.5 py-1 text-[12.5px] font-semibold", who === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
+            <button key={k} type="button" role="radio" aria-checked={who === k} onClick={() => setWho(k)} className={cn("rounded-[5px] px-2.5 py-1 text-label font-semibold", who === k ? "bg-navy text-navy-fg" : "text-muted hover:text-ink")}>
               {label}
             </button>
           ))}
@@ -565,12 +565,12 @@ function TemplatePreview({ draft, systemKey }: { draft: TemplateDraft; systemKey
         />
       )}
       {problem ? (
-        <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">{problem}</p>
+        <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">{problem}</p>
       ) : preview ? (
         <>
-          <p className="text-[13px] text-ink"><span className="font-semibold">Subject:</span> {preview.subject}</p>
+          <p className="text-label text-ink"><span className="font-semibold">Subject:</span> {preview.subject}</p>
           <iframe title="Email preview" sandbox="" srcDoc={who === "inside" ? preview.inside : preview.outside} className="h-[620px] w-full rounded-input border border-hairline bg-white" />
-          <p className="text-[12px] text-muted">{preview.from}. {who === "outside" ? "Anyone outside Lantern gets it without the details." : "Lantern addresses see the details and chosen answers."}</p>
+          <p className="text-caption text-muted">{preview.from}. {who === "outside" ? "Anyone outside Lantern gets it without the details." : "Lantern addresses see the details and chosen answers."}</p>
         </>
       ) : (
         <LoadingState />
@@ -588,7 +588,7 @@ export function NotificationsSystemTab() {
   const rows = data.templates.filter((t) => t.kind === "system");
   return (
     <div className="space-y-4">
-      <Card className="p-4 text-[13px] text-muted">
+      <Card className="p-4 text-label text-muted">
         The emails the site sends by itself: access requests and approvals, follow-ups, problems and the daily summary. They're always sent; this is what they say.
         {data.canEdit ? " Change one and you can always put it back." : " Only Super Admins change them."}
       </Card>
@@ -599,17 +599,17 @@ export function NotificationsSystemTab() {
               <Link to={`/admin/notifications/templates/${t.key}`} className="flex items-center gap-3 px-5 py-3 hover:bg-rowhover">
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-[14px] font-semibold text-ink">{t.name}</span>
+                    <span className="truncate text-body font-semibold text-ink">{t.name}</span>
                     {t.changed && <Tag tone="accent">Changed</Tag>}
                     {t.urgent && <Tag tone="red">Urgent</Tag>}
                   </span>
-                  <span className="mt-0.5 block truncate text-[12.5px] text-muted">{t.description}</span>
-                  <span className="mt-0.5 block truncate text-[12px] text-muted">
+                  <span className="mt-0.5 block truncate text-label text-muted">{t.description}</span>
+                  <span className="mt-0.5 block truncate text-caption text-muted">
                     Subject: {t.subject}
                     {t.revision > 1 && t.updatedByName ? ` · changed ${relativeTime(t.updatedAt)} by ${t.updatedByName}` : ""}
                   </span>
                 </span>
-                <span className="text-[13px] font-semibold text-accent dark:text-white">{data.canEdit ? "Edit" : "View"}</span>
+                <span className="text-label font-semibold text-accent dark:text-white">{data.canEdit ? "Edit" : "View"}</span>
               </Link>
             </li>
           ))}
@@ -668,7 +668,7 @@ export function NotificationsLookTab() {
         <div className="flex items-center gap-2">
           <input type="color" value={/^#[0-9a-f]{6}$/i.test(look[k]) ? look[k] : "#000000"} onChange={(e) => set({ [k]: e.target.value } as Partial<EmailLook>)} disabled={!canEdit} aria-label={`${label}: pick`} className="h-9 w-12 cursor-pointer rounded-input border border-hairline bg-surface p-0.5 disabled:cursor-default" />
           <Input value={look[k]} onChange={(e) => set({ [k]: e.target.value.trim() } as Partial<EmailLook>)} maxLength={7} disabled={!canEdit} aria-label={label} className="w-[120px] font-mono" />
-          {needsWhite && ratio > 0 && <span className={cn("text-[12px]", low ? "font-semibold text-status-redText" : "text-muted")}>{low ? `Too light for white text (${ratio.toFixed(1)}:1)` : `White text reads well (${ratio.toFixed(1)}:1)`}</span>}
+          {needsWhite && ratio > 0 && <span className={cn("text-caption", low ? "font-semibold text-status-redText" : "text-muted")}>{low ? `Too light for white text (${ratio.toFixed(1)}:1)` : `White text reads well (${ratio.toFixed(1)}:1)`}</span>}
         </div>
       </Field>
     );
@@ -690,7 +690,7 @@ export function NotificationsLookTab() {
           <Field label="Footer" hint="The line at the bottom of every email.">
             <Textarea value={look.footer} onChange={(e) => set({ footer: e.target.value })} rows={2} maxLength={300} disabled={!canEdit} aria-label="Footer" />
           </Field>
-          <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">
+          <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">
             Emails go from {data.sender ? <span className="font-mono text-ink">{data.sender}</span> : "the mailbox in MAIL_FROM (not set on this server)"} under that mailbox's own name in Microsoft 365, so the sender is changed there, not here.
           </p>
           {canEdit ? (
@@ -708,7 +708,7 @@ export function NotificationsLookTab() {
         <Card className="space-y-3 p-4">
           <p className="kicker">An email in this look</p>
           {problem ? (
-            <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">{problem}</p>
+            <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">{problem}</p>
           ) : preview ? (
             <iframe title="Email preview" sandbox="" srcDoc={preview.inside} className="h-[620px] w-full rounded-input border border-hairline bg-white" />
           ) : (
@@ -758,17 +758,17 @@ export function NotificationsSentTab() {
             {items.map((e) => (
               <li key={e.id} className="px-4 py-2.5 md:px-5">
                 <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{e.subject}</span>
-                  <span className="text-[12px] text-muted" title={formatDateTime(e.createdAt)}>{relativeTime(e.createdAt)}</span>
+                  <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{e.subject}</span>
+                  <span className="text-caption text-muted" title={formatDateTime(e.createdAt)}>{relativeTime(e.createdAt)}</span>
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-caption text-muted">
                   <span className="truncate">{e.to}</span>
                   <span>· {KINDS[e.kind] ?? e.kind}</span>
                   {e.form && e.formId && <>· <Link to={`/admin/notifications/forms/${e.formId}`} className="font-semibold text-accent dark:text-white">{e.form}</Link></>}
                   <Tag tone={e.status === "sent" ? "accent" : e.status === "failed" ? "red" : "neutral"}>{e.status === "sent" ? "Sent" : e.status === "failed" ? "Failed" : "Not sent"}</Tag>
                   {e.withAnswers && <Tag tone="neutral">With answers</Tag>}
                 </div>
-                {e.error && <p className="mt-0.5 text-[12px] text-status-redText">{e.error}</p>}
+                {e.error && <p className="mt-0.5 text-caption text-status-redText">{e.error}</p>}
               </li>
             ))}
           </ul>

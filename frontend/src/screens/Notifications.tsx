@@ -141,7 +141,7 @@ export function NotificationsPage() {
       >
         <div className="mt-3 flex items-center justify-between gap-2">
           {filters}
-          <Link to="/profile#notifications" className="inline-flex min-h-[36px] items-center gap-1.5 text-[13px] font-semibold text-accent dark:text-white">
+          <Link to="/profile#notifications" className="inline-flex min-h-[36px] items-center gap-1.5 px-1 text-label font-semibold text-accent dark:text-white touch:min-h-11">
             <Settings2 className="h-4 w-4" /> Settings
           </Link>
         </div>
@@ -161,10 +161,10 @@ export function NotificationsPage() {
               <Button variant="secondary" size="sm" onClick={markAll} disabled={!unread || readAll.isPending}>
                 <CheckCheck className="h-4 w-4" /> Mark all read
               </Button>
-              <Button variant="secondary" size="sm" onClick={clear} disabled={clearRead.isPending}>
+              <Button variant="secondary" size="sm" onClick={clear} disabled={clearRead.isPending || !items.some((n) => n.read)}>
                 <Trash2 className="h-4 w-4" /> Clear read
               </Button>
-              <Link to="/profile#notifications" className="inline-flex h-8 items-center gap-1.5 rounded-input px-3 font-heading text-[13px] font-semibold text-accent hover:bg-subtle2 dark:text-white">
+              <Link to="/profile#notifications" className="inline-flex h-8 items-center gap-1.5 rounded-input border border-strongline bg-surface px-3 font-heading text-label font-semibold text-ink hover:bg-rowhover touch:min-h-11">
                 <Settings2 className="h-4 w-4" /> Settings
               </Link>
             </>
@@ -205,11 +205,11 @@ function NotificationRow({ n }: { n: AppNotification }) {
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn("block text-[14px] leading-snug text-ink", n.read ? "font-semibold" : "font-bold")}>
+          <span className={cn("block text-body leading-snug text-ink", n.read ? "font-semibold" : "font-bold")}>
             {n.urgent && <Tag tone="red" className="mr-1.5 align-[1px]">Urgent</Tag>}
             {n.title}
           </span>
-          {n.body && <span className="mt-0.5 line-clamp-3 block whitespace-pre-line text-[13px] text-muted">{n.body}</span>}
+          {n.body && <span className="mt-0.5 line-clamp-3 block whitespace-pre-line text-label text-muted">{n.body}</span>}
           <span className="mt-1 block text-micro text-muted">
             {[n.sourceLabel, relativeTime(n.createdAt)].filter(Boolean).join(" · ")}
           </span>

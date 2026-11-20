@@ -83,3 +83,11 @@ export function useDeviceKind(): DeviceKind {
   if (forced) return forced;
   return narrow ? "phone" : touchWide ? "tablet" : "desktop";
 }
+
+/**
+ * How to reload, in words that fit the device: installed to an iPad or phone's
+ * home screen there's no reload button, only pull-to-refresh (PullToRefresh).
+ */
+export function reloadHint(): string {
+  return currentDeviceKind() === "desktop" ? "Refresh the page to try again." : "Pull down to try again.";
+}

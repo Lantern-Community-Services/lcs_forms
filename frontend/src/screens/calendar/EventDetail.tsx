@@ -57,9 +57,9 @@ export function EventDetail({
       }
     >
       {occ && color && (
-        <div className="space-y-3.5 pb-1 text-[14px] text-ink">
+        <div className="space-y-3.5 pb-1 text-body text-ink">
           {occ.pending && (
-            <div className="flex items-start gap-2.5 rounded-card bg-status-amberBg px-3 py-2.5 text-[13px] text-status-amberText">
+            <div className="flex items-start gap-2.5 rounded-card bg-status-amberBg px-3 py-2.5 text-label text-status-amberText">
               <Hourglass className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 <span className="font-semibold">Needs approval.</span> It goes to Outlook once it's approved
@@ -71,13 +71,13 @@ export function EventDetail({
             <span className="mt-1 h-3.5 w-3.5 shrink-0 rounded-[4px]" style={{ background: color.solid }} />
             <div>
               <p className="font-semibold">{whenText(occ)}</p>
-              {relative && <p className="text-[12.5px] text-muted">{relative}</p>}
+              {relative && <p className="text-label text-muted">{relative}</p>}
             </div>
           </div>
           {occ.repeats && (
             <Row icon={<Repeat className="h-4 w-4" />}>
               {occ.repeatText}
-              {occ.changed && <span className="mt-0.5 block text-[12.5px] text-muted">This one was changed on its own.</span>}
+              {occ.changed && <span className="mt-0.5 block text-label text-muted">This one was changed on its own.</span>}
             </Row>
           )}
           <Row icon={<Building2 className="h-4 w-4" />}>{occ.allSites ? "Every site" : occ.sites.map((s) => s.name).join(", ")}</Row>
@@ -162,8 +162,8 @@ export function ScopeDialog({
               {scope === s.value && <span className="h-2 w-2 rounded-full bg-navy dark:bg-white" />}
             </span>
             <span>
-              <span className="block text-[14px] font-semibold text-ink">{s.label}</span>
-              <span className="block text-[12.5px] text-muted">{s.hint}</span>
+              <span className="block text-body font-semibold text-ink">{s.label}</span>
+              <span className="block text-label text-muted">{s.hint}</span>
             </span>
           </button>
         ))}

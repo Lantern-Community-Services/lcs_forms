@@ -85,9 +85,9 @@ export function AdminSites() {
       />
       {isLoading ? <LoadingState /> : (
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-[13.5px]">
+          <table className="w-full min-w-[640px] text-body">
             <thead>
-              <tr className="border-b border-hairline text-left text-micro font-bold uppercase tracking-[0.04em] text-muted">
+              <tr className="border-b border-hairline text-left text-caption font-semibold text-muted">
                 <th className="px-4 py-2.5">Site</th><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5">Location</th>
                 <th className="px-4 py-2.5 text-right">Roster</th><th className="px-4 py-2.5 text-right">Review</th><th className="px-4 py-2.5">Threshold</th><th className="px-4 py-2.5" />
               </tr>
@@ -96,11 +96,11 @@ export function AdminSites() {
               {sites?.map((s) => (
                 <tr key={s.id} onClick={() => edit(s)} className="cursor-pointer border-b border-hairline last:border-0 hover:bg-rowhover">
                   <td className="px-4 py-2.5"><p className="font-semibold text-ink">{s.name}</p>{s.entityName && <p className="text-micro text-muted">{s.entityName}</p>}</td>
-                  <td className="px-4 py-2.5 font-mono text-[12px] text-muted">{s.code}</td>
+                  <td className="px-4 py-2.5 font-mono text-caption text-muted">{s.code}</td>
                   <td className="px-4 py-2.5 capitalize text-muted">{s.siteType}</td>
                   <td className="px-4 py-2.5">
                     {s.latitude != null ? (
-                      <span className="inline-flex items-center gap-1 text-[12.5px] text-status-greenText" title={s.address ?? undefined}><MapPin className="h-3.5 w-3.5" /> Set</span>
+                      <span className="inline-flex items-center gap-1 text-label text-status-greenText" title={s.address ?? undefined}><MapPin className="h-3.5 w-3.5" /> Set</span>
                     ) : (
                       <ToneBadge tone="amber" className="whitespace-nowrap">Not set</ToneBadge>
                     )}
@@ -139,13 +139,13 @@ export function AdminSites() {
               </Field>
               <LocationFields draft={draft} setDraft={setDraft} />
               <label className="col-span-2 flex items-center justify-between rounded-input border border-hairline px-3 py-2">
-                <span className="text-[13.5px] text-ink">Active — shown in rosters, forms and the API</span>
+                <span className="text-body text-ink">Active — shown in rosters, forms and the API</span>
                 <Switch checked={draft.active} onCheckedChange={(v) => setDraft({ ...draft, active: v })} />
               </label>
               {caseManagement && draft.siteType === "supportive" && (
                 <label className="col-span-2 flex items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2">
                   <span>
-                    <span className="block text-[13.5px] text-ink">Households live here</span>
+                    <span className="block text-body text-ink">Households live here</span>
                     <span className="block text-micro text-muted">
                       A unit can hold a family: a head of household and members, each with their relation to the head. Off: one person per unit.
                     </span>
@@ -209,7 +209,7 @@ function LocationFields({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft
   return (
     <div className="col-span-2 space-y-3 rounded-input border border-hairline p-3">
       <div>
-        <p className="text-[13.5px] font-bold text-ink">Location</p>
+        <p className="text-body font-bold text-ink">Location</p>
         <p className="text-micro text-muted">Forms use this to pick the site automatically when staff are there. Their position stays on their device.</p>
       </div>
       <Field label="Address">
@@ -221,8 +221,8 @@ function LocationFields({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft
         </div>
       </Field>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Field label="Latitude"><Input inputMode="decimal" value={draft.latitude} onChange={(e) => setDraft({ ...draft, latitude: e.target.value })} placeholder="40.834354" className="font-mono text-[13px]" /></Field>
-        <Field label="Longitude"><Input inputMode="decimal" value={draft.longitude} onChange={(e) => setDraft({ ...draft, longitude: e.target.value })} placeholder="-73.90226" className="font-mono text-[13px]" /></Field>
+        <Field label="Latitude"><Input inputMode="decimal" value={draft.latitude} onChange={(e) => setDraft({ ...draft, latitude: e.target.value })} placeholder="40.834354" className="font-mono text-label" /></Field>
+        <Field label="Longitude"><Input inputMode="decimal" value={draft.longitude} onChange={(e) => setDraft({ ...draft, longitude: e.target.value })} placeholder="-73.90226" className="font-mono text-label" /></Field>
         <Field label="Radius (metres)" hint={`Blank = ${DEFAULT_GEOFENCE_METERS}.`} className="col-span-2 sm:col-span-1">
           <Input type="number" min={25} max={2000} value={draft.geofenceMeters} onChange={(e) => setDraft({ ...draft, geofenceMeters: e.target.value })} placeholder={String(DEFAULT_GEOFENCE_METERS)} />
         </Field>
@@ -237,7 +237,7 @@ function LocationFields({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft
               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${draft.latitude.trim()},${draft.longitude.trim()}`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-8 items-center gap-1.5 rounded-input px-2 text-[13px] font-semibold text-accent hover:bg-subtle2 dark:text-white"
+              className="inline-flex h-8 items-center gap-1.5 rounded-input px-2 text-label font-semibold text-accent hover:bg-subtle2 dark:text-white"
             >
               <ExternalLink className="h-4 w-4" /> Check on a map
             </a>

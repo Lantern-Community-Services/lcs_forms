@@ -206,11 +206,11 @@ export function SharePage() {
           <Card className="space-y-4 p-5">
             <Field label="Your link">
               <div className="flex gap-2">
-                <Input value={link.url} readOnly onFocus={(e) => e.currentTarget.select()} aria-label="Your link" className="font-mono text-[12.5px]" />
+                <Input value={link.url} readOnly onFocus={(e) => e.currentTarget.select()} aria-label="Your link" className="font-mono text-label" />
                 <Button variant="secondary" onClick={() => void copy()}><Copy className="h-4 w-4" /> Copy</Button>
               </div>
             </Field>
-            <p className="text-[13px] text-ink">
+            <p className="text-label text-ink">
               {link.expiresAt ? <>Works until <span className="font-semibold">{formatDateTime(link.expiresAt)}</span> ({timeLeft(link.expiresAt)}).</> : "Works until you refresh it or turn it off."}{" "}
               {link.entries ? `${link.entries} entr${link.entries === 1 ? "y has" : "ies have"} come through it` : "Nothing has come through it yet"}
               {link.lastUsedAt ? `, the last ${relativeTime(link.lastUsedAt)}` : ""}.
@@ -220,7 +220,7 @@ export function SharePage() {
               {data.entriesFromMyLinks > 0 && data.form.kind !== "code" && <Button variant="secondary" onClick={() => navigate(`/f/${slug}/entries`)}>See what came in ({data.entriesFromMyLinks})</Button>}
             </div>
             <div className="space-y-3 border-t border-hairline pt-4">
-              <p className="text-[13px] text-muted">Shared it somewhere you shouldn't have, or want a fresh one? Refresh makes a new link and QR code; the old ones stop working.</p>
+              <p className="text-label text-muted">Shared it somewhere you shouldn't have, or want a fresh one? Refresh makes a new link and QR code; the old ones stop working.</p>
               {lengthPicker}
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => void make(true)} disabled={busy}><RefreshCw className="h-4 w-4" /> Refresh my link</Button>
@@ -231,7 +231,7 @@ export function SharePage() {
           <Card className="space-y-3 p-5 text-center">
             <p className="kicker">Your QR code</p>
             {qr ? <img src={qr} alt={`QR code for your link to ${data.form.title}`} className="mx-auto w-full max-w-[240px] rounded-input border border-hairline bg-white p-1" /> : <LoadingState />}
-            <p className="text-[12px] text-muted">Show it on your phone, or print it. It opens your link.</p>
+            <p className="text-caption text-muted">Show it on your phone, or print it. It opens your link.</p>
             {qr && (
               <Button
                 variant="secondary"
@@ -250,7 +250,7 @@ export function SharePage() {
         </div>
       ) : (
         <Card className="space-y-4 p-5">
-          <p className="text-[13.5px] text-ink">You don't have a link for this form yet. Make one to share it by link, text, email or QR code.</p>
+          <p className="text-body text-ink">You don't have a link for this form yet. Make one to share it by link, text, email or QR code.</p>
           {lengthPicker}
           <Button onClick={() => void make(false)} disabled={busy}><Share2 className="h-4 w-4" /> Make my link</Button>
         </Card>

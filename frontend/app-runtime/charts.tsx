@@ -44,7 +44,7 @@ const longLabel = (x: string) =>
 function Tooltip({ left, width, title, children }: { left: number; width: number; title: string; children: React.ReactNode }) {
   return (
     <div
-      className="pointer-events-none absolute top-0 z-10 w-max min-w-[150px] -translate-x-1/2 rounded-input border border-hairline bg-surface px-2.5 py-2 text-[12px] shadow-panel"
+      className="pointer-events-none absolute top-0 z-10 w-max min-w-[150px] -translate-x-1/2 rounded-input border border-hairline bg-surface px-2.5 py-2 text-caption shadow-panel"
       style={{ left: Math.min(Math.max(left, 85), Math.max(85, width - 85)) }}
     >
       <p className="mb-0.5 font-semibold text-ink">{title}</p>
@@ -95,7 +95,7 @@ export function TrendChart({ data, series, unit = "", area = false, height = 210
             {t.map((v) => (
               <g key={v}>
                 <line x1={PAD.left} x2={width - PAD.right} y1={y(v)} y2={y(v)} className="stroke-hairline" strokeWidth={1} />
-                <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-[10.5px] tabular">{fmt(v)}</text>
+                <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-micro tabular">{fmt(v)}</text>
               </g>
             ))}
             {area && series.length === 1 && data.length > 1 && (
@@ -125,7 +125,7 @@ export function TrendChart({ data, series, unit = "", area = false, height = 210
             )}
             {data.map((d, i) =>
               i % every === 0 ? (
-                <text key={`${d.x}-${i}`} x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted text-[10.5px]">{axisLabel(d.x)}</text>
+                <text key={`${d.x}-${i}`} x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted text-micro">{axisLabel(d.x)}</text>
               ) : null
             )}
           </svg>
@@ -180,7 +180,7 @@ export function ColumnChart({ data, unit = "", height = 210 }: {
             {t.map((v) => (
               <g key={v}>
                 <line x1={PAD.left} x2={width - PAD.right} y1={y(v)} y2={y(v)} className="stroke-hairline" strokeWidth={1} />
-                <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-[10.5px] tabular">{fmt(v)}</text>
+                <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-micro tabular">{fmt(v)}</text>
               </g>
             ))}
             {data.map((d, i) => {
@@ -203,7 +203,7 @@ export function ColumnChart({ data, unit = "", height = 210 }: {
             })}
             {data.map((d, i) =>
               i % every === 0 ? (
-                <text key={`${d.label}-l${i}`} x={PAD.left + i * step + step / 2} y={H - 6} textAnchor="middle" className="fill-muted text-[10.5px]">
+                <text key={`${d.label}-l${i}`} x={PAD.left + i * step + step / 2} y={H - 6} textAnchor="middle" className="fill-muted text-micro">
                   {axisLabel(d.label).length > 12 ? `${axisLabel(d.label).slice(0, 11)}…` : axisLabel(d.label)}
                 </text>
               ) : null
@@ -274,20 +274,20 @@ export function DonutChart({ data, unit = "", totalLabel = "Total", size = 168 }
             })}
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="font-heading text-[22px] font-extrabold leading-none text-ink tabular">{fmt(shown ? shown.value : total)}</span>
-          <span className="mt-1 max-w-[70%] truncate text-[11px] text-muted">{shown ? shown.label : totalLabel}</span>
+          <span className="font-heading text-title font-extrabold leading-none text-ink tabular">{fmt(shown ? shown.value : total)}</span>
+          <span className="mt-1 max-w-[70%] truncate text-micro text-muted">{shown ? shown.label : totalLabel}</span>
         </div>
       </div>
       <ul className="min-w-[10rem] flex-1 space-y-1.5" aria-label="Legend">
         {parts.map((d, i) => (
-          <li key={`${d.label}-${i}`} className={cn("flex items-center gap-2 text-[12.5px]", hover !== null && hover !== i && "opacity-50")} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+          <li key={`${d.label}-${i}`} className={cn("flex items-center gap-2 text-label", hover !== null && hover !== i && "opacity-50")} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: slotColor(d.slot) }} aria-hidden />
             <span className="min-w-0 flex-1 truncate text-ink">{d.label}</span>
             <span className="font-semibold tabular text-ink">{fmt(d.value)}{unit && ` ${unit}`}</span>
             <span className="w-10 text-right tabular text-muted">{total ? Math.round((d.value / total) * 100) : 0}%</span>
           </li>
         ))}
-        {!parts.length && <li className="text-[13px] text-muted">Nothing to show.</li>}
+        {!parts.length && <li className="text-label text-muted">Nothing to show.</li>}
       </ul>
     </div>
   );

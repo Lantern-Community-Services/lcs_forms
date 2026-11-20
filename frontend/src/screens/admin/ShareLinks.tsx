@@ -79,8 +79,8 @@ export function AdminShareLinks() {
         <ol className="mt-3 grid gap-3 md:grid-cols-2">
           {STEPS.map((s, i) => (
             <li key={s.title} className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy text-[12px] font-extrabold text-navy-fg">{i + 1}</span>
-              <span className="text-[13.5px] text-ink">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy text-caption font-extrabold text-navy-fg">{i + 1}</span>
+              <span className="text-body text-ink">
                 <span className="block font-bold">{s.title}</span>
                 <span className="text-muted">{s.body}</span>
               </span>
@@ -89,7 +89,7 @@ export function AdminShareLinks() {
         </ol>
       </Card>
 
-      <h2 className="mb-2 px-1 font-heading text-[15px] font-extrabold text-ink">Your external forms</h2>
+      <h2 className="mb-2 px-1 font-heading text-body-lg font-extrabold text-ink">Your external forms</h2>
       {data.forms.length ? (
         <div className="space-y-3">
           {data.forms.map((f) => {
@@ -108,11 +108,11 @@ export function AdminShareLinks() {
                     {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted" />}
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-[14px] font-semibold text-ink">{f.form.title}</span>
+                        <span className="truncate text-body font-semibold text-ink">{f.form.title}</span>
                         {!f.live && <Tag tone="amber">Not published as shared yet</Tag>}
                         {!f.settings.enabled && <Tag tone="neutral">Sharing off</Tag>}
                       </span>
-                      <span className="mt-0.5 block text-[12.5px] text-muted">
+                      <span className="mt-0.5 block text-label text-muted">
                         {f.working} working link{f.working === 1 ? "" : "s"} · {f.entries} entr{f.entries === 1 ? "y" : "ies"} through links · new links last {f.settings.defaultDays} days{f.settings.maxDays ? `, at most ${f.settings.maxDays}` : ", no limit"}
                       </span>
                     </span>

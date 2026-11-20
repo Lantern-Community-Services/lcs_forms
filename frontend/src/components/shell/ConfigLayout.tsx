@@ -76,7 +76,8 @@ export function ConfigLayout() {
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       <nav className="w-full shrink-0 border-b border-hairline bg-surface px-3 pb-2 pt-safe-top md:h-full md:w-[222px] md:overflow-y-auto md:scroll-thin md:flex md:flex-col md:border-b-0 md:border-r md:py-5">
-        <p className="mb-2 px-2 text-micro font-bold uppercase tracking-[0.04em] text-muted">{isSiteSettingsOnly(can) ? "Site settings" : "Admin"}</p>
+        {/* Phone: the page's name above its chips. A computer already says Admin in the main sidebar. */}
+        <p className="mb-2 px-2 font-heading text-body-lg font-extrabold text-ink md:hidden">{isSiteSettingsOnly(can) ? "Site settings" : "Admin"}</p>
         <div className="chiprow -mx-1 flex gap-1.5 px-1 md:mx-0 md:block md:overflow-visible md:px-0">
           {ADMIN_GROUPS.map((g) => {
             const items = g.items.filter((it) => it.needs.some(can));
@@ -90,7 +91,7 @@ export function ConfigLayout() {
                     to={it.to}
                     className={({ isActive }) =>
                       cn(
-                        "flex min-h-[38px] shrink-0 items-center gap-2 rounded-pill border border-hairline px-3 text-left text-[12.5px] transition-colors md:w-full md:min-h-0 md:rounded-input md:border-0 md:px-2 md:py-[7px] md:text-[13px]",
+                        "flex min-h-[38px] shrink-0 items-center gap-2 rounded-pill border border-hairline px-3 text-left text-label transition-colors md:w-full md:min-h-0 md:rounded-input md:border-0 md:px-2 md:py-[7px] md:text-label",
                         isActive ? "border-navy bg-navsel font-bold text-accent dark:text-white" : "font-medium text-ink hover:bg-navsel/60"
                       )
                     }

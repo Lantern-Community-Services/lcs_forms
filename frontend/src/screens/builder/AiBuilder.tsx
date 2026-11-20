@@ -90,19 +90,19 @@ export function AdminAiBuilder() {
         <div className="flex items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-panel bg-navsel text-accent"><KeyRound className="h-[18px] w-[18px]" /></span>
           <div className="min-w-0 flex-1">
-            <p className="font-heading text-[15px] font-extrabold text-ink">1. Make a key</p>
-            <p className="mt-0.5 text-[13px] text-muted">The assistant signs in with an API key that has the <code>forms:build</code> scope. It acts as that key — the audit log names it — never as you.</p>
+            <p className="font-heading text-body-lg font-extrabold text-ink">1. Make a key</p>
+            <p className="mt-0.5 text-label text-muted">The assistant signs in with an API key that has the <code>forms:build</code> scope. It acts as that key — the audit log names it — never as you.</p>
             {key ? (
               <div className="mt-3 rounded-input border border-status-greenDot/50 bg-status-greenBg p-3">
-                <p className="text-[12.5px] font-semibold text-status-greenText">Copy it now — it won't be shown again. The commands below already include it.</p>
-                <div className="mt-2 flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-[12.5px] text-ink">{key}</code><Button size="sm" variant="secondary" onClick={() => copy(key)}><Copy className="h-3.5 w-3.5" /></Button></div>
+                <p className="text-label font-semibold text-status-greenText">Copy it now — it won't be shown again. The commands below already include it.</p>
+                <div className="mt-2 flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-label text-ink">{key}</code><Button size="sm" variant="secondary" onClick={() => copy(key)}><Copy className="h-3.5 w-3.5" /></Button></div>
               </div>
             ) : (
               <div className="mt-3 flex flex-wrap items-end gap-2">
                 <label className="min-w-[220px] flex-1 text-micro font-semibold text-muted">Key name<Input value={name} onChange={(e) => setName(e.target.value)} className="mt-0.5" /></label>
-                <label className="flex items-center gap-2 pb-2 text-[13px] text-ink"><input type="checkbox" checked={code} onChange={(e) => setCode(e.target.checked)} /> Can build code forms</label>
-                <label className="flex items-center gap-2 pb-2 text-[13px] text-ink"><input type="checkbox" checked={entries} onChange={(e) => setEntries(e.target.checked)} /> Can also read and submit entries</label>
-                <label className="flex items-center gap-2 pb-2 text-[13px] text-ink"><input type="checkbox" checked={notifications} onChange={(e) => setNotifications(e.target.checked)} /> Can notify people</label>
+                <label className="flex items-center gap-2 pb-2 text-label text-ink"><input type="checkbox" checked={code} onChange={(e) => setCode(e.target.checked)} /> Can build code forms</label>
+                <label className="flex items-center gap-2 pb-2 text-label text-ink"><input type="checkbox" checked={entries} onChange={(e) => setEntries(e.target.checked)} /> Can also read and submit entries</label>
+                <label className="flex items-center gap-2 pb-2 text-label text-ink"><input type="checkbox" checked={notifications} onChange={(e) => setNotifications(e.target.checked)} /> Can notify people</label>
                 <Button onClick={createKey} disabled={busy || !name.trim()}>Create key</Button>
               </div>
             )}
@@ -115,8 +115,8 @@ export function AdminAiBuilder() {
         <div className="flex items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-panel bg-navsel text-accent"><Terminal className="h-[18px] w-[18px]" /></span>
           <div className="min-w-0 flex-1">
-            <p className="font-heading text-[15px] font-extrabold text-ink">2. Connect your assistant</p>
-            <p className="mt-0.5 text-[13px] text-muted">MCP server: <code className="text-ink">{url}</code> (Streamable HTTP).</p>
+            <p className="font-heading text-body-lg font-extrabold text-ink">2. Connect your assistant</p>
+            <p className="mt-0.5 text-label text-muted">MCP server: <code className="text-ink">{url}</code> (Streamable HTTP).</p>
             <Snippet title="Claude Code" text={claudeCode} onCopy={copy} />
             <Snippet title="Claude Desktop — claude_desktop_config.json" text={desktop} onCopy={copy} />
             <Snippet title="VS Code / Cursor — .vscode/mcp.json" text={vscode} onCopy={copy} />
@@ -128,17 +128,17 @@ export function AdminAiBuilder() {
         <div className="flex items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-panel bg-navsel text-accent"><Bot className="h-[18px] w-[18px]" /></span>
           <div className="min-w-0 flex-1">
-            <p className="font-heading text-[15px] font-extrabold text-ink">3. Ask for a form</p>
+            <p className="font-heading text-body-lg font-extrabold text-ink">3. Ask for a form</p>
             <ul className="mt-2 space-y-1.5">
               {PROMPTS.map((p) => (
-                <li key={p} className="flex items-start gap-2 rounded-input bg-subtle px-3 py-2 text-[13px] text-ink">
+                <li key={p} className="flex items-start gap-2 rounded-input bg-subtle px-3 py-2 text-label text-ink">
                   <span className="flex-1">“{p}”</span>
                   <button onClick={() => copy(p)} className="text-muted hover:text-ink" aria-label="Copy prompt"><Copy className="h-3.5 w-3.5" /></button>
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-[12px] font-semibold text-muted">Tools it gets</p>
-            <div className="mt-1 grid gap-x-4 gap-y-1 text-[12.5px] sm:grid-cols-2">
+            <p className="mt-4 text-caption font-semibold text-muted">Tools it gets</p>
+            <div className="mt-1 grid gap-x-4 gap-y-1 text-label sm:grid-cols-2">
               {TOOLS.map(([t, d]) => <p key={t}><code className="text-ink">{t}</code> <span className="text-muted">— {d}</span></p>)}
             </div>
           </div>
@@ -149,9 +149,9 @@ export function AdminAiBuilder() {
         <div className="flex items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-panel bg-navsel text-accent"><Palette className="h-[18px] w-[18px]" /></span>
           <div className="min-w-0 flex-1">
-            <p className="font-heading text-[15px] font-extrabold text-ink">Claude Design</p>
-            <p className="mt-0.5 text-[13px] text-muted">Design screens in Claude Design with Lantern's own components, then have them built as code forms.</p>
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-[13px] text-ink">
+            <p className="font-heading text-body-lg font-extrabold text-ink">Claude Design</p>
+            <p className="mt-0.5 text-label text-muted">Design screens in Claude Design with Lantern's own components, then have them built as code forms.</p>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-label text-ink">
               <li><strong>Give it the design system.</strong> Download the design kit — the app's real components and tokens in light and dark, with the rules — and add it to Claude Design as your design system (or as a reference file on a project).
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   <Button size="sm" variant="secondary" onClick={async () => { try { download("lantern-design-kit.html", await designKitHtml()); } catch (e) { toast(errorMessage(e, "Couldn't build it."), "error"); } }}>Download design kit</Button>
@@ -166,9 +166,9 @@ export function AdminAiBuilder() {
       </Card>
 
       <Card className="p-5">
-        <p className="font-heading text-[15px] font-extrabold text-ink">The form format</p>
-        <p className="mt-0.5 text-[13px] text-muted">What the assistant reads from <code>get_reference</code> — also the reference for writing forms in code (builder → Code tab, or <code>npm run forms -- push</code>).</p>
-        <pre className="mt-3 max-h-[480px] overflow-auto whitespace-pre-wrap rounded-input bg-subtle p-3 font-mono text-[11.5px] leading-relaxed text-ink">{guide ?? "Loading…"}</pre>
+        <p className="font-heading text-body-lg font-extrabold text-ink">The form format</p>
+        <p className="mt-0.5 text-label text-muted">What the assistant reads from <code>get_reference</code> — also the reference for writing forms in code (builder → Code tab, or <code>npm run forms -- push</code>).</p>
+        <pre className="mt-3 max-h-[480px] overflow-auto whitespace-pre-wrap rounded-input bg-subtle p-3 font-mono text-caption leading-relaxed text-ink">{guide ?? "Loading…"}</pre>
       </Card>
     </Page>
   );
@@ -178,10 +178,10 @@ function Snippet({ title, text, onCopy }: { title: string; text: string; onCopy:
   return (
     <div className="mt-3">
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[12px] font-semibold text-muted">{title}</span>
+        <span className="text-caption font-semibold text-muted">{title}</span>
         <button onClick={() => onCopy(text)} className="inline-flex items-center gap-1 text-micro font-semibold text-accent"><Copy className="h-3 w-3" /> Copy</button>
       </div>
-      <pre className="overflow-x-auto rounded-input bg-[#1f2430] p-3 font-mono text-[11.5px] text-[#e6e6e6]">{text}</pre>
+      <pre className="overflow-x-auto rounded-input bg-[#1f2430] p-3 font-mono text-caption text-[#e6e6e6]">{text}</pre>
     </div>
   );
 }

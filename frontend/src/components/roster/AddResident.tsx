@@ -144,7 +144,7 @@ export function AddResident({ open, onOpenChange, sites }: {
         <Input value={form.preferredName} onChange={set("preferredName")} autoComplete="off" className="min-h-[44px]" />
       </Field>
       <HighAcuityToggle className="col-span-2" checked={form.highAcuity} onChange={(v) => setForm((f) => ({ ...f, highAcuity: v }))} />
-      {error && <p className="col-span-2 rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">{error}</p>}
+      {error && <p className="col-span-2 rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">{error}</p>}
       {added > 0 && <p className="col-span-2 text-micro text-muted">{added} added this session.</p>}
       {/* Enter = save & add another */}
       <button type="submit" hidden />

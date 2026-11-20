@@ -35,7 +35,7 @@ import { attachFrame, frameLoaded, fromFrame, startTutorialFromFrame, tourActive
 
 /** What a page opened through a share link may ask for. Everything else is refused. */
 const GUEST_CALLS = new Set([
-  "app.navigate", "app.setParams", "app.toast", "roster.sites", "entries.create", "files.upload", "files.read", "files.preview", "device.takePhoto", "device.location",
+  "app.navigate", "app.setParams", "app.toast", "app.focus", "roster.sites", "entries.create", "files.upload", "files.read", "files.preview", "device.takePhoto", "device.location",
   "local.get", "local.set", "local.remove", "actions.call", "queue.status", "tutorial.active",
 ]);
 
@@ -125,7 +125,7 @@ function srcDoc(runtime: AppRuntime, key: string, base: { js: string; css: strin
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   // A scrolling page keeps the scrollbar's space, so content that grows or shrinks doesn't shift the width.
   const fullHeight = runtime.pages.find((p) => p.id === key.split("@")[0])?.fullHeight;
-  const gutter = fullHeight ? "" : "html{scrollbar-gutter:stable}";
+  const gutter = fullHeight || device.kind !== "desktop" ? "" : "html{scrollbar-gutter:stable}";
   return `<!doctype html><html class="${esc(theme.className)}" data-theme="${esc(theme.dataTheme)}" data-device="${device.kind}" data-orientation="${device.orientation}" data-bp="${device.breakpoints.join(" ")}" style="${esc(theme.style)}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data: blob:; media-src data: blob:">
@@ -144,6 +144,7 @@ export function AppFrame({
   params,
   onNavigate,
   onSetParams,
+  onFocus,
   onConsole,
   className,
   shareToken,
@@ -155,6 +156,8 @@ export function AppFrame({
   params: Record<string, string>;
   onNavigate: (page: string, params: Record<string, string>) => void;
   onSetParams: (params: Record<string, string>) => void;
+  /** The page asked for full screen, or to leave it (SDK app.focus). */
+  onFocus?: (on: boolean) => void;
   onConsole?: (line: ConsoleLine) => void;
   className?: string;
   /** Opened through this share link, not signed in: see GUEST_CALLS. */
@@ -195,8 +198,8 @@ export function AppFrame({
   const key = codeKey(runtime, page, device.kind);
   // The document only changes with the code; size and orientation are sent live.
   const doc = useMemo(() => (base ? srcDoc(runtime, key, base, device) : ""), [runtime.hash, key, base]); // eslint-disable-line react-hooks/exhaustive-deps
-  const latest = useRef({ runtime, params, page, onNavigate, onSetParams, onConsole, device });
-  latest.current = { runtime, params, page, onNavigate, onSetParams, onConsole, device };
+  const latest = useRef({ runtime, params, page, onNavigate, onSetParams, onFocus, onConsole, device });
+  latest.current = { runtime, params, page, onNavigate, onSetParams, onFocus, onConsole, device };
 
   const send = (msg: Record<string, unknown>) => ref.current?.contentWindow?.postMessage({ __lcsHost: 1, ...msg }, "*");
 
@@ -291,6 +294,7 @@ export function AppFrame({
     const methods: Record<string, (...args: any[]) => Promise<unknown>> = {
       "app.navigate": async (p: string, prm: Record<string, string>) => latest.current.onNavigate(p, prm ?? {}),
       "app.setParams": async (prm: Record<string, string>) => latest.current.onSetParams(prm ?? {}),
+      "app.focus": async (on: boolean) => latest.current.onFocus?.(Boolean(on)),
       "app.toast": async (message: string, tone: "success" | "error") => toast(String(message).slice(0, 300), tone === "error" ? "error" : "success"),
       "app.openApp": async (path: string) => {
         if (typeof path === "string" && path.startsWith("/") && !path.startsWith("//")) navigate(path);
@@ -553,7 +557,7 @@ export function AppFrame({
     return () => window.removeEventListener("message", onMessage);
   }, [slug, draft, toast, navigate, shareToken]);
 
-  if (baseError) return <p className="p-6 text-[13px] text-status-redText">Couldn't load the code-form runtime. Check your connection and reload.</p>;
+  if (baseError) return <p className="p-6 text-label text-status-redText">Couldn't load the code-form runtime. Check your connection and reload.</p>;
   if (!base) return null;
   return (
     <>

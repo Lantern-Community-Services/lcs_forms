@@ -236,7 +236,7 @@ function Ghost({ drag }: { drag: Drag }) {
       aria-hidden
       style={style}
       className={cn(
-        "lcs-ghost pointer-events-none fixed z-[100] flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-card border-[1.5px] bg-surface px-2.5 text-[13px] font-semibold text-ink shadow-modal",
+        "lcs-ghost pointer-events-none fixed z-[100] flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-card border-[1.5px] bg-surface px-2.5 text-label font-semibold text-ink shadow-modal",
         drag.over ? "border-navy dark:border-accent" : "border-hairline"
       )}
     >

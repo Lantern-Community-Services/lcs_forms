@@ -25,7 +25,7 @@ export function ResidencyCards({ tenant }: { tenant: Tenant }) {
   const [member, setMember] = useState<Occupant | null>(null);
 
   if (isLoading || !data) {
-    return <Card className="mb-4 flex items-center gap-2 p-5 text-[13px] text-muted"><Spinner className="h-4 w-4" /> Loading home…</Card>;
+    return <Card className="mb-4 flex items-center gap-2 p-5 text-label text-muted"><Spinner className="h-4 w-4" /> Loading home…</Card>;
   }
   if (!data.on) return null;
   const v = data as Extract<ResidencyView, { on: true }>;
@@ -60,14 +60,14 @@ export function ResidencyCards({ tenant }: { tenant: Tenant }) {
         </div>
 
         {!active ? (
-          <p className="text-[13px] text-muted">Not on the roster now. Their stays are below.</p>
+          <p className="text-label text-muted">Not on the roster now. Their stays are below.</p>
         ) : !v.unit ? (
-          <p className="rounded-input bg-status-amberBg px-3 py-2 text-[13px] text-status-amberText">
+          <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
             {v.movedIn ? "No unit recorded yet." : "On the roster, not moved in yet."} Move them in to give them a unit, start their stay and their checklist.
             {!v.movedIn && " Until then they aren't in form resident lists or the review queue."}
           </p>
         ) : (
-          <dl className="grid grid-cols-2 gap-3 text-[13px] md:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 text-label md:grid-cols-4">
             <Stat label="Unit" value={v.unit.label} hint={v.unit.unitType ?? undefined} />
             <Stat label="Moved in" value={fmtDay(current?.moveInDate)} hint={current ? `${current.days} days` : undefined} />
             <Stat label="Program" value={current?.program ?? v.unit.program ?? "—"} />
@@ -79,7 +79,7 @@ export function ResidencyCards({ tenant }: { tenant: Tenant }) {
         {v.households && v.household.length > 0 && (
           <div className="mt-4 border-t border-hairline pt-3">
             <p className="mb-2 flex items-center gap-1.5 text-micro font-semibold text-muted"><Users className="h-3.5 w-3.5" /> Household</p>
-            <ul className="space-y-1.5 text-[13px]">
+            <ul className="space-y-1.5 text-label">
               {v.household.map((h) => (
                 <li key={h.id} className="flex items-center gap-2">
                   {h.id === tenant.id ? <span className="font-semibold text-ink">{h.displayName}</span> : <Link to={`/tenants/${h.id}`} className="font-semibold text-accent hover:underline">{h.displayName}</Link>}
@@ -98,7 +98,7 @@ export function ResidencyCards({ tenant }: { tenant: Tenant }) {
         {v.stays.length > 0 && (
           <div className="mt-4 border-t border-hairline pt-3">
             <p className="mb-2 flex items-center gap-1.5 text-micro font-semibold text-muted"><DoorOpen className="h-3.5 w-3.5" /> Stays</p>
-            <ul className="space-y-2 text-[13px]">
+            <ul className="space-y-2 text-label">
               {v.stays.map((s) => (
                 <li key={s.id}>
                   <p className="text-ink">
@@ -122,7 +122,7 @@ export function ResidencyCards({ tenant }: { tenant: Tenant }) {
         )}
 
         {v.absences.some((a) => a.outcome) && (
-          <details className="mt-3 text-[13px]">
+          <details className="mt-3 text-label">
             <summary className="cursor-pointer text-micro font-semibold text-muted">Earlier time away</summary>
             <ul className="mt-2 space-y-1">
               {v.absences.filter((a) => a.outcome).map((a) => (
@@ -173,7 +173,7 @@ export function ChecklistCard({ tasks, canTick }: { tasks: TaskRow[]; canTick: b
         <p className="text-micro text-muted">{open.length} open{late ? ` · ${late} overdue` : ""}</p>
       </div>
       {open.length === 0 ? (
-        <p className="text-[13px] text-muted">Nothing due.</p>
+        <p className="text-label text-muted">Nothing due.</p>
       ) : (
         <ul className="divide-y divide-hairline">
           {open.map((t) => <TaskLine key={t.id} task={t} canTick={canTick} />)}
@@ -184,7 +184,7 @@ export function ChecklistCard({ tasks, canTick }: { tasks: TaskRow[]; canTick: b
           <summary className="cursor-pointer text-micro font-semibold text-muted">Done ({done.length})</summary>
           <ul className="mt-2 space-y-1.5">
             {done.map((t) => (
-              <li key={t.id} className="flex items-start gap-2 text-[13px]">
+              <li key={t.id} className="flex items-start gap-2 text-label">
                 <CheckCircle2 className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", t.status === "done" ? "text-status-greenDot" : "text-muted")} />
                 <span className="min-w-0">
                   <span className="text-ink">{t.label}</span>
@@ -235,14 +235,14 @@ export function TaskLine({ task, canTick, showResident = false, formLink = false
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1">
           {showResident && task.resident && (
-            <Link to={`/tenants/${task.resident.id}`} className="block truncate text-[13.5px] font-semibold text-accent hover:underline">
+            <Link to={`/tenants/${task.resident.id}`} className="block truncate text-body font-semibold text-accent hover:underline">
               {task.resident.displayName}{task.resident.unit ? <span className="font-normal text-muted"> · {task.resident.unit}</span> : null}
             </Link>
           )}
-          <span className="block text-[13.5px] text-ink">
+          <span className="block text-body text-ink">
             {task.label}
             {formLink && task.forms[0] && (
-              <Link to={`/f/${task.forms[0]}`} className="ml-2 text-[12.5px] font-semibold text-accent hover:underline dark:text-white">Open form</Link>
+              <Link to={`/f/${task.forms[0]}`} className="ml-2 text-label font-semibold text-accent hover:underline dark:text-white">Open form</Link>
             )}
           </span>
           <span className={cn("block text-micro", overdue ? "font-semibold text-status-redText" : "text-muted")}>

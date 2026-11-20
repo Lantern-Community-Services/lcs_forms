@@ -34,7 +34,7 @@ export function ClientInfoCard({ tenant }: { tenant: TenantDetail }) {
   if (!allowed || (!isLoading && !on)) return null;
   if (!data || !data.enabled || !meta) {
     return (
-      <Card className="mb-4 flex items-center gap-2 p-5 text-[13px] text-muted">
+      <Card className="mb-4 flex items-center gap-2 p-5 text-label text-muted">
         <Spinner className="h-4 w-4" /> Loading client information…
       </Card>
     );
@@ -109,7 +109,7 @@ function SectionBlock(props: {
       <div className="flex items-center gap-2 px-3 py-2.5">
         <button type="button" onClick={props.onToggle} disabled={editing} className="flex min-h-[36px] flex-1 items-center gap-2 text-left" aria-expanded={props.open}>
           <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", !props.open && "-rotate-90")} />
-          <span className="font-heading text-[14px] font-bold text-ink">{section.title}</span>
+          <span className="font-heading text-body font-bold text-ink">{section.title}</span>
           <span className="text-micro text-muted">
             {answered} of {shown.length}
           </span>
@@ -135,7 +135,7 @@ function SectionBlock(props: {
 function SectionView({ section, tenant, profile, canSeeSsn }: { section: ClientSection; tenant: TenantDetail; profile: ClientProfile; canSeeSsn: boolean }) {
   const fields = section.fields.filter((f) => applies(f, profile.values));
   return (
-    <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-[13px] sm:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-label sm:grid-cols-2">
         {fields.map((f) => (
           <div key={f.key} className={cn("min-w-0", f.wide && "sm:col-span-2")}>
             <dt className="text-micro font-semibold text-muted">{f.label}</dt>

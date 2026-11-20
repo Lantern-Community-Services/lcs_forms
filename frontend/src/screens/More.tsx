@@ -26,7 +26,7 @@ export function MorePage() {
       <NavLink to="/profile" className="flex items-center gap-3 border-b border-hairline bg-sidebar px-4 pb-3 pt-safe-top">
         <Avatar name={user?.name ?? "?"} color={user?.avatarColor} size={40} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14.5px] font-bold text-ink">{user?.name}</span>
+          <span className="block truncate text-body-lg font-bold text-ink">{user?.name}</span>
           <span className="block truncate text-meta text-muted">{user?.role?.name}</span>
         </span>
         <ChevronRight className="h-[17px] w-[17px] shrink-0 text-muted" />
@@ -39,7 +39,7 @@ export function MorePage() {
         <Row to="/help" icon={CircleHelp} label="Help" />
         <button onClick={() => void logout()} className="flex min-h-[50px] w-full items-center gap-3 border-b border-hairline px-4 text-left active:bg-rowhover">
           <LogIn className="h-[18px] w-[18px] shrink-0 rotate-180 text-muted" />
-          <span className="flex-1 text-[14px] font-semibold text-status-redText">Sign out</span>
+          <span className="flex-1 text-body font-semibold text-status-redText">Sign out</span>
         </button>
       </Section>
     </div>
@@ -98,8 +98,8 @@ function Row({ to, icon: Icon, label, meta, badge }: { to: string; icon: typeof 
   return (
     <NavLink to={to} className="flex min-h-[50px] items-center gap-3 border-b border-hairline px-4 active:bg-rowhover">
       <Icon className="h-[18px] w-[18px] shrink-0 text-muted" />
-      <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{label}</span>
-      {meta !== undefined && <span className="shrink-0 text-[12px] tabular text-muted">{meta}</span>}
+      <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{label}</span>
+      {meta !== undefined && <span className="shrink-0 text-caption tabular text-muted">{meta}</span>}
       {badge && <Tag className="shrink-0">{badge}</Tag>}
       <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
     </NavLink>

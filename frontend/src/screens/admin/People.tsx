@@ -308,7 +308,7 @@ export function AdminPeople() {
                   <button onClick={() => edit(u)} className="flex w-full items-center gap-3 border-b border-hairline px-4 py-3 text-left hover:bg-rowhover">
                     <Avatar name={named ? u.name : u.email} color={u.avatarColor} size={34} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-semibold text-ink">
+                      <span className="block truncate text-body font-semibold text-ink">
                         {named ? u.name : u.email}
                         {named && u.title && <span className="font-normal text-muted"> · {u.title}</span>}
                       </span>
@@ -323,7 +323,7 @@ export function AdminPeople() {
                     {u.rosterEditor && !MANAGES_ROSTER.includes(u.roleKey) && <Tag tone="accent" title="Can manage the roster">Roster</Tag>}
                     {u.clientInfoAccess && u.roleKey !== "admin" && <Tag tone="accent" title="Can see and edit client information">Client info</Tag>}
                     {u.viewAsEnabled && u.roleKey === "admin" && !u.globalAdmin && <Tag tone="accent" title="Can view the site as others">View as</Tag>}
-                    <span className="hidden text-[13px] text-ink sm:block">{u.role.name}</span>
+                    <span className="hidden text-label text-ink sm:block">{u.role.name}</span>
                     {/* Only Deactivated mixes statuses (denied and deactivated); the other tabs say it already. */}
                     {tab === "deactivated" && <ToneBadge tone={STATUS_TONE[u.status]}>{STATUS_LABEL[u.status]}</ToneBadge>}
                   </button>
@@ -331,7 +331,7 @@ export function AdminPeople() {
               );
             })}
             {shown.length === 0 && (
-              <li className="px-4 py-8 text-center text-[13px] text-muted">{needle ? "Nobody matches that search." : EMPTY_STATE[tab]}</li>
+              <li className="px-4 py-8 text-center text-label text-muted">{needle ? "Nobody matches that search." : EMPTY_STATE[tab]}</li>
             )}
           </ul>
         </Card>
@@ -359,12 +359,12 @@ export function AdminPeople() {
                 </Field>
               )}
               {draft.id && draft.status === "invited" && (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">
                   Hasn't signed in yet. Their first sign-in fills in their name and job title from Microsoft and makes the account active.
                 </p>
               )}
               {draft.id && managesAdmins && draft.hasSignedIn && !draft.isSelf && (
-                <p className="text-[13px] text-muted">
+                <p className="text-label text-muted">
                   Sign-in refused because their Microsoft account was remade?{" "}
                   <button type="button" className="font-medium text-ink underline underline-offset-2" onClick={() => void unlinkMicrosoft()}>
                     Unlink their Microsoft account
@@ -373,15 +373,15 @@ export function AdminPeople() {
                 </p>
               )}
               {draft.superAdmin ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">
                   {draft.isSelf ? "You're" : `${draft.name} is`} a Super Admin. Super Admins are set on the server, so nobody can change or remove one here.
                 </p>
               ) : draft.isSelf ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">
                   This is you. You can't change your own role or status.
                 </p>
               ) : !draft.canEditRole && (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">
                   {draft.roleKey === "admin"
                     ? `Only a Super Admin can change ${draft.name}'s role or status.`
                     : `${draft.name} also works at a site you don't manage, so only an Admin can change their role or status. You can still change which of your sites they're on.`}
@@ -402,13 +402,13 @@ export function AdminPeople() {
               </div>
               {/* A Super Admin's dialog is read-only: the role and status say it all. */}
               {draft.superAdmin ? null : draft.roleKey === "admin" ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">
                   Admins can always edit the calendar and its categories.
                 </p>
               ) : everyone ? (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
                   <span>
-                    <span className="block text-[13.5px] font-semibold text-ink">Can edit the calendar</span>
+                    <span className="block text-body font-semibold text-ink">Can edit the calendar</span>
                     <span className="block text-micro text-muted">
                       Add, change and remove events for {role?.allSites ? "any site, one site at a time" : "their own sites"}. Events for every site and the categories stay with Admins.
                     </span>
@@ -416,12 +416,12 @@ export function AdminPeople() {
                   <Switch checked={draft.calendarEditor} onCheckedChange={(calendarEditor) => setDraft({ ...draft, calendarEditor })} className="mt-0.5" />
                 </label>
               ) : draft.calendarEditor ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can edit the calendar at their sites. Only an Admin can change that.</p>
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">Can edit the calendar at their sites. Only an Admin can change that.</p>
               ) : null}
               {!draft.superAdmin && !MANAGES_ROSTER.includes(draft.roleKey) && (
                 <label className={`flex items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5 ${locked ? "opacity-70" : "cursor-pointer"}`}>
                   <span>
-                    <span className="block text-[13.5px] font-semibold text-ink">Can manage the roster</span>
+                    <span className="block text-body font-semibold text-ink">Can manage the roster</span>
                     <span className="block text-micro text-muted">
                       Add and edit residents, confirm or remove them in the review queue, and take attendance at their sites. Without it they can only look.
                     </span>
@@ -432,7 +432,7 @@ export function AdminPeople() {
               {everyone && draft.id && !draft.superAdmin && draft.roleKey !== "admin" && (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
                   <span>
-                    <span className="block text-[13.5px] font-semibold text-ink">Can see client information</span>
+                    <span className="block text-body font-semibold text-ink">Can see client information</span>
                     <span className="block text-micro text-muted">
                       See and edit residents' client information at their sites: date of birth, demographics, program and funding, referral, household. The SSN shows as its last four digits. Admins always can.
                       {!clientInfoOn && " Case management is turned off in Admin → Settings, so this does nothing until it's on."}
@@ -442,12 +442,12 @@ export function AdminPeople() {
                 </label>
               )}
               {!everyone && draft.clientInfoAccess && draft.roleKey !== "admin" && (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">Can see client information at their sites. Only an Admin can change that.</p>
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">Can see client information at their sites. Only an Admin can change that.</p>
               )}
               {managesAdmins && draft.id && !draft.superAdmin && !draft.isSelf && draft.roleKey === "admin" && (
                 <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
                   <span>
-                    <span className="block text-[13.5px] font-semibold text-ink">Can view the site as others</span>
+                    <span className="block text-body font-semibold text-ink">Can view the site as others</span>
                     <span className="block text-micro text-muted">
                       See every screen as anyone who isn't an Admin sees it, to check what they get. Nothing can be changed while they do. Super Admins can always.
                     </span>
@@ -456,7 +456,7 @@ export function AdminPeople() {
                 </label>
               )}
               {draft.superAdmin ? null : role?.allSites ? (
-                <p className="rounded-input bg-subtle px-3 py-2 text-[13px] text-muted">{role.name} sees every site.</p>
+                <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">{role.name} sees every site.</p>
               ) : (
                 <Field
                   label={
@@ -471,7 +471,7 @@ export function AdminPeople() {
                   hint={`They'll only see these sites — their rosters, form entries and calendar.${draft.otherSites ? ` They're also on ${draft.otherSites} site${draft.otherSites === 1 ? "" : "s"} you don't manage; those stay as they are.` : ""}`}
                 >
                   {draft.siteIds.length === 0 && draft.otherSites === 0 && (
-                    <p className="mb-2 rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+                    <p className="mb-2 rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
                       No sites assigned — this person won't see any rosters.
                     </p>
                   )}
@@ -586,7 +586,7 @@ function RequestDialog({ person, sites, onClose }: { person: ManagedUser | null;
         />
         {person && (
           <DialogBody className="grid gap-3">
-            <div className="grid gap-1 text-[13px]">
+            <div className="grid gap-1 text-label">
               {person.locationNames.length > 0 && (
                 <p><span className="text-muted">Works at: </span><span className="text-ink">{person.locationNames.join(", ")}</span></p>
               )}
@@ -609,7 +609,7 @@ function RequestDialog({ person, sites, onClose }: { person: ManagedUser | null;
                 {mineToDecide.length > 0 ? (
                   <CheckboxList options={mineToDecide.map((s) => ({ value: s.id, label: s.name }))} value={picked} onChange={setPicked} />
                 ) : (
-                  <p className="text-[13px] text-muted">None of these are your sites.</p>
+                  <p className="text-label text-muted">None of these are your sites.</p>
                 )}
                 {othersWaiting.length > 0 && (
                   <p className="mt-2 text-micro text-muted">
@@ -688,7 +688,7 @@ function PersonGroups({ person }: { person: ManagedUser | undefined }) {
   return (
     <div className="rounded-input border border-hairline">
       <div className="px-3 py-2.5">
-        <span className="block text-[13.5px] font-semibold text-ink">Groups</span>
+        <span className="block text-body font-semibold text-ink">Groups</span>
         <span className="block text-micro text-muted">
           Decide which forms {first} sees.{person.title ? ` Their job title: ${person.title}.` : ""} Saves straight away.
         </span>
@@ -700,7 +700,7 @@ function PersonGroups({ person }: { person: ManagedUser | undefined }) {
           const note = on ? (byTitle ? "from job title" : "added by hand") : byTitle ? "taken out" : null;
           return (
             <li key={g.id}>
-              <label className="flex min-h-[36px] cursor-pointer items-center gap-2 px-3 py-1 text-[13px] text-ink hover:bg-rowhover">
+              <label className="flex min-h-[36px] cursor-pointer items-center gap-2 px-3 py-1 text-label text-ink hover:bg-rowhover">
                 <input type="checkbox" checked={on} disabled={busy !== null} onChange={(e) => void toggle(g.id, g.name, e.target.checked)} />
                 <span className="min-w-0 flex-1 truncate">{g.name}</span>
                 {note && <span className="text-micro text-muted">{note}</span>}
@@ -749,7 +749,7 @@ function PersonTutorials({ userId, name, isSelf }: { userId: string; name: strin
     <div className="rounded-input border border-hairline">
       <div className="flex items-center justify-between gap-3 px-3 py-2.5">
         <span>
-          <span className="block text-[13.5px] font-semibold text-ink">Tutorials</span>
+          <span className="block text-body font-semibold text-ink">Tutorials</span>
           <span className="block text-micro text-muted">Reset one to show it to {isSelf ? "you" : first} again.</span>
         </span>
         {(data?.length ?? 0) > 1 && (
@@ -759,9 +759,9 @@ function PersonTutorials({ userId, name, isSelf }: { userId: string; name: strin
         )}
       </div>
       {isLoading ? (
-        <p className="border-t border-hairline px-3 py-2.5 text-[13px] text-muted">Loading…</p>
+        <p className="border-t border-hairline px-3 py-2.5 text-label text-muted">Loading…</p>
       ) : !data?.length ? (
-        <p className="border-t border-hairline px-3 py-2.5 text-[13px] text-muted">
+        <p className="border-t border-hairline px-3 py-2.5 text-label text-muted">
           {isSelf ? "You haven't" : `${first} hasn't`} finished or skipped any yet. The welcome tour starts the next time {isSelf ? "you reach your" : "they reach their"} home screen.
         </p>
       ) : (
@@ -769,7 +769,7 @@ function PersonTutorials({ userId, name, isSelf }: { userId: string; name: strin
           {data.map((t) => (
             <li key={t.key} className="flex items-center gap-3 border-t border-hairline px-3 py-2">
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold text-ink">{t.name}</span>
+                <span className="block truncate text-label font-semibold text-ink">{t.name}</span>
                 <span className="block text-micro text-muted">{describe(t)}</span>
               </span>
               <Button size="sm" variant="ghost" onClick={() => void reset(t)} disabled={busy !== null} aria-label={`Reset ${t.name}`}>

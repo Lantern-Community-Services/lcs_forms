@@ -66,7 +66,7 @@ export function AttendancePage() {
   const search = <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or description" />;
 
   const selectionBar = hasSelection && (
-    <div className="flex items-center justify-between gap-3 rounded-input bg-navsel/60 px-3 py-2 text-[12.5px] font-semibold text-ink md:w-auto md:justify-start">
+    <div className="flex items-center justify-between gap-3 rounded-input bg-navsel/60 px-3 py-2 text-label font-semibold text-ink md:w-auto md:justify-start">
       <span>{selectedIds.size} selected</span>
       <button type="button" onClick={() => setSelectedIds(new Set())} className="text-accent dark:text-white">
         Clear
@@ -78,7 +78,7 @@ export function AttendancePage() {
     <button
       type="button"
       onClick={() => setTab("record")}
-      className="-ml-2 inline-flex min-h-[36px] items-center gap-1 self-start px-2 text-[13px] font-semibold text-accent dark:text-white"
+      className="-ml-2 inline-flex min-h-[36px] items-center gap-1 self-start px-2 text-label font-semibold text-accent dark:text-white"
     >
       <ChevronLeft className="h-4 w-4" /> Record attendance
     </button>
@@ -89,7 +89,8 @@ export function AttendancePage() {
       <PhoneHeader
         title="Attendance"
         help={{ article: "attendance", text: "Sessions taken at your sites. People who manage the roster take new ones." }}
-        subtitle={tab === "past" ? subtitle : undefined}
+        // Never a "?" on its own: a line beside it says what the tab is for.
+        subtitle={tab === "past" ? subtitle : "Take a session's attendance at your site."}
 
         actions={
           tab === "past" ? (
@@ -116,13 +117,16 @@ export function AttendancePage() {
             <div className="min-w-0">
               {!inTabs ? (
                 <div className="flex items-center gap-1">
-                  <h1 className="text-[23px] font-heading font-extrabold text-ink md:text-[24px]">Attendance</h1>
+                  <h1 className="text-title font-heading font-extrabold text-ink md:text-title">Attendance</h1>
                   <PageHelp article="attendance">Sessions taken at your sites. People who manage the roster take new ones.</PageHelp>
                 </div>
               ) : (
-                <PageHelp article="attendance">Sessions taken at your sites. People who manage the roster take new ones.</PageHelp>
+                <div className="flex items-center gap-1">
+                  <PageHelp article="attendance">Sessions taken at your sites. People who manage the roster take new ones.</PageHelp>
+                  <p className="text-label text-muted md:text-body">{tab === "past" && subtitle ? subtitle : "Take a session's attendance, or look back at past ones."}</p>
+                </div>
               )}
-              {tab === "past" && subtitle && <p className={`text-[13px] text-muted md:text-[13.5px] ${inTabs ? "" : "mt-1"}`}>{subtitle}</p>}
+              {tab === "past" && subtitle && !inTabs && <p className="mt-1 text-label text-muted md:text-body">{subtitle}</p>}
             </div>
             {tab === "past" && (
               <div className="flex flex-wrap items-center gap-2">
@@ -203,17 +207,17 @@ function RecordAttendancePanel({
         <ClipboardCheck className="h-8 w-8" />
       </div>
       <div className="max-w-[360px]">
-        <h2 className="text-[19px] font-heading font-extrabold text-ink">Take attendance</h2>
-        <p className="mt-1.5 text-[14px] text-muted">Start a roll call for one of your sites — mark who's here and capture signatures as you go.</p>
+        <h2 className="text-title-sm font-heading font-extrabold text-ink">Take attendance</h2>
+        <p className="mt-1.5 text-body text-muted">Start a roll call for one of your sites — mark who's here and capture signatures as you go.</p>
       </div>
       {noSites ? (
-        <p className="text-[13px] text-muted">You aren't assigned to any sites yet.</p>
+        <p className="text-label text-muted">You aren't assigned to any sites yet.</p>
       ) : (
-        <Button onClick={onTake} disabled={!canTake} className="min-h-[52px] px-8 text-[15px]">
+        <Button onClick={onTake} disabled={!canTake} className="min-h-[52px] px-8 text-body-lg">
           <Plus className="h-5 w-5" /> Take attendance
         </Button>
       )}
-      <button type="button" onClick={onViewPast} className="inline-flex items-center gap-1 text-[13.5px] font-semibold text-accent dark:text-white">
+      <button type="button" onClick={onViewPast} className="inline-flex min-h-[44px] items-center gap-1 px-2 text-body font-semibold text-accent dark:text-white">
         View past attendance <ChevronRight className="h-4 w-4" />
       </button>
     </div>
@@ -226,7 +230,7 @@ function AttendanceRow({ e, multiSite, checked, onToggle }: { e: AttendanceEvent
       <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Select ${e.title}`} />
       <Link to={`/roster/attendance/${e.id}`} className="flex min-w-0 flex-1 items-center gap-3">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14.5px] font-semibold text-ink">{e.title}</span>
+          <span className="block truncate text-body-lg font-semibold text-ink">{e.title}</span>
           <span className="block truncate text-micro text-muted">
             {multiSite ? `${e.site.name} · ` : ""}
             {relativeTime(e.occurredAt)} · {e.createdByName}

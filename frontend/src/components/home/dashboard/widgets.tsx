@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Bell,
   CalendarDays,
+  ChevronRight,
   ClipboardCheck,
   Code2,
   ExternalLink,
@@ -20,7 +21,8 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { ActivityPanel, AppTiles, AttentionPanel, PanelHeader, PanelNote, dayLabel } from "@/components/home/panels";
+import { ActivityPanel, AppTiles, AttentionPanel, PanelHeader, PanelLink, PanelNote, dayLabel } from "@/components/home/panels";
+import { StartFormTiles, useStartForms } from "@/components/home/StartForms";
 import { Tag } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { formatTime, nyNowMinutes, nyToday, relativeDayName, shortDay } from "@/lib/calendar";
@@ -31,6 +33,7 @@ import { addDays } from "@/lib/recurrence";
 import { useSiteSelection } from "@/lib/site";
 import type { CalendarOccurrence, FormCategory, FormLink, HomeAppTile, HomeData, PermissionKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { reloadHint } from "@/lib/device";
 import { colorMap, colorOf } from "@/screens/calendar/colors";
 import { SIZES, type WidgetId, type WidgetSize } from "./layout";
 
@@ -94,7 +97,7 @@ export const WIDGETS: WidgetDef[] = [
         <StatTile
           label="Needs your attention"
           value={s ? String(s.attention) : "–"}
-          note={s && s.urgent > 0 ? <Tag className="text-[12px]">{s.urgent} urgent</Tag> : "items"}
+          note={s && s.urgent > 0 ? <Tag className="text-caption">{s.urgent} urgent</Tag> : "items"}
           href="#attention"
         />
       );
@@ -161,11 +164,12 @@ export const WIDGETS: WidgetDef[] = [
     title: "Form stats",
     description: "Counts that code forms post to the home screen.",
     icon: Sparkles,
-    sizes: ["full", "large", "medium"],
+    sizes: ["full", "large", "medium", "small"],
     isEmpty: ({ appTiles, appTilesLoading }) => !appTilesLoading && appTiles.length === 0,
-    render: ({ appTiles }) =>
+    render: ({ appTiles }, size) =>
       appTiles.length ? (
-        <AppTiles tiles={appTiles} />
+        // One tile a row at half width (each says what it counts in full), two or three when wider.
+        <AppTiles tiles={appTiles} className={size === "medium" || size === "small" ? "!grid-cols-1" : size === "full" && appTiles.length > 2 ? "xl:!grid-cols-3" : undefined} />
       ) : (
         <WidgetCard title="Form stats" icon={Sparkles}>
           <PanelNote>No form posts counts here yet. When one does, they show up in this spot.</PanelNote>
@@ -199,6 +203,14 @@ export const WIDGETS: WidgetDef[] = [
     icon: Pin,
     sizes: SIZES,
     render: (ctx, size) => <PinnedWidget favorites={ctx.favoriteForms} size={size} />,
+  },
+  {
+    id: "start_forms",
+    title: "Start a form",
+    description: "Big buttons for your pinned forms, then the ones you've used lately.",
+    icon: FilePlus2,
+    sizes: ["large", "full", "medium"],
+    render: (ctx, size) => <StartFormsWidget ctx={ctx} size={size} />,
   },
   {
     id: "recent_forms",
@@ -262,9 +274,7 @@ function WidgetCard({ title, icon: Icon, count, link, children, className }: {
     <section className={cn("enter-up flex h-full min-w-0 flex-col rounded-card border border-hairline bg-surface shadow-card", className)}>
       <PanelHeader title={title} count={count}>
         {link ? (
-          <Link to={link.to} className="shrink-0 text-[12.5px] font-bold text-accent hover:underline dark:text-white">
-            {link.label}
-          </Link>
+          <PanelLink to={link.to}>{link.label}</PanelLink>
         ) : Icon ? (
           <Icon className="h-4 w-4 shrink-0 text-muted" aria-hidden />
         ) : null}
@@ -277,10 +287,10 @@ function WidgetCard({ title, icon: Icon, count, link, children, className }: {
 function StatTile({ label, value, note, href }: { label: string; value: string; note: React.ReactNode; href?: string }) {
   const body = (
     <>
-      <span className="text-[13px] font-semibold text-muted">{label}</span>
+      <span className="text-label font-semibold text-muted">{label}</span>
       <span className="flex items-baseline gap-2.5">
-        <span className="text-[28px] font-heading font-extrabold leading-tight text-ink">{value}</span>
-        <span className="text-[13px] text-muted">{note}</span>
+        <span className="text-display font-heading font-extrabold leading-tight text-ink">{value}</span>
+        <span className="text-label text-muted">{note}</span>
       </span>
     </>
   );
@@ -373,7 +383,7 @@ function PinnedWidget({ favorites, size }: { favorites: FormEntry[]; size: Widge
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-navsel text-accent dark:text-white">
                     <Icon className="h-[18px] w-[18px]" />
                   </span>
-                  <span className="min-w-0 flex-1 text-[13.5px] font-bold leading-snug text-ink">{form.title}</span>
+                  <span className="min-w-0 flex-1 text-body font-bold leading-snug text-ink">{form.title}</span>
                   {!isInternalForm(form.url) && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted" aria-label="opens in a new tab" />}
                 </FormLinkWrap>
               </li>
@@ -381,6 +391,24 @@ function PinnedWidget({ favorites, size }: { favorites: FormEntry[]; size: Widge
           })}
         </ul>
       )}
+    </WidgetCard>
+  );
+}
+
+const START_COUNT: Record<WidgetSize, number> = { small: 1, medium: 3, large: 5, full: 7 };
+const START_COLS: Record<WidgetSize, string> = {
+  small: "grid-cols-1",
+  medium: "grid-cols-2",
+  large: "grid-cols-2 lg:grid-cols-3",
+  full: "grid-cols-3 xl:grid-cols-4",
+};
+
+/** "Start a form": pinned forms, then recently used ones, as big tiles (the phone's Home has the same). */
+function StartFormsWidget({ ctx, size }: { ctx: WidgetCtx; size: WidgetSize }) {
+  const items = useStartForms(ctx.favoriteForms, ctx.home?.recentForms, ctx.categories, START_COUNT[size], ctx.home?.shortcutForms);
+  return (
+    <WidgetCard title="Start a form" link={{ to: "/forms", label: "All forms" }}>
+      <StartFormTiles items={items} allFormsCount={ctx.totalForms} columns={START_COLS[size]} className="p-3 xl:p-4" />
     </WidgetCard>
   );
 }
@@ -407,8 +435,8 @@ function RecentFormsWidget({ ctx, size }: { ctx: WidgetCtx; size: WidgetSize }) 
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-bold text-ink">{r.title}</span>
-                    <span className="block truncate text-[12px] text-muted">
+                    <span className="block truncate text-body font-bold text-ink">{r.title}</span>
+                    <span className="block truncate text-caption text-muted">
                       {when(r.lastAt)}
                       {r.uses > 1 ? ` · ${r.uses} times lately` : ""}
                     </span>
@@ -434,7 +462,7 @@ function CalendarWidget({ size }: { size: WidgetSize }) {
       {isLoading ? (
         <PanelNote>Loading…</PanelNote>
       ) : isError ? (
-        <PanelNote>The calendar didn't load. Refresh the page to try again.</PanelNote>
+        <PanelNote>The calendar didn't load. {reloadHint()}</PanelNote>
       ) : shown.length === 0 ? (
         <PanelNote>Nothing on the calendar for the next two weeks.</PanelNote>
       ) : (
@@ -450,19 +478,29 @@ function CalendarWidget({ size }: { size: WidgetSize }) {
   );
 }
 
+/** "MON" from "2026-11-23" (the date as written, no time zone to shift it). */
+function weekdayShort(iso: string) {
+  return ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][new Date(`${iso}T12:00:00Z`).getUTCDay()];
+}
+
 function EventRow({ o, today, color }: { o: CalendarOccurrence; today: string; color: string }) {
   const day = o.startDate < today ? today : o.startDate;
   const dayName = relativeDayName(day, today) ?? shortDay(day);
   const time = o.allDay ? "All day" : o.startTime ? formatTime(o.startTime) : "";
   return (
-    <Link to={`/calendar?view=day&date=${day}`} className="flex items-center gap-3 px-4 py-2 hover:bg-rowhover xl:px-5">
-      <span className="h-9 w-1 shrink-0 rounded-pill" style={{ background: color }} aria-hidden />
+    <Link to={`/calendar?view=day&date=${day}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-rowhover xl:px-5">
+      {/* A date block, the event's category colour as a dot under the day (no stripe down the side). */}
+      <span className="flex w-11 shrink-0 flex-col items-center justify-center rounded-[9px] bg-subtle py-1.5" aria-hidden>
+        <span className="text-micro font-extrabold uppercase text-muted">{weekdayShort(day)}</span>
+        <span className="font-heading text-lead font-extrabold leading-none text-ink">{Number(day.slice(8, 10))}</span>
+      </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 truncate text-[13.5px] font-bold text-ink">
+        <span className="flex items-center gap-1.5 truncate text-body font-bold text-ink">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
           <span className="truncate">{o.title}</span>
           {o.pending && <Tag className="shrink-0">Pending</Tag>}
         </span>
-        <span className="block truncate text-[12px] text-muted">{[`${dayName}${time ? ` · ${time}` : ""}`, o.location].filter(Boolean).join(" · ")}</span>
+        <span className="block truncate text-caption text-muted">{[`${dayName}${time ? ` · ${time}` : ""}`, o.location].filter(Boolean).join(" · ")}</span>
       </span>
     </Link>
   );
@@ -479,9 +517,9 @@ function NotificationsWidget({ size }: { size: WidgetSize }) {
       {isLoading ? (
         <PanelNote>Loading…</PanelNote>
       ) : isError ? (
-        <PanelNote>This didn't load. Refresh the page to try again.</PanelNote>
+        <PanelNote>This didn't load. {reloadHint()}</PanelNote>
       ) : items.length === 0 ? (
-        <PanelNote>No unread notifications.</PanelNote>
+        <PanelNote>You're all caught up.</PanelNote>
       ) : (
         <ul className="py-1">
           {items.map((n) => (
@@ -489,11 +527,11 @@ function NotificationsWidget({ size }: { size: WidgetSize }) {
               <Link to={`/notifications/${n.id}`} className="flex items-start gap-3 px-4 py-2 hover:bg-rowhover xl:px-5">
                 <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.urgent ? "bg-status-redDot" : "bg-accent")} aria-hidden />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold text-ink">
+                  <span className="block truncate text-body font-bold text-ink">
                     {n.urgent && <span className="mr-1 text-status-redText">Urgent:</span>}
                     {n.title}
                   </span>
-                  <span className="block truncate text-[12px] text-muted">{[n.sourceLabel, when(n.createdAt)].filter(Boolean).join(" · ")}</span>
+                  <span className="block truncate text-caption text-muted">{[n.sourceLabel, when(n.createdAt)].filter(Boolean).join(" · ")}</span>
                 </span>
               </Link>
             </li>
@@ -515,7 +553,7 @@ function RosterSitesWidget({ size }: { size: WidgetSize }) {
       {isLoading ? (
         <PanelNote>Loading…</PanelNote>
       ) : isError ? (
-        <PanelNote>The roster didn't load. Refresh the page to try again.</PanelNote>
+        <PanelNote>The roster didn't load. {reloadHint()}</PanelNote>
       ) : shown.length === 0 ? (
         <PanelNote>No sites to show.</PanelNote>
       ) : (
@@ -531,8 +569,8 @@ function RosterSitesWidget({ size }: { size: WidgetSize }) {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-[13.5px] font-bold text-ink">{s.name}</span>
-                        <span className="shrink-0 text-[12px] text-muted">
+                        <span className="truncate text-body font-bold text-ink">{s.name}</span>
+                        <span className="shrink-0 text-caption text-muted">
                           {s.activeCount} {s.activeCount === 1 ? "resident" : "residents"}
                         </span>
                       </span>
@@ -540,7 +578,7 @@ function RosterSitesWidget({ size }: { size: WidgetSize }) {
                         <span className="h-1.5 flex-1 overflow-hidden rounded-pill bg-subtle">
                           <span className="block h-full rounded-pill bg-status-amberDot" style={{ width: `${share * 100}%` }} />
                         </span>
-                        <span className={cn("w-[72px] shrink-0 text-right text-[11.5px] font-semibold", s.attentionCount ? "text-status-amberText" : "text-muted")}>
+                        <span className={cn("w-[72px] shrink-0 text-right text-caption font-semibold", s.attentionCount ? "text-status-amberText" : "text-muted")}>
                           {s.attentionCount ? `${s.attentionCount} to check` : "all seen"}
                         </span>
                       </span>}
@@ -550,7 +588,7 @@ function RosterSitesWidget({ size }: { size: WidgetSize }) {
               );
             })}
           </ul>
-          {sites.length > shown.length && <p className="px-4 pb-3 text-[12px] text-muted xl:px-5">and {sites.length - shown.length} more sites</p>}
+          {sites.length > shown.length && <p className="px-4 pb-3 text-caption text-muted xl:px-5">and {sites.length - shown.length} more sites</p>}
         </>
       )}
     </WidgetCard>
@@ -598,7 +636,7 @@ function QuickActionsWidget({ ctx, size }: { ctx: WidgetCtx; size: WidgetSize })
     { to: "/notifications", label: "Notifications", icon: Bell, show: true },
   ];
   const shown = [...forms, ...siteLinks, ...screens.filter((s) => s.show)].slice(0, SHORTCUT_COUNT[size]);
-  const className = "flex min-h-[44px] items-center gap-2.5 rounded-input bg-subtle px-3 text-[13px] font-bold text-ink hover:bg-subtle2";
+  const className = "flex min-h-[44px] items-center gap-2.5 rounded-input bg-subtle px-3 text-label font-bold text-ink hover:bg-subtle2";
   return (
     <WidgetCard title="Shortcuts" icon={Zap}>
       <ul className={cn("grid gap-2 p-3 xl:p-4", SHORTCUT_COLS[size])}>
