@@ -94,6 +94,13 @@ const baseField = z.object({
     by: z.array(recipientSchema).min(1).max(50),
     fields: z.array(fieldId).max(10).optional(),
     whatToDo: z.string().trim().max(500).optional(),
+    /** Another sign-off's id: this one waits until that one is signed. */
+    after: fieldId.optional(),
+    /** Others asked (once) when it has waited this many days, who may then sign it too. */
+    backup: z.object({
+      by: z.array(recipientSchema).min(1).max(50),
+      afterDays: z.number().int().min(1, "A backup is asked after 1 to 30 days.").max(30, "A backup is asked after 1 to 30 days."),
+    }).strict().optional(),
   }).strict().optional(),
 });
 

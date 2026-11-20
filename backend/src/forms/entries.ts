@@ -198,7 +198,7 @@ export async function canSeeEntry(
   form: BuiltForm,
   user: Viewer,
   reach: "all" | "site" | "own",
-  entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null } & Partial<Pick<FormEntry, "signOff" | "signOffs" | "data" | "formVersion">>
+  entry: Pick<FormEntry, "id" | "createdById" | "siteId" | "followUp"> & { sharedById?: string | null } & Partial<Pick<FormEntry, "signOff" | "signOffs" | "data" | "formVersion" | "createdAt">>
 ): Promise<boolean> {
   if (!user) return false;
   if (reach === "all" || entry.createdById === user.userId || (entry.sharedById && entry.sharedById === user.userId)) return true;

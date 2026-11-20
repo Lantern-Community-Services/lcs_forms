@@ -234,27 +234,61 @@ const SIGNER_ROLES: { key: string; label: string }[] = [
 /** Questions a signer can fill in as they sign. */
 const SIGNER_FILLS: FieldType[] = ["text", "textarea", "number", "date", "time", "select", "radio", "email", "phone"];
 
+type SignerList = NonNullable<Field["signOff"]>["by"];
+
+/** Role chips for a sign-off's people; positions, groups and people set in the form's code are kept and counted. */
+function SignerRoles({ by, onChange, missing }: { by: SignerList; onChange: (by: SignerList) => void; missing: string }) {
+  const roles = by.filter((r) => r.kind === "role").map((r) => String(r.role));
+  const others = by.length - roles.length;
+  const toggle = (key: string) => onChange(roles.includes(key) ? by.filter((r) => !(r.kind === "role" && r.role === key)) : [...by, { kind: "role", role: key }]);
+  return (
+    <>
+      <div className="flex flex-wrap gap-1.5">
+        {SIGNER_ROLES.map((r) => (
+          <button key={r.key} onClick={() => toggle(r.key)} className={cn("rounded-pill border px-2.5 py-1 text-[12.5px] font-semibold", roles.includes(r.key) ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
+            {r.label}
+          </button>
+        ))}
+      </div>
+      {others > 0 && <p className="mt-1 text-micro text-muted">And {others} more set in the form's code (positions, groups or people).</p>}
+      {!by.length && <p className="mt-1 text-micro text-status-redText">{missing}</p>}
+    </>
+  );
+}
+
+/** Whether `id`'s sign-off comes (by "Comes after", however far back) after `target`'s: picking it for target would make a circle. */
+function comesAfter(siblings: Field[], id: string, target: string): boolean {
+  const seen = new Set<string>();
+  for (let at: string | undefined = id; at && !seen.has(at); at = siblings.find((x) => x.id === at)?.signOff?.after) {
+    if (at === target) return true;
+    seen.add(at);
+  }
+  return false;
+}
+
 /**
  * A signature signed after filing, by someone else (a supervisor, a licensed
- * reviewer): who signs it, and what else they fill in as they sign.
+ * reviewer): who signs it, what else they fill in as they sign, which other
+ * sign-off comes first, and who's asked if it waits too long.
  */
 function SignOffEditor({ field: f, set, siblings }: { field: Field; set: (p: Partial<Field>) => void; siblings: Field[] }) {
   const s = f.signOff;
   const by = s?.by ?? [];
-  const roles = by.filter((r) => r.kind === "role").map((r) => String(r.role));
-  const others = by.length - roles.length;
   const update = (patch: Partial<NonNullable<Field["signOff"]>>) => {
     const next = { ...(s ?? { by: [] }), ...patch };
     if (!next.fields?.length) delete next.fields;
     if (!next.whatToDo) delete next.whatToDo;
+    if (!next.after) delete next.after;
+    if (!next.backup) delete next.backup;
     set({ signOff: next });
   };
-  const toggleRole = (key: string) =>
-    update({ by: roles.includes(key) ? by.filter((r) => !(r.kind === "role" && r.role === key)) : [...by, { kind: "role", role: key }] });
   const fills = s?.fields ?? [];
   // Another sign-off's own questions, and other sign-offs, can't be this one's.
   const taken = new Set(siblings.filter((x) => x.id !== f.id && x.signOff).flatMap((x) => [x.id, ...(x.signOff?.fields ?? [])]));
   const candidates = siblings.filter((x) => SIGNER_FILLS.includes(x.type) && !taken.has(x.id));
+  // Other sign-offs it can come after: not one that already comes after this one.
+  const earlier = siblings.filter((x) => x.id !== f.id && x.type === "signature" && x.signOff && !comesAfter(siblings, x.id, f.id));
+  const backup = s?.backup;
   return (
     <>
       <Toggle
@@ -266,16 +300,47 @@ function SignOffEditor({ field: f, set, siblings }: { field: Field; set: (p: Par
       {s && (
         <>
           <Row label="Who signs" hint="At the entry's site. Admins can always sign. Nobody signs off their own entry.">
-            <div className="flex flex-wrap gap-1.5">
-              {SIGNER_ROLES.map((r) => (
-                <button key={r.key} onClick={() => toggleRole(r.key)} className={cn("rounded-pill border px-2.5 py-1 text-[12.5px] font-semibold", roles.includes(r.key) ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-            {others > 0 && <p className="mt-1 text-micro text-muted">And {others} more set in the form's code (positions, groups or people).</p>}
-            {!by.length && <p className="mt-1 text-micro text-status-redText">Pick who signs it.</p>}
+            <SignerRoles by={by} onChange={(next) => update({ by: next })} missing="Pick who signs it." />
           </Row>
+          {(earlier.length > 0 || s.after) && (
+            <Row label="Comes after" hint="Its signers are asked only once that one is signed, like a Vice President after the Program Director.">
+              <Select
+                value={s.after ?? ""}
+                onChange={(e) => update({ after: e.target.value || undefined })}
+                options={[
+                  { value: "", label: "Nothing: ask them when it's filed" },
+                  ...earlier.map((x) => ({ value: x.id, label: `After ${x.label || x.id}` })),
+                  ...(s.after && !earlier.some((x) => x.id === s.after) ? [{ value: s.after, label: `After ${s.after} (not a sign-off any more)` }] : []),
+                ]}
+              />
+            </Row>
+          )}
+          <Toggle
+            label="Backup if it waits"
+            hint="If it isn't signed after some days, others are asked too, and can sign it."
+            checked={Boolean(backup)}
+            onChange={(v) => update({ backup: v ? { by: [{ kind: "role", role: "site_manager" }], afterDays: 3 } : undefined })}
+          />
+          {backup && (
+            <>
+              <Row label="Backup">
+                <SignerRoles by={backup.by} onChange={(next) => update({ backup: { ...backup, by: next } })} missing="Pick who the backup is." />
+              </Row>
+              <Row label="Ask the backup after" hint="Days from when it could first be signed (1 to 30).">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={backup.afterDays}
+                    onChange={(e) => update({ backup: { ...backup, afterDays: Math.min(30, Math.max(1, Math.round(Number(e.target.value) || 1))) } })}
+                    className="w-20"
+                  />
+                  <span className="text-[13px] text-muted">days</span>
+                </div>
+              </Row>
+            </>
+          )}
           {candidates.length > 0 && (
             <Row label="The signer also fills in" hint="Answered as they sign, like a license number or the date signed. Hidden from whoever fills the form in.">
               <div className="flex flex-wrap gap-1.5">
