@@ -808,10 +808,14 @@ model FormEntry {
   /// filing (a supervisor's) still needs signing; "done" once every one it needs is signed; null
   /// when the form asks for none.
   signOff           String?   @db.NVarChar(16)
-  /// Who signed each one and when: { [fieldId]: { byId, byName, at } }. The signature itself is the question's answer.
+  /// Each one as it stands: { [fieldId]: { since?, backupAskedAt?, byId?, byName?, at?, backup? } } (when it could
+  /// first be signed, when its backup was asked, and who signed it and when). The signature itself is the question's answer.
   signOffs          String?   @db.NVarChar(Max)
   signOffRemindedAt DateTime?
   signOffReminders  Int       @default(0)
+  /// When a sign-off on it will have waited long enough to ask its backup people; null when no
+  /// backup is still to be asked. The reminder run (services/signOff.ts) looks here.
+  signOffBackupAt   DateTime?
 
   @@unique([formId, clientId])
   @@index([formId, createdAt])
@@ -826,6 +830,7 @@ model FormEntry {
   @@index([formId, sharedById])
   @@index([formId, followUp])
   @@index([formId, signOff])
+  @@index([signOff, signOffBackupAt])
 }
 
 /// A note on an entry — typed by a person, or written by the system

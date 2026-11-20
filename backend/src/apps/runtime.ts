@@ -214,7 +214,7 @@ const ENTRY_META = {
   clientId: true, createdById: true, createdByName: true, ip: true, userAgent: true, deviceKind: true, fillSeconds: true, voidedAt: true, voidedByName: true, voidReason: true, archivedAt: true, archivedByName: true,
   starred: true, updatedByName: true, createdAt: true, updatedAt: true,
   followUp: true, followUpDoneAt: true, followUpDoneByName: true, followUpNote: true, followUpValues: true, followUpChecks: true, followUpRemindedAt: true, followUpReminders: true,
-  signOff: true, signOffs: true, signOffRemindedAt: true, signOffReminders: true,
+  signOff: true, signOffs: true, signOffRemindedAt: true, signOffReminders: true, signOffBackupAt: true,
   shareLinkId: true, sharedById: true, sharedByName: true,
 } satisfies Prisma.FormEntrySelect;
 

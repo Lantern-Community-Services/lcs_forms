@@ -141,7 +141,8 @@ export interface SignOffState {
   id: string;
   label: string;
   state: "waiting" | "signed";
-  signed: { byId: string | null; byName: string; at: string } | null;
+  /** backup: signed by one of its backup people. */
+  signed: { byId: string | null; byName: string; at: string; backup?: boolean } | null;
   /** Who signs it, in words. */
   who: string;
   whatToDo: string | null;
@@ -150,6 +151,10 @@ export interface SignOffState {
   canSign: boolean;
   /** Why this person can't (they filed it). */
   cantSignWhy: string | null;
+  /** The sign-off it waits for (its label) while that one isn't signed; nobody is asked yet. */
+  after?: string | null;
+  /** Who else is asked if it waits afterDays, and whether they have been (they can sign it too then). */
+  backup?: { who: string; afterDays: number; asked: boolean } | null;
 }
 
 export interface EntryList {

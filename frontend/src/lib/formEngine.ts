@@ -182,6 +182,14 @@ export interface SignOff {
   fields?: string[];
   /** What the signer is asked to do, in the request (plain text). */
   whatToDo?: string;
+  /**
+   * The id of another sign-off on the form that's signed first (a Program
+   * Director's before a Vice President's). Its people are asked only once that
+   * one is signed, or at once when this entry doesn't need that one.
+   */
+  after?: string;
+  /** Others who may sign it too once it has waited `afterDays` (from when it could first be signed); they're asked once. */
+  backup?: { by: { kind: string; [key: string]: unknown }[]; afterDays: number };
 }
 
 /** Questions answered after filing: each sign-off signature, and the questions its signer fills in. */
@@ -1393,6 +1401,23 @@ export function lintForm(doc: Pick<FormDoc, "fields" | "settings"> & { tutorial?
         else if (other.signOff) problems.push({ path: at, message: "That's a sign-off itself." });
         else if (doc.fields.some((x) => x !== f && x.signOff?.fields?.includes(id))) problems.push({ path: at, message: `“${other.label || id}” is filled in by another sign-off's signer already.` });
       });
+      if (f.signOff.after !== undefined) {
+        const first = doc.fields.find((x) => x.id === f.signOff!.after);
+        if (f.signOff.after === f.id) problems.push({ path: `${p}.signOff.after`, message: "A sign-off can't wait for itself." });
+        else if (!first || first.type !== "signature" || !first.signOff) problems.push({ path: `${p}.signOff.after`, message: `"${f.signOff.after}" isn't another sign-off on this form.` });
+        else {
+          // Following "after" from here must end, not come back round (A after B after A would never be signable).
+          const seen = new Set([f.id]);
+          for (let at: Field | undefined = first; at?.signOff?.after; at = doc.fields.find((x) => x.id === at!.signOff!.after)) {
+            if (seen.has(at.signOff.after)) {
+              problems.push({ path: `${p}.signOff.after`, message: "These sign-offs wait for each other in a circle, so none could be signed." });
+              break;
+            }
+            seen.add(at.id);
+          }
+        }
+      }
+      if (f.signOff.backup && !f.signOff.backup.by?.length) problems.push({ path: `${p}.signOff.backup.by`, message: "Say who the backup is: at least one person, role, group or position." });
     }
   });
   (doc.settings.notifications ?? []).forEach((n, i) => {

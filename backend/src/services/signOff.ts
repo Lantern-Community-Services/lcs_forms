@@ -11,7 +11,7 @@ import { ROLES } from "./permissions.js";
 /**
  * Sign-off: a signature question signed after the entry is filed, by someone
  * else — a supervisor, a licensed reviewer (PlanStreet's forms have both). The
- * form marks the question `signOff: { by, fields?, whatToDo? }`
+ * form marks the question `signOff: { by, fields?, whatToDo?, after?, backup? }`
  * (forms/engine.ts): whoever fills the form in never sees it; once the entry is
  * filed, the people `by` names (routing's kinds of people, at the entry's site)
  * are asked to sign it on the entry, and reminded every few days until they do.
@@ -21,13 +21,22 @@ import { ROLES } from "./permissions.js";
  * it (FormEntry.signOffs). A question's own rule still decides whether an entry
  * needs it (the Psychosocial's licensed reviewer only signs some).
  *
- * Nobody signs off their own entry. Admins may sign any other one.
+ * Order: `after` names another sign-off that's signed first (the Program
+ * Director's, then the Vice President's). Until that one is signed this one
+ * can't be, and its people aren't asked: they're asked when the earlier one is
+ * signed. An earlier one the entry doesn't need is passed over.
+ *
+ * Backup: `backup: { by, afterDays }` — once a sign-off has waited afterDays
+ * from when it could first be signed, the backup people are asked (once) and
+ * may sign it too. The note and the entry page say it was signed by a backup.
+ *
+ * Nobody signs off their own entry. Admins may sign any other one, in order.
  */
 
 const DAY = 86_400_000;
 /** Most entries reminded about per run. */
 const BATCH = 100;
-/** Remind the signers this many days after filing, and again as often, at most MAX_REMINDERS times. */
+/** Remind the signers this many days after they're asked, and again as often, at most MAX_REMINDERS times. */
 const REMIND_AFTER_DAYS = 3;
 const MAX_REMINDERS = 3;
 
@@ -41,6 +50,20 @@ export interface Signed {
   byId: string | null;
   byName: string;
   at: string;
+  /** Signed by one of its backup people, not the people it's for. */
+  backup?: boolean;
+}
+
+/**
+ * One sign-off on an entry as it stands (FormEntry.signOffs holds one per
+ * sign-off id): when it could first be signed, when its backup was asked, and
+ * once it's signed, who signed it and when.
+ */
+export interface SignOffRecord extends Partial<Signed> {
+  /** When it could first be signed: the entry was filed, or the one it comes after was signed. */
+  since?: string;
+  /** When its backup people were asked. */
+  backupAskedAt?: string;
 }
 
 /** One sign-off as it stands on an entry, for the entry page. */
@@ -57,17 +80,32 @@ export interface SignOffView {
   canSign: boolean;
   /** Why this person can't, when they otherwise would (they filed it). */
   cantSignWhy: string | null;
+  /** The sign-off it waits for (its label) while that one isn't signed: nobody is asked to sign this one yet. */
+  after: string | null;
+  /** Its backup: who, after how many days, and whether they've been asked (they may sign it too then). */
+  backup: { who: string; afterDays: number; asked: boolean } | null;
 }
 
-export function parseSigned(raw: string | null | undefined): Record<string, Signed> {
+export function parseSignOffs(raw: string | null | undefined): Record<string, SignOffRecord> {
   if (!raw) return {};
   try {
     const v = JSON.parse(raw) as unknown;
-    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, Signed>) : {};
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, SignOffRecord>) : {};
   } catch {
     return {};
   }
 }
+
+/** The signed ones among an entry's sign-offs: who signed each and when. */
+function signedIn(rec: Record<string, SignOffRecord>): Record<string, Signed> {
+  const out: Record<string, Signed> = {};
+  for (const [id, r] of Object.entries(rec)) {
+    if (r?.byName && r.at) out[id] = { byId: r.byId ?? null, byName: r.byName, at: r.at, ...(r.backup ? { backup: true } : {}) };
+  }
+  return out;
+}
+
+export const parseSigned = (raw: string | null | undefined): Record<string, Signed> => signedIn(parseSignOffs(raw));
 
 export const hasSignOffs = (doc: Pick<FormDoc, "fields">) => doc.fields.some((f) => f.type === "signature" && f.signOff);
 
@@ -78,10 +116,47 @@ export function neededSignOffs(doc: Pick<FormDoc, "fields">, values: Values): Fi
   return doc.fields.filter((f) => f.type === "signature" && f.signOff && vis.has(f.id));
 }
 
-/** The ones still to sign. */
-export function waitingSignOffs(doc: Pick<FormDoc, "fields">, entry: Pick<FormEntry, "data" | "signOffs">): Field[] {
-  const signed = parseSigned(entry.signOffs);
-  return neededSignOffs(doc, JSON.parse(entry.data) as Values).filter((f) => !signed[f.id]);
+/**
+ * The sign-off this one waits for: the nearest one up its `after` chain that
+ * the entry needs, while that one isn't signed. One the entry doesn't need (its
+ * rule hides it) is passed over, so this one waits for the one before that, or
+ * for nothing.
+ */
+function waitsFor(doc: Pick<FormDoc, "fields">, needed: Field[], signed: Record<string, Signed>, f: Field): Field | null {
+  const seen = new Set([f.id]);
+  for (let id = f.signOff?.after; id && !seen.has(id); id = doc.fields.find((x) => x.id === id)?.signOff?.after) {
+    seen.add(id);
+    const first = needed.find((x) => x.id === id);
+    if (first) return signed[first.id] ? null : first;
+  }
+  return null;
+}
+
+/** The sign-offs that can be signed now: needed, not signed yet, and not waiting for another. */
+export function signableSignOffs(doc: Pick<FormDoc, "fields">, values: Values, signed: Record<string, Signed>): Field[] {
+  const needed = neededSignOffs(doc, values);
+  return needed.filter((f) => !signed[f.id] && !waitsFor(doc, needed, signed, f));
+}
+
+/** When a sign-off that can be signed now first could be; an entry filed before this was kept counts from its filing. */
+const sinceOf = (rec: Record<string, SignOffRecord>, f: Field, filedAt: Date) => (rec[f.id]?.since ? new Date(rec[f.id].since!) : filedAt);
+
+/** When its backup is asked (and may sign): backup.afterDays after it could first be signed. */
+const backupDue = (f: Field, since: Date) => new Date(since.getTime() + (f.signOff?.backup?.afterDays ?? 0) * DAY);
+
+/** Whether a sign-off that can be signed now has waited long enough for its backup people to sign it too. */
+const backupOpen = (f: Field, rec: Record<string, SignOffRecord>, filedAt: Date, now: Date) =>
+  Boolean(f.signOff?.backup) && backupDue(f, sinceOf(rec, f, filedAt)) <= now;
+
+/** When the reminder run next has a backup to ask on this entry (FormEntry.signOffBackupAt), or null. */
+function nextBackupAt(doc: Pick<FormDoc, "fields">, values: Values, rec: Record<string, SignOffRecord>, filedAt: Date): Date | null {
+  let next: Date | null = null;
+  for (const f of signableSignOffs(doc, values, signedIn(rec))) {
+    if (!f.signOff?.backup || rec[f.id]?.backupAskedAt) continue;
+    const due = backupDue(f, sinceOf(rec, f, filedAt));
+    if (!next || due < next) next = due;
+  }
+  return next;
 }
 
 const asRoute = (by: Recipient[]): Route => ({ id: "sign-off", name: "Sign-off", event: ENTRY_CREATED, enabled: true, to: by, email: "always", urgent: false });
@@ -90,11 +165,13 @@ async function siteOf(siteId: string | null) {
   return siteId ? prisma.site.findUnique({ where: { id: siteId }, select: { id: true, code: true, name: true } }) : null;
 }
 
-/** The people who may sign this sign-off on this entry (at its site), whoever filed it left out. */
-export async function signersOf(form: BuiltForm, field: Field, entry: Pick<FormEntry, "id" | "data" | "siteId" | "createdById">) {
-  if (!field.signOff?.by.length) return [];
+type SignEntry = Pick<FormEntry, "id" | "data" | "siteId" | "createdById">;
+
+/** The people a list of recipients names for this entry (at its site), whoever filed it left out. */
+async function peopleFor(form: BuiltForm, by: Recipient[], entry: SignEntry) {
+  if (!by.length) return [];
   const values = JSON.parse(entry.data) as Values;
-  const [plan] = await planRoutes(form, [asRoute(field.signOff.by as Recipient[])], {
+  const [plan] = await planRoutes(form, [asRoute(by)], {
     event: ENTRY_CREATED,
     title: form.title,
     site: await siteOf(entry.siteId),
@@ -106,9 +183,30 @@ export async function signersOf(form: BuiltForm, field: Field, entry: Pick<FormE
   return (plan?.people ?? []).filter((p) => p.id !== entry.createdById);
 }
 
-/** Whether this person is asked to sign any sign-off the entry still needs, so they may open it to sign. */
-export async function isSignerOn(form: BuiltForm, doc: FormDoc, entry: Pick<FormEntry, "id" | "data" | "siteId" | "createdById" | "signOffs">, userId: string): Promise<boolean> {
-  for (const f of waitingSignOffs(doc, entry)) if ((await signersOf(form, f, entry)).some((p) => p.id === userId)) return true;
+/** The people who may sign this sign-off on this entry (at its site), whoever filed it left out. */
+export const signersOf = (form: BuiltForm, field: Field, entry: SignEntry) => peopleFor(form, (field.signOff?.by ?? []) as Recipient[], entry);
+
+/** Its backup people, who may sign it too once it has waited backup.afterDays. */
+export const backupsOf = (form: BuiltForm, field: Field, entry: SignEntry) => peopleFor(form, (field.signOff?.backup?.by ?? []) as Recipient[], entry);
+
+/**
+ * Whether this person is asked to sign a sign-off the entry can be signed on
+ * now (as one of its people, or as its backup once that's open), so they may
+ * open it to sign. People of a sign-off still waiting for an earlier one aren't
+ * asked yet.
+ */
+export async function isSignerOn(
+  form: BuiltForm,
+  doc: FormDoc,
+  entry: SignEntry & Pick<FormEntry, "signOffs"> & Partial<Pick<FormEntry, "createdAt">>,
+  userId: string,
+  now = new Date()
+): Promise<boolean> {
+  const rec = parseSignOffs(entry.signOffs);
+  for (const f of signableSignOffs(doc, JSON.parse(entry.data) as Values, signedIn(rec))) {
+    if ((await signersOf(form, f, entry)).some((p) => p.id === userId)) return true;
+    if (backupOpen(f, rec, entry.createdAt ?? now, now) && (await backupsOf(form, f, entry)).some((p) => p.id === userId)) return true;
+  }
   return false;
 }
 
@@ -149,17 +247,32 @@ function cantSign(user: CurrentUser | null | undefined, entry: Pick<FormEntry, "
   return null;
 }
 
+/**
+ * How this person may sign a sign-off that can be signed now: as one of its
+ * people, as its backup (once that's open), or as an Admin; null if they can't.
+ */
+async function signerKind(form: BuiltForm, f: Field, entry: SignEntry, user: CurrentUser, backupIsOpen: boolean): Promise<"signer" | "backup" | "admin" | null> {
+  if ((await signersOf(form, f, entry)).some((p) => p.id === user.userId)) return "signer";
+  if (backupIsOpen && (await backupsOf(form, f, entry)).some((p) => p.id === user.userId)) return "backup";
+  return isFormAdmin(user) ? "admin" : null;
+}
+
 /** Each sign-off this entry needs, signed or not, and whether this person can sign it. */
-export async function signOffView(form: BuiltForm, doc: FormDoc, entry: FormEntry, user: CurrentUser | null | undefined): Promise<SignOffView[]> {
+export async function signOffView(form: BuiltForm, doc: FormDoc, entry: FormEntry, user: CurrentUser | null | undefined, now = new Date()): Promise<SignOffView[]> {
   const needed = neededSignOffs(doc, JSON.parse(entry.data) as Values);
   if (!needed.length) return [];
-  const signed = parseSigned(entry.signOffs);
+  const rec = parseSignOffs(entry.signOffs);
+  const signed = signedIn(rec);
   const byId = new Map(doc.fields.map((f) => [f.id, f]));
   return Promise.all(
     needed.map(async (f) => {
       const done = signed[f.id] ?? null;
-      const why = done ? null : cantSign(user, entry);
-      const allowed = !done && !why && (isFormAdmin(user) || (await signersOf(form, f, entry)).some((p) => p.id === user!.userId));
+      const first = done ? null : waitsFor(doc, needed, signed, f);
+      const why = done || first ? null : cantSign(user, entry);
+      const open = !done && !first;
+      const backupNow = open && backupOpen(f, rec, entry.createdAt, now);
+      const allowed = open && !why && Boolean(await signerKind(form, f, entry, user!, backupNow));
+      const backup = f.signOff!.backup;
       return {
         id: f.id,
         label: f.label || f.id,
@@ -170,13 +283,15 @@ export async function signOffView(form: BuiltForm, doc: FormDoc, entry: FormEntr
         fields: (f.signOff!.fields ?? []).map((id) => byId.get(id)).filter((x): x is Field => Boolean(x)),
         canSign: allowed,
         // Only worth saying to someone who'd otherwise be asked.
-        cantSignWhy: !done && why && user && entry.createdById === user.userId ? why : null,
+        cantSignWhy: open && why && user && entry.createdById === user.userId ? why : null,
+        after: first ? first.label || first.id : null,
+        backup: backup ? { who: await describeSigners(backup.by as Recipient[]), afterDays: backup.afterDays, asked: backupNow || Boolean(rec[f.id]?.backupAskedAt) } : null,
       } satisfies SignOffView;
     })
   );
 }
 
-/** Ask the people each needed sign-off names to sign it. */
+/** Ask the people each sign-off names to sign it. */
 async function askToSign(form: BuiltForm, entry: FormEntry, fields: Field[], reminder: { n: number; days: number } | null) {
   const site = await siteOf(entry.siteId);
   for (const f of fields) {
@@ -210,18 +325,57 @@ async function askToSign(form: BuiltForm, entry: FormEntry, fields: Field[], rem
   }
 }
 
+/** Ask each sign-off's backup people to sign it too: it has waited its backup's days. */
+async function askBackups(form: BuiltForm, entry: FormEntry, fields: Field[], rec: Record<string, SignOffRecord>, now: Date) {
+  const site = await siteOf(entry.siteId);
+  for (const f of fields) {
+    const people = await backupsOf(form, f, entry);
+    if (!people.length) {
+      console.warn(`[sign-off] no backup can sign “${f.label}” on ${form.slug}/${entry.id}`);
+      continue;
+    }
+    const who = await describeSigners(f.signOff!.by as Recipient[]);
+    const days = Math.max(1, Math.floor((now.getTime() - sinceOf(rec, f, entry.createdAt).getTime()) / DAY));
+    await notify({
+      to: { users: people.map((p) => p.id) },
+      type: "forms.entry",
+      title: `Sign-off needed: ${form.title}${site ? ` at ${site.name}` : ""}`,
+      body: `“${f.label}” has waited ${days} day${days === 1 ? "" : "s"} for ${who}. You're their backup, so you can sign it too.`,
+      link: entryPath(form, entry.id),
+      source: `form:${form.slug}`,
+      sourceLabel: form.title,
+      formId: form.id,
+      topic: { key: signOffTopicKey(form.id, "request"), rule: SIGN_OFF_RULE },
+      email: {
+        whatToDo: f.signOff?.whatToDo ?? "Open it, read it through, and sign it.",
+        fields: [
+          { label: "Filed by", value: entry.createdByName },
+          { label: "To sign", value: f.label || f.id },
+          { label: "Waiting for", value: who },
+        ],
+      },
+    }).catch((err) => console.error(`[sign-off] couldn't ask the backup for “${f.label}” on ${entry.id}:`, err));
+  }
+}
+
 /**
- * A new entry: when it needs any sign-off, it waits for them and the signers
- * are asked. Never throws: saving the entry matters more.
+ * A new entry: when it needs any sign-off, it waits for them, and the people of
+ * each one that can be signed now are asked (the rest wait for the one before
+ * them). Never throws: saving the entry matters more.
  */
 export async function openSignOffs(form: BuiltForm, doc: FormDoc, entry: FormEntry) {
   try {
     if (form.kind === "code" || !hasSignOffs(doc)) return;
-    const needed = neededSignOffs(doc, JSON.parse(entry.data) as Values);
-    if (!needed.length) return;
-    const waiting = await prisma.formEntry.update({ where: { id: entry.id }, data: { signOff: "waiting" } });
+    const values = JSON.parse(entry.data) as Values;
+    if (!neededSignOffs(doc, values).length) return;
+    const first = signableSignOffs(doc, values, {});
+    const rec: Record<string, SignOffRecord> = Object.fromEntries(first.map((f) => [f.id, { since: entry.createdAt.toISOString() }]));
+    const waiting = await prisma.formEntry.update({
+      where: { id: entry.id },
+      data: { signOff: "waiting", signOffs: JSON.stringify(rec), signOffBackupAt: nextBackupAt(doc, values, rec, entry.createdAt) },
+    });
     // Asked after the response: working out who signs shouldn't hold up filing.
-    void askToSign(form, waiting, needed, null).catch((err) => console.error(`[sign-off] couldn't ask about ${entry.id}:`, err));
+    void askToSign(form, waiting, first, null).catch((err) => console.error(`[sign-off] couldn't ask about ${entry.id}:`, err));
   } catch (err) {
     console.error(`[sign-off] couldn't open ${form.slug}/${entry.id}:`, err);
   }
@@ -229,8 +383,9 @@ export async function openSignOffs(form: BuiltForm, doc: FormDoc, entry: FormEnt
 
 /**
  * Sign one sign-off on an entry: the signature, and the answers to the
- * questions its signer fills in. When it was the last one, whoever filed the
- * entry is told it's signed off.
+ * questions its signer fills in. The ones that were waiting for it can be
+ * signed now, and their people are asked. When it was the last one, whoever
+ * filed the entry is told it's signed off.
  */
 export async function signEntry(
   form: BuiltForm,
@@ -242,13 +397,22 @@ export async function signEntry(
   const field = doc.fields.find((f) => f.id === input.field && f.type === "signature" && f.signOff);
   if (!field) throw badRequest("That isn't a signature this form asks for after filing.");
   const values = JSON.parse(entry.data) as Values;
-  if (!neededSignOffs(doc, values).some((f) => f.id === field.id)) throw badRequest("This entry doesn't need that signature.");
-  const signed = parseSigned(entry.signOffs);
+  const needed = neededSignOffs(doc, values);
+  if (!needed.some((f) => f.id === field.id)) throw badRequest("This entry doesn't need that signature.");
+  const rec = parseSignOffs(entry.signOffs);
+  const signed = signedIn(rec);
   if (signed[field.id]) throw badRequest(`Already signed by ${signed[field.id].byName}.`);
+  const first = waitsFor(doc, needed, signed, field);
+  if (first) throw badRequest(`This is signed after “${first.label || first.id}”, which isn't signed yet.`);
   const why = cantSign(user, entry);
   if (why) throw forbidden(why);
-  if (!isFormAdmin(user) && !(await signersOf(form, field, entry)).some((p) => p.id === user.userId)) {
-    throw forbidden(`Only ${await describeSigners(field.signOff!.by as Recipient[])} can sign this.`);
+  const now = new Date();
+  const backupNow = backupOpen(field, rec, entry.createdAt, now);
+  const as = await signerKind(form, field, entry, user, backupNow);
+  if (!as) {
+    const who = await describeSigners(field.signOff!.by as Recipient[]);
+    const backup = backupNow ? await describeSigners(field.signOff!.backup!.by as Recipient[]) : null;
+    throw forbidden(`Only ${who}${backup ? ` (or their backup, ${backup})` : ""} can sign this.`);
   }
 
   // The signature and the signer's own questions, judged like answers when filing.
@@ -274,12 +438,27 @@ export async function signEntry(
   }
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
 
-  const nowSigned: Record<string, Signed> = { ...signed, [field.id]: { byId: user.userId, byName: user.name, at: new Date().toISOString() } };
+  const nowRec: Record<string, SignOffRecord> = {
+    ...rec,
+    [field.id]: { ...rec[field.id], byId: user.userId, byName: user.name, at: now.toISOString(), ...(as === "backup" ? { backup: true } : {}) },
+  };
+  const nowSigned = signedIn(nowRec);
+  // The ones that were waiting for this one (or that the signer's answers now call for) can be signed from now.
+  const before = new Set(signableSignOffs(doc, values, signed).map((f) => f.id));
+  const opened = signableSignOffs(doc, next, nowSigned).filter((f) => !before.has(f.id));
+  for (const f of opened) nowRec[f.id] = { ...nowRec[f.id], since: now.toISOString() };
   const left = neededSignOffs(doc, next).filter((f) => !nowSigned[f.id]);
   // Only if nobody signed it in the meantime.
   const saved = await prisma.formEntry.updateMany({
     where: { id: entry.id, status: "active", signOffs: entry.signOffs },
-    data: { data: JSON.stringify(next), signOffs: JSON.stringify(nowSigned), signOff: left.length ? "waiting" : "done" },
+    data: {
+      data: JSON.stringify(next),
+      signOffs: JSON.stringify(nowRec),
+      signOff: left.length ? "waiting" : "done",
+      signOffBackupAt: left.length ? nextBackupAt(doc, next, nowRec, entry.createdAt) : null,
+      // The people asked now get their reminders on the usual cadence, counted from now.
+      ...(opened.length ? { signOffReminders: 0, signOffRemindedAt: now } : {}),
+    },
   });
   if (!saved.count) throw new HttpError(409, "Someone else signed this entry just now. Open it again to see what changed.");
 
@@ -287,9 +466,16 @@ export async function signEntry(
     .filter((id) => !isEmptyValue(next[id]))
     .map((id) => `${doc.fields.find((f) => f.id === id)?.label ?? id}: ${String(next[id])}`);
   await prisma.formEntryNote.create({
-    data: { entryId: entry.id, kind: "system", authorName: "System", body: `Signed off: “${field.label || field.id}”, by ${user.name}${extras.length ? ` (${extras.join("; ")})` : ""}.`.slice(0, 2000) },
+    data: {
+      entryId: entry.id,
+      kind: "system",
+      authorName: "System",
+      body: `Signed off: “${field.label || field.id}”, by ${user.name}${as === "backup" ? ", as a backup" : ""}${extras.length ? ` (${extras.join("; ")})` : ""}.`.slice(0, 2000),
+    },
   });
+  const updated = (await prisma.formEntry.findUnique({ where: { id: entry.id } }))!;
 
+  if (opened.length) await askToSign(form, updated, opened, null);
   if (!left.length && entry.createdById && entry.createdById !== user.userId) {
     const site = await siteOf(entry.siteId);
     await notify({
@@ -305,7 +491,7 @@ export async function signEntry(
       email: { fields: [{ label: "Signed by", value: user.name }, { label: "Signature", value: field.label || field.id }] },
     }).catch((err) => console.error(`[sign-off] couldn't tell the filer of ${entry.id}:`, err));
   }
-  return (await prisma.formEntry.findUnique({ where: { id: entry.id } }))!;
+  return updated;
 }
 
 /** An Admin's edit keeps the sign-offs as they were: they change only by signing. */
@@ -316,10 +502,18 @@ export function keepSignOffAnswers(doc: Pick<FormDoc, "fields">, before: Values,
   }
 }
 
-// ── Reminders ────────────────────────────────────────────────────────────
+// ── Reminders and backups ────────────────────────────────────────────────
 
-/** Remind the signers of entries still waiting, every REMIND_AFTER_DAYS, up to MAX_REMINDERS times. */
+/**
+ * Remind the signers of entries still waiting, every REMIND_AFTER_DAYS, up to
+ * MAX_REMINDERS times; and ask the backup people of any sign-off that has
+ * waited its backup's days.
+ */
 export async function runSignOffReminders(now = new Date()): Promise<number> {
+  return (await remind(now)) + (await escalate(now));
+}
+
+async function remind(now: Date): Promise<number> {
   const due = new Date(now.getTime() - REMIND_AFTER_DAYS * DAY);
   const entries = await prisma.formEntry.findMany({
     where: {
@@ -341,10 +535,44 @@ export async function runSignOffReminders(now = new Date()): Promise<number> {
     if (!claimed.count) continue;
     const form = await prisma.builtForm.findUnique({ where: { id: e.formId } });
     if (!form || form.status === "archived") continue;
-    const waiting = waitingSignOffs(await docForEntry(form, e.formVersion), e);
+    // Only the ones that can be signed now: one waiting for an earlier one hasn't been asked yet.
+    const waiting = signableSignOffs(await docForEntry(form, e.formVersion), JSON.parse(e.data) as Values, parseSigned(e.signOffs));
     if (!waiting.length) continue;
     const days = Math.max(1, Math.floor((now.getTime() - e.createdAt.getTime()) / DAY));
     await askToSign(form, e, waiting, { n: e.signOffReminders + 1, days });
+    sent++;
+  }
+  return sent;
+}
+
+/** Ask the backups whose time has come (FormEntry.signOffBackupAt), each sign-off's once. */
+async function escalate(now: Date): Promise<number> {
+  const entries = await prisma.formEntry.findMany({
+    where: { status: "active", signOff: "waiting", signOffBackupAt: { lte: now } },
+    orderBy: { signOffBackupAt: "asc" },
+    take: BATCH,
+  });
+  if (!entries.length) return 0;
+  const { docForEntry } = await import("../forms/entries.js");
+  let sent = 0;
+  for (const e of entries) {
+    const form = await prisma.builtForm.findUnique({ where: { id: e.formId } });
+    if (!form || form.status === "archived") {
+      await prisma.formEntry.updateMany({ where: { id: e.id }, data: { signOffBackupAt: null } });
+      continue;
+    }
+    const doc = await docForEntry(form, e.formVersion);
+    const values = JSON.parse(e.data) as Values;
+    const rec = parseSignOffs(e.signOffs);
+    const due = signableSignOffs(doc, values, signedIn(rec)).filter((f) => f.signOff?.backup && !rec[f.id]?.backupAskedAt && backupOpen(f, rec, e.createdAt, now));
+    for (const f of due) rec[f.id] = { ...rec[f.id], backupAskedAt: now.toISOString() };
+    // Claimed first, and only if nobody signed it meanwhile, so an overlapping run doesn't ask twice.
+    const claimed = await prisma.formEntry.updateMany({
+      where: { id: e.id, signOffs: e.signOffs },
+      data: { signOffs: JSON.stringify(rec), signOffBackupAt: nextBackupAt(doc, values, rec, e.createdAt) },
+    });
+    if (!claimed.count || !due.length) continue;
+    await askBackups(form, e, due, rec, now);
     sent++;
   }
   return sent;
