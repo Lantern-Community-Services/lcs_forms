@@ -1002,7 +1002,7 @@ function PreviewPane({ doc, slug, side = false }: { doc: FormDoc; slug: string; 
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1">
-          <DevicePreview src={`/f/${slug}/preview`} toolbarExtra={toolbar} />
+          <DevicePreview src={`/f/${encodeURIComponent(slug)}/preview`} toolbarExtra={toolbar} />
         </div>
         {showAnswers && <div className="h-[34%] min-h-[160px] flex-none overflow-y-auto border-t border-hairline bg-surface p-3 scroll-thin">{answers}</div>}
         <p className="flex-none border-t border-hairline bg-surface px-3 py-1 text-micro text-muted">Live preview of your unsaved edits, in the app on each device. Nothing is submitted.</p>
@@ -1012,7 +1012,7 @@ function PreviewPane({ doc, slug, side = false }: { doc: FormDoc; slug: string; 
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_300px]">
-      <DevicePreview src={`/f/${slug}/preview`} toolbarExtra={toolbar} />
+      <DevicePreview src={`/f/${encodeURIComponent(slug)}/preview`} toolbarExtra={toolbar} />
       <aside className="hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 scroll-thin lg:block">{answers}</aside>
     </div>
   );

@@ -224,7 +224,7 @@ function AppEditor({ initial }: { initial: Project }) {
   }
 
   const pages = runtime.data?.pages ?? [];
-  const page = previewPage && pages.some((p) => p.id === previewPage) ? previewPage : pages[0]?.id ?? "";
+  const page = pages.find((p) => p.id === previewPage)?.id ?? pages[0]?.id ?? "";
   const frameWidth = width === "phone" ? 390 : width === "tablet" ? 820 : undefined;
 
   return (
@@ -338,7 +338,7 @@ function AppEditor({ initial }: { initial: Project }) {
             ) : (
               // The real page, in the app, in phone / iPad / desktop frames at true size.
               <DevicePreview
-                src={`/apps/${project.slug}/${page}?draft=1`}
+                src={`/apps/${encodeURIComponent(project.slug)}/${encodeURIComponent(page)}?draft=1`}
                 reloadKey={nonce}
                 initialMode="tablet"
                 toolbarExtra={
