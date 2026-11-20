@@ -482,7 +482,7 @@ export async function createEntry(app: LoadedApp, user: CurrentUser | null, inpu
     );
   }
   // The move-in checklist: this form's task for them is done (services/checklist.ts).
-  if (tenant && !app.draft) await completeForForm({ tenantId: tenant.id, formSlug: app.form.slug, entryId: entry.id, at: occurredAt, byName: entry.createdByName ?? "Someone" });
+  if (tenant && !app.draft) await completeForForm({ tenantId: tenant.id, formSlug: app.form.slug, entryId: entry.id, at: occurredAt, byName: entry.createdByName ?? "Someone", answers: data });
   const out = entryOut(entry, await siteMap());
   if (app.build.server) {
     void runHook(app, user, "afterCreate", out).then((r) => {

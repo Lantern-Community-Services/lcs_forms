@@ -415,7 +415,7 @@ export async function submitEntry(input: SubmitInput) {
       await recordActivity({ tenantId: r.id, source: "form", label: form.title, externalRef: `${entry.id}:${f.id}`, occurredAt: entry.createdAt, recordedBy: actorName }).catch((err) =>
         console.error(`[forms] roster activity for entry ${entry.id} failed:`, err)
       );
-      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName });
+      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName, answers: values });
     }
   }
 

@@ -4,6 +4,7 @@ import { tenantsRouter, ARCHIVE_REASONS } from "../routes/tenants.js";
 import { attendanceRouter } from "../routes/attendance.js";
 import { activityRouter } from "../routes/activity.js";
 import { residencyRouter } from "../routes/residency.js";
+import { caseloadRouter } from "../routes/caseload.js";
 import { decodeCsv, importTenants, MAX_IMPORT_ROWS, readRows } from "../services/tenantImport.js";
 import { defineOp, int, flag } from "./registry.js";
 
@@ -436,6 +437,30 @@ export const rosterOps = [
     shape: { site, view: z.enum(["overdue", "due", "open", "done"]).optional(), mine: z.boolean().optional() },
     annotations: { readOnlyHint: true },
     run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/tasks", query: { site: a.site, view: a.view, mine: a.mine ? "1" : undefined } }),
+  }),
+
+  defineOp({
+    name: "list_caseload",
+    description:
+      "A case lead's caseload (PlanStreet's My Activities): the residents whose client information names them case lead, each with site, unit, moved-in date, whether they're away, their open checklist (how many overdue, the next one due) and their last Contact Form. Defaults to the key's maker; lead (a staff id, from list_people) shows someone else's, at the key's sites, for a Site Manager's or Admin's key. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/caseload" },
+    shape: { lead: z.string().optional().describe("Another case lead's staff id") },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(caseloadRouter, { method: "GET", path: "/", query: { lead: a.lead } }),
+  }),
+
+  defineOp({
+    name: "list_caseload_tasks",
+    description:
+      "Every open checklist task for a case lead's caseload, each marked when: overdue, week (due in the next 7 days) or later, with the form that does it. Tick one off with update_checklist_task. lead as in list_caseload.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/caseload/tasks" },
+    shape: { lead: z.string().optional().describe("Another case lead's staff id") },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(caseloadRouter, { method: "GET", path: "/tasks", query: { lead: a.lead } }),
   }),
 
   defineOp({
