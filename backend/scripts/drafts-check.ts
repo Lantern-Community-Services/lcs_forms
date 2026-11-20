@@ -115,6 +115,15 @@ async function main() {
   const signedOut = new Person("nobody");
 
   const F = await form("main", {});
+
+  // ── Only while case management is on (routes/formDrafts.ts); otherwise answers stay on the device ──
+  caseManagementWas = (await prisma.setting.findUnique({ where: { key: "caseManagement" } }))?.value ?? null;
+  await setCaseManagement("false");
+  check((await a.call("GET", `/f/${F}/drafts`)).status === 404, "case management off: drafts aren't offered (404)");
+  check((await put(a, F, draftId("off"), { values: { notes: "x" } })).status === 404, "case management off: saving to the account is refused (404)");
+  check((await prisma.formDraft.count({ where: { userId: a.id } })) === 0, "case management off: nothing was kept in the account");
+  await setCaseManagement("true");
+
   const PUB = await form("public", { access: { mode: "public" } });
   const LINK = await form("link", { access: { mode: "link" } });
   const OFF = await form("off", { saveDrafts: false });
@@ -254,7 +263,15 @@ async function main() {
   check((await prisma.formDraft.count({ where: { formId } })) === 0, "deleting a form deletes its drafts");
 }
 
+/** The case-management switch as it was before the run (null: never set), put back by cleanUp. */
+let caseManagementWas: string | null | undefined;
+async function setCaseManagement(value: string | null) {
+  if (value === null) await prisma.setting.deleteMany({ where: { key: "caseManagement" } });
+  else await prisma.setting.upsert({ where: { key: "caseManagement" }, create: { key: "caseManagement", value }, update: { value } });
+}
+
 async function cleanUp() {
+  if (caseManagementWas !== undefined) await setCaseManagement(caseManagementWas).catch(() => undefined);
   for (const formId of made.forms) {
     await prisma.formFile.deleteMany({ where: { formId } }).catch(() => undefined);
     await prisma.formEntry.deleteMany({ where: { formId } }).catch(() => undefined);
