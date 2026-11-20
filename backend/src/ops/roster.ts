@@ -6,6 +6,8 @@ import { activityRouter } from "../routes/activity.js";
 import { residencyRouter } from "../routes/residency.js";
 import { applicantsRouter } from "../routes/applicants.js";
 import { CLOSE_REASONS, MOVE_STAGES, STAGES } from "../services/applicants.js";
+import { caseloadRouter } from "../routes/caseload.js";
+import { clientRecordRouter } from "../routes/clientRecord.js";
 import { decodeCsv, importTenants, MAX_IMPORT_ROWS, readRows } from "../services/tenantImport.js";
 import { defineOp, int, flag } from "./registry.js";
 
@@ -446,6 +448,29 @@ export const rosterOps = [
   }),
 
   defineOp({
+    name: "get_timeline",
+    description:
+      "A resident's whole record, newest first: the form entries about them that the key's maker could open (form, when, who filed it, site, follow-up and sign-off state, note count, link), with their moves in and out, transfers, time away, checklist items done and documents added. Paged: pass `next` back as before. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/timeline" },
+    shape: { id: residentId, before: z.string().max(20_000).optional().describe("Paging: the `next` value from the last page"), limit: int(1, 100).optional() },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(clientRecordRouter, { method: "GET", path: `/${id(a.id)}/timeline`, query: { before: a.before, limit: a.limit?.toString() } }),
+  }),
+
+  defineOp({
+    name: "list_client_documents",
+    description: "The documents on a resident's record (ID, lease, consent / release, benefits, income, medical, other): kind, label, file name, type, size, who added it and when. The files themselves aren't sent. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/documents" },
+    shape: { id: residentId },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(clientRecordRouter, { method: "GET", path: `/${id(a.id)}/documents` }),
+  }),
+
+  defineOp({
     name: "list_checklist",
     description: "Move-in checklist tasks at supportive sites: view overdue, due (next two weeks, overdue included, the default), open, or done (last 90 days). mine: only residents the key's maker is case lead for.",
     scope: "roster:read",
@@ -454,6 +479,30 @@ export const rosterOps = [
     shape: { site, view: z.enum(["overdue", "due", "open", "done"]).optional(), mine: z.boolean().optional() },
     annotations: { readOnlyHint: true },
     run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: "/tasks", query: { site: a.site, view: a.view, mine: a.mine ? "1" : undefined } }),
+  }),
+
+  defineOp({
+    name: "list_caseload",
+    description:
+      "A case lead's caseload (PlanStreet's My Activities): the residents whose client information names them case lead, each with site, unit, moved-in date, whether they're away, their open checklist (how many overdue, the next one due) and their last Contact Form. Defaults to the key's maker; lead (a staff id, from list_people) shows someone else's, at the key's sites, for a Site Manager's or Admin's key. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/caseload" },
+    shape: { lead: z.string().optional().describe("Another case lead's staff id") },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(caseloadRouter, { method: "GET", path: "/", query: { lead: a.lead } }),
+  }),
+
+  defineOp({
+    name: "list_caseload_tasks",
+    description:
+      "Every open checklist task for a case lead's caseload, each marked when: overdue, week (due in the next 7 days) or later, with the form that does it. Tick one off with update_checklist_task. lead as in list_caseload.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residency/caseload/tasks" },
+    shape: { lead: z.string().optional().describe("Another case lead's staff id") },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(caseloadRouter, { method: "GET", path: "/tasks", query: { lead: a.lead } }),
   }),
 
   defineOp({

@@ -27,6 +27,7 @@ import { readDoc, versionDoc } from "./service.js";
 import { buildExport } from "../apps/exports.js";
 import type { ExportDocument } from "../apps/exportDocuments.js";
 import { deviceLabel, fillMeta, fillMinutes } from "./fillMeta.js";
+import { entryTenantId } from "./entryTenant.js";
 
 /**
  * Filling in a built form and reading the entries back.
@@ -382,6 +383,7 @@ export async function submitEntry(input: SubmitInput) {
         formVersion: filled.version,
         data: JSON.stringify(values),
         siteId,
+        tenantId: entryTenantId(filled.doc, values),
         source: input.source,
         // None sent (the MCP server): the database makes one.
         clientId: input.clientId || undefined,
@@ -415,7 +417,7 @@ export async function submitEntry(input: SubmitInput) {
       await recordActivity({ tenantId: r.id, source: "form", label: form.title, externalRef: `${entry.id}:${f.id}`, occurredAt: entry.createdAt, recordedBy: actorName }).catch((err) =>
         console.error(`[forms] roster activity for entry ${entry.id} failed:`, err)
       );
-      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName });
+      await completeForForm({ tenantId: r.id, formSlug: form.slug, entryId: entry.id, at: entry.createdAt, byName: actorName, answers: values });
     }
   }
 
@@ -739,7 +741,7 @@ export async function updateEntry(form: BuiltForm, entry: FormEntry, incoming: V
   if (Object.keys(errors).length) throw new HttpError(422, "Some answers need fixing.", { errors });
   const changed = doc.fields.filter((f) => isInputField(f) && JSON.stringify(before[f.id] ?? null) !== JSON.stringify(values[f.id] ?? null));
   if (!changed.length) return entry;
-  const updated = await prisma.formEntry.update({ where: { id: entry.id }, data: { data: JSON.stringify(values), updatedByName: editorName } });
+  const updated = await prisma.formEntry.update({ where: { id: entry.id }, data: { data: JSON.stringify(values), updatedByName: editorName, tenantId: entryTenantId(doc, values) } });
   await prisma.formEntryNote.create({
     data: {
       entryId: entry.id,

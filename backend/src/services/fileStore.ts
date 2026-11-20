@@ -50,14 +50,15 @@ function blobContainer(): Promise<ContainerClient> {
   return container;
 }
 
-async function putBlob(formId: string, data: Buffer, mime: string): Promise<string> {
-  const key = `${formId}/${crypto.randomUUID()}`;
+/** Bytes into Blob Storage as "<folder>/<random uuid>": a form's id, or another owner's (services/clientDocuments.ts). Returns the blob's name. */
+export async function putBlob(folder: string, data: Buffer, mime: string): Promise<string> {
+  const key = `${folder}/${crypto.randomUUID()}`;
   const blob = (await blobContainer()).getBlockBlobClient(key);
   await blob.uploadData(data, { blobHTTPHeaders: { blobContentType: mime } });
   return key;
 }
 
-async function deleteBlobs(keys: string[]) {
+export async function deleteBlobs(keys: string[]) {
   if (!keys.length) return;
   const c = await blobContainer();
   for (const key of keys) {

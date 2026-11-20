@@ -13,6 +13,7 @@ import {
   type ClientValues,
 } from "./clientFields.js";
 import { displayName } from "./roster.js";
+import { DOCUMENT_AUDIT_ACTIONS } from "./clientDocuments.js";
 
 /**
  * Reading and saving a resident's client information (TenantProfile). The
@@ -23,8 +24,8 @@ import { displayName } from "./roster.js";
 
 type TenantWithSite = Tenant & { site: Pick<Site, "id" | "code" | "name"> };
 
-/** Audit actions for client information. A resident's History shows them only to people with clients.view. */
-export const PROFILE_AUDIT_ACTIONS = ["tenant.profile_updated", "tenant.ssn_viewed"] as const;
+/** Audit actions for client information and documents. A resident's History shows them only to people with clients.view. */
+export const PROFILE_AUDIT_ACTIONS = ["tenant.profile_updated", "tenant.ssn_viewed", ...DOCUMENT_AUDIT_ACTIONS] as const;
 
 const COLUMN_OF: Record<string, ClientColumn> = Object.fromEntries(
   CLIENT_FIELDS.filter((f) => f.column).map((f) => [f.key, f.column!])

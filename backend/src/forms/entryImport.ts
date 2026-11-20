@@ -3,6 +3,7 @@ import { prisma } from "../prisma.js";
 import { createFormFile, deleteFiles } from "../services/fileStore.js";
 import { fieldError, isEmptyValue, isInputField, type Field, type Values } from "./engine.js";
 import { liveDoc } from "./entries.js";
+import { entryTenantId } from "./entryTenant.js";
 import { displayName } from "../services/roster.js";
 import { notFound } from "../http.js";
 
@@ -171,6 +172,7 @@ export async function importEntries(form: BuiltForm, entries: ImportEntry[], opt
         formVersion: form.liveVersion,
         data: JSON.stringify(p.values),
         siteId: p.siteId,
+        tenantId: entryTenantId(doc, p.values),
         source: "import",
         clientId: importClientId(p.e.externalId),
         createdById: who?.id ?? null,
