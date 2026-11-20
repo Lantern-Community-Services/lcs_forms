@@ -322,7 +322,8 @@ export const builderApi = {
 
 export const fillApi = {
   /** formVersion: the published version the page showed, so a late upload is checked against the fields the person saw. */
-  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string; shareToken?: string }) =>
+  /** draftId: the draft in the person's account these answers were kept as; removed once they're filed. */
+  submit: (slug: string, body: { values: Values; siteCode?: string | null; clientId: string; codeErrors?: Record<string, string>; formVersion?: number | null; deviceKind?: string | null; fillSeconds?: number | null; website_hp?: string; shareToken?: string; draftId?: string }) =>
     api.post<{ id: string; duplicate: boolean; values: Values }>(`/f/${slug}/submit`, body),
   upload: async (slug: string, fieldId: string, file: File, share?: string | null) => {
     const url = `${API_BASE}/f/${slug}/files?field=${encodeURIComponent(fieldId)}${share ? `&share=${encodeURIComponent(share)}` : ""}`;

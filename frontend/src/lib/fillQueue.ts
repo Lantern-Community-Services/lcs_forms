@@ -36,6 +36,8 @@ export interface QueuedFill {
   fillSeconds?: number | null;
   /** Filled through someone's share link (/s/<token>): it uploads through the same link. */
   shareToken?: string | null;
+  /** The draft in the person's account it was carried on from: the server removes it once this is in (components/formkit/serverDrafts.tsx). */
+  draftId?: string | null;
   queuedAt: number;
   attempts: number;
   /** The server refused it (not a network problem); it waits for a person. */
@@ -217,7 +219,7 @@ export async function syncFills() {
           await putRow(current);
           for (const id of locals) await delFile(id).catch(() => undefined);
         }
-        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion, deviceKind: row.deviceKind, fillSeconds: row.fillSeconds, ...(row.shareToken ? { shareToken: row.shareToken } : {}) });
+        await fillApi.submit(row.slug, { values: current.values, siteCode: row.siteCode, clientId: row.clientId, codeErrors: row.codeErrors, formVersion: row.formVersion, deviceKind: row.deviceKind, fillSeconds: row.fillSeconds, ...(row.shareToken ? { shareToken: row.shareToken } : {}), ...(row.draftId ? { draftId: row.draftId } : {}) });
         await delRow(row.clientId);
       } catch (e) {
         if (transient(e)) {
