@@ -11,6 +11,8 @@ import { canFollowUp, checklistFor, doneFieldsFor, loadFollowUp, requireFollowUp
 import { fillMetaFields } from "../forms/fillMeta.js";
 import { signEntry, signOffView } from "../services/signOff.js";
 import { linkUsed, resolveShare, type ShareContext } from "../services/shareLinks.js";
+import { dropSubmittedDraft } from "../services/formDrafts.js";
+import { formDraftsRouter } from "./formDrafts.js";
 import {
   canSeeEntry, canArchiveEntries, docForViewer, canVoidEntries, closedReason, entryReachOf, visibleWhere, docForEntry, entryRow, entryWhere, exportEntries, fillBlocker, isFormAdmin, canTryDraft,
   entryScope, inOrder, liveDoc, NEWEST, saveUpload, sortedEntryIds, submitEntry, updateEntry, type EntryFilter, type EntrySort,
@@ -89,7 +91,12 @@ const submitBody = z.object({
   website_hp: z.string().optional(),
   /** Came through an employee's share link (/s/<token>). */
   shareToken: z.string().max(64).optional(),
+  /** The saved draft these answers were carried on from (routes/formDrafts.ts): removed once filed. */
+  draftId: z.string().max(64).optional(),
 });
+
+// The person's unfinished answers, saved to their account.
+fillRouter.use("/:slug/drafts", formDraftsRouter);
 
 fillRouter.post(
   "/:slug/submit",
@@ -117,6 +124,7 @@ fillRouter.post(
       fillSeconds: body.fillSeconds,
     });
     if (share && !duplicate) await linkUsed(share.link);
+    if (!share) await dropSubmittedDraft(form, req.user, body.draftId);
     // A retry gets its entry back; a clientId someone else's entry holds gets only "it's in"
     // (no id, no answers), like a code form's guest (apps/runtime.ts guestReceipt).
     res.status(duplicate ? 200 : 201).json(mine ? { id: entry.id, duplicate, values: JSON.parse(entry.data) } : { id: "", duplicate });

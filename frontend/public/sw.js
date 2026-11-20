@@ -76,7 +76,10 @@ function bypassApi(url) {
     p === "/api/tenants/sync" ||
     // Downloads and stored files: big, and only useful online.
     /export/.test(p) ||
-    /\/files\//.test(p)
+    /\/files\//.test(p) ||
+    // Unfinished answers saved to the person's account (components/formkit/serverDrafts.tsx): a stored list
+    // could offer a draft already filed elsewhere, and the device keeps its own copy anyway.
+    /^\/api\/f\/[^/]+\/drafts(\/|$)/.test(p)
   );
 }
 

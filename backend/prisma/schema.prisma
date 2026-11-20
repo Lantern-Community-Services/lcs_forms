@@ -712,6 +712,7 @@ model BuiltForm {
   records        FormRecord[]
   calendarEvents CalendarEvent[]
   FormJob        FormJob[]
+  drafts         FormDraft[]
 
   @@index([status])
 }
@@ -826,6 +827,38 @@ model FormEntry {
   @@index([formId, sharedById])
   @@index([formId, followUp])
   @@index([formId, signOff])
+}
+
+/// A basic form's unfinished answers, kept on the server so they can be picked
+/// up on any device (services/formDrafts.ts). Only the person who started it
+/// ever reads it: never in entries, exports, the MCP server or admin screens.
+/// Several per person per form (one per resident they're filling it in for);
+/// ones not saved for 30 days are swept.
+model FormDraft {
+  /// Made by the filling device, so a save repeated while the first is still on its way can't make two.
+  id          String    @id @db.NVarChar(64)
+  form        BuiltForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId      String    @db.NVarChar(64)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String    @db.NVarChar(64)
+  /// The published version it was being filled in on.
+  formVersion Int
+  /// JSON text: { [fieldId]: value }, without signatures or files.
+  values      String    @db.NVarChar(Max)
+  /// The site picked, on a form that asks for one first.
+  siteCode    String?   @db.NVarChar(80)
+  /// A short name to tell drafts apart: the resident picked, else "Draft".
+  label       String    @db.NVarChar(120)
+  /// The page they were on (0-based), to pick up where they stopped.
+  page        Int       @default(0)
+  /// Which open copy of the form saved it last (a random id per page load): another
+  /// copy saving over newer answers it never saw is refused, not allowed to overwrite them.
+  writer      String?   @db.NVarChar(64)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, formId, updatedAt])
+  @@index([updatedAt])
 }
 
 /// A note on an entry — typed by a person, or written by the system
@@ -976,6 +1009,7 @@ model User {
   formOverrides     PersonForm[]
   oauthGrants       OAuthGrant[]
   oauthCodes        OAuthCode[]
+  formDrafts        FormDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
