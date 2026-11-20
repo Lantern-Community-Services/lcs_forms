@@ -207,6 +207,75 @@ model TenantProfile {
   @@index([program])
 }
 
+/// Someone referred for a unit at a supportive site (PlanStreet's Applicants tab
+/// and its intake form's Applicant section): referred, eligibility review,
+/// eligible, viewing scheduled, accepted — or closed (ineligible, rejected,
+/// declined by them, withdrawn). Accepting puts them on the roster as not moved
+/// in yet (tenantId); the move-in is the residency one. Case management only
+/// (services/applicants.ts).
+model Applicant {
+  id               String          @id @default(cuid()) @db.NVarChar(64)
+  /// A supportive site. Not a relation, like Stay.siteId.
+  siteId           String          @db.NVarChar(64)
+  /// The program they're referred to: one of clientFields programs() at this site.
+  program          String?         @db.NVarChar(255)
+  firstName        String          @db.NVarChar(255)
+  middleName       String?         @db.NVarChar(255)
+  lastName         String          @default("") @db.NVarChar(255)
+  preferredName    String?         @db.NVarChar(255)
+  dateOfBirth      DateTime?       @db.Date
+  phone            String?         @db.NVarChar(40)
+  email            String?         @db.NVarChar(200)
+  /// clientFields referralSource options (HASA, DSS/HRA, …).
+  referralSource   String?         @db.NVarChar(80)
+  /// Who referred them (the agency, worker or contact), as staff write it.
+  referralAgency   String?         @db.NVarChar(255)
+  referralDate     DateTime?       @db.Date
+  eligibilityNotes String?         @db.NVarChar(4000)
+  /// services/applicants.ts STAGES: referred | eligibility_review | eligible |
+  /// viewing_scheduled | accepted | ineligible | rejected | declined | withdrawn.
+  stage            String          @default("referred") @db.NVarChar(30)
+  /// The day they reached this stage.
+  stageDate        DateTime        @db.Date
+  /// When they're seeing the unit (viewing scheduled).
+  viewingDate      DateTime?       @db.Date
+  /// Why it closed (ineligible, rejected, declined, withdrawn).
+  outcomeReason    String?         @db.NVarChar(255)
+  /// The resident made when they were accepted. Not a relation, like AuditEvent's
+  /// actor: residents aren't deleted, and the applicant stays as the record of how they came.
+  tenantId         String?         @db.NVarChar(64)
+  /// Optimistic concurrency, as on Tenant: every change presents the version it read.
+  version          Int             @default(1)
+  createdById      String?         @db.NVarChar(64)
+  updatedById      String?         @db.NVarChar(64)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  steps            ApplicantStep[]
+
+  @@index([siteId, stage])
+  @@index([tenantId])
+}
+
+/// An applicant's history: each stage they were moved to, on what day, why, and by whom.
+model ApplicantStep {
+  id          String    @id @default(cuid()) @db.NVarChar(64)
+  applicant   Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  applicantId String    @db.NVarChar(64)
+  stage       String    @db.NVarChar(30)
+  date        DateTime  @db.Date
+  /// Viewing scheduled: the viewing's day.
+  viewingDate DateTime? @db.Date
+  /// Closed: why.
+  reason      String?   @db.NVarChar(255)
+  note        String?   @db.NVarChar(2000)
+  byId        String?   @db.NVarChar(64)
+  byName      String    @db.NVarChar(255)
+  createdAt   DateTime  @default(now())
+
+  @@index([applicantId])
+}
+
 /// A unit at a site (case management: services/residency.ts). Who lives there is
 /// Tenant.unitId; the history is Stay. A unit is vacant when nobody moved in lives
 /// there. Retired units (active false) stay for history but take nobody new.

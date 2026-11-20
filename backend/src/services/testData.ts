@@ -210,6 +210,7 @@ export async function replaceWithMadeUpData(actor: Actor, userId: string | null 
   const emails = (await prisma.emailLog.deleteMany({})).count;
   const devEvents = (await prisma.devEvent.deleteMany({})).count;
   const auditRows = (await prisma.auditEvent.deleteMany({})).count;
+  await prisma.applicant.deleteMany({}); // their histories go with them
   await deleteDocuments({}); // their blobs too: the cascade below would leave real people's files in Blob Storage
   const removed = (await prisma.tenant.deleteMany({})).count; // activity, client information, stays, time away and checklists go with them
   await prisma.unit.deleteMany({});
