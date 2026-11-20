@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { Dock, Launcher } from "./Dock";
 import { PullToRefresh } from "./PullToRefresh";
 import { useDeviceKind } from "@/lib/device";
+import { useAppFocus } from "@/lib/appFocus";
 import { useInSectionTabs } from "./SectionTabs";
 import { useAuth } from "@/lib/auth";
 import { startAppQueue, syncNow as syncAppQueue } from "@/apps/queue";
@@ -135,7 +136,9 @@ export function AppShell() {
   // reason to scroll the page, which the reset above would snap back on every
   // keystroke — a flicker, most of all in code forms, whose fields live in a frame.
   const keyboard = useKeyboardArea(touch);
-  const nav = !lock;
+  // A code form filling the screen for a report (SDK app.focus) hides the dock, as the lock does.
+  const appFocus = useAppFocus();
+  const nav = !lock && !(touch && appFocus);
   // Once the app has shrunk above the keyboard, the field being typed into may sit below
   // the new edge: bring it back into view. (Code forms do the same inside their frame.)
   useEffect(() => {
@@ -269,7 +272,7 @@ export function MobileBackLink({ to, label, className }: { to: string; label: st
   return (
     <Link
       to={to}
-      className={cn("-ml-2 inline-flex min-h-[44px] items-center gap-1.5 px-2 text-[13.5px] font-semibold text-accent dark:text-white md:hidden", className)}
+      className={cn("-ml-2 inline-flex min-h-[44px] items-center gap-1.5 px-2 text-body font-semibold text-accent dark:text-white md:hidden", className)}
     >
       <ChevronLeft className="h-[17px] w-[17px]" /> {label}
     </Link>
@@ -284,7 +287,7 @@ export function DesktopBackLink({ to, children, className }: { to: string; child
   return (
     <Link
       to={to}
-      className={cn("-ml-2 mb-2 hidden min-h-[36px] items-center gap-1 px-2 text-[13px] font-semibold text-accent dark:text-white md:inline-flex", className)}
+      className={cn("-ml-2 mb-2 hidden min-h-[36px] items-center gap-1 px-2 text-label font-semibold text-accent dark:text-white md:inline-flex", className)}
     >
       <ChevronLeft className="h-4 w-4" /> {children}
     </Link>
@@ -311,7 +314,7 @@ export function PageHeader({
       <div className="min-w-0">
         {!inTabs && (
           <div className="flex items-center gap-1">
-            <h1 className="text-[23px] font-heading font-extrabold text-ink md:text-[24px]">{title}</h1>
+            <h1 className="text-title font-heading font-extrabold text-ink md:text-title">{title}</h1>
             {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
           </div>
         )}
@@ -320,16 +323,16 @@ export function PageHeader({
           (subtitle || help) && (
             <div className="flex items-center gap-1">
               {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
-              {subtitle && <p className="text-[13px] text-muted md:text-[13.5px]">{subtitle}</p>}
+              {subtitle && <p className="text-label text-muted md:text-body">{subtitle}</p>}
             </div>
           )
         ) : (
-          subtitle && <p className="mt-1 text-[13px] text-muted md:text-[13.5px]">{subtitle}</p>
+          subtitle && <p className="mt-1 text-label text-muted md:text-body">{subtitle}</p>
         )}
       </div>
       {/* Wraps rather than running off the edge when the column is narrow
           (an iPad in portrait beside the sidebar). */}
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{actions}</div>}
     </div>
   );
 }

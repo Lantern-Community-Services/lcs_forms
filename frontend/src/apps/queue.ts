@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api";
 import { runtimeApi, submitAppEntry } from "./api";
+import { openDatabase } from "@/lib/idb";
 import { isOnline } from "@/lib/offline";
 
 /**
@@ -42,14 +43,9 @@ const STORE = "entries";
 const FILES = "files";
 
 function open(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 2);
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE, { keyPath: "clientId" });
-      if (!req.result.objectStoreNames.contains(FILES)) req.result.createObjectStore(FILES, { keyPath: "id" });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+  return openDatabase(DB, 2, (d) => {
+    if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: "clientId" });
+    if (!d.objectStoreNames.contains(FILES)) d.createObjectStore(FILES, { keyPath: "id" });
   });
 }
 

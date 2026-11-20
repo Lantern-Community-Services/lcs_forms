@@ -374,7 +374,7 @@ export function BuiltFormEntriesPage() {
       </div>
 
       {range === "custom" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-muted">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-label text-muted">
           <label className="flex items-center gap-1.5">From <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="w-[160px]" /></label>
           <label className="flex items-center gap-1.5">to <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="w-[160px]" /></label>
         </div>
@@ -383,21 +383,21 @@ export function BuiltFormEntriesPage() {
       {chips.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {chips.map((c) => (
-            <span key={c.key} className="inline-flex min-h-[28px] items-center gap-1 rounded-pill border border-hairline bg-subtle pl-2.5 pr-1 text-[12.5px] text-ink">
+            <span key={c.key} className="inline-flex min-h-[28px] items-center gap-1 rounded-pill border border-hairline bg-subtle pl-2.5 pr-1 text-label text-ink">
               {c.label}
               <button type="button" onClick={c.clear} aria-label={`Remove ${c.label}`} className="rounded-pill p-0.5 text-muted hover:bg-rowhover hover:text-ink">
                 <X className="h-3.5 w-3.5" />
               </button>
             </span>
           ))}
-          <button type="button" onClick={clearAll} className="px-1.5 text-[12.5px] font-semibold text-accent hover:underline">Clear all</button>
+          <button type="button" onClick={clearAll} className="px-1.5 text-label font-semibold text-accent hover:underline">Clear all</button>
         </div>
       )}
 
       {/* Count, or what's ticked; and Export */}
       <div className={cn("mb-3 mt-4 flex min-h-[40px] flex-wrap items-center gap-x-3 gap-y-2 rounded-card px-0", chosen > 0 && "border border-navy/30 bg-navsel px-3 py-1.5")}>
         {chosen > 0 ? (
-          <p className="min-w-0 flex-1 text-[13.5px] text-ink">
+          <p className="min-w-0 flex-1 text-body text-ink">
             <span className="font-semibold">{chosen.toLocaleString()} selected</span>
             {!allMatching && selected.size < total && total <= SELECT_MAX * 50 && (
               <button type="button" onClick={() => { setAllMatching(true); setSelected(new Set()); }} className="ml-3 font-semibold text-accent hover:underline">
@@ -407,7 +407,7 @@ export function BuiltFormEntriesPage() {
             <button type="button" onClick={clearSelection} className="ml-3 font-semibold text-accent hover:underline">Clear</button>
           </p>
         ) : (
-          <p className="min-w-0 flex-1 text-[13.5px] text-muted">
+          <p className="min-w-0 flex-1 text-body text-muted">
             {`${total.toLocaleString()} ${status === "voided" ? "voided " : ""}entr${total === 1 ? "y" : "ies"}${filtered ? " match" : ""}${data.reach === "own" ? " · yours, and any you were told about" : data.reach === "site" ? " · your sites' and your own" : ""}`}
           </p>
         )}
@@ -429,11 +429,17 @@ export function BuiltFormEntriesPage() {
       </div>
 
       {!data.items.length ? (
-        <Card><EmptyState title="No entries" hint={filtered || status !== "active" ? "Nothing matches these filters." : "When people fill in the form, their answers show up here."} /></Card>
+        <Card>
+          <EmptyState
+            title="No entries"
+            hint={filtered || status !== "active" ? "Nothing matches these filters." : "When people fill in the form, their answers show up here."}
+            action={!filtered && status === "active" ? <Link to={`/f/${slug}`}><Button variant="secondary">Fill in the form</Button></Link> : undefined}
+          />
+        </Card>
       ) : (
         <Card className="overflow-hidden">
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-left text-[13px]">
+            <table className="w-full text-left text-label">
               <thead className="border-b border-hairline bg-subtle text-micro font-bold uppercase tracking-[0.04em] text-muted">
                 <tr>
                   <th className="w-10 px-3 py-2.5">
@@ -495,7 +501,7 @@ export function BuiltFormEntriesPage() {
                   <Link to={`/f/${slug}/entries/${e.id}`} className={cn("block min-w-0 flex-1 py-3 pl-2 pr-4", e.status === "voided" && "opacity-60")}>
                     <div className="flex items-center gap-2">
                       {e.starred && <Star className="h-3.5 w-3.5 fill-[#f5a524] text-[#f5a524]" />}
-                      <span className="flex-1 truncate text-[14px] font-semibold text-ink">{columns[0] ? formatValue(columns[0], e.values[columns[0].id]) || "—" : e.createdByName}</span>
+                      <span className="flex-1 truncate text-body font-semibold text-ink">{columns[0] ? formatValue(columns[0], e.values[columns[0].id]) || "—" : e.createdByName}</span>
                       {e.status === "voided" && <ToneBadge tone="red">Void</ToneBadge>}
                       {e.archivedAt && <ToneBadge tone="neutral">Archived</ToneBadge>}
                       {e.followUp && <ToneBadge tone={e.followUp.status === "open" ? "amber" : "green"}>{followUpText(e.followUp)}</ToneBadge>}
@@ -516,7 +522,7 @@ export function BuiltFormEntriesPage() {
       )}
 
       {pages > 1 && (
-        <div className="mt-4 flex items-center justify-center gap-3 text-[13px] text-muted">
+        <div className="mt-4 flex items-center justify-center gap-3 text-label text-muted">
           <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Previous page"><ChevronLeft className="h-4 w-4" /></Button>
           Page {page + 1} of {pages}
           <Button variant="secondary" size="sm" disabled={page >= pages - 1} onClick={() => setPage(page + 1)} aria-label="Next page"><ChevronRight className="h-4 w-4" /></Button>

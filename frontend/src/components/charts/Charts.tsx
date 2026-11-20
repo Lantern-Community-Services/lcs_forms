@@ -63,7 +63,7 @@ export function Legend({ items, className }: { items: { label: string; color: st
   return (
     <ul className={cn("flex flex-wrap gap-x-4 gap-y-1.5", className)} aria-label="Legend">
       {items.map((i) => (
-        <li key={i.label} className="flex items-center gap-1.5 text-[12px] text-muted">
+        <li key={i.label} className="flex items-center gap-1.5 text-caption text-muted">
           <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: i.color }} aria-hidden />
           {i.label}
         </li>
@@ -103,7 +103,7 @@ export function DailyBars({ data, series }: { data: { day: string; meals: number
             {t.map((v) => (
               <g key={v}>
                 <line x1={PAD.left} x2={width - PAD.right} y1={y(v)} y2={y(v)} className="stroke-hairline" strokeWidth={1} />
-                <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-[10.5px] tabular">{fmt(v)}</text>
+                <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" className="fill-muted text-micro tabular">{fmt(v)}</text>
               </g>
             ))}
             {data.map((d, i) => {
@@ -138,14 +138,14 @@ export function DailyBars({ data, series }: { data: { day: string; meals: number
             })}
             {data.map((d, i) =>
               i % every === 0 ? (
-                <text key={d.day} x={PAD.left + i * step + step / 2} y={H - 6} textAnchor="middle" className="fill-muted text-[10.5px]">{shortDay(d.day)}</text>
+                <text key={d.day} x={PAD.left + i * step + step / 2} y={H - 6} textAnchor="middle" className="fill-muted text-micro">{shortDay(d.day)}</text>
               ) : null
             )}
           </svg>
         )}
         {hovered && hover !== null && (
           <div
-            className="pointer-events-none absolute top-0 z-10 w-max min-w-[170px] -translate-x-1/2 rounded-input border border-hairline bg-surface px-2.5 py-2 text-[12px] shadow-panel"
+            className="pointer-events-none absolute top-0 z-10 w-max min-w-[170px] -translate-x-1/2 rounded-input border border-hairline bg-surface px-2.5 py-2 text-caption shadow-panel"
             style={{ left: Math.min(Math.max(PAD.left + hover * step + step / 2, 95), width - 95) }}
           >
             <p className="font-semibold text-ink">{longDay(hovered.day)}</p>
@@ -183,7 +183,7 @@ export function RankedBars({ rows, unit, limit }: {
             <span className="flex min-w-0 items-center gap-2">
               {r.lead}
               <span className="min-w-0">
-                <span className="block truncate text-[13px] text-ink">{r.name}</span>
+                <span className="block truncate text-label text-ink">{r.name}</span>
                 {r.note && <span className="block truncate text-micro text-muted">{r.note}</span>}
               </span>
             </span>
@@ -194,12 +194,12 @@ export function RankedBars({ rows, unit, limit }: {
                 style={{ width: `${Math.max(1, (r.value / max) * 100)}%`, ...(r.color ? { background: r.color } : {}) }}
               />
             </span>
-            <span className="min-w-[3rem] text-right text-[12.5px] font-bold tabular text-ink">{fmt(r.value)}</span>
+            <span className="min-w-[3rem] text-right text-label font-bold tabular text-ink">{fmt(r.value)}</span>
           </li>
         ))}
       </ul>
       {limit && rows.length > limit && (
-        <button type="button" onClick={() => setExpanded((e) => !e)} className="mt-2 min-h-[36px] text-[13px] font-semibold text-accent dark:text-white">
+        <button type="button" onClick={() => setExpanded((e) => !e)} className="mt-2 min-h-[36px] text-label font-semibold text-accent dark:text-white">
           {expanded ? "Show fewer" : `Show all ${rows.length}`}
         </button>
       )}
@@ -213,11 +213,14 @@ const STEPS = 7;
 /** 0 → the empty cell color; otherwise one of seven sequential steps. */
 const heatColor = (v: number, max: number) => `var(--viz-seq-${v <= 0 ? 0 : Math.min(STEPS, Math.max(1, Math.ceil((v / max) * STEPS)))})`;
 
-/** Weekday × hour grid on a one-hue sequential scale. Only the hours anyone was served are drawn. */
-export function HeatGrid({ heat }: { heat: number[][] }) {
+/**
+ * Weekday × hour grid on a one-hue sequential scale. Only the hours with any count
+ * are drawn. `unit` names what's counted ("meals", "incidents"); meals by default.
+ */
+export function HeatGrid({ heat, unit = "meals", empty = "Nothing served in this range." }: { heat: number[][]; unit?: string; empty?: string }) {
   const [hover, setHover] = useState<{ w: number; h: number } | null>(null);
   const used = Array.from({ length: 24 }, (_, h) => h).filter((h) => heat.some((row) => row[h] > 0));
-  if (used.length === 0) return <p className="text-[13px] text-muted">Nothing served in this range.</p>;
+  if (used.length === 0) return <p className="text-label text-muted">{empty}</p>;
   const hours = Array.from({ length: used[used.length - 1] - used[0] + 1 }, (_, i) => used[0] + i);
   const max = Math.max(1, ...heat.flat());
   const cur = hover ? heat[hover.w][hover.h] : null;
@@ -228,14 +231,14 @@ export function HeatGrid({ heat }: { heat: number[][] }) {
         <div className="grid min-w-max gap-[2px]" style={{ gridTemplateColumns: `2.25rem repeat(${hours.length}, minmax(1.6rem, 1fr))` }} onMouseLeave={() => setHover(null)}>
           {DAYS.map((d, w) => (
             <div key={d} className="contents">
-              <span className="flex items-center text-[11px] text-muted">{d}</span>
+              <span className="flex items-center text-micro text-muted">{d}</span>
               {hours.map((h) => {
                 const v = heat[w][h];
                 return (
                   <button
                     key={h}
                     type="button"
-                    aria-label={`${d} ${hourLabel(h)}: ${v} meals`}
+                    aria-label={`${d} ${hourLabel(h)}: ${v} ${unit}`}
                     onMouseEnter={() => setHover({ w, h })}
                     onFocus={() => setHover({ w, h })}
                     onClick={() => setHover({ w, h })}
@@ -248,19 +251,19 @@ export function HeatGrid({ heat }: { heat: number[][] }) {
           ))}
           <span />
           {hours.map((h, i) => (
-            <span key={h} className="text-center text-[10px] text-muted">{i % 2 === 0 ? hourLabel(h) : ""}</span>
+            <span key={h} className="text-center text-micro text-muted">{i % 2 === 0 ? hourLabel(h) : ""}</span>
           ))}
         </div>
       </div>
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
-        <p className="min-h-[18px] text-[12px] text-muted">
+        <p className="min-h-[18px] text-caption text-muted">
           {hover && cur !== null ? (
-            <><span className="font-semibold text-ink">{DAYS[hover.w]} {hourLabel(hover.h)}–{hourLabel((hover.h + 1) % 24)}</span> · <span className="font-bold text-ink tabular">{fmt(cur)}</span> meals</>
+            <><span className="font-semibold text-ink">{DAYS[hover.w]} {hourLabel(hover.h)}–{hourLabel((hover.h + 1) % 24)}</span> · <span className="font-bold text-ink tabular">{fmt(cur)}</span> {unit}</>
           ) : (
             "Hover or tap a square for its count."
           )}
         </p>
-        <div className="flex items-center gap-1.5 text-[11px] text-muted" aria-label={`Scale: 0 to ${fmt(max)} meals an hour`}>
+        <div className="flex items-center gap-1.5 text-micro text-muted" aria-label={`Scale: 0 to ${fmt(max)} ${unit} an hour`}>
           <span>Fewer</span>
           {Array.from({ length: STEPS }, (_, i) => (
             <span key={i} className="h-3 w-4 rounded-[2px]" style={{ background: `var(--viz-seq-${i + 1})` }} />
@@ -272,14 +275,21 @@ export function HeatGrid({ heat }: { heat: number[][] }) {
   );
 }
 
-/** A headline number. `accent` is for status only (e.g. over-limit), always with an icon beside it — never decoration. */
+/**
+ * A headline number under a plain sentence-case label. The number sits right under the label, so
+ * a row of tiles lines up whether or not each has a hint (keep labels short enough for one line).
+ * `accent` is for status only (e.g. over limit): a dot before the label, never a stripe.
+ */
 export function StatTile({ label, value, hint, icon, accent }: { label: string; value: string; hint?: string; icon?: React.ReactNode; accent?: string }) {
   return (
-    <div className="relative overflow-hidden rounded-card border border-hairline bg-surface px-3.5 py-3 md:px-4">
-      {accent && <span className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} aria-hidden />}
-      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">{icon}{label}</p>
-      <p className="mt-1 font-heading text-[24px] font-extrabold leading-none text-ink tabular md:text-[28px]">{value}</p>
-      {hint && <p className="mt-1.5 text-[11.5px] text-muted">{hint}</p>}
+    <div className="rounded-card border border-hairline bg-surface px-3.5 py-3 md:px-4">
+      <p className="flex items-start gap-1.5 text-label font-semibold leading-snug text-muted">
+        {accent && <span className="mt-[0.35em] h-2 w-2 shrink-0 rounded-full" style={{ background: accent }} aria-hidden />}
+        {icon}
+        <span className="min-w-0">{label}</span>
+      </p>
+      <p className="mt-1.5 font-heading text-title font-extrabold leading-none text-ink tabular md:text-display">{value}</p>
+      {hint && <p className="mt-1.5 text-caption text-muted">{hint}</p>}
     </div>
   );
 }

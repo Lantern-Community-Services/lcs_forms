@@ -97,8 +97,9 @@ export function DateRangeBar({ from, to, preset, onChange, className }: {
             aria-pressed={preset === p.key}
             onClick={() => onChange(presetRange(p.key))}
             className={cn(
-              "min-h-[36px] shrink-0 whitespace-nowrap rounded-pill border px-3 text-[13px] font-semibold transition-colors md:min-h-[32px]",
-              preset === p.key ? "border-navy bg-navy text-navy-fg dark:border-white dark:bg-white dark:text-[#111]" : "border-hairline bg-surface text-ink hover:border-strongline"
+              // The same pill as every other filter chip (components/ui/chip).
+              "min-h-[36px] shrink-0 whitespace-nowrap rounded-pill border px-3 text-label transition-colors md:min-h-[32px] touch:min-h-11",
+              preset === p.key ? "border-navy bg-navsel font-bold text-accent dark:text-white" : "border-hairline bg-surface font-medium text-ink hover:bg-navsel/60"
             )}
           >
             {p.label}
@@ -106,23 +107,24 @@ export function DateRangeBar({ from, to, preset, onChange, className }: {
         ))}
       </div>
       <div className="flex items-center gap-2">
-        <CalendarDays className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+        {/* A computer's date boxes draw their own calendar icon; a phone's and iPad's don't. */}
+        <CalendarDays className="hidden h-4 w-4 shrink-0 text-muted touch:block" aria-hidden />
         <input
           type="date"
           aria-label="From"
           value={from}
           max={today}
           onChange={(e) => e.target.value && onChange({ from: e.target.value, to: e.target.value > to ? e.target.value : to })}
-          className="min-h-[40px] min-w-0 flex-1 rounded-input border border-hairline bg-surface px-2 text-[14px] text-ink md:min-h-9 md:max-w-[160px]"
+          className="min-h-[40px] min-w-0 flex-1 rounded-input border border-fieldline bg-surface px-2 text-body text-ink md:min-h-9 md:max-w-[160px] touch:min-h-11"
         />
-        <span className="text-[13px] text-muted">to</span>
+        <span className="text-label text-muted">to</span>
         <input
           type="date"
           aria-label="To"
           value={to}
           max={today}
           onChange={(e) => e.target.value && onChange({ from: e.target.value < from ? e.target.value : from, to: e.target.value })}
-          className="min-h-[40px] min-w-0 flex-1 rounded-input border border-hairline bg-surface px-2 text-[14px] text-ink md:min-h-9 md:max-w-[160px]"
+          className="min-h-[40px] min-w-0 flex-1 rounded-input border border-fieldline bg-surface px-2 text-body text-ink md:min-h-9 md:max-w-[160px] touch:min-h-11"
         />
       </div>
     </div>

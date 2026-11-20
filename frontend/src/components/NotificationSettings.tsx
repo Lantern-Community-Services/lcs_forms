@@ -143,18 +143,18 @@ export function NotificationSettings({ delay }: { delay?: string }) {
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: delay }}>
         <div className="mb-1 flex min-h-4 items-center justify-between gap-3">
           <p className="kicker">Notifications</p>
-          <p className={`text-micro ${status === "error" ? "text-danger" : "text-muted"}`} aria-live="polite">
+          <p className={`text-caption ${status === "error" ? "text-danger" : "text-muted"}`} aria-live="polite">
             {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Save failed" : "Changes save automatically"}
           </p>
         </div>
-        <p className="text-[13px] text-muted">
+        <p className="text-label text-muted">
           Everything that could be sent to you, and how you get each one: under the bell, by email as it arrives, or in one summary a day.
         </p>
 
         {isLoading ? (
           <div className="flex justify-center py-8"><Spinner /></div>
         ) : isError || !data ? (
-          <p className="mt-4 text-[13px] text-status-redText">Your notification settings didn't load. Check your connection and try again.</p>
+          <p className="mt-4 text-label text-status-redText">Your notification settings didn't load. Check your connection and try again.</p>
         ) : (
           <>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -177,20 +177,20 @@ export function NotificationSettings({ delay }: { delay?: string }) {
                 />
               </Field>
             </div>
-            <p className="mt-1.5 text-micro text-muted">
+            <p className="mt-1.5 text-caption text-muted">
               {data.emailMode === "off"
                 ? "Nothing is emailed unless you choose email for a notification below."
                 : `That's your default. Change any notification below to come as it arrives or in the summary instead.${usesSummary ? ` The summary lists what you haven't read yet, at ${hourLabel(data.digestHour)} New York time; none is sent on a day with nothing new.` : ""}`}{" "}
               Emails are a title and a link; the details stay in Lantern Forms, behind sign-in.
             </p>
             {!data.mailConfigured && data.emailMode !== "off" && (
-              <p className="mt-2 rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+              <p className="mt-2 rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
                 Email isn't set up on this server yet, so for now notifications show in the app only.
               </p>
             )}
 
             <div className="mt-4 border-t border-hairline pt-3">
-              <p className="text-[13.5px] font-semibold text-ink">From the site</p>
+              <p className="text-body font-semibold text-ink">From the site</p>
               <ul className="mt-1" aria-label="Notifications from the site">
                 {data.types.map((t) => (
                   <TypeRow key={t.key} row={t} onApp={(v) => void setApp(t, v)} onEmail={(v) => void setEmail(t, v)} />
@@ -200,12 +200,12 @@ export function NotificationSettings({ delay }: { delay?: string }) {
 
             {data.forms.length > 0 && (
               <div className="mt-4 border-t border-hairline pt-4">
-                <p className="text-[13.5px] font-semibold text-ink">From forms</p>
-                <p className="mt-0.5 text-micro text-muted">
+                <p className="text-body font-semibold text-ink">From forms</p>
+                <p className="mt-0.5 text-caption text-muted">
                   Each notification a form could send you, as its Admin set it up. Change any one, or turn a whole form off.
                 </p>
                 {data.forms.length > 6 && (
-                  <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form or notification" aria-label="Find a form or notification" className="mt-3" />
+                  <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a form or notification" aria-label="Find a form or notification" wrapperClassName="mt-3" />
                 )}
                 <ul className="mt-3 space-y-2">
                   {forms.map((f) => (
@@ -218,7 +218,7 @@ export function NotificationSettings({ delay }: { delay?: string }) {
                       onDefaults={() => void formDefaults(f)}
                     />
                   ))}
-                  {forms.length === 0 && <li className="py-2 text-[13px] text-muted">No forms match. Try a shorter word.</li>}
+                  {forms.length === 0 && <li className="py-2 text-label text-muted">No forms match. Try a shorter word.</li>}
                 </ul>
               </div>
             )}
@@ -258,8 +258,8 @@ function FormRow({ form, onApp, onEmail, onAllOff, onDefaults }: {
     <li className={cn("overflow-hidden rounded-card border transition-colors", open ? "border-strongline" : "border-hairline")}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-rowhover">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13.5px] font-semibold text-ink">{form.title}</span>
-          <span className="block truncate text-micro text-muted">{meta}</span>
+          <span className="block truncate text-body font-semibold text-ink">{form.title}</span>
+          <span className="block truncate text-caption text-muted">{meta}</span>
         </span>
         <Tag tone={off ? "red" : custom ? "accent" : "neutral"} className="shrink-0">{state}</Tag>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
@@ -298,21 +298,21 @@ function TypeRow({ row, context, onApp, onEmail }: {
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-hairline py-3 first:border-t-0">
       <span className="min-w-[200px] flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[13.5px] font-semibold text-ink">{row.label}</span>
+          <span className="text-body font-semibold text-ink">{row.label}</span>
           {row.urgent && <Tag tone="red">Urgent</Tag>}
           {locked && <Tag tone="neutral"><Lock className="mr-1 inline h-3 w-3" />Set by an Admin</Tag>}
           {row.custom && !locked && <Tag tone="accent">Changed</Tag>}
         </span>
-        {row.description && <span className="mt-0.5 block text-micro text-muted">{row.description}</span>}
+        {row.description && <span className="mt-0.5 block text-caption text-muted">{row.description}</span>}
         {locked && (
-          <span className="mt-0.5 block text-micro text-muted">
+          <span className="mt-0.5 block text-caption text-muted">
             Everyone it's for gets it {row.inApp ? "in the app" : ""}{row.inApp && row.email ? " and " : ""}{row.email ? `by email ${row.email === "daily" ? "in the daily summary" : "as it arrives"}` : ""}.
           </span>
         )}
-        {required && <span className="mt-0.5 block text-micro text-muted">Always shown in the app. You choose the email.</span>}
+        {required && <span className="mt-0.5 block text-caption text-muted">Always shown in the app. You choose the email.</span>}
       </span>
       <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
-        <label className="flex items-center gap-2 text-[12.5px] text-muted" title={required ? "This one is always in the app" : undefined}>
+        <label className="flex items-center gap-2 text-label text-muted" title={required ? "This one is always in the app" : undefined}>
           <Switch
             checked={row.inApp}
             disabled={locked || required}

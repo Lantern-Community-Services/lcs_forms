@@ -33,7 +33,11 @@ export function SectionTabsLayout({ title, tabs, enter = false }: { title: strin
   const navRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
   useEffect(() => {
-    navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const show = () => navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    show();
+    // Again once the webfont is in: measured with the fallback font, the last tab
+    // could still end up clipped ("Overvie") after Archivo swaps in and widens it.
+    void document.fonts?.ready.then(show);
   }, [pathname]);
 
   // A screen marked data-fit-screen (the calendar) is held to the viewport
@@ -42,13 +46,13 @@ export function SectionTabsLayout({ title, tabs, enter = false }: { title: strin
     <div className="flex min-h-full flex-col has-[[data-fit-screen]]:h-full">
       <div className="flex-none border-b border-hairline bg-sidebar pt-safe-top md:bg-surface md:pt-6">
         <div className="mx-auto max-w-[1240px] md:px-7">
-          <h1 className={cn("hidden text-[24px] font-heading font-extrabold text-ink md:block", enter && "enter-up")}>{title}</h1>
+          <h1 className={cn("hidden text-title font-heading font-extrabold text-ink md:block", enter && "enter-up")}>{title}</h1>
           {/* The Roster has up to nine tabs with case management on: wider than a narrow desktop window, so the row scrolls there too, as on a phone. */}
           <nav
             ref={navRef}
             aria-label={title}
             data-tour="section-tabs"
-            className={cn("chiprow flex px-1.5 md:mt-2 md:gap-1 md:overflow-x-auto md:overflow-y-hidden md:px-0 md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden", enter && "enter-up")}
+            className={cn("chiprow flex scroll-px-8 px-1.5 md:mt-2 md:gap-1 md:overflow-x-auto md:overflow-y-hidden md:px-0 md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden", enter && "enter-up")}
           >
             {tabs.map((t) => (
               <NavLink
@@ -58,7 +62,7 @@ export function SectionTabsLayout({ title, tabs, enter = false }: { title: strin
                 data-tour={`tab-${t.label.toLowerCase()}`}
                 className={({ isActive }) =>
                   cn(
-                    "-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-[13px] font-semibold transition-colors md:min-h-[42px] md:px-3 md:text-[13.5px]",
+                    "-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-label font-semibold transition-colors md:min-h-[42px] md:px-3 md:text-body touch:min-h-11",
                     isActive ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink"
                   )
                 }

@@ -48,7 +48,7 @@ export function CustomRepeat({ value, start, onChange }: { value: RuleShape; sta
   const [one, many] = UNITS[value.freq];
   return (
     <div className="space-y-3 rounded-input border border-hairline bg-subtle/50 p-3">
-      <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-ink">
+      <div className="flex flex-wrap items-center gap-2 text-body text-ink">
         <span className="font-semibold">Every</span>
         <Input
           type="number"
@@ -74,7 +74,7 @@ export function CustomRepeat({ value, start, onChange }: { value: RuleShape; sta
 
       {(value.freq === "weekly" || value.freq === "daily") && (
         <div>
-          <p className="mb-1.5 text-[12px] font-semibold text-muted">{value.freq === "weekly" ? "On" : "Only on these days (leave all off for every day)"}</p>
+          <p className="mb-1.5 text-caption font-semibold text-muted">{value.freq === "weekly" ? "On" : "Only on these days (leave all off for every day)"}</p>
           <WeekdayToggles
             value={value.weekdays ?? []}
             onChange={(days) => set({ weekdays: value.freq === "weekly" && days.length === 0 ? value.weekdays : days.length ? days : undefined })}
@@ -84,7 +84,7 @@ export function CustomRepeat({ value, start, onChange }: { value: RuleShape; sta
 
       {value.freq === "yearly" && (
         <div>
-          <p className="mb-1.5 text-[12px] font-semibold text-muted">In</p>
+          <p className="mb-1.5 text-caption font-semibold text-muted">In</p>
           <div className="grid grid-cols-6 gap-1.5">
             {MONTH_SHORT.map((label, i) => {
               const m = i + 1;
@@ -98,7 +98,7 @@ export function CustomRepeat({ value, start, onChange }: { value: RuleShape; sta
                     const next = on ? (value.months ?? []).filter((x) => x !== m) : [...(value.months ?? []), m];
                     if (next.length) set({ months: next.sort((a, b) => a - b) });
                   }}
-                  className="h-9 rounded-input text-[12.5px]"
+                  className="h-9 rounded-input text-label"
                 />
               );
             })}
@@ -143,7 +143,7 @@ export function WeekdayToggles({ value, onChange }: { value: number[]; onChange:
             label={letter}
             title={DAY_NAMES[i]}
             onClick={() => onChange((on ? value.filter((d) => d !== i) : [...value, i]).sort((a, b) => a - b) as Weekday[])}
-            className="h-9 w-9 rounded-full text-[13px]"
+            className="h-9 w-9 rounded-full text-label"
           />
         );
       })}
@@ -153,7 +153,7 @@ export function WeekdayToggles({ value, onChange }: { value: number[]; onChange:
 
 function Radio({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-ink">
+    <div className="flex flex-wrap items-center gap-2 text-body text-ink">
       <button type="button" role="radio" aria-checked={on} onClick={onClick} className="flex min-h-[40px] items-center gap-2 md:min-h-9">
         <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border-2", on ? "border-navy dark:border-white" : "border-strongline")}>
           {on && <span className="h-2 w-2 rounded-full bg-navy dark:bg-white" />}
@@ -251,7 +251,7 @@ export function EndFields({ value, start, onChange }: { value: EndDraft; start: 
 export function RepeatSummary({ rule, start, problem }: { rule: Recurrence; start: string; problem: string | null }) {
   const upcoming = problem ? [] : nextDays(start, rule, 6);
   return (
-    <div className={cn("rounded-input px-3 py-2.5 text-[13px]", problem ? "bg-status-redBg text-status-redText" : "bg-navsel/50 text-ink")}>
+    <div className={cn("rounded-input px-3 py-2.5 text-label", problem ? "bg-status-redBg text-status-redText" : "bg-navsel/50 text-ink")}>
       {problem ? (
         problem
       ) : (
@@ -259,7 +259,7 @@ export function RepeatSummary({ rule, start, problem }: { rule: Recurrence; star
           <p className="flex items-center gap-1.5 font-semibold">
             <CalendarClock className="h-4 w-4 shrink-0" /> {describeRule(start, rule)}
           </p>
-          <p className="mt-1 text-[12.5px] text-muted">
+          <p className="mt-1 text-label text-muted">
             {upcoming.length === 1 ? "Only on " : "Next: "}
             {upcoming.map((d) => (d.slice(0, 4) === start.slice(0, 4) ? shortDay(d) : `${shortDay(d)}, ${d.slice(0, 4)}`)).join(" · ")}
             {upcoming.length === 6 ? " …" : ""}

@@ -35,7 +35,7 @@ function OnceSecret({ label, value, onDone }: { label: string; value: string; on
         <DialogHeader title={label} subtitle="Copy it now — it won't be shown again." />
         <DialogBody>
           <div className="flex items-center gap-2 rounded-input border border-hairline bg-subtle p-2">
-            <code className="min-w-0 flex-1 break-all text-[12.5px] text-ink">{value}</code>
+            <code className="min-w-0 flex-1 break-all text-label text-ink">{value}</code>
             <Button size="sm" variant="secondary" onClick={() => copy(value)}><Copy className="h-3.5 w-3.5" /></Button>
           </div>
         </DialogBody>
@@ -116,7 +116,7 @@ export function AdminApiKeys() {
             {keys.map((k) => (
               <li key={k.id} className="flex flex-wrap items-center gap-3 border-b border-hairline px-4 py-3 last:border-0">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-semibold text-ink">{k.name}</p>
+                  <p className="text-body font-semibold text-ink">{k.name}</p>
                   <p className="text-micro text-muted">
                     <code>{k.prefix}…</code> · {k.scopes.split(",").join(", ")} · {k.site?.name ?? "all sites"} · created {formatDate(k.createdAt)} ·{" "}
                     {k.lastUsedAt ? `used ${relativeTime(k.lastUsedAt)}` : "never used"}
@@ -145,7 +145,7 @@ export function AdminApiKeys() {
                         These act as you: the key can do only what you can do in the site, at your sites, and stops when you lose access. Changes are recorded under your name and the key's. A key limited to a site can't use the org-wide ones (settings, import, dev log).
                       </p>
                     )}
-                    <label className="mt-1 flex items-start gap-2 text-[13.5px] text-ink first:mt-0">
+                    <label className="mt-1 flex items-start gap-2 text-body text-ink first:mt-0">
                       <input type="checkbox" className="mt-1" checked={creating.scopes.includes(o.scope)} onChange={(e) => setCreating({ ...creating, scopes: e.target.checked ? [...creating.scopes, o.scope] : creating.scopes.filter((x) => x !== o.scope) })} />
                       <span>{o.label} (<code>{o.scope}</code>)</span>
                     </label>
@@ -211,7 +211,7 @@ export function AdminWebhooks() {
             <Card key={h.id} className="p-4">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold text-ink">{h.name}</p>
+                  <p className="text-body font-semibold text-ink">{h.name}</p>
                   <p className="truncate text-micro text-muted">{h.url} · events: {h.events} · secret {h.secretHint}</p>
                 </div>
                 <Switch checked={h.active} onCheckedChange={async (v) => { await api.patch(`/admin/webhooks/${h.id}`, { active: v }); await refresh(); }} />
@@ -245,7 +245,7 @@ export function AdminWebhooks() {
               <Field label="Events">
                 <div className="flex flex-wrap gap-2">
                   {["*", ...(data?.events ?? [])].map((ev) => (
-                    <label key={ev} className="flex items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12.5px] text-ink">
+                    <label key={ev} className="flex items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-label text-ink">
                       <input type="checkbox" checked={creating.events.includes(ev)}
                         onChange={(e) => {
                           const on = e.target.checked;
@@ -287,13 +287,13 @@ define('LANTERN_ROSTER_WEBHOOK_SECRET', 'whsec_…'); // Admin → Webhooks`;
   return (
     <Page className="max-w-[860px]">
       <PageHeader title="WordPress setup" subtitle="Get rosters into Gravity Forms and report form activity back — so the 48-hour queue knows who's still around." />
-      <Card className="mb-4 p-5 text-[13.5px] text-ink">
+      <Card className="mb-4 p-5 text-body text-ink">
         <ol className="list-decimal space-y-3 pl-5">
           <li>Create an API key with both scopes (Admin → API keys).</li>
           <li>
             Install <code>integrations/wordpress/lantern-roster-connector.php</code> from this repo as a plugin (or mu-plugin) and add to <code>wp-config.php</code>:
             <div className="mt-2 flex items-start gap-2 rounded-input border border-hairline bg-subtle p-3">
-              <pre className="min-w-0 flex-1 overflow-x-auto text-[12px]">{snippet}</pre>
+              <pre className="min-w-0 flex-1 overflow-x-auto text-caption">{snippet}</pre>
               <Button size="sm" variant="secondary" onClick={() => copy(snippet)}><Copy className="h-3.5 w-3.5" /></Button>
             </div>
           </li>
@@ -307,7 +307,7 @@ define('LANTERN_ROSTER_WEBHOOK_SECRET', 'whsec_…'); // Admin → Webhooks`;
       </Card>
       <Card className="p-5">
         <p className="kicker mb-2">Endpoints</p>
-        <table className="w-full text-[12.5px]">
+        <table className="w-full text-label">
           <tbody>
             {[
               ["GET", "/sites", "Sites the key can see"],

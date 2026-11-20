@@ -18,13 +18,13 @@ export function PageHelp({ article, children }: { article: string; children: Rea
         <button
           type="button"
           aria-label={`Help: ${a?.title ?? "about this page"}`}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-rowhover hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted touch:h-11 touch:w-11 hover:bg-rowhover hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
         >
           <CircleHelp className="h-[18px] w-[18px]" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[300px] max-w-[calc(100vw-2rem)]">
-        <div className="px-3 py-2 text-[13px] leading-snug text-ink">{children}</div>
+        <div className="px-3 py-2 text-label leading-snug text-ink">{children}</div>
         <DropdownMenuSeparator />
         {a && (
           <DropdownMenuItem onSelect={() => navigate(`/help/${a.id}`)}>

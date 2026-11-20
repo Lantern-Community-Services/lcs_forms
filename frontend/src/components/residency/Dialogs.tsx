@@ -35,7 +35,7 @@ function Chips({ options, value, onChange, label }: { options: string[]; value: 
           aria-checked={value === o}
           onClick={() => onChange(o)}
           className={cn(
-            "min-h-[40px] rounded-pill border px-3.5 text-left text-[13px] font-semibold transition-colors",
+            "min-h-[40px] rounded-pill border px-3.5 text-left text-label font-semibold transition-colors",
             value === o ? "border-navy bg-navsel text-accent dark:text-white" : "border-hairline text-ink hover:bg-rowhover"
           )}
         >
@@ -47,7 +47,7 @@ function Chips({ options, value, onChange, label }: { options: string[]; value: 
 }
 
 const ErrorLine = ({ error }: { error: string | null }) =>
-  error ? <p className="rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">{error}</p> : null;
+  error ? <p className="rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">{error}</p> : null;
 
 /** A unit as a choice: vacant, or (household sites) joining whoever lives there. */
 function unitChoice(u: UnitRow, households: boolean) {
@@ -154,7 +154,7 @@ export function MoveInDialog({
             <Input type="date" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} className={big} />
           </Field>
         </div>
-        {joining && head && <p className="text-[13px] text-muted">Joining {head.displayName}'s household. Say how each person is related to them.</p>}
+        {joining && head && <p className="text-label text-muted">Joining {head.displayName}'s household. Say how each person is related to them.</p>}
         <div className="grid gap-2">
           {people.map((p, i) => (
             <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
@@ -284,7 +284,7 @@ export function TransferDialog({
       }
     >
       <div className="grid gap-3">
-        <p className="text-[13px] text-muted">Now in {tenant.unit ? `unit ${tenant.unit} at ` : ""}{tenant.site?.name}. They stay on the roster; their stay here ends and a new one starts.</p>
+        <p className="text-label text-muted">Now in {tenant.unit ? `unit ${tenant.unit} at ` : ""}{tenant.site?.name}. They stay on the roster; their stay here ends and a new one starts.</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Site" className="col-span-2 sm:col-span-1">
             <Select value={siteCode} onChange={(e) => { setSiteCode(e.target.value); setUnitId(""); }} className={big} options={unitSites.map((s) => ({ value: s.code, label: s.name }))} />
@@ -306,7 +306,7 @@ export function TransferDialog({
           </Field>
         )}
         {isHead && (
-          <label className="flex items-start gap-2 text-[13px]">
+          <label className="flex items-start gap-2 text-label">
             <Checkbox checked={withHousehold} onCheckedChange={(v) => setWithHousehold(Boolean(v))} className="mt-0.5" />
             <span>Move the whole household ({household.filter((h) => h.id !== tenant.id).map((h) => h.displayName).join(", ")})</span>
           </label>
@@ -403,14 +403,14 @@ export function MoveOutDialog({
       }
     >
       <div className="grid gap-3">
-        <p className="text-[13px] text-muted">
+        <p className="text-label text-muted">
           {tenant.unit ? `Unit ${tenant.unit} · ` : ""}{tenant.site?.name}. Their stay ends, they come off the roster, the unit shows as vacant, and the HMIS exit assessment is added to the checklist.
         </p>
         <Field label="Move-out date *">
           <Input type="date" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} className={cn(big, "sm:w-56")} />
         </Field>
         <div>
-          <p className="mb-2 text-[12px] font-semibold text-muted">Reason *</p>
+          <p className="mb-2 text-caption font-semibold text-muted">Reason *</p>
           <Chips options={meta?.moveOutReasons ?? []} value={reason} onChange={setReason} label="Reason" />
           {onTransfer && (
             <button type="button" onClick={() => { onOpenChange(false); onTransfer(); }} className="mt-2 text-micro font-semibold text-accent hover:underline">
@@ -422,7 +422,7 @@ export function MoveOutDialog({
           <Select value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="—" className={big} options={(meta?.exitDestinations ?? []).map((d) => ({ value: d, label: d }))} />
         </Field>
         <details className="rounded-input border border-hairline px-3 py-2">
-          <summary className="cursor-pointer text-[13px] font-semibold text-ink">Forwarding address</summary>
+          <summary className="cursor-pointer text-label font-semibold text-ink">Forwarding address</summary>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Input placeholder="Street address" value={addr.line1} onChange={(e) => setAddr({ ...addr, line1: e.target.value })} className={cn(big, "col-span-2")} />
             <Input placeholder="Apt, suite (optional)" value={addr.line2} onChange={(e) => setAddr({ ...addr, line2: e.target.value })} className={cn(big, "col-span-2")} />
@@ -433,10 +433,10 @@ export function MoveOutDialog({
         </details>
         {others.length > 0 && (
           <div className="rounded-input border border-hairline px-3 py-2">
-            <p className="text-[13px] font-semibold text-ink">Household members leaving too</p>
+            <p className="text-label font-semibold text-ink">Household members leaving too</p>
             <div className="mt-1.5 grid gap-1.5">
               {others.map((o) => (
-                <label key={o.id} className="flex items-center gap-2 text-[13px]">
+                <label key={o.id} className="flex items-center gap-2 text-label">
                   <Checkbox
                     checked={also.has(o.id)}
                     onCheckedChange={(v) => setAlso((s) => { const n = new Set(s); if (v) n.add(o.id); else n.delete(o.id); return n; })}
@@ -506,13 +506,13 @@ export function AwayDialog({ open, onOpenChange, tenant }: { open: boolean; onOp
       }
     >
       <div className="grid gap-3">
-        <p className="text-[13px] text-muted">Out of the building for a while — in hospital, with family, in detox. They keep their unit. If they won't be back, move them out instead.</p>
+        <p className="text-label text-muted">Out of the building for a while — in hospital, with family, in detox. They keep their unit. If they won't be back, move them out instead.</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Last seen *"><Input type="date" value={lastSeen} max={todayLocal()} onChange={(e) => setLastSeen(e.target.value)} className={big} /></Field>
           <Field label="Expected back"><Input type="date" value={expected} min={lastSeen} onChange={(e) => setExpected(e.target.value)} className={big} /></Field>
         </div>
         <div>
-          <p className="mb-2 text-[12px] font-semibold text-muted">Why *</p>
+          <p className="mb-2 text-caption font-semibold text-muted">Why *</p>
           <Chips options={meta?.awayReasons ?? []} value={reason} onChange={setReason} label="Why they're away" />
         </div>
         <Field label={reason === "Other" ? "Where are they? *" : "Details"}>

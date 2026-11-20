@@ -52,7 +52,7 @@ export function DeleteFormDialog({ form, noun, onCancel, onConfirm }: {
 
   return (
     <ResponsiveDialog open={Boolean(form)} onOpenChange={(o) => !o && !busy && onCancel()} title={`Delete “${form?.title ?? ""}”?`} footer={actions}>
-      <div className="space-y-3 text-[14px] leading-relaxed text-ink">
+      <div className="space-y-3 text-body leading-relaxed text-ink">
         {n > 0 ? (
           <>
             <p>
@@ -61,7 +61,7 @@ export function DeleteFormDialog({ form, noun, onCancel, onConfirm }: {
             </p>
             <p className="text-muted">To keep a copy, cancel and use Export with entries first. To hide the form but keep everything, use Archive instead.</p>
             <label className="block">
-              <span className="mb-1.5 block text-[13px] font-semibold">Type <span className="font-mono">{WORD}</span> to confirm</span>
+              <span className="mb-1.5 block text-label font-semibold">Type <span className="font-mono">{WORD}</span> to confirm</span>
               <Input
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}

@@ -59,12 +59,12 @@ export function ShareSettings({ formId, live, slug }: { formId: string; live: bo
 
   return (
     <div className="space-y-4">
-      {!live && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Publish the form to start sharing: links work once the live version is shared by link.</p>}
-      <label className="flex items-start gap-2 text-[13px] text-ink">
+      {!live && <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">Publish the form to start sharing: links work once the live version is shared by link.</p>}
+      <label className="flex items-start gap-2 text-label text-ink">
         <Switch checked={draft.enabled} onCheckedChange={(v) => setDraft({ ...draft, enabled: v })} className="mt-0.5" aria-label="Employees can share it" />
         <span>
           Employees can share it
-          <span className="block text-[12px] text-muted">Everyone who can open the form gets their own link and QR code (on the form: “Share it”). Off: no new links, and every link stops working.</span>
+          <span className="block text-caption text-muted">Everyone who can open the form gets their own link and QR code (on the form: “Share it”). Off: no new links, and every link stops working.</span>
         </span>
       </label>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -86,15 +86,15 @@ export function ShareSettings({ formId, live, slug }: { formId: string; live: bo
 
       <div>
         <div className="mb-2 flex items-center gap-2">
-          <p className="min-w-0 flex-1 text-[13px] font-semibold text-ink">Everyone's links</p>
-          <label className="flex items-center gap-2 text-[12.5px] text-muted">
+          <p className="min-w-0 flex-1 text-label font-semibold text-ink">Everyone's links</p>
+          <label className="flex items-center gap-2 text-label text-muted">
             <Switch checked={showOld} onCheckedChange={setShowOld} aria-label="Show old links" /> Old ones too
           </label>
         </div>
         {links.length ? (
           <ul className="divide-y divide-hairline rounded-input border border-hairline">
             {links.map((l) => (
-              <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-[12.5px]">
+              <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-label">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-ink">{l.userName}</span>
                   <span className="block text-muted">
@@ -108,7 +108,7 @@ export function ShareSettings({ formId, live, slug }: { formId: string; live: bo
             ))}
           </ul>
         ) : (
-          <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">{showOld ? "Nobody has made a link yet." : "No working links right now."}</p>
+          <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">{showOld ? "Nobody has made a link yet." : "No working links right now."}</p>
         )}
       </div>
     </div>

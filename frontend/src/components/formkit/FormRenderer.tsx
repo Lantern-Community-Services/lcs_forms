@@ -205,7 +205,7 @@ export function FormRenderer({
       {doc.settings.customCss && <style>{`.${scope} { ${doc.settings.customCss} }`}</style>}
 
       {restored && saveDrafts && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-[13px] text-ink">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-label text-ink">
           <span>We kept your unfinished answers from last time.</span>
           <button type="button" onClick={startOver} className="font-semibold text-accent underline-offset-2 hover:underline">Start over</button>
         </div>
@@ -227,7 +227,7 @@ export function FormRenderer({
         <SitePickerRow slug={slug} value={siteCode} onChange={(v, auto) => { if (!auto) touched(); setSiteCode(v); setErrors(({ _site, ...rest }) => rest); }} error={errors._site} />
       )}
 
-      {current.pageField?.content && <div className="prose-form mb-4 text-[14px] text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(current.pageField.content, merge) }} />}
+      {current.pageField?.content && <div className="prose-form mb-4 text-body text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(current.pageField.content, merge) }} />}
 
       <div className="grid grid-cols-12 gap-x-4 gap-y-5">
         {current.fields.map((f) =>
@@ -265,7 +265,7 @@ export function FormRenderer({
           </Button>
         )}
         <div className="flex-1" />
-        {Object.keys(errors).length > 0 && <p className="text-[13px] font-semibold text-status-redText">Some answers need a look.</p>}
+        {Object.keys(errors).length > 0 && <p className="text-label font-semibold text-status-redText">Some answers need a look.</p>}
         {/* Keyed apart: as one element, React turned the Next button into the Submit button in
             the middle of its own click, and the browser then submitted the form from page 1. */}
         {!last ? (
@@ -317,7 +317,7 @@ function SitePickerRow({ value, onChange, error, slug }: { value: string | null;
 function FieldLabel({ label, required, htmlFor }: { label: string; required?: boolean; htmlFor?: string }) {
   if (!label) return null;
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-[13.5px] font-semibold text-ink">
+    <label htmlFor={htmlFor} className="mb-1.5 block text-body font-semibold text-ink">
       {label}
       {required && <span className="ml-0.5 text-status-redText" aria-hidden>*</span>}
     </label>
@@ -325,7 +325,7 @@ function FieldLabel({ label, required, htmlFor }: { label: string; required?: bo
 }
 
 function FieldError({ message }: { message: string }) {
-  return <p className="mt-1.5 text-[12.5px] font-semibold text-status-redText" role="alert">{message}</p>;
+  return <p className="mt-1.5 text-label font-semibold text-status-redText" role="alert">{message}</p>;
 }
 
 interface FieldProps {
@@ -351,21 +351,22 @@ export function FieldView(props: FieldProps) {
   if (f.type === "section") {
     return (
       <div className="border-b border-hairline pb-2 pt-3">
-        <h3 className="font-heading text-[17px] font-extrabold text-ink">{f.label}</h3>
-        {f.description && <p className="mt-0.5 text-[13px] text-muted">{f.description}</p>}
-        {f.content && <div className="prose-form mt-1 text-[13.5px] text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(f.content, { values: props.values, doc: props.doc, user: props.user, html: true }) }} />}
+        {/* A section heading directly under the page's h1: no level skipped for screen readers. */}
+        <h2 className="font-heading text-lead font-extrabold text-ink">{f.label}</h2>
+        {f.description && <p className="mt-0.5 text-label text-muted">{f.description}</p>}
+        {f.content && <div className="prose-form mt-1 text-body text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(f.content, { values: props.values, doc: props.doc, user: props.user, html: true }) }} />}
       </div>
     );
   }
   if (f.type === "html") {
-    return <div className="prose-form text-[14px] text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(f.content, { values: props.values, doc: props.doc, user: props.user, html: true }) }} />;
+    return <div className="prose-form text-body text-ink" dangerouslySetInnerHTML={{ __html: renderTemplate(f.content, { values: props.values, doc: props.doc, user: props.user, html: true }) }} />;
   }
   const inputId = `f_${f.id}`;
   const labelled = !["consent"].includes(f.type);
   return (
     <div data-field-error={error ? true : undefined}>
       {labelled && <FieldLabel label={f.label} required={f.required && f.type !== "calculation"} htmlFor={inputId} />}
-      {f.description && f.type !== "consent" && <p className="-mt-0.5 mb-2 text-[12.5px] text-muted">{f.description}</p>}
+      {f.description && f.type !== "consent" && <p className="-mt-0.5 mb-2 text-label text-muted">{f.description}</p>}
       <FieldControl {...props} inputId={inputId} />
       {error && <FieldError message={error} />}
     </div>
@@ -405,7 +406,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
           disabled={disabled}
           className={cn("min-h-[44px] min-w-0 flex-1 md:min-h-9", invalid)}
         />
-        {!outside && <span className="shrink-0 text-[14px] text-muted">{domain}</span>}
+        {!outside && <span className="shrink-0 text-body text-muted">{domain}</span>}
       </div>
     );
   }
@@ -438,9 +439,9 @@ function FieldControl(props: FieldProps & { inputId: string }) {
     case "number":
       return (
         <div className="flex items-center gap-2">
-          {f.prefix && <span className="text-[14px] font-semibold text-muted">{f.prefix}</span>}
+          {f.prefix && <span className="text-body font-semibold text-muted">{f.prefix}</span>}
           <Input id={inputId} type="number" inputMode="decimal" value={text} min={f.min} max={f.max} step={f.step ?? "any"} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))} disabled={disabled} className={cn("min-h-[44px] max-w-[220px] md:min-h-9", invalid)} />
-          {f.suffix && <span className="text-[14px] text-muted">{f.suffix}</span>}
+          {f.suffix && <span className="text-body text-muted">{f.suffix}</span>}
         </div>
       );
     case "date":
@@ -458,10 +459,10 @@ function FieldControl(props: FieldProps & { inputId: string }) {
       return (
         <label className="flex cursor-pointer items-start gap-3 rounded-input border border-hairline bg-surface p-3">
           <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} disabled={disabled} className="mt-0.5 h-5 w-5 accent-[rgb(var(--c-brand))]" />
-          <span className="text-[14px] text-ink">
+          <span className="text-body text-ink">
             <span className="font-semibold">{f.label}{f.required && <span className="text-status-redText"> *</span>}</span>
-            {f.consentText && <span className="prose-form mt-0.5 block text-[13px] text-muted" dangerouslySetInnerHTML={{ __html: f.consentText }} />}
-            {f.description && <span className="mt-0.5 block text-[12.5px] text-muted">{f.description}</span>}
+            {f.consentText && <span className="prose-form mt-0.5 block text-label text-muted" dangerouslySetInnerHTML={{ __html: f.consentText }} />}
+            {f.description && <span className="mt-0.5 block text-label text-muted">{f.description}</span>}
           </span>
         </label>
       );
@@ -516,7 +517,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
           <span className="text-micro text-muted">{min}</span>
           <input id={inputId} type="range" min={min} max={max} step={f.step ?? 1} value={n} onChange={(e) => onChange(Number(e.target.value))} disabled={disabled} className="flex-1 accent-[rgb(var(--c-brand))]" />
           <span className="text-micro text-muted">{max}</span>
-          <span className="tabular min-w-[3ch] rounded-input bg-subtle px-2 py-1 text-center text-[14px] font-bold text-ink">{value === "" || value === undefined ? "–" : n}</span>
+          <span className="tabular min-w-[3ch] rounded-input bg-subtle px-2 py-1 text-center text-body font-bold text-ink">{value === "" || value === undefined ? "–" : n}</span>
         </div>
       );
     }
@@ -525,7 +526,7 @@ function FieldControl(props: FieldProps & { inputId: string }) {
     case "repeater":
       return <Repeater {...props} />;
     case "calculation":
-      return <div className="tabular min-h-[40px] rounded-input border border-dashed border-hairline bg-subtle px-3 py-2 text-[15px] font-bold text-ink">{formatValue(f, value) || "—"}</div>;
+      return <div className="tabular min-h-[40px] rounded-input border border-dashed border-hairline bg-subtle px-3 py-2 text-body-lg font-bold text-ink">{formatValue(f, value) || "—"}</div>;
     case "site":
       return <SiteSelect inputId={inputId} value={text} onChange={onChange} disabled={disabled} slug={props.slug} />;
     case "resident": {
@@ -568,7 +569,7 @@ function ChoiceList({ field: f, value, onChange, disabled }: { field: Field; val
       {(f.choices ?? []).map((c) => {
         const on = picked.includes(c.value);
         return (
-          <label key={c.value} className={cn("flex min-h-[44px] cursor-pointer items-center gap-3 rounded-input border px-3 py-2 text-[14px] transition-colors", on ? "border-navy bg-navsel text-ink" : "border-hairline bg-surface text-ink hover:border-strongline", disabled && "cursor-default opacity-70")}>
+          <label key={c.value} className={cn("flex min-h-[44px] cursor-pointer items-center gap-3 rounded-input border px-3 py-2 text-body transition-colors", on ? "border-navy bg-navsel text-ink" : "border-strongline bg-surface text-ink hover:bg-rowhover", disabled && "cursor-default opacity-70")}>
             <input type={multi ? "checkbox" : "radio"} checked={on} onChange={() => toggle(c.value)} disabled={disabled} className="h-[18px] w-[18px] shrink-0 accent-[rgb(var(--c-brand))]" />
             <span>{c.label}</span>
           </label>
@@ -576,7 +577,7 @@ function ChoiceList({ field: f, value, onChange, disabled }: { field: Field; val
       })}
       {f.allowOther && (
         <div className={cn("rounded-input border px-3 py-2", otherOn ? "border-navy bg-navsel" : "border-hairline bg-surface")}>
-          <label className="flex min-h-[28px] cursor-pointer items-center gap-3 text-[14px] text-ink">
+          <label className="flex min-h-[28px] cursor-pointer items-center gap-3 text-body text-ink">
             <input
               type={multi ? "checkbox" : "radio"}
               checked={otherOn}
@@ -609,7 +610,7 @@ function MultiSelect({ field: f, value, onChange, disabled }: { field: Field; va
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1.5 border-b border-hairline p-2">
           {value.map((v) => (
-            <span key={v} className="inline-flex items-center gap-1 rounded-pill bg-navsel px-2.5 py-1 text-[12.5px] font-semibold text-ink">
+            <span key={v} className="inline-flex items-center gap-1 rounded-pill bg-navsel px-2.5 py-1 text-label font-semibold text-ink">
               {label(v)}
               {!disabled && <button type="button" aria-label={`Remove ${label(v)}`} onClick={() => onChange(value.filter((x) => x !== v))}><X className="h-3 w-3" /></button>}
             </span>
@@ -619,7 +620,7 @@ function MultiSelect({ field: f, value, onChange, disabled }: { field: Field; va
       {choices.length > 8 && (
         <div className="relative border-b border-hairline">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full bg-transparent py-2 pl-9 pr-3 text-[14px] text-ink outline-none" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full bg-transparent py-2 pl-9 pr-3 text-body text-ink outline-none" />
         </div>
       )}
       <ul className="max-h-56 overflow-y-auto p-1">
@@ -628,14 +629,14 @@ function MultiSelect({ field: f, value, onChange, disabled }: { field: Field; va
           const full = !on && Boolean(f.maxSelections && value.length >= f.maxSelections);
           return (
             <li key={c.value}>
-              <label className={cn("flex min-h-[38px] cursor-pointer items-center gap-2.5 rounded px-2 text-[14px] text-ink hover:bg-rowhover", full && "opacity-50")}>
+              <label className={cn("flex min-h-[38px] cursor-pointer items-center gap-2.5 rounded px-2 text-body text-ink hover:bg-rowhover", full && "opacity-50")}>
                 <input type="checkbox" checked={on} disabled={disabled || full} onChange={() => onChange(on ? value.filter((x) => x !== c.value) : [...value, c.value])} className="h-4 w-4 accent-[rgb(var(--c-brand))]" />
                 {c.label}
               </label>
             </li>
           );
         })}
-        {!shown.length && <li className="px-2 py-2 text-[13px] text-muted">Nothing matches.</li>}
+        {!shown.length && <li className="px-2 py-2 text-label text-muted">Nothing matches.</li>}
       </ul>
     </div>
   );
@@ -647,7 +648,7 @@ function Likert({ field: f, value, onChange, disabled }: { field: Field; value: 
   return (
     <>
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full border-collapse text-[13px]">
+        <table className="w-full border-collapse text-label">
           <thead>
             <tr>
               <th />
@@ -657,7 +658,7 @@ function Likert({ field: f, value, onChange, disabled }: { field: Field; value: 
           <tbody>
             {(f.statements ?? []).map((r) => (
               <tr key={r.value} className="border-t border-hairline">
-                <td className="py-2.5 pr-3 text-[14px] text-ink">{r.label}</td>
+                <td className="py-2.5 pr-3 text-body text-ink">{r.label}</td>
                 {cols.map((c) => (
                   <td key={c.value} className="text-center">
                     <input type="radio" name={`${f.id}.${r.value}`} aria-label={`${r.label}: ${c.label}`} checked={value[r.value] === c.value} disabled={disabled} onChange={() => set(r.value, c.value)} className="h-[18px] w-[18px] accent-[rgb(var(--c-brand))]" />
@@ -671,7 +672,7 @@ function Likert({ field: f, value, onChange, disabled }: { field: Field; value: 
       <div className="space-y-4 md:hidden">
         {(f.statements ?? []).map((r) => (
           <div key={r.value}>
-            <p className="mb-1.5 text-[14px] font-semibold text-ink">{r.label}</p>
+            <p className="mb-1.5 text-body font-semibold text-ink">{r.label}</p>
             <Select value={value[r.value] ?? ""} onChange={(e) => set(r.value, e.target.value)} disabled={disabled} placeholder="Choose…" options={cols.map((c) => ({ value: c.value, label: c.label }))} className="min-h-[44px]" />
           </div>
         ))}
@@ -771,7 +772,7 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
       {value.length > 0 && (
         <ul className="mb-2 space-y-1.5">
           {value.map((file) => (
-            <li key={file.id} className="flex items-center gap-2 rounded-input border border-hairline bg-surface px-3 py-2 text-[13.5px] text-ink">
+            <li key={file.id} className="flex items-center gap-2 rounded-input border border-hairline bg-surface px-3 py-2 text-body text-ink">
               <Paperclip className="h-4 w-4 shrink-0 text-muted" />
               <span className="min-w-0 flex-1 truncate">{file.name}</span>
               {isLocalFile(file.id) && (
@@ -790,7 +791,7 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
         </ul>
       )}
       {!disabled && value.length < max && (
-        <label className="flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-input border border-dashed border-strongline bg-subtle/40 px-3 text-[13.5px] font-semibold text-accent hover:bg-subtle">
+        <label className="flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-input border border-dashed border-strongline bg-subtle/40 px-3 text-body font-semibold text-accent hover:bg-subtle">
           {busy > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
           {busy > 0 ? "Uploading…" : max > 1 ? "Add files" : "Add a file"}
           <input type="file" className="sr-only" accept={f.accept} multiple={max > 1} onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
@@ -799,7 +800,7 @@ function FileInput({ field: f, value, onChange, disabled, slug, keepOffline }: {
       <p className="mt-1 text-micro text-muted">
         {f.accept ? `${f.accept.replace(/,/g, ", ")} · ` : ""}{f.accept?.trim() === "image/*" ? "any size" :`up to ${f.maxSizeMb ?? 10} MB${!f.accept || f.accept.includes("image") ? " (photos any size)" : ""}`}{max > 1 ? ` · ${max} files` : ""}
       </p>
-      {err && <p className="mt-1 text-[12.5px] text-status-redText">{err}</p>}
+      {err && <p className="mt-1 text-label text-status-redText">{err}</p>}
     </div>
   );
 }
@@ -828,16 +829,16 @@ function SignatureInput({ value, onChange, disabled }: { value: string; onChange
     return (
       <div>
         <img src={value} alt="Signature" className="h-40 w-full rounded-card border border-hairline bg-white object-contain" />
-        {!disabled && <button type="button" onClick={() => { onChange(""); setRedo(true); }} className="mt-1.5 text-[13px] font-semibold text-accent">Sign again</button>}
+        {!disabled && <button type="button" onClick={() => { onChange(""); setRedo(true); }} className="mt-1.5 text-label font-semibold text-accent">Sign again</button>}
       </div>
     );
   }
   return (
     <div onPointerUp={() => setTimeout(() => onChange(pad.current?.toDataURL() ?? ""), 0)}>
-      <SignaturePad ref={pad} className={cn("h-40 w-full", disabled && "pointer-events-none opacity-60")} />
-      <div className="mt-1.5 flex justify-between text-micro text-muted">
+      <SignaturePad ref={pad} className={cn("h-40 w-full !border-fieldline", disabled && "pointer-events-none opacity-60")} />
+      <div className="mt-1 flex items-center justify-between gap-3 text-caption text-muted">
         <span>Sign with your finger, a pen or the mouse.</span>
-        <button type="button" onClick={() => { pad.current?.clear(); onChange(""); }} className="font-semibold text-accent">Clear</button>
+        <button type="button" onClick={() => { pad.current?.clear(); onChange(""); }} className="-mr-2 inline-flex min-h-[32px] items-center rounded-input px-2 font-semibold text-accent hover:bg-subtle2 dark:text-white touch:min-h-11">Clear</button>
       </div>
     </div>
   );
@@ -869,13 +870,13 @@ function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, n
   const { data, isLoading } = useTenants(siteCode ?? undefined, "active", Boolean(siteCode) && open && !disabled);
   if (value?.id && !open) {
     return (
-      <div className="flex min-h-[44px] items-center gap-2 rounded-input border border-navy bg-navsel px-3 py-2 text-[14px] text-ink">
+      <div className="flex min-h-[44px] items-center gap-2 rounded-input border border-navy bg-navsel px-3 py-2 text-body text-ink">
         <span className="min-w-0 flex-1 truncate font-semibold">{value.name}{value.unit ? <span className="font-normal text-muted"> · {value.unit}</span> : null}</span>
-        {!disabled && <button type="button" onClick={() => { setOpen(true); setShowList(true); onChange(undefined); }} className="text-[13px] font-semibold text-accent">Change</button>}
+        {!disabled && <button type="button" onClick={() => { setOpen(true); setShowList(true); onChange(undefined); }} className="text-label font-semibold text-accent">Change</button>}
       </div>
     );
   }
-  if (!siteCode) return <p className="rounded-input border border-dashed border-hairline px-3 py-2.5 text-[13px] text-muted">{needsSite}</p>;
+  if (!siteCode) return <p className="rounded-input border border-dashed border-hairline px-3 py-2.5 text-label text-muted">{needsSite}</p>;
   const needle = q.trim().toLowerCase();
   const people = (data?.items ?? []).filter((t) => t.movedIn !== false).filter((t) => !highAcuityOnly || t.highAcuity).filter((t) => !needle || t.displayName.toLowerCase().includes(needle) || `${t.firstName} ${t.lastName}`.toLowerCase().includes(needle) || (t.unit ?? "").toLowerCase().includes(needle) || (t.formerNames ?? []).some((n) => n.toLowerCase().includes(needle)));
   return (
@@ -893,22 +894,22 @@ function ResidentPicker({ siteCode, highAcuityOnly, value, onChange, disabled, n
           autoFocus={showList}
           role="combobox"
           aria-expanded={showList}
-          className="min-h-[44px] w-full bg-transparent py-2.5 pl-9 pr-9 text-[14px] text-ink outline-none"
+          className="min-h-[44px] w-full bg-transparent py-2.5 pl-9 pr-9 text-body text-ink outline-none"
         />
         <ChevronDown className={cn("pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-transform", showList && "rotate-180")} />
       </div>
       {showList && (
       <ul role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-input border border-hairline bg-surface p-1 shadow-lg">
-        {isLoading && <li className="px-2 py-2 text-[13px] text-muted">Loading the roster…</li>}
+        {isLoading && <li className="px-2 py-2 text-label text-muted">Loading the roster…</li>}
         {people.slice(0, 200).map((t) => (
           <li key={t.id}>
-            <button type="button" role="option" aria-selected={false} onClick={() => { onChange({ id: t.id, name: t.displayName, unit: t.unit ?? undefined }); setOpen(false); setShowList(false); setQ(""); }} className="flex min-h-[40px] w-full items-center gap-2 rounded px-2 text-left text-[14px] text-ink hover:bg-rowhover">
+            <button type="button" role="option" aria-selected={false} onClick={() => { onChange({ id: t.id, name: t.displayName, unit: t.unit ?? undefined }); setOpen(false); setShowList(false); setQ(""); }} className="flex min-h-[40px] w-full items-center gap-2 rounded px-2 text-left text-body text-ink hover:bg-rowhover">
               <span className="min-w-0 flex-1 truncate">{t.displayName}</span>
               {t.unit && <span className="text-micro text-muted">{t.unit}</span>}
             </button>
           </li>
         ))}
-        {!isLoading && !people.length && <li className="px-2 py-2 text-[13px] text-muted">Nobody matches.</li>}
+        {!isLoading && !people.length && <li className="px-2 py-2 text-label text-muted">Nobody matches.</li>}
       </ul>
       )}
     </div>
@@ -921,15 +922,15 @@ export function AnswerList({ doc, values, slug, compact }: { doc: FormDoc; value
   const visible = visibleFieldIds(doc, values, { includeAdminOnly: true, includeSignOff: true });
   const later = signOffFieldIds(doc);
   return (
-    <dl className={cn("divide-y divide-hairline", compact && "text-[13px]")}>
+    <dl className={cn("divide-y divide-hairline", compact && "text-label")}>
       {doc.fields.map((f) => {
-        if (f.type === "section" && visible.has(f.id)) return <dt key={f.id} className="pb-1 pt-4 font-heading text-[14px] font-extrabold text-ink">{f.label}</dt>;
+        if (f.type === "section" && visible.has(f.id)) return <dt key={f.id} className="pb-1 pt-4 font-heading text-body font-extrabold text-ink">{f.label}</dt>;
         if (!isInputField(f) || !visible.has(f.id)) return null;
         const v = values[f.id];
         return (
           <div key={f.id} className="grid gap-1 py-2.5 sm:grid-cols-[minmax(140px,32%)_1fr] sm:gap-4">
-            <dt className="text-[13px] font-semibold text-muted">{f.label || f.id}{f.adminOnly && <span className="ml-1 text-micro font-normal">(admin)</span>}</dt>
-            <dd className="min-w-0 whitespace-pre-wrap break-words text-[14px] text-ink">
+            <dt className="text-label font-semibold text-muted">{f.label || f.id}{f.adminOnly && <span className="ml-1 text-micro font-normal">(admin)</span>}</dt>
+            <dd className="min-w-0 whitespace-pre-wrap break-words text-body text-ink">
               {f.signOff && later.has(f.id) && (v === undefined || v === "") ? <span className="text-muted">Waiting for sign-off</span> : <AnswerValue field={f} value={v} slug={slug} />}
             </dd>
           </div>
@@ -958,7 +959,7 @@ function AnswerValue({ field: f, value, slug }: { field: Field; value: unknown; 
     const subs = (f.fields ?? []).filter(isInputField);
     return (
       <div className="overflow-x-auto">
-        <table className="text-[13px]">
+        <table className="text-label">
           <thead><tr>{subs.map((s) => <th key={s.id} className="pb-1 pr-4 text-left font-semibold text-muted">{s.label}</th>)}</tr></thead>
           <tbody>{(value as Values[]).map((row, i) => <tr key={i} className="border-t border-hairline">{subs.map((s) => <td key={s.id} className="py-1 pr-4">{formatValue(s, row[s.id])}</td>)}</tr>)}</tbody>
         </table>
@@ -1072,13 +1073,13 @@ function SuggestInput({ id, value, placeholder, maxLength, disabled, invalid, on
                 pick(t);
               }}
               onMouseEnter={() => setActive(i)}
-              className={cn("cursor-pointer px-3 py-2 text-[14px] text-ink", i === active && "bg-navsel", t === value && "font-semibold")}
+              className={cn("cursor-pointer px-3 py-2 text-body text-ink", i === active && "bg-navsel", t === value && "font-semibold")}
             >
               {t}
             </li>
           ))}
           {q && !exact && (
-            <li role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); pick(value.trim()); }} className="cursor-pointer border-t border-hairline px-3 py-2 text-[13px] text-muted">
+            <li role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); pick(value.trim()); }} className="cursor-pointer border-t border-hairline px-3 py-2 text-label text-muted">
               Use “{value.trim()}” (new job title)
             </li>
           )}

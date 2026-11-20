@@ -75,7 +75,7 @@ export function LocatedSiteSelect({
   const off = canLocate && (status === "denied" || status === "unavailable");
   const elsewhere = canLocate && status === "ok" && !!here && here.site.code !== value;
   const icon = locating || pinned || off || elsewhere;
-  const btn = "absolute inset-y-0 left-0 z-[1] flex w-10 items-center justify-center rounded-l-input";
+  const btn = "absolute inset-y-0 left-0 z-[1] flex w-10 items-center justify-center rounded-l-input touch:w-11";
 
   return (
     <div className="relative">

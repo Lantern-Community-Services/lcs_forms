@@ -21,7 +21,8 @@ export function PhoneHeader({
   enter = false,
   help,
 }: {
-  title: string;
+  /** Leave out when the screen shows its own heading: only the back link is drawn. */
+  title?: string;
   subtitle?: string;
   /** Where this screen was reached from — the phone's only way back out. */
   back?: { to: string; label: string };
@@ -44,10 +45,20 @@ export function PhoneHeader({
         {(subtitle || actions || help) && (
           <div className="flex items-center gap-2.5">
             {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
-            <p className="min-w-0 flex-1 text-[13px] text-muted">{subtitle}</p>
+            <p className="min-w-0 flex-1 text-label text-muted">{subtitle}</p>
             {actions}
           </div>
         )}
+        {children}
+      </div>
+    );
+  }
+
+  // No title: the screen draws its own (a resident's page), so this is just the way back.
+  if (!title) {
+    return (
+      <div className="flex-none border-b border-hairline bg-sidebar px-4 pb-1 pt-safe-top md:hidden">
+        {back && <MobileBackLink to={back.to} label={back.label} />}
         {children}
       </div>
     );
@@ -59,10 +70,10 @@ export function PhoneHeader({
       <div className={cn("flex items-start gap-2.5", enter && "enter-up")}>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
-            <h1 className="text-[23px] font-heading font-extrabold text-ink">{title}</h1>
+            <h1 className="text-title font-heading font-extrabold text-ink">{title}</h1>
             {help && <PageHelp article={help.article}>{help.text}</PageHelp>}
           </div>
-          {subtitle && <p className="mt-[3px] text-[13px] text-muted">{subtitle}</p>}
+          {subtitle && <p className="mt-[3px] text-label text-muted">{subtitle}</p>}
         </div>
         {actions}
       </div>

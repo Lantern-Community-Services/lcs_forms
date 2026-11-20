@@ -36,8 +36,8 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3 md:mb-6">
       <div className="min-w-0">
-        <h1 className="font-heading text-[23px] font-extrabold text-ink md:text-[24px]">{title}</h1>
-        {subtitle && <p className="mt-1 text-[13px] text-muted md:text-[13.5px]">{subtitle}</p>}
+        <h1 className="font-heading text-title font-extrabold text-ink md:text-title">{title}</h1>
+        {subtitle && <p className="mt-1 text-label text-muted md:text-body">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -138,18 +138,18 @@ const shown = (v: unknown) => {
 export function EntryHistory({ entryId, labels, className }: { entryId: string; labels?: Record<string, string>; className?: string }) {
   const { data, loading, error } = useData(() => entries.history(entryId) as Promise<HistoryItem[]>, [entryId]);
   if (loading && !data) return <Spinner />;
-  if (error) return <p className="text-[12.5px] text-status-redText">{error.message}</p>;
-  if (!data?.length) return <p className={cn("text-[12.5px] text-muted", className)}>No changes since it was made.</p>;
+  if (error) return <p className="text-label text-status-redText">{error.message}</p>;
+  if (!data?.length) return <p className={cn("text-label text-muted", className)}>No changes since it was made.</p>;
   return (
     <ol className={cn("space-y-3", className)}>
       {data.map((h, i) => (
         <li key={i} className="border-l-2 border-hairline pl-3">
-          <p className="text-[12.5px] text-muted">
+          <p className="text-label text-muted">
             <span className="font-semibold text-ink">{h.byName}</span> {h.kind === "edit" ? "edited" : h.kind === "void" ? "voided" : "restored"} · {dates.format(h.at, "datetime")}
           </p>
-          {h.reason && <p className="text-[12.5px] text-muted">Reason: {h.reason}</p>}
+          {h.reason && <p className="text-label text-muted">Reason: {h.reason}</p>}
           {h.changes?.map((c) => (
-            <p key={c.field} className="text-[13px] text-ink">
+            <p key={c.field} className="text-label text-ink">
               <span className="font-semibold">{labels?.[c.field] ?? c.field}:</span> <span className="text-muted line-through">{shown(c.from)}</span> → {shown(c.to)}
             </p>
           ))}
@@ -179,7 +179,7 @@ export function FilePreview({ file, className, imgClassName }: { file: FileRef |
   if (!file) return null;
   if (error)
     return (
-      <div className={cn("flex flex-col items-center justify-center gap-2 rounded-input border border-hairline bg-sidebar p-4 text-center text-[13px] text-muted", className)}>
+      <div className={cn("flex flex-col items-center justify-center gap-2 rounded-input border border-hairline bg-sidebar p-4 text-center text-label text-muted", className)}>
         <span className="font-semibold text-ink">{file.name}</span>
         <span>{error}</span>
         <Button variant="secondary" size="sm" onClick={() => void files.download(file)}>Download</Button>
@@ -193,7 +193,7 @@ export function FilePreview({ file, className, imgClassName }: { file: FileRef |
         <div className="aspect-[3/4] w-full animate-pulse bg-rowhover" aria-label="Loading preview" />
       )}
       {preview && preview.pages > 1 && (
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-surface/90 py-1.5 text-[12px] font-semibold text-ink">
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-surface/90 py-1.5 text-caption font-semibold text-ink">
           <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rowhover disabled:opacity-40">‹</button>
           Page {preview.page} of {preview.pages}
           <button type="button" aria-label="Next page" disabled={page >= preview.pages} onClick={() => setPage((p) => Math.min(preview.pages, p + 1))} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rowhover disabled:opacity-40">›</button>
@@ -242,13 +242,13 @@ export function PhotoInput({ value, onChange, max = 5, label = "Add photo", file
         ))}
         {value.length < max && !disabled && (
           <button type="button" onClick={add} disabled={busy}
-            className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-input border border-dashed border-hairline text-[12px] font-semibold text-muted hover:bg-rowhover disabled:opacity-60">
+            className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-input border border-dashed border-hairline text-caption font-semibold text-muted hover:bg-rowhover disabled:opacity-60">
             {busy ? <Spinner /> : <Camera className="h-5 w-5" />}
             {label}
           </button>
         )}
       </div>
-      {error && <p className="text-[12.5px] text-status-redText">{error}</p>}
+      {error && <p className="text-label text-status-redText">{error}</p>}
       <Modal open={big !== null} onOpenChange={(o) => !o && setBig(null)} title={big?.name ?? "Photo"} wide>
         {big && <Photo file={big} className="max-h-[65vh] w-full object-contain" />}
       </Modal>
@@ -282,7 +282,7 @@ export function FileInput({ value, onChange, accept, max = 5, label = "Attach a 
           {busy ? <Spinner /> : <Paperclip className="h-4 w-4" />} {label}
         </Button>
       )}
-      {error && <p className="text-[12.5px] text-status-redText">{error}</p>}
+      {error && <p className="text-label text-status-redText">{error}</p>}
     </div>
   );
 }
@@ -291,7 +291,7 @@ export function FileInput({ value, onChange, accept, max = 5, label = "Attach a 
 export function FileChip({ file, onRemove }: { file: FileRef; onRemove?: () => void }) {
   const kb = file.size < 1024 * 1024 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`;
   return (
-    <div className="flex items-center gap-2 rounded-input border border-hairline px-3 py-2 text-[13px]">
+    <div className="flex items-center gap-2 rounded-input border border-hairline px-3 py-2 text-label">
       <FileText className="h-4 w-4 shrink-0 text-muted" />
       <button type="button" className="min-w-0 flex-1 truncate text-left font-semibold text-ink hover:underline" onClick={() => void files.download(file)}>{file.name}</button>
       <span className="shrink-0 text-micro text-muted">{kb}</span>

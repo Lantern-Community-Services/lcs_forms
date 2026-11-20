@@ -58,7 +58,7 @@ export function ActivityPage() {
               return (
                 <li key={e.id} className="flex gap-3 border-b border-hairline px-4 py-3 last:border-0">
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                  <div className="min-w-0 flex-1 text-[13.5px]">
+                  <div className="min-w-0 flex-1 text-body">
                     {e.tenantId ? (
                       <Link to={`/tenants/${e.tenantId}`} className="text-ink hover:underline">{e.summary}</Link>
                     ) : (

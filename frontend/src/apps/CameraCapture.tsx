@@ -104,10 +104,10 @@ export function CameraCapture({ request, onDone }: { request: CameraRequest | nu
               {shot ? (
                 <img src={shot.url} alt="The photo you took" className="h-full w-full object-contain" />
               ) : failed ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-[14px] text-white/80">
+                <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-body text-white/80">
                   <Camera className="h-8 w-8" />
                   <p>{failed}</p>
-                  <p className="text-[12.5px] text-white/60">You can still choose a photo, or take one with the device's camera app.</p>
+                  <p className="text-label text-white/60">You can still choose a photo, or take one with the device's camera app.</p>
                 </div>
               ) : (
                 <video ref={video} playsInline muted autoPlay className="h-full w-full object-contain" />

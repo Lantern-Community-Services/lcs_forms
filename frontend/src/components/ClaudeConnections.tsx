@@ -53,14 +53,14 @@ function ConnectionList({ all }: { all: boolean }) {
 
   if (isLoading) return <LoadingState />;
   if (!data?.length) {
-    return <p className="mt-3 text-[13px] text-muted">{all ? "Nobody has connected Claude yet." : "Not connected yet."}</p>;
+    return <p className="mt-3 text-label text-muted">{all ? "Nobody has connected Claude yet." : "Not connected yet."}</p>;
   }
   return (
     <ul className="mt-3">
       {data.map((c) => (
         <li key={c.id} className="flex flex-wrap items-center gap-3 border-b border-hairline py-3 last:border-0">
           <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-semibold text-ink">{all ? `${c.user.name} · ${c.client}` : c.client}</p>
+            <p className="text-body font-semibold text-ink">{all ? `${c.user.name} · ${c.client}` : c.client}</p>
             <p className="text-micro text-muted">
               {all ? `${c.user.email} · ` : ""}read only · connected {formatDate(c.createdAt)} · {c.lastUsedAt ? `used ${relativeTime(c.lastUsedAt)}` : "not used yet"}
             </p>
@@ -77,16 +77,16 @@ export function ClaudeProfileCard({ delay }: { delay?: string }) {
   return (
     <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: delay }}>
       <p className="kicker flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Claude</p>
-      <p className="mt-1 text-[13px] text-muted">
+      <p className="mt-1 text-label text-muted">
         Connect your Claude account and ask it about the site: counts, summaries and reports from the forms, entries,
         residents and calendar you can see here. Claude can only read, and only what you can see.
       </p>
-      <p className="mt-3 text-[13px] text-ink">
+      <p className="mt-3 text-label text-ink">
         In Claude (the website, desktop app or phone app), open <strong>Settings → Connectors</strong>, find{" "}
         <strong>Lantern Forms</strong> and choose <strong>Connect</strong>. You'll come back here to sign in and allow it.
       </p>
       <p className="mt-3 text-micro text-muted">Try asking:</p>
-      <ul className="mt-1 list-disc pl-5 text-[13px] text-ink">
+      <ul className="mt-1 list-disc pl-5 text-label text-ink">
         {EXAMPLES.map((e) => <li key={e}>{e}</li>)}
       </ul>
       <ConnectionList all={false} />
@@ -99,7 +99,7 @@ export function ClaudeConnectionsAdmin() {
   return (
     <Card className="mt-6 p-5">
       <p className="kicker">Claude connections</p>
-      <p className="mt-1 text-[13px] text-muted">
+      <p className="mt-1 text-label text-muted">
         People who connected their own Claude. Each reads the site as that person, read only, and stops when they lose
         access. No key is involved: they sign in with Microsoft and allow it.
       </p>

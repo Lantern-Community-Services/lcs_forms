@@ -57,10 +57,10 @@ export function FieldProperties({
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-hairline px-4 pb-0 pt-3">
         <p className="text-micro font-bold uppercase tracking-[0.04em] text-muted">{info?.label ?? field.type}</p>
-        <p className="truncate font-heading text-[15px] font-extrabold text-ink">{field.label || field.id}</p>
+        <p className="truncate font-heading text-body-lg font-extrabold text-ink">{field.label || field.id}</p>
         <div className="-mb-px mt-2 flex gap-3 overflow-x-auto">
           {tabs.map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={cn("whitespace-nowrap border-b-2 pb-2 text-[12.5px] font-semibold", active === t.key ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
+            <button key={t.key} onClick={() => setTab(t.key)} className={cn("whitespace-nowrap border-b-2 pb-2 text-label font-semibold", active === t.key ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
               {t.label}
             </button>
           ))}
@@ -85,7 +85,7 @@ export function FieldProperties({
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[12px] font-semibold text-muted">{label}</label>
+      <label className="mb-1 block text-caption font-semibold text-muted">{label}</label>
       {children}
       {hint && <p className="mt-1 text-micro text-muted">{hint}</p>}
     </div>
@@ -96,7 +96,7 @@ function Toggle({ label, checked, onChange, hint }: { label: string; checked: bo
   return (
     <label className="flex cursor-pointer items-start justify-between gap-3">
       <span>
-        <span className="block text-[13px] font-semibold text-ink">{label}</span>
+        <span className="block text-label font-semibold text-ink">{label}</span>
         {hint && <span className="block text-micro text-muted">{hint}</span>}
       </span>
       <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5" />
@@ -125,7 +125,7 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
         <Row label="Width">
           <div className="inline-flex rounded-input border border-hairline p-0.5">
             {(["full", "half", "third"] as const).map((w) => (
-              <button key={w} onClick={() => set({ width: w === "full" ? undefined : w })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold capitalize", (f.width ?? "full") === w ? "bg-navy text-navy-fg" : "text-muted")}>{w}</button>
+              <button key={w} onClick={() => set({ width: w === "full" ? undefined : w })} className={cn("rounded-[5px] px-3 py-1 text-label font-semibold capitalize", (f.width ?? "full") === w ? "bg-navy text-navy-fg" : "text-muted")}>{w}</button>
             ))}
           </div>
         </Row>
@@ -145,7 +145,7 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
       {f.type === "text" && (
         <>
           <Row label="Pattern (regular expression)" hint="The whole answer must match. E.g. \d{5} for a ZIP code.">
-            <Input value={f.pattern ?? ""} onChange={(e) => set({ pattern: e.target.value })} className="font-mono text-[12.5px]" />
+            <Input value={f.pattern ?? ""} onChange={(e) => set({ pattern: e.target.value })} className="font-mono text-label" />
           </Row>
           {f.pattern && <Row label="Message when it doesn't match"><Input value={f.patternMessage ?? ""} onChange={(e) => set({ patternMessage: e.target.value })} /></Row>}
         </>
@@ -245,7 +245,7 @@ function SignerRoles({ by, onChange, missing }: { by: SignerList; onChange: (by:
     <>
       <div className="flex flex-wrap gap-1.5">
         {SIGNER_ROLES.map((r) => (
-          <button key={r.key} onClick={() => toggle(r.key)} className={cn("rounded-pill border px-2.5 py-1 text-[12.5px] font-semibold", roles.includes(r.key) ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
+          <button key={r.key} onClick={() => toggle(r.key)} className={cn("rounded-pill border px-2.5 py-1 text-label font-semibold", roles.includes(r.key) ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
             {r.label}
           </button>
         ))}
@@ -336,7 +336,7 @@ function SignOffEditor({ field: f, set, siblings }: { field: Field; set: (p: Par
                     onChange={(e) => update({ backup: { ...backup, afterDays: Math.min(30, Math.max(1, Math.round(Number(e.target.value) || 1))) } })}
                     className="w-20"
                   />
-                  <span className="text-[13px] text-muted">days</span>
+                  <span className="text-label text-muted">days</span>
                 </div>
               </Row>
             </>
@@ -347,7 +347,7 @@ function SignOffEditor({ field: f, set, siblings }: { field: Field; set: (p: Par
                 {candidates.map((x) => {
                   const on = fills.includes(x.id);
                   return (
-                    <button key={x.id} onClick={() => update({ fields: on ? fills.filter((id) => id !== x.id) : [...fills, x.id] })} className={cn("rounded-pill border px-2.5 py-1 text-[12px]", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
+                    <button key={x.id} onClick={() => update({ fields: on ? fills.filter((id) => id !== x.id) : [...fills, x.id] })} className={cn("rounded-pill border px-2.5 py-1 text-caption", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
                       {x.label || x.id}
                     </button>
                   );
@@ -371,7 +371,7 @@ function PartsPicker({ label, all, value, onChange }: { label: string; all: Reco
         {Object.entries(all).map(([k, l]) => {
           const on = value.includes(k);
           return (
-            <button key={k} onClick={() => onChange(on ? value.filter((x) => x !== k) : Object.keys(all).filter((x) => x === k || value.includes(x)))} className={cn("rounded-pill border px-2.5 py-1 text-[12.5px] font-semibold", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
+            <button key={k} onClick={() => onChange(on ? value.filter((x) => x !== k) : Object.keys(all).filter((x) => x === k || value.includes(x)))} className={cn("rounded-pill border px-2.5 py-1 text-label font-semibold", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>
               {l}
             </button>
           );
@@ -393,7 +393,7 @@ function DefaultValue({ field: f, set }: { field: Field; set: (p: Partial<Field>
         <div className="flex flex-wrap gap-1.5">
           {(f.choices ?? []).map((c) => {
             const on = list.includes(c.value);
-            return <button key={c.value} onClick={() => { const n = on ? list.filter((x) => x !== c.value) : [...list, c.value]; set({ defaultValue: n.length ? n : undefined }); }} className={cn("rounded-pill border px-2.5 py-1 text-[12px]", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>{c.label}</button>;
+            return <button key={c.value} onClick={() => { const n = on ? list.filter((x) => x !== c.value) : [...list, c.value]; set({ defaultValue: n.length ? n : undefined }); }} className={cn("rounded-pill border px-2.5 py-1 text-caption", on ? "border-navy bg-navsel text-ink" : "border-hairline text-muted")}>{c.label}</button>;
           })}
         </div>
       </Row>
@@ -421,7 +421,7 @@ function ChoicesTab({ field: f, set }: { field: Field; set: (p: Partial<Field>) 
           <Row label="Columns">
             <div className="inline-flex rounded-input border border-hairline p-0.5">
               {([1, 2, 3] as const).map((c) => (
-                <button key={c} onClick={() => set({ columns: c === 1 ? undefined : c })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold", (f.columns ?? 1) === c ? "bg-navy text-navy-fg" : "text-muted")}>{c}</button>
+                <button key={c} onClick={() => set({ columns: c === 1 ? undefined : c })} className={cn("rounded-[5px] px-3 py-1 text-label font-semibold", (f.columns ?? 1) === c ? "bg-navy text-navy-fg" : "text-muted")}>{c}</button>
               ))}
             </div>
           </Row>
@@ -462,7 +462,7 @@ export function ChoicesEditor({ label, value, onChange }: { label: string; value
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[12px] font-semibold text-muted">{label}</span>
+        <span className="text-caption font-semibold text-muted">{label}</span>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 text-micro text-muted"><input type="checkbox" checked={showValues} onChange={(e) => setShowValues(e.target.checked)} /> Values</label>
           <DropdownMenu>
@@ -476,7 +476,7 @@ export function ChoicesEditor({ label, value, onChange }: { label: string; value
       </div>
       {bulk !== null ? (
         <div>
-          <Textarea value={bulk} onChange={(e) => setBulk(e.target.value)} className="min-h-[160px] font-mono text-[12.5px]" autoFocus />
+          <Textarea value={bulk} onChange={(e) => setBulk(e.target.value)} className="min-h-[160px] font-mono text-label" autoFocus />
           <p className="mt-1 text-micro text-muted">One per line. Add “ | value” to set a value.</p>
           <div className="mt-2 flex justify-end gap-2">
             <Button size="sm" variant="secondary" onClick={() => setBulk(null)}>Cancel</Button>
@@ -496,9 +496,9 @@ export function ChoicesEditor({ label, value, onChange }: { label: string; value
                   const follows = c.value === valueFromLabel(c.label) || !c.value;
                   setAt(i, follows ? { label: lbl, value: unique(valueFromLabel(lbl), new Set(value.filter((_, j) => j !== i).map((x) => x.value))) } : { label: lbl });
                 }}
-                className="min-h-8 flex-1 py-1 text-[13px]"
+                className="min-h-8 flex-1 py-1 text-label"
               />
-              {showValues && <Input value={c.value} onChange={(e) => setAt(i, { value: e.target.value })} className="min-h-8 w-24 py-1 font-mono text-[12px]" />}
+              {showValues && <Input value={c.value} onChange={(e) => setAt(i, { value: e.target.value })} className="min-h-8 w-24 py-1 font-mono text-caption" />}
               <button disabled={i === 0} onClick={() => move(i, -1)} className="rounded p-1 text-muted disabled:opacity-30" aria-label="Move up"><ArrowUp className="h-3.5 w-3.5" /></button>
               <button disabled={i === value.length - 1} onClick={() => move(i, 1)} className="rounded p-1 text-muted disabled:opacity-30" aria-label="Move down"><ArrowDown className="h-3.5 w-3.5" /></button>
               <button onClick={() => onChange(value.filter((_, j) => j !== i))} className="rounded p-1 text-muted hover:text-status-redText" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -536,26 +536,26 @@ function ExpressionEditor({ field: f, set, siblings }: { field: Field; set: (p: 
   return (
     <>
       <Row label="Expression">
-        <Textarea value={expr} onChange={(e) => set({ expression: e.target.value })} className="min-h-[70px] font-mono text-[12.5px]" />
+        <Textarea value={expr} onChange={(e) => set({ expression: e.target.value })} className="min-h-[70px] font-mono text-label" />
       </Row>
       <p className={cn("text-micro font-semibold", status.ok ? "text-status-greenText" : "text-status-redText")}>{status.text}</p>
       <div>
         <p className="mb-1 text-micro font-semibold text-muted">Insert a field</p>
         <div className="flex flex-wrap gap-1">
           {siblings.filter((s) => isInputField(s) && s.id !== f.id).map((s) => (
-            <button key={s.id} onClick={() => insert(`{${s.id}}`)} className="rounded border border-hairline px-1.5 py-0.5 font-mono text-[11.5px] text-ink hover:border-navy">{`{${s.id}}`}</button>
+            <button key={s.id} onClick={() => insert(`{${s.id}}`)} className="rounded border border-hairline px-1.5 py-0.5 font-mono text-caption text-ink hover:border-navy">{`{${s.id}}`}</button>
           ))}
         </div>
         <p className="mb-1 mt-2 text-micro font-semibold text-muted">Functions</p>
         <div className="flex flex-wrap gap-1">
-          {EXPRESSION_FUNCTIONS.map((fn) => <button key={fn} onClick={() => insert(`${fn}()`)} className="rounded bg-subtle px-1.5 py-0.5 font-mono text-[11.5px] text-ink hover:bg-subtle2">{fn}</button>)}
+          {EXPRESSION_FUNCTIONS.map((fn) => <button key={fn} onClick={() => insert(`${fn}()`)} className="rounded bg-subtle px-1.5 py-0.5 font-mono text-caption text-ink hover:bg-subtle2">{fn}</button>)}
         </div>
       </div>
       {refs.length > 0 && (
         <div className="rounded-input bg-subtle p-2">
           <p className="mb-1 text-micro font-semibold text-muted">Try it</p>
           <div className="grid grid-cols-2 gap-1.5">
-            {refs.map((r) => <label key={r} className="text-micro text-muted">{r}<Input value={sample[r] ?? ""} onChange={(e) => setSample({ ...sample, [r]: e.target.value })} className="min-h-7 py-0.5 text-[12px]" /></label>)}
+            {refs.map((r) => <label key={r} className="text-micro text-muted">{r}<Input value={sample[r] ?? ""} onChange={(e) => setSample({ ...sample, [r]: e.target.value })} className="min-h-7 py-0.5 text-caption" /></label>)}
           </div>
         </div>
       )}
@@ -575,7 +575,7 @@ function SubfieldsEditor({ field: f, set }: { field: Field; set: (p: Partial<Fie
   if (current) {
     return (
       <div className="-mx-4 -my-4 flex h-[70vh] flex-col border-l-4 border-navsel">
-        <button onClick={() => setEditing(null)} className="flex items-center gap-1 px-4 py-2 text-[12.5px] font-semibold text-accent"><ChevronLeft className="h-4 w-4" /> Back to {f.label || "repeater"}</button>
+        <button onClick={() => setEditing(null)} className="flex items-center gap-1 px-4 py-2 text-label font-semibold text-accent"><ChevronLeft className="h-4 w-4" /> Back to {f.label || "repeater"}</button>
         <FieldProperties
           nested
           field={current}
@@ -597,7 +597,7 @@ function SubfieldsEditor({ field: f, set }: { field: Field; set: (p: Partial<Fie
           {subs.map((s, i) => (
             <li key={s.id} className="flex items-center gap-1.5 rounded-input border border-hairline px-2 py-1.5">
               <button onClick={() => setEditing(s.id)} className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-[13px] font-semibold text-ink">{s.label || s.id}{s.required ? " *" : ""}</span>
+                <span className="block truncate text-label font-semibold text-ink">{s.label || s.id}{s.required ? " *" : ""}</span>
                 <span className="text-micro text-muted">{typeInfo(s.type)?.label} · {s.id}</span>
               </button>
               <button disabled={i === 0} onClick={() => { const n = [...subs]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set({ fields: n }); }} className="p-1 text-muted disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
@@ -628,14 +628,14 @@ function CodeTab({ field: f, set }: { field: Field; set: (p: Partial<Field>) => 
     <>
       <div className="inline-flex rounded-input border border-hairline p-0.5">
         {(["html", "css", "js"] as const).map((l) => (
-          <button key={l} onClick={() => setLang(l)} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold uppercase", lang === l ? "bg-navy text-navy-fg" : "text-muted")}>{l}</button>
+          <button key={l} onClick={() => setLang(l)} className={cn("rounded-[5px] px-3 py-1 text-label font-semibold uppercase", lang === l ? "bg-navy text-navy-fg" : "text-muted")}>{l}</button>
         ))}
       </div>
       <CodeEditor key={lang} language={lang === "js" ? "javascript" : lang} value={code[lang] ?? ""} onChange={(v) => set({ code: { ...code, [lang]: v } })} minHeight={240} />
       <Row label="Starting height (px)" hint="The block grows to fit its content on its own."><Input type="number" min={20} max={4000} value={code.height ?? 120} onChange={(e) => set({ code: { ...code, height: num(e.target.value) } })} className="w-28" /></Row>
       <div className="rounded-input bg-subtle p-3">
         <p className="mb-1 text-micro font-bold uppercase tracking-[0.04em] text-muted">The lcs object</p>
-        <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink">{CODE_BLOCK_API}</pre>
+        <pre className="whitespace-pre-wrap font-mono text-caption leading-relaxed text-ink">{CODE_BLOCK_API}</pre>
         <p className="mt-2 text-micro text-muted">Runs in a sandbox: no access to the app, cookies or the network. Whatever you pass to lcs.setValue is saved with the entry.</p>
       </div>
     </>
@@ -650,7 +650,7 @@ function Advanced({ field: f, set, onRename, siblings }: { field: Field; set: (p
     <>
       <Row label="Field id" hint="Entries, rules, calculations and merge tags use this. Renaming updates them all.">
         <div className="flex gap-1.5">
-          <Input value={id} onChange={(e) => setId(e.target.value)} className="font-mono text-[12.5px]" />
+          <Input value={id} onChange={(e) => setId(e.target.value)} className="font-mono text-label" />
           <Button size="sm" variant="secondary" disabled={!valid || id === f.id || !onRename} onClick={() => onRename?.(id)}>Rename</Button>
         </div>
         {!valid && <p className="mt-1 text-micro text-status-redText">{taken ? "Another field uses that id." : "Lowercase letters, digits and _; start with a letter."}</p>}
@@ -663,8 +663,8 @@ function Advanced({ field: f, set, onRename, siblings }: { field: Field; set: (p
       )}
       <Row label="CSS class" hint="For styles in Settings → Custom CSS."><Input value={f.cssClass ?? ""} onChange={(e) => set({ cssClass: e.target.value })} /></Row>
       <div>
-        <p className="mb-1 text-[12px] font-semibold text-muted">This field as code</p>
-        <pre className="max-h-60 overflow-auto rounded-input bg-subtle p-2 font-mono text-[11px] text-ink">{JSON.stringify(f, null, 2)}</pre>
+        <p className="mb-1 text-caption font-semibold text-muted">This field as code</p>
+        <pre className="max-h-60 overflow-auto rounded-input bg-subtle p-2 font-mono text-micro text-ink">{JSON.stringify(f, null, 2)}</pre>
       </div>
     </>
   );

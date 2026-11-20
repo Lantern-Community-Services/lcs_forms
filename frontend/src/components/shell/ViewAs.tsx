@@ -62,12 +62,12 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange} title="View the site as…">
       <div className="flex flex-col gap-3">
-        <p className="text-[13px] text-muted">
+        <p className="text-label text-muted">
           See every screen as they would: their role, sites and forms. Nothing can be changed unless you act as them.
         </p>
         <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
           <span>
-            <span className="block text-[13.5px] font-semibold text-ink">Act as them</span>
+            <span className="block text-body font-semibold text-ink">Act as them</span>
             <span className="block text-micro text-muted">{ACT_HINT}</span>
           </span>
           <Switch checked={act} onCheckedChange={setAct} className="mt-0.5" />
@@ -76,7 +76,7 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
         {isLoading ? (
           <LoadingState />
         ) : !data?.length ? (
-          <p className="px-1 py-4 text-center text-[13px] text-muted">Nobody matches.</p>
+          <p className="px-1 py-4 text-center text-label text-muted">Nobody matches.</p>
         ) : (
           <ul className="-mx-1 flex max-h-[50vh] flex-col overflow-y-auto">
             {data.map((p) => (
@@ -89,7 +89,7 @@ export function ViewAsPicker({ open, onOpenChange }: { open: boolean; onOpenChan
                 >
                   <Avatar name={p.name} color={p.avatarColor} size={32} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-semibold text-ink">{p.name}</span>
+                    <span className="block truncate text-body font-semibold text-ink">{p.name}</span>
                     <span className="block truncate text-micro text-muted">
                       {[p.title, p.roleName, p.sites.length ? p.sites.join(", ") : null].filter(Boolean).join(" · ")}
                     </span>
@@ -120,12 +120,12 @@ function ViewAsForms({ open, onOpenChange, name }: { open: boolean; onOpenChange
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange} title={`Open a form as ${name}`}>
       <div className="flex flex-col gap-3">
-        <p className="text-[13px] text-muted">Drafts included. A form opens as it would for {name}: if it isn't open to them, it says so.</p>
+        <p className="text-label text-muted">Drafts included. A form opens as it would for {name}: if it isn't open to them, it says so.</p>
         <SearchInput autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Form name" aria-label="Search forms" />
         {isLoading ? (
           <LoadingState />
         ) : !shown.length ? (
-          <p className="px-1 py-4 text-center text-[13px] text-muted">No form matches.</p>
+          <p className="px-1 py-4 text-center text-label text-muted">No form matches.</p>
         ) : (
           <ul className="-mx-1 flex max-h-[50vh] flex-col overflow-y-auto">
             {shown.map((f) => (
@@ -136,7 +136,7 @@ function ViewAsForms({ open, onOpenChange, name }: { open: boolean; onOpenChange
                   className="flex min-h-[44px] w-full items-center gap-3 rounded-input px-2 py-2 text-left hover:bg-rowhover"
                 >
                   <FileText className="h-4 w-4 shrink-0 text-muted" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{f.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-body text-ink">{f.title}</span>
                   {!f.live && <span className="rounded-pill bg-status-violetBg px-2 py-0.5 text-micro font-bold text-status-violetText">Draft</span>}
                 </Link>
               </li>
@@ -156,7 +156,7 @@ export function ViewAsCard({ delay }: { delay?: string }) {
   return (
     <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: delay }}>
       <p className="kicker flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> View as</p>
-      <p className="mt-1 text-[13px] text-muted">
+      <p className="mt-1 text-label text-muted">
         See the whole site as someone else sees it: their role, sites, forms and entries. It's read only unless you act as them (for IT support), and a strip along the top takes you back.
       </p>
       <Button variant="secondary" className="mt-3" onClick={() => setPicking(true)}>
@@ -202,7 +202,7 @@ export function ViewAsBar({ top }: { top: boolean }) {
     <div
       role="status"
       className={cn(
-        "flex flex-none flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 pb-1.5 text-[12.5px] md:px-7",
+        "flex flex-none flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 pb-1.5 text-label md:px-7",
         // Acting changes things for real: red, so it's never mistaken for just looking.
         acting ? "border-status-redDot/40 bg-status-redBg text-status-redText" : "border-status-violetDot/40 bg-status-violetBg text-status-violetText",
         top ? "pt-[max(6px,var(--safe-top))]" : "pt-1.5"

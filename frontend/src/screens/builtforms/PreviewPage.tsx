@@ -64,7 +64,7 @@ export function BuiltFormPreviewPage() {
   if (!doc) return <LoadingState label="Waiting for the form…" />;
   return (
     <Page className="max-w-[820px]">
-      <div className="mb-3 flex items-center gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-[12.5px] text-muted">
+      <div className="mb-3 flex items-center gap-2 rounded-input border border-hairline bg-subtle px-3 py-2 text-label text-muted">
         <Eye className="h-3.5 w-3.5" /> Preview — nothing is saved.
         <div className="flex-1" />
         {tutorial.available && !done && (
@@ -78,12 +78,12 @@ export function BuiltFormPreviewPage() {
       </div>
       <Card className="p-5 md:p-8">
         <div data-tour="form-title">
-          <h1 className="font-heading text-[24px] font-extrabold leading-tight text-ink md:text-[27px]">{doc.title}</h1>
-          {doc.description && <div className="prose-form mt-2 text-[14px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+          <h1 className="font-heading text-title font-extrabold leading-tight text-ink md:text-display">{doc.title}</h1>
+          {doc.description && <div className="prose-form mt-2 text-body text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
         </div>
         <div className="mt-6">
           {done ? (
-            <div className="rounded-card border border-status-greenDot/40 bg-status-greenBg p-4 text-[14px] text-ink">
+            <div className="rounded-card border border-status-greenDot/40 bg-status-greenBg p-4 text-body text-ink">
               This is where the confirmation shows. In Preview nothing was saved.
               <button type="button" className="ml-2 font-semibold text-accent underline" onClick={() => { setRound((r) => r + 1); setDone(false); }}>Fill in again</button>
             </div>

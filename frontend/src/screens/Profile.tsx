@@ -144,37 +144,37 @@ export function ProfilePage() {
           <Avatar name={user?.name || "?"} color={avatarColor} size={56} />
           <div>
             <p className="text-[16px] font-heading font-extrabold text-ink">{user?.name}</p>
-            <p className="text-[13px] text-muted">{user?.role?.name} · {user?.allSites ? "all sites" : (user?.sites ?? []).map((x) => x.name).join(", ") || "no sites yet"}</p>
+            <p className="text-label text-muted">{user?.role?.name} · {user?.allSites ? "all sites" : (user?.sites ?? []).map((x) => x.name).join(", ") || "no sites yet"}</p>
           </div>
         </div>
 
         {/* Read-only on purpose. All three are read from your Microsoft account on
             every sign-in, so anything typed here was saved and then quietly
-            reverted the next time you signed in. */}
-        <div className="mt-4 grid grid-cols-1 gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
-          <Field label="Name"><Input value={user?.name ?? ""} readOnly className="bg-subtle" /></Field>
-          <Field label="Title"><Input value={user?.title ?? "—"} readOnly className="bg-subtle" /></Field>
-          <Field label="Email" className="sm:col-span-2"><Input value={user?.email ?? ""} readOnly className="truncate bg-subtle" /></Field>
-          <p className="text-micro text-muted sm:col-span-2">
-            Your name, job title and email come from your sign-in account. To change them, ask the IT
-            Team to update the directory — editing them here wouldn't stick.
-          </p>
+            reverted the next time you signed in. Shown as text, not as fields,
+            so nothing looks as if it can be edited. */}
+        <div className="mt-4 border-t border-hairline pt-4">
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div><dt className="text-caption font-semibold text-muted">Name</dt><dd className="mt-0.5 text-body font-semibold text-ink">{user?.name ?? ""}</dd></div>
+            <div><dt className="text-caption font-semibold text-muted">Title</dt><dd className="mt-0.5 text-body font-semibold text-ink">{user?.title || "Not set"}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-caption font-semibold text-muted">Email</dt><dd className="mt-0.5 truncate text-body font-semibold text-ink">{user?.email ?? ""}</dd></div>
+          </dl>
+          <p className="mt-3 text-caption text-muted">From your Microsoft account. To change them, ask the IT Team to update the directory.</p>
         </div>
 
         <div className="mt-4 border-t border-hairline pt-4">
-          <p className="text-[13px] font-semibold text-ink">Profile color</p>
-          <p className="mt-0.5 text-micro text-muted">Choose the background color for your initials.</p>
+          <p className="text-label font-semibold text-ink">Profile color</p>
+          <p className="mt-0.5 text-caption text-muted">Choose the background color for your initials.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {AVATAR_COLORS.map((color) => (
               <button key={color} type="button" onClick={() => setAvatarColor(color)} title={`Use ${color}`}
-                className={`flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy ${avatarColor === color ? "ring-2 ring-navy" : ""}`}
+                className={`flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 touch:h-11 touch:w-11 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy ${avatarColor === color ? "ring-2 ring-navy" : ""}`}
                 style={{ backgroundColor: color }} aria-label={`Use profile color ${color}`}>
                 {avatarColor === color && <span className="text-sm font-bold leading-none text-white">✓</span>}
               </button>
             ))}
             <label
               title="Choose a custom profile color"
-              className={`relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full ring-offset-2 transition focus-within:outline focus-within:outline-2 focus-within:outline-navy ${AVATAR_COLORS.includes(avatarColor) ? "" : "ring-2 ring-navy"}`}
+              className={`relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full ring-offset-2 touch:h-11 touch:w-11 transition focus-within:outline focus-within:outline-2 focus-within:outline-navy ${AVATAR_COLORS.includes(avatarColor) ? "" : "ring-2 ring-navy"}`}
               style={{ background: `linear-gradient(135deg, #ef4444, #f59e0b 30%, #22c55e 50%, #3b82f6 70%, #a855f7)` }}
             >
               <input type="color" value={avatarColor} onChange={(event) => setAvatarColor(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choose a custom profile color" />
@@ -189,14 +189,14 @@ export function ProfilePage() {
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "52ms" }}>
         <p className="kicker">Appearance</p>
-        <p className="mt-1 text-[13px] text-muted">Themes change the application chrome and accent colors only. Your profile color stays personal.</p>
+        <p className="mt-1 text-label text-muted">Themes change the application chrome and accent colors only. Your profile color stays personal.</p>
         <div className="mt-4 flex items-center justify-between gap-3 rounded-card border border-hairline p-3">
           <label htmlFor="dark-mode" className="cursor-pointer">
-            <span className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+            <span className="flex items-center gap-2 text-label font-semibold text-ink">
               {dark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
               Dark mode
             </span>
-            <span className="block text-micro text-muted">Works with any theme below.</span>
+            <span className="block text-caption text-muted">Works with any theme below.</span>
           </label>
           <Switch id="dark-mode" checked={dark} onCheckedChange={setDark} aria-label="Dark mode" />
         </div>
@@ -211,10 +211,10 @@ export function ProfilePage() {
           onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setTheme("custom"); } }}
         >
           <div className="cursor-pointer">
-            <p className="text-[13px] font-semibold text-ink">Custom theme</p>
-            <p className="text-micro text-muted">Choose the navigation and accent color.</p>
+            <p className="text-label font-semibold text-ink">Custom theme</p>
+            <p className="text-caption text-muted">Choose the navigation and accent color.</p>
           </div>
-          <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-input border border-hairline" style={{ backgroundColor: customThemeColor }} title="Choose custom theme color">
+          <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-input border border-hairline touch:h-11 touch:w-11" style={{ backgroundColor: customThemeColor }} title="Choose custom theme color">
             <input type="color" value={customThemeColor} onChange={(event) => { setCustomThemeColor(event.target.value); setTheme("custom"); }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choose custom theme color" />
             <span className="sr-only">Choose custom theme color</span>
           </label>
@@ -224,11 +224,11 @@ export function ProfilePage() {
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "70ms" }}>
         <div className="flex min-h-4 items-center justify-between gap-3">
           <p className="kicker">Default landing page</p>
-          <p className={`text-micro ${preferenceStatus === "error" ? "text-danger" : "text-muted"}`} aria-live="polite">
+          <p className={`text-caption ${preferenceStatus === "error" ? "text-danger" : "text-muted"}`} aria-live="polite">
             {preferenceStatus === "saving" ? "Saving…" : preferenceStatus === "saved" ? "Saved" : preferenceStatus === "error" ? "Save failed" : "Changes save automatically"}
           </p>
         </div>
-        <p className="mt-1 text-[13px] text-muted">The page Lantern Forms opens on.</p>
+        <p className="mt-1 text-label text-muted">The page Lantern Forms opens on.</p>
         <div className="mt-3">
           <Select value={landing} onChange={(e) => changeLanding(e.target.value)} options={landingOptions} disabled={preferenceStatus === "saving"} aria-label="Default landing page" />
         </div>
@@ -238,7 +238,7 @@ export function ProfilePage() {
 
       <Card className="page-list-item-enter mb-4 p-5" style={{ animationDelay: "82ms" }}>
         <p className="kicker">Tutorials</p>
-        <p className="mt-1 text-[13px] text-muted">
+        <p className="mt-1 text-label text-muted">
           The welcome tour shows you around the site. Forms can have their own tutorial too, the first time you open them.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -256,7 +256,7 @@ export function ProfilePage() {
         <SnapshotSummary className="mt-2" />
         {canAddToHomeScreen() && (
           <div className="mt-4">
-            <p className="mb-3 text-[13px] text-muted">You're using Lantern Forms in a browser tab. Added to your Home Screen, it keeps offline work safer.</p>
+            <p className="mb-3 text-label text-muted">You're using Lantern Forms in a browser tab. Added to your Home Screen, it keeps offline work safer.</p>
             <Button variant="secondary" onClick={openHomeScreenHelp}>
               <SquarePlus className="h-4 w-4" /> Add to Home Screen
             </Button>
@@ -276,7 +276,7 @@ export function ProfilePage() {
         style={{ animationDelay: "140ms" }}
       >
         {/* No password to change — identity is managed in Microsoft Entra ID. */}
-        <p className="text-micro text-muted">
+        <p className="text-caption text-muted">
           Signed in as {user?.email}
           {user?.identityProvider && user.identityProvider !== "microsoft" ? ` through your organisation's sign-in (${user.identityProvider}), via Lantern's Microsoft Entra` : " with your Microsoft account"}.
           Passwords are managed by your organisation, not by Lantern Forms.
@@ -311,7 +311,7 @@ function ThemeSwatch({ label, color, sidebar, dark = false, selected, onSelect }
         <span className="w-2/5" style={{ backgroundColor: color }} />
         <span className={`flex-1 ${dark ? "bg-[#0f0f0f]" : "bg-white"}`} />
       </span>
-      <span className="block text-[12.5px] font-semibold text-ink">{label}</span>
+      <span className="block text-label font-semibold text-ink">{label}</span>
     </button>
   );
 }

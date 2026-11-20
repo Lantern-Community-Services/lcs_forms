@@ -55,7 +55,7 @@ export function ConditionalEditor({
   if (!value) {
     return (
       <div className="rounded-input border border-dashed border-hairline p-4 text-center">
-        <p className="text-[13px] text-muted">{noun[0].toUpperCase() + noun.slice(1)} always shows.</p>
+        <p className="text-label text-muted">{noun[0].toUpperCase() + noun.slice(1)} always shows.</p>
         <Button
           variant="secondary"
           size="sm"
@@ -72,7 +72,7 @@ export function ConditionalEditor({
   const setRule = (i: number, patch: Partial<Rule>) => onChange({ ...value, rules: value.rules.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink">
+      <div className="flex flex-wrap items-center gap-2 text-label text-ink">
         <Select value={value.action} onChange={(e) => onChange({ ...value, action: e.target.value as "show" | "hide" })} options={[{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }]} className="w-24" />
         <span>{noun} when</span>
         <Select value={value.match} onChange={(e) => onChange({ ...value, match: e.target.value as "all" | "any" })} options={[{ value: "all", label: "all" }, { value: "any", label: "any" }]} className="w-20" />

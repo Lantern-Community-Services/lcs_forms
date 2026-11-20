@@ -27,12 +27,12 @@ export function AttendanceDetailPage() {
         <DesktopBackLink to="/roster/attendance">Attendance</DesktopBackLink>
 
         <Card className="mb-4 p-5">
-          <h1 className="hidden text-[21px] font-heading font-extrabold text-ink md:block">{e.title}</h1>
-          <p className="mt-1 text-[13.5px] text-ink">{e.description}</p>
-          <p className="mt-2 text-[13px] text-muted">
+          <h1 className="hidden text-title-sm font-heading font-extrabold text-ink md:block">{e.title}</h1>
+          <p className="mt-1 text-body text-ink">{e.description}</p>
+          <p className="mt-2 text-label text-muted">
             {e.site.name} · {formatDateTime(e.occurredAt)} · Taken by {e.createdByName}
           </p>
-          <p className="mt-1 text-[13px] text-muted">
+          <p className="mt-1 text-label text-muted">
             {e.entries.length} present · {signedCount} signed
           </p>
         </Card>
@@ -41,7 +41,7 @@ export function AttendanceDetailPage() {
 
         <Card>
           {e.entries.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[13.5px] text-muted">Nobody was marked present.</p>
+            <p className="px-4 py-6 text-center text-body text-muted">Nobody was marked present.</p>
           ) : (
             <ul>
               {e.entries.map((en) => (
@@ -52,7 +52,7 @@ export function AttendanceDetailPage() {
                     onClick={() => setViewing(en)}
                     className="flex min-h-[48px] w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-rowhover disabled:hover:bg-transparent"
                   >
-                    <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{en.tenantName}</span>
+                    <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{en.tenantName}</span>
                     {en.signature ? (
                       <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-status-greenBg px-2.5 py-0.5 text-micro font-semibold text-status-greenText">
                         <PenLine className="h-3 w-3" /> Signed

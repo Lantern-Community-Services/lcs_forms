@@ -1,13 +1,13 @@
 import { Fragment, memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Users } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Users } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { PhoneHeader } from "@/components/shell/PhoneHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
-import { CountBadge, TenantStatusBadge } from "@/components/ui/badge";
+import { TenantStatusBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/misc";
 import { AddResident } from "@/components/roster/AddResident";
 import { HighAcuityFlag } from "@/components/roster/HighAcuity";
@@ -18,7 +18,7 @@ import { RemoveResidentIcon } from "@/components/roster/RemoveResidentIcon";
 import { useRosterActions } from "@/components/roster/useRosterActions";
 import { MoveInDialog, MoveOutDialog } from "@/components/residency/Dialogs";
 import { useTenants } from "@/lib/queries";
-import { SitePicker, selectionLabel, useSiteSelection } from "@/lib/site";
+import { SitePicker, useSiteSelection } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
 import { fmtDay, shortRelation, useResidencyFor, useUnits, type UnitRow } from "@/lib/residency";
 import { readStoredJson, writeStorage } from "@/lib/storage";
@@ -56,7 +56,6 @@ const STAGGERED = 24;
 const STAGGER_MS = 16;
 const REVEAL_WIDTH = 88;
 const FULL_SWIPE = 164;
-const REMOVE_ICON_FADE_DISTANCE = 44;
 const openSwipeRowClosers = new Map<string, () => void>();
 
 function closeOpenSwipeRows(exceptId?: string) {
@@ -192,12 +191,16 @@ export function RosterPage() {
   const [removing, setRemoving] = useState<Tenant | null>(null);
   const [movingOut, setMovingOut] = useState<Tenant | null>(null);
   const [moveInto, setMoveInto] = useState<UnitRow | null>(null);
-  const { remove, restore } = useRosterActions();
+  const { remove, restore, keep } = useRosterActions();
   // Rows are memoised (see RosterRow), so what they're handed must be stable —
   // a fresh function per render would re-render every row on every batch.
   const restoreRef = useRef(restore);
   restoreRef.current = restore;
   const onRestore = useCallback((t: Tenant) => void restoreRef.current(t), []);
+  const keepRef = useRef(keep);
+  keepRef.current = keep;
+  // "Still here" straight from the row, for someone who needs a check-in.
+  const onKeep = useCallback((t: Tenant) => void keepRef.current(t), []);
   const { collapsed, setCollapsed, toggle: toggleSite } = useCollapsedSites();
   const siteById = useMemo(() => new Map(selected.map((s) => [s.id, s])), [selected]);
   // Someone living in a unit moves out; anyone else is removed (a duplicate, a mistake).
@@ -290,7 +293,7 @@ export function RosterPage() {
   const exportView = { site: param, status: tab === "all" || tab === "vacant" ? "active" : tab, q };
   const vacantCount = vacantUnits.length;
   const subtitle = selected.length
-    ? `${selectionLabel(codes, sites)} · ${onRoster.toLocaleString()} on roster${unitsMode ? ` · ${vacantCount} vacant` : ""}`
+    ? `${onRoster.toLocaleString()} on roster${unitsMode ? ` · ${vacantCount} vacant` : ""}`
     : undefined;
   const tabs = (
     [
@@ -298,7 +301,8 @@ export function RosterPage() {
       ["active", "On roster", onRoster],
       ...(unitsMode ? [["vacant", "Vacant", vacantCount]] : []),
       // Review: only for people who can Keep or Remove.
-      ...(reviews ? [["attention", "Review", attention]] : []),
+      // "Needs check-in", not a second "Review": the Review tab above is the one-at-a-time deck.
+      ...(reviews ? [["attention", "Needs check-in", attention]] : []),
       ["archived", "Removed", undefined],
     ] as [Tab, string, number | undefined][]
   );
@@ -315,13 +319,13 @@ export function RosterPage() {
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={cn(
-              "flex min-h-[38px] shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] px-2.5 text-[12.5px] font-bold transition-colors md:min-h-[30px]",
-              tab === key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"
+              "flex min-h-[38px] shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] px-2.5 text-label font-bold transition-colors md:min-h-[30px] touch:min-h-11",
+              tab === key ? "bg-surface text-ink shadow-sm dark:bg-strongline" : "text-muted hover:text-ink"
             )}
           >
             {label}
             {count !== undefined && count > 0 && (
-              <span className={cn("tabular text-micro", key === "attention" ? "text-status-amberText" : "text-muted")}>{count}</span>
+              <span className={cn("tabular text-micro", key === "attention" ? "rounded-pill bg-status-amberBg px-1.5 font-bold text-status-amberText" : "text-muted")}>{count}</span>
             )}
           </button>
         ))}
@@ -360,7 +364,9 @@ export function RosterPage() {
             actions={
               <>
                 <SitePicker codes={codes} onChange={setCodes} className="w-[240px]" />
-                <RosterExportButtons view={exportView} disabled={selected.length === 0} />
+                {/* A computer gets Print and Export side by side; an iPad one "…" for both, as on a phone. */}
+                <span className="contents touch:hidden"><RosterExportButtons view={exportView} disabled={selected.length === 0} /></span>
+                <span className="hidden touch:contents"><RosterExportMenu view={exportView} disabled={selected.length === 0} /></span>
                 {canAdd && (
                   <Button onClick={() => setAdding(true)}>
                     <Plus className="h-4 w-4" /> Add resident
@@ -369,7 +375,7 @@ export function RosterPage() {
               </>
             }
           />
-          <div className={cn("mb-4 grid gap-3", unitsMode ? "grid-cols-[minmax(0,1fr)_460px]" : "grid-cols-[minmax(0,1fr)_340px]")}>{controls}</div>
+          <div className={cn("mb-4 grid gap-3", unitsMode ? "lg:grid-cols-[minmax(0,1fr)_520px]" : "lg:grid-cols-[minmax(0,1fr)_440px]")}>{controls}</div>
         </div>
 
         {tab === "attention" && selected.length === 1 && can("roster.archive") && !sitesLoading && !isLoading && (
@@ -400,7 +406,7 @@ export function RosterPage() {
                     return next;
                   })
                 }
-                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-input px-2 text-[12.5px] font-semibold text-accent hover:bg-subtle2 dark:text-white"
+                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-input px-2 text-label font-semibold text-accent hover:bg-subtle2 dark:text-white touch:min-h-11"
               >
                 {allFolded ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
                 {allFolded ? "Expand all" : "Collapse all"}
@@ -410,7 +416,7 @@ export function RosterPage() {
           <Card className="rounded-none border-x-0 md:rounded-card md:border-x">
             {/* The table layout needs ~1000px; below that (phones and iPads in
                 portrait) each row is the stacked list form. */}
-            <div className="hidden grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] gap-3 border-b border-hairline px-4 py-2.5 text-micro font-bold uppercase tracking-[0.04em] text-muted lg:grid">
+            <div className="hidden grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] gap-3 border-b border-hairline px-4 py-2.5 text-caption font-semibold text-muted lg:grid">
               <span>Unit</span>
               <span>Name</span>
               <span>{tab === "archived" ? "Removed" : tab === "vacant" ? "Unit type" : "Last on a form"}</span>
@@ -433,6 +439,7 @@ export function RosterPage() {
                   onToggleSite={toggleSite}
                   onRemove={onRemove}
                   onRestore={onRestore}
+                  onKeep={can("roster.edit") ? onKeep : undefined}
                   onMoveIn={can("roster.edit") ? setMoveInto : undefined}
                 />
               ))}
@@ -477,7 +484,7 @@ const NO_SITES: Set<string> = new Set();
 
 /** One batch of the list. Re-renders only when its own rows, the folds or the tab change. */
 const RosterChunk = memo(function RosterChunk({
-  entries, folded, groups, tab, multiSite, query, canRestore, canArchive, onToggleSite, onRemove, onRestore, onMoveIn,
+  entries, folded, groups, tab, multiSite, query, canRestore, canArchive, onToggleSite, onRemove, onRestore, onKeep, onMoveIn,
 }: {
   entries: { r: Row; heading: boolean; index: number }[];
   folded: Set<string>;
@@ -491,6 +498,8 @@ const RosterChunk = memo(function RosterChunk({
   onToggleSite: (siteId: string) => void;
   onRemove: (t: Tenant) => void;
   onRestore: (t: Tenant) => void;
+  /** Confirm someone is still here, from their row (roster editors). */
+  onKeep?: (t: Tenant) => void;
   /** Move someone into a vacant unit (roster editors). */
   onMoveIn?: (u: UnitRow) => void;
 }) {
@@ -505,6 +514,7 @@ const RosterChunk = memo(function RosterChunk({
               folded={folded.has(r.siteId)}
               count={groups.get(r.siteId)?.count ?? 0}
               attention={(tab === "active" || tab === "all") && canArchive ? groups.get(r.siteId)?.attention ?? 0 : 0}
+              noun={tab === "vacant" ? "vacant" : tab === "all" ? "listed" : (groups.get(r.siteId)?.count ?? 0) === 1 ? "resident" : "residents"}
               onToggle={onToggleSite}
             />
           )}
@@ -524,6 +534,7 @@ const RosterChunk = memo(function RosterChunk({
               canArchive={canArchive}
               onRemove={onRemove}
               onRestore={onRestore}
+              onKeep={onKeep}
             />
           )}
         </Fragment>
@@ -534,13 +545,14 @@ const RosterChunk = memo(function RosterChunk({
 
 /** A site's heading in a grouped roster. Memoised for the same reason as RosterRow. */
 const SiteHeading = memo(function SiteHeading({
-  siteId, name, folded, count, attention, onToggle,
+  siteId, name, folded, count, attention, noun, onToggle,
 }: {
   siteId: string;
   name: string;
   folded: boolean;
   count: number;
   attention: number;
+  noun: string;
   onToggle: (siteId: string) => void;
 }) {
   return (
@@ -549,12 +561,14 @@ const SiteHeading = memo(function SiteHeading({
         type="button"
         onClick={() => onToggle(siteId)}
         aria-expanded={!folded}
-        className="flex min-h-[44px] w-full items-center gap-2 px-4 text-left hover:bg-subtle2 lg:min-h-[34px]"
+        className="flex min-h-[44px] w-full items-center gap-2 px-4 text-left hover:bg-subtle2 lg:min-h-[34px] touch:min-h-11"
       >
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform", folded && "-rotate-90")} />
-        <span className="min-w-0 flex-1 truncate text-[12px] font-bold uppercase tracking-[0.04em] text-muted">{name}</span>
-        {attention > 0 && <CountBadge count={attention} className="shrink-0 py-0" />}
-        <span className="shrink-0 text-micro tabular text-muted">{count}</span>
+        <span className="min-w-0 flex-1 truncate text-label font-bold text-ink">{name}</span>
+        {attention > 0 && (
+          <span className="shrink-0 rounded-pill bg-status-amberBg px-2 py-px text-micro font-bold text-status-amberText">{attention} to check</span>
+        )}
+        <span className="shrink-0 text-caption tabular text-muted">{count} {noun}</span>
       </button>
     </li>
   );
@@ -566,7 +580,7 @@ const SiteHeading = memo(function SiteHeading({
  * square of the list and took seconds at ~1,900 people.
  */
 const RosterRow = memo(function RosterRow({
-  t, tab, multiSite, formerly, enterDelay, canRestore, canArchive, onRemove, onRestore,
+  t, tab, multiSite, formerly, enterDelay, canRestore, canArchive, onRemove, onRestore, onKeep,
 }: {
   t: Tenant;
   tab: Tab;
@@ -578,8 +592,12 @@ const RosterRow = memo(function RosterRow({
   canArchive: boolean;
   onRemove: (t: Tenant) => void;
   onRestore: (t: Tenant) => void;
+  onKeep?: (t: Tenant) => void;
 }) {
   const [offset, setOffset] = useState(0);
+  // Someone who needs a check-in gets "Still here" on their row (phone and iPad list),
+  // unless they're away or not moved in yet (out of review).
+  const quickKeep = Boolean(onKeep) && t.needsAttention && canArchive && tab !== "archived" && t.movedIn !== false && !t.awaySince;
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<{ x: number; y: number; base: number; id: number; axis: "x" | "y" | null } | null>(null);
   const offsetRef = useRef(0);
@@ -647,66 +665,100 @@ const RosterRow = memo(function RosterRow({
       onDragStart={(event) => event.preventDefault()}
       onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
     >
-      {swipable && <button type="button" onClick={() => { closeOpenSwipeRows(); setSlide(0); onRemove(t); }} aria-label={`Remove ${t.displayName} from roster`} aria-hidden={offset > -REVEAL_WIDTH / 2} tabIndex={offset > -REVEAL_WIDTH / 2 ? -1 : 0} className={cn("absolute inset-y-0 right-0 flex w-[88px] items-center justify-center bg-status-redBg text-[12px] font-bold text-status-redText lg:hidden", offset > -REVEAL_WIDTH / 2 && "pointer-events-none")}>
+      {swipable && <button type="button" onClick={() => { closeOpenSwipeRows(); setSlide(0); onRemove(t); }} aria-label={`Remove ${t.displayName} from roster`} aria-hidden={offset > -REVEAL_WIDTH / 2} tabIndex={offset > -REVEAL_WIDTH / 2 ? -1 : 0} className={cn("absolute inset-y-0 right-0 flex w-[88px] items-center justify-center bg-status-redBg text-caption font-bold text-status-redText lg:hidden", offset > -REVEAL_WIDTH / 2 && "pointer-events-none")}>
         Remove
       </button>}
-      <div className="group relative flex items-center gap-3 bg-surface px-4 py-2.5 hover:bg-rowhover lg:grid lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] lg:py-2" style={{ transform: `translateX(${offset}px)`, transition: dragging ? "none" : "transform 180ms ease-out", touchAction: swipable ? "pan-y" : undefined }}>
-        <span className={cn("w-[52px] shrink-0 text-center font-heading text-[14px] font-extrabold tabular lg:w-auto lg:text-left lg:text-[13.5px]", t.householdHeadId && tab !== "archived" ? "text-muted" : "text-ink")}>
-          {t.householdHeadId && tab !== "archived" ? "↳" : t.unit ?? "—"}
+      <div className="group relative flex items-center gap-3 bg-surface px-4 py-2.5 hover:bg-rowhover lg:grid lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] touch:lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_124px] lg:py-2" style={{ transform: `translateX(${offset}px)`, transition: dragging ? "none" : "transform 180ms ease-out", touchAction: swipable ? "pan-y" : undefined }}>
+        {/* Below lg the unit sits in a pill (the column reads at a glance); the desktop table keeps plain text. */}
+        {quickKeep && <span className="pointer-events-none absolute inset-0 -z-10 bg-status-amberBg/45 lg:hidden" aria-hidden />}
+        <span className="flex w-[44px] shrink-0 justify-center lg:block lg:w-auto">
+          {t.householdHeadId && tab !== "archived" ? (
+            <span className="font-heading text-body font-extrabold text-muted">↳</span>
+          ) : (
+            <span className="inline-flex h-7 min-w-[40px] items-center justify-center rounded-[6px] bg-subtle px-1.5 font-heading text-label font-extrabold tabular text-ink lg:h-auto lg:min-w-0 lg:justify-start lg:bg-transparent lg:p-0 lg:text-body">
+              {t.unit ?? "—"}
+            </span>
+          )}
         </span>
-        <Link to={`/tenants/${t.id}`} draggable={false} className="flex min-w-0 flex-1 items-center gap-2.5 lg:flex-none">
+        <Link to={`/tenants/${t.id}`} draggable={false} className="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0 lg:flex-none lg:gap-2.5">
+          <Avatar name={t.displayName} color={tintFor(t.id)} size={34} className="hidden md:inline-flex lg:hidden" />
           <Avatar name={t.displayName} color={tintFor(t.id)} size={30} className="hidden lg:inline-flex" />
           <span className="min-w-0">
             <span className="flex items-center gap-1.5">
-              <span className="truncate text-[14.5px] font-semibold text-ink lg:text-[13.5px]">{t.displayName}</span>
+              <span className="truncate text-body-lg font-semibold text-ink lg:text-body">{t.displayName}</span>
               {t.highAcuity && <HighAcuityFlag />}
-              {tab !== "archived" && t.movedIn === false && <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 py-px text-[10.5px] font-bold text-status-amberText">Not moved in</span>}
-              {tab !== "archived" && t.awaySince && <span className="shrink-0 rounded-pill bg-subtle2 px-1.5 py-px text-[10.5px] font-bold text-ink" title={t.awayReason ?? undefined}>Away</span>}
-              {t.needsAttention && canArchive && <span className="h-2 w-2 shrink-0 rounded-full bg-status-amberDot lg:hidden" aria-label="Needs review" />}
+              {tab !== "archived" && t.movedIn === false && <span className="shrink-0 rounded-pill bg-status-amberBg px-1.5 py-px text-micro font-bold text-status-amberText">Not moved in</span>}
+              {tab !== "archived" && t.awaySince && <span className="shrink-0 rounded-pill bg-subtle2 px-1.5 py-px text-micro font-bold text-ink" title={t.awayReason ?? undefined}>Away</span>}
+              {t.needsAttention && canArchive && <span className="h-2 w-2 shrink-0 rounded-full bg-status-amberDot lg:hidden" aria-label="Needs check-in" />}
             </span>
             {tab !== "archived" && t.householdHeadId && (
               <span className="block truncate text-micro text-muted">{shortRelation(t.householdRelation) ?? "Household member"}</span>
             )}
-            <span className="block truncate text-micro text-muted lg:hidden">
-              {tab === "archived"
+            <span className={cn("block truncate text-caption lg:hidden", quickKeep ? "font-semibold text-status-amberText" : "text-muted")}>
+              {quickKeep
+                ? "Needs a check-in"
+                : tab === "archived"
                 ? `${multiSite ? `${t.site?.name} · ` : ""}Removed ${formatDate(t.archivedAt)} · ${t.archiveReason ?? ""}`
                 : t.lastActivityAt
                   ? `On a form ${relativeTime(t.lastActivityAt)}`
                   : t.preferredName
                     ? `${t.firstName} ${t.lastName}`
-                    : `Added ${formatDate(t.createdAt)}`}
+                    : t.moveInDate && t.movedIn !== false
+                      ? `Moved in ${formatDay(t.moveInDate)}`
+                      : `Added ${formatDate(t.createdAt)}`}
             </span>
             {t.preferredName && <span className="hidden truncate text-micro text-muted lg:block">{t.firstName} {t.lastName}</span>}
             {formerly && <span className="block truncate text-micro text-muted">Formerly {formerly}</span>}
           </span>
         </Link>
-        <span className="hidden truncate text-[13px] text-muted lg:block">
+        <span className="hidden truncate text-label text-muted lg:block">
           {tab === "archived" ? formatDate(t.archivedAt) : t.lastActivityAt ? relativeTime(t.lastActivityAt) : "—"}
         </span>
-        <span className="hidden truncate text-[13px] text-muted lg:block">
+        <span className="hidden truncate text-label text-muted lg:block">
           {tab === "archived" ? t.archiveReason : t.movedIn === false ? "—" : formatDay(t.moveInDate)}
         </span>
         <span className="hidden lg:flex lg:items-center">
           <TenantStatusBadge status={t.status} needsAttention={t.needsAttention && canArchive} />
         </span>
-        <span className="flex shrink-0 items-center">
+        <span className="relative z-[1] flex shrink-0 items-center gap-1">
           {tab === "archived" ? (
             canRestore && (
               <Button size="sm" variant="ghost" onClick={() => onRestore(t)} className="min-h-[40px] lg:min-h-0">
                 Restore
               </Button>
             )
-          ) : canArchive ? (
-            <button
-              onClick={() => { closeOpenSwipeRows(); onRemove(t); }}
-              title="Remove from roster"
-              className="flex h-10 w-10 items-center justify-center rounded-input text-muted opacity-[var(--swipe-opacity)] transition-opacity hover:bg-status-redBg hover:text-status-redText lg:h-8 lg:w-8 lg:opacity-0 lg:group-hover:opacity-100"
-              style={{ "--swipe-opacity": Math.max(0, 1 - Math.abs(offset) / REMOVE_ICON_FADE_DISTANCE) } as React.CSSProperties}
-            >
-              <RemoveResidentIcon className="h-5 w-5" />
-            </button>
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted" />
+            <>
+              {/* Phone and iPad list: "Still here" when they need a check-in, else a plain way in.
+                  Removing is a swipe, or the resident's page: not a trash can on every row. */}
+              {quickKeep ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => { closeOpenSwipeRows(); onKeep!(t); }}
+                  aria-label={`${t.displayName} is still here`}
+                  className="min-h-[40px] border-status-greenDot/40 bg-status-greenBg text-status-greenText hover:bg-status-greenBg lg:hidden touch:min-h-11 touch:lg:inline-flex"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Still here
+                </Button>
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted lg:hidden" aria-hidden />
+              )}
+              {/* Desktop table: Remove on hover. A touch screen has no hover, so it gets the arrow instead. */}
+              {canArchive ? (
+                <button
+                  onClick={() => { closeOpenSwipeRows(); onRemove(t); }}
+                  title="Remove from roster"
+                  aria-label={`Remove ${t.displayName} from roster`}
+                  className="hidden h-8 w-8 items-center justify-center rounded-input text-muted opacity-0 transition-opacity hover:bg-status-redBg hover:text-status-redText group-hover:opacity-100 lg:flex touch:hidden"
+                >
+                  <RemoveResidentIcon className="h-5 w-5" />
+                </button>
+              ) : (
+                <ChevronRight className="hidden h-4 w-4 text-muted lg:block touch:hidden" aria-hidden />
+              )}
+              {!quickKeep && <ChevronRight className="hidden h-4 w-4 text-muted touch:lg:block" aria-hidden />}
+            </>
           )}
         </span>
       </div>
@@ -721,16 +773,16 @@ const VacantRow = memo(function VacantRow({ u, enterDelay, onMoveIn }: { u: Unit
       className={cn("border-b border-hairline last:border-0", enterDelay !== null && "page-list-item-enter")}
       style={enterDelay !== null ? { animationDelay: `${enterDelay}ms` } : undefined}
     >
-      <div className="flex items-center gap-3 bg-surface px-4 py-2.5 lg:grid lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] lg:py-2">
-        <span className="w-[52px] shrink-0 text-center font-heading text-[14px] font-extrabold tabular text-muted lg:w-auto lg:text-left lg:text-[13.5px]">{u.label}</span>
+      <div className="flex items-center gap-3 bg-surface px-4 py-2.5 lg:grid lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_32px] touch:lg:grid-cols-[88px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_120px_124px] lg:py-2">
+        <span className="w-[44px] shrink-0 text-center font-heading text-label font-extrabold tabular text-muted lg:w-auto lg:text-left lg:text-body">{u.label}</span>
         <span className="min-w-0 flex-1 lg:flex-none">
-          <span className="block truncate text-[14.5px] font-semibold italic text-muted lg:text-[13.5px]">Vacant</span>
+          <span className="block truncate text-body-lg font-semibold italic text-muted lg:text-body">Vacant</span>
           <span className="block truncate text-micro text-muted lg:hidden">
             {[u.unitType, u.vacantSince ? `since ${fmtDay(u.vacantSince)}` : null].filter(Boolean).join(" · ") || "Nobody lives here"}
           </span>
         </span>
-        <span className="hidden truncate text-[13px] text-muted lg:block">{u.unitType ?? "—"}</span>
-        <span className="hidden truncate text-[13px] text-muted lg:block">{u.vacantSince ? fmtDay(u.vacantSince) : "—"}</span>
+        <span className="hidden truncate text-label text-muted lg:block">{u.unitType ?? "—"}</span>
+        <span className="hidden truncate text-label text-muted lg:block">{u.vacantSince ? fmtDay(u.vacantSince) : "—"}</span>
         {/* Status column: Move in for roster editors, otherwise a plain "Vacant". */}
         <span className="flex shrink-0 items-center lg:col-span-2">
           {onMoveIn ? (

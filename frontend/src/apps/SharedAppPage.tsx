@@ -33,7 +33,7 @@ export function SharedAppPage({ token }: { token: string }) {
         <div className="mx-auto max-w-[780px] px-4 py-6">
           <Card className="p-8 text-center">
             <Lock className="mx-auto h-8 w-8 text-muted" />
-            <p className="mt-3 font-heading text-[17px] font-extrabold text-ink">{errorMessage(error, "This link doesn't work any more.")}</p>
+            <p className="mt-3 font-heading text-lead font-extrabold text-ink">{errorMessage(error, "This link doesn't work any more.")}</p>
           </Card>
         </div>
       </Shell>
@@ -62,7 +62,7 @@ function Shell({ title, sharedBy, children }: { title?: string; sharedBy?: strin
         <div className="flex h-8 shrink-0 [&_svg]:h-8 [&_svg]:w-auto"><ThemedLogo /></div>
         {title && (
           <div className="min-w-0 flex-1 text-right">
-            <p className="truncate font-heading text-[15px] font-extrabold text-ink md:text-[17px]">{title}</p>
+            <p className="truncate font-heading text-body-lg font-extrabold text-ink md:text-lead">{title}</p>
             {sharedBy && <p className="truncate text-micro text-muted">Shared by {sharedBy} · no sign-in needed</p>}
           </div>
         )}

@@ -45,8 +45,8 @@ export function IncludeMainOffice({ formId }: { formId: string }) {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>
-        <span className="block text-[13.5px] font-semibold text-ink">Include the Main Office</span>
-        <span className="block text-[12px] text-muted">
+        <span className="block text-body font-semibold text-ink">Include the Main Office</span>
+        <span className="block text-caption text-muted">
           {data && !data.offices.length
             ? "There's no office site yet: add one in Sites with the type Office."
             : `Offer ${names} in this form's site list, to everyone filling it. It has no roster. Saved straight away, not with Publish.`}

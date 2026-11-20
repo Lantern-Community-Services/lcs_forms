@@ -229,7 +229,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
       dialogBodyClassName="max-h-[min(70vh,720px)] overflow-y-auto scroll-thin"
       footer={
         <>
-          {(error || (touched && problem)) && <p className="mr-auto hidden text-[13px] font-semibold text-status-redText md:block">{error ?? problem}</p>}
+          {(error || (touched && problem)) && <p className="mr-auto hidden text-label font-semibold text-status-redText md:block">{error ?? problem}</p>}
           <Button variant="secondary" onClick={onClose} className="min-h-[48px] flex-1 md:min-h-0 md:flex-none">Cancel</Button>
           <Button onClick={submit} disabled={save.isPending} className="min-h-[48px] flex-1 md:min-h-0 md:flex-none">
             {save.isPending ? "Saving…" : target.mode === "new" ? "Add event" : "Save"}
@@ -238,7 +238,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
       }
     >
       <div className="space-y-5 pb-2">
-        {(error || (touched && problem)) && <p className="rounded-input bg-status-redBg px-3 py-2 text-[13px] font-semibold text-status-redText md:hidden">{error ?? problem}</p>}
+        {(error || (touched && problem)) && <p className="rounded-input bg-status-redBg px-3 py-2 text-label font-semibold text-status-redText md:hidden">{error ?? problem}</p>}
 
         <Field label="Title">
           <Input
@@ -247,7 +247,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
             placeholder="What's happening"
             maxLength={160}
             autoFocus={target.mode === "new"}
-            className="min-h-[44px] text-[15px] font-semibold md:min-h-10"
+            className="min-h-[44px] text-body-lg font-semibold md:min-h-10"
           />
         </Field>
 
@@ -255,7 +255,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <Label className="mb-0">When</Label>
-            <label className="flex items-center gap-2 text-[13.5px] font-semibold text-ink">
+            <label className="flex items-center gap-2 text-body font-semibold text-ink">
               All day <Switch checked={draft.allDay} onCheckedChange={(allDay) => set({ allDay })} />
             </label>
           </div>
@@ -267,7 +267,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
 
         {/* Repeat */}
         {single && target.mode === "edit" ? (
-          <p className="flex items-start gap-2 rounded-input bg-navsel/50 px-3 py-2.5 text-[13px] text-ink">
+          <p className="flex items-start gap-2 rounded-input bg-navsel/50 px-3 py-2.5 text-label text-ink">
             <Repeat className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               Part of a series ({target.series.repeatText}). These changes are for {target.occ ? longDay(target.occ.date) : "this day"} only. To change how it repeats, who it's for or its category, edit all events.
@@ -298,7 +298,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
                 <EndFields value={draft.end} start={draft.startDate} onChange={(end) => set({ end })} />
                 <RepeatSummary rule={rule} start={draft.startDate} problem={draft.startDate ? ruleProblem(draft.startDate, rule) : null} />
                 {outlookProblem && (
-                  <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+                  <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
                     {outlookProblem} So this event will stay on this calendar and won't be sent to people's Outlook.
                   </p>
                 )}
@@ -318,7 +318,7 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
                   <Choice on={!draft.allSites} onClick={() => set({ allSites: false })} title="Chosen sites" hint={draft.allSites ? "Only people at those sites" : `${draft.siteIds.length} chosen`} />
                 </div>
               ) : (
-                <p className="text-[12.5px] text-muted">Only people at these sites see it. Events for every site are added by an Admin.</p>
+                <p className="text-label text-muted">Only people at these sites see it. Events for every site are added by an Admin.</p>
               )}
               {!draft.allSites && (
                 <CheckboxList
@@ -344,14 +344,14 @@ function EditorDialog({ target, onClose }: { target: EditorTarget; onClose: () =
         )}
 
         {target.mode === "edit" && target.series.outlook?.error && (
-          <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">{target.series.outlook.error}</p>
+          <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">{target.series.outlook.error}</p>
         )}
         {!single && (
           <label className="flex cursor-pointer items-start justify-between gap-3 rounded-input border border-hairline px-3 py-2.5">
             <span className="flex gap-2.5">
               <Video className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <span>
-                <span className="block text-[13.5px] font-semibold text-ink">Teams meeting</span>
+                <span className="block text-body font-semibold text-ink">Teams meeting</span>
                 <span className="block text-micro text-muted">
                   {teamsLocked ? "This event's Outlook invite has a Teams link. Outlook can't take it away." : "The Outlook invite gets a link to join on Teams. Once it's sent, it can't be removed."}
                 </span>
@@ -385,7 +385,7 @@ function WhenField({
 }) {
   return (
     <div>
-      <p className="mb-1 text-[12px] font-semibold text-muted">{label}</p>
+      <p className="mb-1 text-caption font-semibold text-muted">{label}</p>
       <div className="flex gap-2">
         <Input type="date" value={date} min={min} onChange={(e) => onDate(e.target.value)} aria-label={`${label} day`} className="min-h-[44px] min-w-0 flex-1 md:min-h-9" />
         {!allDay && <Input type="time" step={300} value={time} onChange={(e) => onTime(e.target.value)} aria-label={`${label} time`} className="min-h-[44px] w-[128px] md:min-h-9" />}
@@ -403,7 +403,7 @@ function Choice({ on, onClick, title, hint }: { on: boolean; onClick: () => void
       onClick={onClick}
       className={cn("rounded-input border px-3 py-2 text-left transition-colors", on ? "border-navy bg-navsel/60 dark:border-white/60" : "border-hairline hover:bg-rowhover")}
     >
-      <span className="block text-[13.5px] font-semibold text-ink">{title}</span>
+      <span className="block text-body font-semibold text-ink">{title}</span>
       <span className="block text-micro text-muted">{hint}</span>
     </button>
   );
@@ -416,7 +416,7 @@ function CategoryChip({ on, color, label, onClick }: { on: boolean; color: strin
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border px-3 text-[12.5px] transition-colors md:min-h-[32px]",
+        "inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border px-3 text-label transition-colors md:min-h-[32px]",
         on ? "border-navy bg-navsel font-bold text-accent dark:border-white/60 dark:text-white" : "border-hairline bg-surface font-medium text-ink hover:bg-navsel/60"
       )}
     >

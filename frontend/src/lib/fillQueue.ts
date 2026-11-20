@@ -3,6 +3,7 @@ import { ApiError } from "./api";
 import { fillApi, submitErrors } from "./builder";
 import type { Values } from "./formEngine";
 import type { DeviceKind } from "./device";
+import { openDatabase } from "./idb";
 import { errorMessage } from "./utils";
 
 /**
@@ -71,15 +72,9 @@ const LOCAL_PREFIX = "local-";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 function db() {
-  dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(ENTRIES, { keyPath: "clientId" });
-      req.result.createObjectStore(FILES, { keyPath: "id" });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => reject(new Error("Storage is blocked."));
+  dbPromise ??= openDatabase(DB_NAME, 1, (d) => {
+    d.createObjectStore(ENTRIES, { keyPath: "clientId" });
+    d.createObjectStore(FILES, { keyPath: "id" });
   }).catch((e) => {
     dbPromise = null;
     throw e;

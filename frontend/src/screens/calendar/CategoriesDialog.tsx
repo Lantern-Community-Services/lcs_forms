@@ -80,11 +80,11 @@ export function CategoriesDialog({ open, onClose }: { open: boolean; onClose: ()
               <Swatches value={c.colorSlot} onChange={(colorSlot) => update.mutate({ id: c.id, colorSlot }, { onError })} />
             </li>
           ))}
-          {list.length === 0 && <li className="px-3 py-4 text-center text-[13px] text-muted">No categories. Events can still go on the calendar without one.</li>}
+          {list.length === 0 && <li className="px-3 py-4 text-center text-label text-muted">No categories. Events can still go on the calendar without one.</li>}
         </ul>
 
         <div className="space-y-2 rounded-card border border-dashed border-hairline p-3">
-          <p className="text-[12px] font-semibold text-muted">Add a category</p>
+          <p className="text-caption font-semibold text-muted">Add a category</p>
           <div className="flex gap-2">
             <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="e.g. Fire drill" maxLength={60} className="min-h-[44px] md:min-h-9" />
             <Button onClick={add} disabled={!name.trim() || create.isPending} className="min-h-[44px] shrink-0 md:min-h-9">

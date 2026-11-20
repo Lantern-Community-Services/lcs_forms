@@ -49,25 +49,25 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="grid min-h-[60vh] place-items-center px-6 py-12">
         <div className="max-w-md text-center">
-          <h1 className="font-heading text-[20px] font-extrabold text-ink">This screen didn&apos;t load</h1>
-          <p className="mt-2 text-[13.5px] text-muted">
+          <h1 className="font-heading text-title-sm font-extrabold text-ink">This screen didn&apos;t load</h1>
+          <p className="mt-2 text-body text-muted">
             Something went wrong displaying this page. Nothing you were looking at has been changed.
           </p>
           {/* The message is shown rather than hidden: it is the only thing the
               person can pass on when reporting it. */}
-          <p className="mt-3 break-words rounded-input bg-subtle px-3 py-2 text-left font-mono text-[11.5px] text-muted">
+          <p className="mt-3 break-words rounded-input bg-subtle px-3 py-2 text-left font-mono text-caption text-muted">
             {error.message || String(error)}
           </p>
           <div className="mt-5 flex justify-center gap-2">
             <button
               onClick={() => this.setState({ error: null })}
-              className="h-9 rounded-input bg-navy px-4 text-[13.5px] font-semibold text-navy-fg hover:bg-navy-600"
+              className="h-9 rounded-input bg-navy px-4 text-body font-semibold text-navy-fg hover:bg-navy-600"
             >
               Try again
             </button>
             <button
               onClick={() => window.location.assign("/")}
-              className="h-9 rounded-input border border-hairline bg-surface px-4 text-[13.5px] font-semibold text-ink hover:bg-rowhover"
+              className="h-9 rounded-input border border-hairline bg-surface px-4 text-body font-semibold text-ink hover:bg-rowhover"
             >
               Back to start
             </button>

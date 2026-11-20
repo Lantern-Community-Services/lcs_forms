@@ -7,7 +7,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        "w-full min-h-9 rounded-input border border-hairline bg-surface px-3 py-1.5 text-[14px] text-ink placeholder:text-muted",
+        "w-full min-h-9 rounded-input border border-fieldline bg-surface px-3 py-1.5 text-body text-ink placeholder:text-muted touch:min-h-11",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy focus-visible:border-navy",
         "disabled:opacity-60 disabled:bg-subtle",
         className
@@ -23,7 +23,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
     <textarea
       ref={ref}
       className={cn(
-        "w-full min-h-[90px] rounded-input border border-hairline bg-surface px-3 py-2 text-[14px] text-ink placeholder:text-muted resize-y",
+        "w-full min-h-[90px] rounded-input border border-fieldline bg-surface px-3 py-2 text-body text-ink placeholder:text-muted resize-y",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy focus-visible:border-navy",
         className
       )}
@@ -42,7 +42,7 @@ export const SearchInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTML
   ({ className, wrapperClassName, ...props }, ref) => (
     <div className={cn("relative", wrapperClassName)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <Input ref={ref} type="search" enterKeyHint="search" className={cn("min-h-[44px] pl-9 md:min-h-9", className)} {...props} />
+      <Input ref={ref} type="search" enterKeyHint="search" className={cn("min-h-[44px] pl-9 md:min-h-9 touch:min-h-11", className)} {...props} />
     </div>
   )
 );

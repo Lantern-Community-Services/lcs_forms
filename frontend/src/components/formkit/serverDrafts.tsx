@@ -440,13 +440,13 @@ export function draftStatusText(s: DraftStatus): string | null {
 export function DraftChooser({ choices, opening, onResume, onStartNew, onDiscard }: { choices: DraftChoice[]; opening: string | null; onResume: (c: DraftChoice) => void; onStartNew: () => void; onDiscard: (c: DraftChoice) => void }) {
   return (
     <div data-tour="form-drafts">
-      <p className="font-heading text-[17px] font-extrabold text-ink">Carry on where you left off?</p>
-      <p className="mt-1 text-[13.5px] text-muted">You have unfinished answers saved for this form.</p>
+      <p className="font-heading text-lead font-extrabold text-ink">Carry on where you left off?</p>
+      <p className="mt-1 text-body text-muted">You have unfinished answers saved for this form.</p>
       <ul className="mt-4 divide-y divide-hairline rounded-card border border-hairline">
         {choices.map((c) => (
           <li key={c.id} className="flex items-center gap-2 px-3 py-2.5">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-semibold text-ink">{c.label}</p>
+              <p className="truncate text-body font-semibold text-ink">{c.label}</p>
               <p className="text-micro text-muted">Saved {savedWhen(c.savedAt)}{c.fromDevice ? (c.summary ? " · last open on this device" : " on this device") : ""}</p>
             </div>
             <Button type="button" size="sm" onClick={() => onResume(c)} disabled={opening !== null}>

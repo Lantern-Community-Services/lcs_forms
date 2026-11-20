@@ -39,7 +39,7 @@ export function ToneBadge({ tone, children, dot = true, className }: { tone: Ton
 /** Roster status, including the derived "needs review" state. */
 export function TenantStatusBadge({ status, needsAttention }: { status: "active" | "archived"; needsAttention?: boolean }) {
   if (status === "archived") return <ToneBadge tone="neutral">Removed</ToneBadge>;
-  if (needsAttention) return <ToneBadge tone="amber">Needs review</ToneBadge>;
+  if (needsAttention) return <ToneBadge tone="amber">Needs check-in</ToneBadge>;
   return <ToneBadge tone="green">On roster</ToneBadge>;
 }
 
@@ -71,7 +71,7 @@ export function UnreadBubble({ count, urgent = 0, className }: { count: number; 
     <span
       aria-label={`${count} unread notification${count === 1 ? "" : "s"}${urgent ? `, ${urgent} urgent` : ""}`}
       className={cn(
-        "absolute flex h-[17px] min-w-[17px] items-center justify-center rounded-pill px-1 text-[10px] font-extrabold leading-none ring-2 ring-surface tabular",
+        "absolute flex h-[17px] min-w-[17px] items-center justify-center rounded-pill px-1 text-micro font-extrabold leading-none ring-2 ring-surface tabular",
         // Red only while something urgent is waiting; the everyday count is navy.
         urgent > 0 ? "bg-status-redDot text-white" : "bg-navy text-navy-fg dark:bg-white dark:text-navy",
         className
@@ -92,7 +92,7 @@ const TAG_TONES = {
 /** A small label beside a title — "New", "Hidden", "Built in", "VOID". Smaller than ToneBadge, and no dot. */
 export function Tag({ tone = "amber", className, title, children }: { tone?: keyof typeof TAG_TONES; className?: string; title?: string; children: React.ReactNode }) {
   return (
-    <span title={title} className={cn("inline-flex items-center gap-1 rounded-pill px-2 py-px text-[10.5px] font-bold", TAG_TONES[tone], className)}>
+    <span title={title} className={cn("inline-flex items-center gap-1 rounded-pill px-2 py-px text-micro font-bold", TAG_TONES[tone], className)}>
       {children}
     </span>
   );

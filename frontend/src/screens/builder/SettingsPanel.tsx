@@ -27,8 +27,8 @@ import { IncludeMainOffice } from "@/components/IncludeMainOffice";
 export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <Card className="p-5">
-      <p className="font-heading text-[15px] font-extrabold text-ink">{title}</p>
-      {hint && <p className="mt-0.5 text-[13px] text-muted">{hint}</p>}
+      <p className="font-heading text-body-lg font-extrabold text-ink">{title}</p>
+      {hint && <p className="mt-0.5 text-label text-muted">{hint}</p>}
       <div className="mt-4 space-y-4">{children}</div>
     </Card>
   );
@@ -37,7 +37,7 @@ export function Section({ title, hint, children }: { title: string; hint?: strin
 export function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[12px] font-semibold text-muted">{label}</label>
+      <label className="mb-1 block text-caption font-semibold text-muted">{label}</label>
       {children}
       {hint && <p className="mt-1 text-micro text-muted">{hint}</p>}
     </div>
@@ -48,8 +48,8 @@ export function Toggle({ label, hint, checked, onChange }: { label: string; hint
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4">
       <span>
-        <span className="block text-[13.5px] font-semibold text-ink">{label}</span>
-        {hint && <span className="block text-[12px] text-muted">{hint}</span>}
+        <span className="block text-body font-semibold text-ink">{label}</span>
+        {hint && <span className="block text-caption text-muted">{hint}</span>}
       </span>
       <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5" />
     </label>
@@ -98,7 +98,7 @@ export function SettingsPanel({
           <CodeEditor language="html" value={doc.description ?? ""} onChange={(v) => onChange({ ...doc, description: v })} minHeight={70} />
         </Row>
         <Row label="URL name" hint={`The form opens at /${access === "public" ? "p" : "f"}/${slug}. Changing it breaks links people saved.`}>
-          <Input value={slug} onChange={(e) => onSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} className="font-mono text-[13px]" />
+          <Input value={slug} onChange={(e) => onSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} className="font-mono text-label" />
         </Row>
         <Row label="Submit button"><Input value={s.submitLabel ?? ""} onChange={(e) => set({ submitLabel: e.target.value })} placeholder="Submit" className="max-w-xs" /></Row>
         <Row label="Icon" hint="On the Forms screen and in the sidebar.">
@@ -112,16 +112,16 @@ export function SettingsPanel({
         <div className="grid gap-2 sm:grid-cols-2">
           {([["signed_in", "Anyone signed in", "Every staff account."], ["roles", "Some roles", "Only the roles you pick."], ["public", "Public", "Anyone with the link, no sign-in."], ["link", "Anyone with a share link", "Each employee shares their own link or QR code; no open address."]] as const).map(([k, l, h]) => (
             <button key={k} onClick={() => set({ access: { mode: k, roles: k === "roles" ? s.access?.roles ?? [] : undefined } })} className={cn("rounded-card border p-3 text-left", access === k ? "border-navy bg-navsel" : "border-hairline hover:border-strongline")}>
-              <p className="text-[13.5px] font-semibold text-ink">{l}</p>
-              <p className="text-[12px] text-muted">{h}</p>
+              <p className="text-body font-semibold text-ink">{l}</p>
+              <p className="text-caption text-muted">{h}</p>
             </button>
           ))}
         </div>
         {access === "roles" && <CheckboxList options={roles} value={s.access?.roles ?? []} onChange={(v) => set({ access: { mode: "roles", roles: v } })} />}
-        {access === "public" && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Public forms can't use Site or Resident fields, and have spam protection (a hidden trap field and a rate limit).</p>}
+        {access === "public" && <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">Public forms can't use Site or Resident fields, and have spam protection (a hidden trap field and a rate limit).</p>}
         {access === "link" && (
           <>
-            <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">
+            <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">
               Anyone given an employee's link can fill it in without an account, and nobody can without one. Every entry says whose link it came through, and that person sees it.
               Forms shared by link can't use Site or Resident fields, and have the same spam protection as public forms.
             </p>
@@ -165,7 +165,7 @@ export function SettingsPanel({
       <Section title="After submitting">
         <div className="inline-flex rounded-input border border-hairline p-0.5">
           {(["message", "redirect"] as const).map((t) => (
-            <button key={t} onClick={() => set({ confirmation: { ...s.confirmation, type: t } })} className={cn("rounded-[5px] px-3 py-1 text-[12.5px] font-semibold", (s.confirmation?.type ?? "message") === t ? "bg-navy text-navy-fg" : "text-muted")}>{t === "message" ? "Show a message" : "Go to a page"}</button>
+            <button key={t} onClick={() => set({ confirmation: { ...s.confirmation, type: t } })} className={cn("rounded-[5px] px-3 py-1 text-label font-semibold", (s.confirmation?.type ?? "message") === t ? "bg-navy text-navy-fg" : "text-muted")}>{t === "message" ? "Show a message" : "Go to a page"}</button>
           ))}
         </div>
         {(s.confirmation?.type ?? "message") === "message" ? (
@@ -264,7 +264,7 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
       </Row>
       {form.catalogLinkId && currentCategory && <CatalogCardFields linkId={form.catalogLinkId} />}
       {categoryLimit && (
-        <p className="rounded-input bg-navsel px-3 py-2 text-[12.5px] leading-snug text-ink">
+        <p className="rounded-input bg-navsel px-3 py-2 text-label leading-snug text-ink">
           <span className="font-semibold">{category!.name}</span> is only for {categoryLimit}, so this form is too: nobody else sees it or can open it, even with a link.
           Change that on the category (Forms catalog). Below, you can narrow it further.
         </p>
@@ -280,7 +280,7 @@ function FormsScreenAccess({ form, currentCategory, categories, onCatalog }: {
             {groups?.length ? (
               <GroupChecklist groups={groups} titles={titles ?? []} value={draft.groupIds} onChange={(groupIds) => setDraft({ ...draft, groupIds })} />
             ) : (
-              <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+              <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
             )}
           </Row>
           <Row label="Positions">
@@ -350,13 +350,13 @@ function Notifications({ doc, set, mailConfigured, roles, only }: { doc: FormDoc
       title={only ? "Webhooks" : "Notifications"}
       hint={only ? "Each new entry, sent as JSON to another system, optionally only when rules match. Saved with the form: publish to apply. The outcome is written on the entry's notes." : "Sent after each entry, optionally only when rules match. The outcome is written on the entry's notes."}
     >
-      {!mailConfigured && !only && <p className="rounded-input bg-status-amberBg px-3 py-2 text-[12.5px] text-status-amberText">Email isn't set up on this server yet (MAIL_FROM), so emails are noted on the entry but not sent. Webhooks work.</p>}
+      {!mailConfigured && !only && <p className="rounded-input bg-status-amberBg px-3 py-2 text-label text-status-amberText">Email isn't set up on this server yet (MAIL_FROM), so emails are noted on the entry but not sent. Webhooks work.</p>}
       {list.filter((n) => !only || n.kind === only).map((n) => (
         <div key={n.id} className="rounded-card border border-hairline">
           <div className="flex items-center gap-2 px-3 py-2">
             <Switch checked={n.enabled} onCheckedChange={(v) => update(n.id, { enabled: v })} />
             <button onClick={() => setOpen(open === n.id ? null : n.id)} className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[13.5px] font-semibold text-ink">{n.name}</span>
+              <span className="block truncate text-body font-semibold text-ink">{n.name}</span>
               <span className="block truncate text-micro text-muted">{summary(n)}{n.conditional ? " · with rules" : ""}</span>
             </button>
             <Button variant="ghost" size="icon" onClick={() => set({ notifications: list.filter((x) => x.id !== n.id) })} aria-label="Remove notification"><Trash2 className="h-4 w-4" /></Button>
@@ -379,14 +379,14 @@ function Notifications({ doc, set, mailConfigured, roles, only }: { doc: FormDoc
                   <Row label="Everyone with these positions" hint="Exact job titles.">
                     <PositionsDropdown groups={staffGroups ?? []} titles={jobTitles ?? []} value={n.titles ?? []} onChange={(v) => update(n.id, { titles: v.length ? v : undefined })} />
                   </Row>
-                  <label className="flex items-start gap-2 text-[13px] text-ink">
+                  <label className="flex items-start gap-2 text-label text-ink">
                     <Switch checked={n.siteOnly ?? false} onCheckedChange={(v) => update(n.id, { siteOnly: v })} className="mt-0.5" />
                     <span>
                       Only those at the entry's site
                       <span className="block text-micro text-muted">For roles, groups and positions. People who work at every site (Admin, Main Office) always get it.</span>
                     </span>
                   </label>
-                  <label className="flex items-start gap-2 text-[13px] text-ink">
+                  <label className="flex items-start gap-2 text-label text-ink">
                     <Switch checked={n.urgent ?? false} onCheckedChange={(v) => update(n.id, { urgent: v || undefined })} className="mt-0.5" />
                     <span>
                       Urgent
@@ -406,7 +406,7 @@ function Notifications({ doc, set, mailConfigured, roles, only }: { doc: FormDoc
                   <Row label="Opens (optional)" hint="A page of this site. Leave empty to open the entry. Merge tags work: /f/my-form/entries/{entry:id}.">
                     <Input value={n.link ?? ""} onChange={(e) => update(n.id, { link: e.target.value || undefined })} placeholder="The entry" />
                   </Row>
-                  <p className="text-[12px] text-muted">
+                  <p className="text-caption text-muted">
                     It appears under the bell for each person. Whether it's emailed too is their choice, on their Profile (new form entries are off by email unless they turn them on). An email is the title and a link, never the message.
                   </p>
                 </>
@@ -421,11 +421,11 @@ function Notifications({ doc, set, mailConfigured, roles, only }: { doc: FormDoc
               ) : (
                 <>
                   <Row label="URL" hint="Receives a POST of the entry as JSON."><Input value={n.url ?? ""} onChange={(e) => update(n.id, { url: e.target.value })} /></Row>
-                  <Row label="Signing secret (optional)" hint="Sent as X-Lantern-Signature: sha256=HMAC(body)."><Input value={n.secret ?? ""} onChange={(e) => update(n.id, { secret: e.target.value })} className="font-mono text-[12.5px]" /></Row>
+                  <Row label="Signing secret (optional)" hint="Sent as X-Lantern-Signature: sha256=HMAC(body)."><Input value={n.secret ?? ""} onChange={(e) => update(n.id, { secret: e.target.value })} className="font-mono text-label" /></Row>
                 </>
               )}
               <div>
-                <p className="mb-1.5 text-[12px] font-semibold text-muted">Only send when…</p>
+                <p className="mb-1.5 text-caption font-semibold text-muted">Only send when…</p>
                 <ConditionalEditor value={n.conditional} onChange={(c) => update(n.id, { conditional: c })} fields={doc.fields} noun="send this" />
               </div>
             </div>

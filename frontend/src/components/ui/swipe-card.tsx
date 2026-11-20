@@ -202,13 +202,13 @@ export function SwipeCard({
     >
       {/* Stamps that fade in as the card travels. */}
       <span
-        className="pointer-events-none absolute left-5 top-5 rotate-[-12deg] rounded-input border-[3px] border-status-greenDot px-2.5 py-1 font-heading text-[20px] font-extrabold tracking-wide text-status-greenText"
+        className="pointer-events-none absolute left-5 top-5 rotate-[-12deg] rounded-input border-[3px] border-status-greenDot px-2.5 py-1 font-heading text-title-sm font-extrabold tracking-wide text-status-greenText"
         style={{ opacity: rightOpacity, ...stampFade }}
       >
         {rightLabel}
       </span>
       <span
-        className="pointer-events-none absolute right-5 top-5 rotate-[12deg] rounded-input border-[3px] border-status-redDot px-2.5 py-1 font-heading text-[20px] font-extrabold tracking-wide text-status-redText"
+        className="pointer-events-none absolute right-5 top-5 rotate-[12deg] rounded-input border-[3px] border-status-redDot px-2.5 py-1 font-heading text-title-sm font-extrabold tracking-wide text-status-redText"
         style={{ opacity: leftOpacity, ...stampFade }}
       >
         {leftLabel}
@@ -216,7 +216,7 @@ export function SwipeCard({
       {/* Same stamp language as the side stamps — outline, no fill, a slight
           tilt — in blue, top-centre and above the avatar so the two never collide. */}
       <span
-        className="pointer-events-none absolute left-1/2 top-2.5 z-[1] flex -translate-x-1/2 rotate-[-4deg] items-center gap-1 rounded-input border-[3px] border-status-blueDot py-0 pl-1.5 pr-2.5 font-heading text-[18px] font-extrabold tracking-wide text-status-blueText"
+        className="pointer-events-none absolute left-1/2 top-2.5 z-[1] flex -translate-x-1/2 rotate-[-4deg] items-center gap-1 rounded-input border-[3px] border-status-blueDot py-0 pl-1.5 pr-2.5 font-heading text-lead font-extrabold tracking-wide text-status-blueText"
         style={{ opacity: skipOpacity, ...stampFade }}
       >
         <ChevronsDown className="h-[18px] w-[18px]" strokeWidth={3} /> SKIP
@@ -238,8 +238,8 @@ export function SwipeCard({
 export function SwipeNote({ tone, icon, title, children }: { tone: string; icon: React.ReactNode; title: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className={cn("swipe-note mt-5 w-full rounded-card px-4 py-3 text-left", tone)}>
-      <p className="flex items-center gap-2 text-[14px] font-bold">{icon} {title}</p>
-      <p className="mt-1 text-[12.5px] opacity-90">{children}</p>
+      <p className="flex items-center gap-2 text-body font-bold">{icon} {title}</p>
+      <p className="mt-1 text-label opacity-90">{children}</p>
     </div>
   );
 }
@@ -276,7 +276,7 @@ export function RoundAction({
       >
         {children}
       </span>
-      <span className="text-[12px] font-bold text-muted">{label}</span>
+      <span className="text-caption font-bold text-muted">{label}</span>
     </button>
   );
 }

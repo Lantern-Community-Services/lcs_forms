@@ -90,12 +90,12 @@ export function CodeFormsList() {
                 <li key={p.id} className="flex items-center gap-3 border-b border-hairline px-4 py-3 last:border-0 hover:bg-rowhover/50">
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-panel bg-navsel text-accent dark:text-white"><Icon className="h-[18px] w-[18px]" /></span>
                   <Link to={`/admin/apps/${p.id}`} className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold text-ink">{p.title}</p>
+                    <p className="truncate text-body font-semibold text-ink">{p.title}</p>
                     <p className="truncate text-micro text-muted">/apps/{p.slug} · {p.fileCount} files · edited {relativeTime(p.updatedAt)}{p.updatedByName ? ` by ${p.updatedByName}` : ""}</p>
                   </Link>
                   <BackupSyncLabel kind="code" slug={p.slug} />
                   <div className="hidden sm:block"><StatusBadge status={p.status} unpublished={p.unpublishedChanges} /></div>
-                  <span className="hidden w-24 text-right text-[13px] text-muted md:block"><span className="tabular font-semibold text-ink">{p.entryCount.toLocaleString()}</span> entries</span>
+                  <span className="hidden w-24 text-right text-label text-muted md:block"><span className="tabular font-semibold text-ink">{p.entryCount.toLocaleString()}</span> entries</span>
                   <RowMenu p={p} run={run} onDelete={() => setDeleting(p)} />
                 </li>
               );
@@ -104,7 +104,7 @@ export function CodeFormsList() {
         </Card>
       )}
       <div className="mt-3 flex justify-end">
-        <button onClick={() => setArchived(!archived)} className="text-[13px] font-semibold text-accent">{archived ? "Hide archived" : "Show archived"}</button>
+        <button onClick={() => setArchived(!archived)} className="text-label font-semibold text-accent">{archived ? "Hide archived" : "Show archived"}</button>
       </div>
       <NewDialog open={creating} onClose={() => setCreating(false)} onCreated={(id) => { void refresh(); navigate(`/admin/apps/${id}`); }} />
       <DeleteFormDialog
@@ -176,8 +176,8 @@ function NewDialog({ open, onClose, onCreated }: { open: boolean; onClose: () =>
           <div className="grid gap-2">
             {CODE_TEMPLATES.map((t) => (
               <button key={t.key} onClick={() => setTemplate(t.key)} className={`rounded-card border p-3 text-left ${template === t.key ? "border-navy bg-navsel" : "border-hairline hover:border-strongline"}`}>
-                <p className="text-[14px] font-semibold text-ink">{t.name}</p>
-                <p className="mt-0.5 text-[12.5px] text-muted">{t.blurb}</p>
+                <p className="text-body font-semibold text-ink">{t.name}</p>
+                <p className="mt-0.5 text-label text-muted">{t.blurb}</p>
               </button>
             ))}
           </div>

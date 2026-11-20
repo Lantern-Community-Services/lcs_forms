@@ -38,7 +38,7 @@ export function IconPicker({ value, onChange, inherit: Inherit }: {
         placeholder={set ? `Search ${set.length.toLocaleString()} icons: food, money, house…` : "Search icons…"}
         aria-label="Search icons"
       />
-      <p className="flex min-h-[20px] items-center gap-1.5 text-[12px] text-muted" aria-live="polite">
+      <p className="flex min-h-[20px] items-center gap-1.5 text-caption text-muted" aria-live="polite">
         {!set ? "Loading icons…" : searching ? (results.length === 1 ? "1 icon" : `${results.length.toLocaleString()} icons`) : "Suggested first. Search to find more."}
         {Picked && (
           <>
@@ -67,9 +67,9 @@ export function IconPicker({ value, onChange, inherit: Inherit }: {
             </button>
           ))}
         </div>
-        {set && results.length === 0 && <p className="py-3 text-[13px] text-muted">No icons match. Try a shorter or simpler word.</p>}
+        {set && results.length === 0 && <p className="py-3 text-label text-muted">No icons match. Try a shorter or simpler word.</p>}
         {results.length > shown && (
-          <button type="button" onClick={() => setShown((n) => n + PAGE)} className="mt-2 w-full rounded-input border border-hairline py-2 text-[13px] font-semibold text-muted hover:bg-rowhover hover:text-ink">
+          <button type="button" onClick={() => setShown((n) => n + PAGE)} className="mt-2 w-full rounded-input border border-hairline py-2 text-label font-semibold text-muted hover:bg-rowhover hover:text-ink">
             Show more ({(results.length - shown).toLocaleString()} left)
           </button>
         )}

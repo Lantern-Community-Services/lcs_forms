@@ -111,7 +111,7 @@ export function HomeScreenPrompt({ enabled }: { enabled: boolean }) {
         </Button>
       }
     >
-      <p className="text-[14px] leading-relaxed text-ink">
+      <p className="text-body leading-relaxed text-ink">
         Lantern Forms works best as an app on your {device === "ipad" ? "iPad" : "iPhone"}: it opens full screen, and forms you fill in
         without internet are kept safe until they upload.
       </p>
@@ -135,7 +135,7 @@ export function HomeScreenPrompt({ enabled }: { enabled: boolean }) {
         </Step>
       </ol>
 
-      <p className="mt-5 rounded-input bg-appbg px-3.5 py-3 text-[13px] leading-relaxed text-muted">
+      <p className="mt-5 rounded-input bg-appbg px-3.5 py-3 text-label leading-relaxed text-muted">
         From now on, open Lantern Forms from its new icon on your Home Screen. You'll sign in once more the first time. No Share button? Open
         this page in Safari first.
       </p>
@@ -149,7 +149,7 @@ function Step({ n, icon, children }: { n: number; icon: React.ReactNode; childre
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-appbg text-accent dark:text-white" aria-hidden>
         {icon}
       </span>
-      <p className="pt-2 text-[14px] leading-snug text-ink">
+      <p className="pt-2 text-body leading-snug text-ink">
         <span className="sr-only">Step {n}: </span>
         {children}
       </p>

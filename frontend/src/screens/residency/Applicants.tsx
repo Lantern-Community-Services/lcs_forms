@@ -116,7 +116,7 @@ export function ApplicantsPage() {
                   role="tab"
                   aria-selected={status === k}
                   onClick={() => setStatus(k === "open" ? null : k)}
-                  className={cn("min-h-[36px] rounded-[5px] px-3 text-[12.5px] font-bold", status === k ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink")}
+                  className={cn("min-h-[36px] rounded-[5px] px-3 text-label font-bold", status === k ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink")}
                 >
                   {label}
                 </button>
@@ -197,14 +197,14 @@ function Board({ items, meta, multiSite, onOpen, className }: { items: Applicant
         const list = items.filter((a) => a.stage === key).sort(byWait);
         return (
           <div key={key} className="min-w-0 overflow-hidden rounded-card bg-subtle p-2">
-            <p className="mb-2 flex items-center justify-between gap-2 px-1 text-[12px] font-bold uppercase tracking-[0.04em] text-muted">
+            <p className="mb-2 flex items-center justify-between gap-2 px-1 text-caption font-bold uppercase tracking-[0.04em] text-muted">
               <span className="truncate" title={columnLabel(meta, key)}>{meta?.stages.find((s) => s.key === key)?.label ?? key}</span>
               <span className="tabular">{list.length}</span>
             </p>
             <div className="grid min-w-0 gap-2">
               {list.map((a) => (
                 <button key={a.id} type="button" onClick={() => onOpen(a.id)} className="min-w-0 rounded-input border border-hairline bg-surface p-2.5 text-left hover:border-strongline hover:bg-rowhover">
-                  <span className="block truncate text-[13.5px] font-semibold text-ink">{a.displayName}</span>
+                  <span className="block truncate text-body font-semibold text-ink">{a.displayName}</span>
                   <CardLines a={a} multiSite={multiSite} />
                 </button>
               ))}
@@ -263,7 +263,7 @@ function Grouped({ items, meta, multiSite, onOpen, className }: { items: Applica
       <ul>
         {groups.map((g) => (
           <li key={g.key}>
-            <p className="flex items-center justify-between border-b border-hairline bg-subtle px-4 py-2 text-[12px] font-bold uppercase tracking-[0.04em] text-muted">
+            <p className="flex items-center justify-between border-b border-hairline bg-subtle px-4 py-2 text-caption font-bold uppercase tracking-[0.04em] text-muted">
               <span>{g.label}</span>
               <span className="tabular">{g.list.length}</span>
             </p>
@@ -272,7 +272,7 @@ function Grouped({ items, meta, multiSite, onOpen, className }: { items: Applica
                 <li key={a.id}>
                   <button type="button" onClick={() => onOpen(a.id)} className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-rowhover">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-semibold text-ink">{a.displayName}</span>
+                      <span className="block truncate text-body font-semibold text-ink">{a.displayName}</span>
                       <CardLines a={a} multiSite={multiSite} />
                     </span>
                   </button>
@@ -308,7 +308,7 @@ function Tile({ label, value, hint, className }: { label: string; value: React.R
   return (
     <Card className={cn("min-w-0 p-3", className)}>
       <p className="text-micro font-semibold text-muted">{label}</p>
-      <p className="mt-0.5 font-heading text-[20px] font-extrabold tabular text-ink">{value}</p>
+      <p className="mt-0.5 font-heading text-title-sm font-extrabold tabular text-ink">{value}</p>
       {hint && <p className="text-micro text-muted">{hint}</p>}
     </Card>
   );
@@ -323,7 +323,7 @@ function ReportTable({ r }: { r: ApplicantReport }) {
       <p className="mb-2 text-micro text-muted">Days to move in: the median from referral to moving in, for people who moved in from {fmtDay(r.from)} to {fmtDay(r.to)}.</p>
       {/* No width of its own (w-0), so the table scrolls here on a phone instead of widening the page. */}
       <div className="mt-2 w-0 min-w-full overflow-x-auto">
-        <table className="w-full text-left text-[13px]">
+        <table className="w-full text-left text-label">
           <thead>
             <tr className="border-b border-hairline text-micro uppercase tracking-[0.04em] text-muted">
               {head.map((h, i) => <th key={h} className={`py-1.5 pr-3 font-bold ${i > 0 ? "text-right" : ""}`}>{h}</th>)}
@@ -399,7 +399,7 @@ function ApplicantDialog({
       }
     >
       <div className="grid gap-4">
-        <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <div className="flex flex-wrap items-center gap-2 text-label">
           <span className={cn("rounded-pill px-2 py-0.5 text-micro font-bold", a.open ? "bg-navsel text-accent dark:text-white" : accepted ? "bg-status-greenBg text-status-greenText" : "bg-status-redBg text-status-redText")}>
             {a.open ? (accepted ? "Accepted, waiting to move in" : a.stageLabel) : a.outcome}
           </span>
@@ -410,13 +410,13 @@ function ApplicantDialog({
           </span>
         </div>
         {a.resident && (
-          <p className="text-[13px]">
+          <p className="text-label">
             On the roster as <Link to={`/tenants/${a.resident.id}`} className="font-semibold text-accent hover:underline">{a.resident.displayName}</Link>
             {a.resident.status !== "active" ? " (removed)" : a.resident.movedIn ? `, moved in ${fmtDay(a.resident.moveInDate)}` : ", not moved in yet"}.
           </p>
         )}
         {!manage && a.open && !accepted && <p className="text-micro text-muted">Only people who manage the roster move applicants along.</p>}
-        <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]">
+        <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-label">
           {rows.map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-muted">{k}</dt>
@@ -428,7 +428,7 @@ function ApplicantDialog({
           <p className="kicker mb-1.5">History</p>
           <ol className="grid gap-2 border-l border-hairline pl-3">
             {a.history.map((h) => (
-              <li key={h.id} className="text-[13px]">
+              <li key={h.id} className="text-label">
                 <span className="font-semibold text-ink">{h.label}</span>
                 <span className="text-muted"> · {fmtDay(h.date)} · {h.byName}</span>
                 {(h.viewingDate || h.reason || h.note) && (
@@ -449,7 +449,7 @@ function ErrorLine({ error }: { error: string | null }) {
   useEffect(() => {
     if (error) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [error]);
-  return error ? <p ref={ref} role="alert" className="rounded-input bg-status-redBg px-3 py-2 text-[13px] text-status-redText">{error}</p> : null;
+  return error ? <p ref={ref} role="alert" className="rounded-input bg-status-redBg px-3 py-2 text-label text-status-redText">{error}</p> : null;
 }
 
 /** Add an applicant, or change one's details. */
@@ -556,7 +556,7 @@ function StageChips({ options, value, onChange, label }: { options: { key: strin
           title={o.hint}
           onClick={() => onChange(o.key)}
           className={cn(
-            "min-h-[40px] rounded-pill border px-3.5 text-left text-[13px] font-semibold transition-colors",
+            "min-h-[40px] rounded-pill border px-3.5 text-left text-label font-semibold transition-colors",
             value === o.key ? "border-navy bg-navsel text-accent dark:text-white" : "border-hairline text-ink hover:bg-rowhover"
           )}
         >
@@ -613,7 +613,7 @@ function StageDialog({ a, meta, closing, onClose }: { a: Applicant; meta?: Appli
       }
     >
       <div className="grid gap-3">
-        <p className="text-[13px] text-muted">Now: {a.open ? a.stageLabel : a.outcome}, since {fmtDay(a.stageDate)}.</p>
+        <p className="text-label text-muted">Now: {a.open ? a.stageLabel : a.outcome}, since {fmtDay(a.stageDate)}.</p>
         <StageChips options={options} value={stage} onChange={(v) => { setStage(v); setReason(""); }} label={closing ? "How it ended" : "Stage"} />
         {hint && <p className="text-micro text-muted">{hint}</p>}
         <div className="grid grid-cols-2 gap-3">
@@ -677,7 +677,7 @@ function AcceptDialog({ a, onClose, onMoveIn }: { a: Applicant; onClose: () => v
           </>
         }
       >
-        <p className="text-[13.5px] text-ink">
+        <p className="text-body text-ink">
           {a.displayName} is on {a.siteName}'s roster, not moved in yet. Move them into a unit now, or later from the roster or this page.
         </p>
       </ResponsiveDialog>
@@ -696,7 +696,7 @@ function AcceptDialog({ a, onClose, onMoveIn }: { a: Applicant; onClose: () => v
       }
     >
       <div className="grid gap-3">
-        <p className="text-[13.5px] text-ink">
+        <p className="text-body text-ink">
           They go on {a.siteName}'s roster as not moved in yet. Their date of birth, phone, email, program and referral are copied into their client information.
         </p>
         <Field label="Accepted on">

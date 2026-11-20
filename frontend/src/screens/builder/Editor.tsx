@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { setNavMode } from "@/lib/shellNav";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -54,6 +55,11 @@ const MIN_PREVIEW = 360;
  */
 export function FormEditorPage() {
   const { id = "" } = useParams();
+  // The editor needs the width: the main sidebar folds to icons while it's open.
+  useEffect(() => {
+    setNavMode("always");
+    return () => setNavMode(null);
+  }, []);
   const { data, isLoading, error } = useBuiltForm(id);
   if (error) return <div className="p-6"><EmptyState title={errorMessage(error, "Couldn't open this form.")} /></div>;
   if (isLoading || !data) return <LoadingState />;
@@ -256,7 +262,7 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
     <div className="flex h-full min-h-0 flex-col bg-appbg">
       {/* Top bar */}
       <div className="flex flex-none flex-wrap items-center gap-2 border-b border-hairline bg-surface px-3 py-2 pt-safe-top md:px-4">
-        <Link to="/admin/builder" className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-[13px] font-semibold text-accent hover:bg-subtle dark:text-white" aria-label="All forms">
+        <Link to="/admin/builder" className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-label font-semibold text-accent hover:bg-subtle dark:text-white" aria-label="All forms">
           <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Forms</span>
         </Link>
         <input
@@ -283,7 +289,7 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
                   const t = /^tutorial(?:\.steps\[(\d+)\])?/.exec(p.path);
                   if (t) { if (t[1]) setTutorialFocus({ step: Number(t[1]), n: Date.now() }); setTab("tutorial"); }
                 }}>
-                  <span className="text-[12.5px]"><code className="text-muted">{p.path}</code> {p.message}</span>
+                  <span className="text-label"><code className="text-muted">{p.path}</code> {p.message}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -314,11 +320,11 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
           className={cn("flex min-h-0 min-w-0 flex-col", split ? "flex-none" : "flex-1")}
           style={split ? { width: `clamp(${MIN_EDITOR}px, ${ratio * 100}%, calc(100% - ${MIN_PREVIEW + 9}px))`, transition: resizing || prefersReducedMotion() ? undefined : `width 300ms ${EASE}` } : undefined}
         >
-          <div className="flex flex-none gap-1 overflow-x-auto border-b border-hairline bg-surface px-3 md:px-4">
+          <div className="flex flex-none gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-y-hidden border-b border-hairline bg-surface px-3 md:px-4">
             {([["build", "Build", Wrench], ["code", "Code", Braces], ["settings", "Settings", Settings2], ["notifications", "Notifications", Bell], ["tutorial", "Tutorial", GraduationCap], ["preview", "Preview", Eye], ["history", "Versions", History]] as const)
               .filter(([k]) => !(split && k === "preview"))
               .map(([k, label, Icon]) => (
-                <button key={k} onClick={() => setTab(k)} className={cn("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-semibold", view === k ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
+                <button key={k} onClick={() => setTab(k)} className={cn("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-label font-semibold", view === k ? "border-navy text-accent dark:border-white dark:text-white" : "border-transparent text-muted hover:text-ink")}>
                   <Icon className="h-3.5 w-3.5" /> {label}
                 </button>
               ))}
@@ -395,7 +401,7 @@ function Editor({ initial }: { initial: BuiltFormDetail }) {
       <Dialog open={sharedReady} onOpenChange={(o) => !o && setSharedReady(false)}>
         <DialogContent aria-describedby={undefined}>
           <DialogHeader title="It's live: hand it out" subtitle="People outside Lantern fill this form in through an employee's own link or QR code." />
-          <DialogBody className="space-y-2 text-[13.5px] text-ink">
+          <DialogBody className="space-y-2 text-body text-ink">
             <p>Get your link and QR code to send, print or show on your phone. Every employee who can open the form gets their own, from Forms or the form's page.</p>
             <p className="text-muted">All your external forms, their links and entries are in Admin → External forms.</p>
           </DialogBody>
@@ -477,7 +483,7 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
   );
 
   return (
-    <div className={cn("grid h-full min-h-0", compact ? "grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : "grid-cols-1 md:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_360px]")}>
+    <div className={cn("grid h-full min-h-0", compact ? "grid-cols-[minmax(0,1fr)_minmax(240px,300px)]" : "grid-cols-1 md:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_360px]")}>
       {/* Palette */}
       {!compact && (
         <aside className="hidden min-h-0 border-r border-hairline bg-surface md:flex md:flex-col">
@@ -501,14 +507,14 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
             </DropdownMenu>
           </div>
           <div className={cn("rounded-card border bg-surface p-4 shadow-sm transition-[border-color,box-shadow] duration-150 md:p-6", dnd.over ? "border-navy/40 ring-4 ring-navy/10 dark:border-accent/50" : "border-hairline")}>
-            <h2 className="font-heading text-[21px] font-extrabold text-ink">{doc.title || "Untitled form"}</h2>
-            {doc.description && <div className="prose-form mt-1 text-[13.5px] text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
+            <h2 className="font-heading text-title-sm font-extrabold text-ink">{doc.title || "Untitled form"}</h2>
+            {doc.description && <div className="prose-form mt-1 text-body text-muted" dangerouslySetInnerHTML={{ __html: doc.description }} />}
             <div ref={listRef} className="relative mt-5" style={dnd.listStyle}>
               {!doc.fields.length && (
                 <div
                   data-drop-empty
                   className={cn(
-                    "rounded-card border-2 border-dashed p-10 text-center text-[13.5px] transition-colors duration-150",
+                    "rounded-card border-2 border-dashed p-10 text-center text-body transition-colors duration-150",
                     dnd.overNew ? "border-navy bg-navsel/40 font-semibold text-accent dark:border-accent" : "border-hairline text-muted"
                   )}
                 >
@@ -556,7 +562,7 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
           <div className="flex h-full flex-col">
             {compact ? (
               <div className="flex flex-none items-center border-b border-hairline px-2 py-1">
-                <button onClick={() => setSelected(null)} className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-[12.5px] font-semibold text-accent hover:bg-subtle dark:text-white">
+                <button onClick={() => setSelected(null)} className="inline-flex items-center gap-1 rounded-input px-1.5 py-1 text-label font-semibold text-accent hover:bg-subtle dark:text-white">
                   <Plus className="h-3.5 w-3.5" /> Add field
                 </button>
                 <div className="flex-1" />
@@ -583,8 +589,8 @@ function BuildTab({ doc, commit, selected, setSelected, compact = false }: { doc
         ) : compact ? (
           <div className="flex h-full min-h-0 flex-col">{palette}</div>
         ) : (
-          <div className="p-5 text-[13px] text-muted">
-            <p className="font-heading text-[15px] font-extrabold text-ink">Nothing selected</p>
+          <div className="p-5 text-label text-muted">
+            <p className="font-heading text-body-lg font-extrabold text-ink">Nothing selected</p>
             <p className="mt-1">Click a field to edit its label, choices, rules and more. Form-wide options — who can fill it in, limits, notifications, the confirmation — are under Settings.</p>
             <p className="mt-3">Shortcuts: Ctrl+S save · Ctrl+Z undo · Ctrl+Shift+Z redo.</p>
           </div>
@@ -617,7 +623,7 @@ function Palette({ compact, onAdd, dragSource }: {
   return (
     <>
       <div className="flex-none space-y-2 border-b border-hairline p-3 pb-2.5">
-        {compact && <p className="px-0.5 font-heading text-[14px] font-extrabold text-ink">Add a field</p>}
+        {compact && <p className="px-0.5 font-heading text-body font-extrabold text-ink">Add a field</p>}
         <label className="flex h-8 items-center gap-2 rounded-input border border-hairline bg-subtle px-2.5 focus-within:border-navy dark:focus-within:border-accent">
           <Search className="h-3.5 w-3.5 flex-none text-muted" aria-hidden />
           <input
@@ -626,7 +632,7 @@ function Palette({ compact, onAdd, dragSource }: {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search fields"
             aria-label="Search fields"
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-muted focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-label text-ink placeholder:text-muted focus:outline-none"
           />
         </label>
       </div>
@@ -649,17 +655,17 @@ function Palette({ compact, onAdd, dragSource }: {
                   <span className="block overflow-hidden rounded-input bg-subtle transition-colors group-hover/tile:bg-navsel/60">
                     <FieldThumb type={t.type} />
                   </span>
-                  <span className="truncate px-0.5 text-[12.5px] font-semibold text-ink">{t.label}</span>
+                  <span className="truncate px-0.5 text-label font-semibold text-ink">{t.label}</span>
                 </button>
               ))}
             </div>
           </div>
         ))}
-        {!groups.length && <p className="px-1 py-6 text-center text-[13px] text-muted">No fields match “{query}”.</p>}
+        {!groups.length && <p className="px-1 py-6 text-center text-label text-muted">No fields match “{query}”.</p>}
       </div>
       <div className="min-h-[76px] flex-none border-t border-hairline bg-subtle/60 px-3 py-2.5">
-        <p className="text-[13px] font-semibold text-ink">{info?.label}</p>
-        <p className="text-[12.5px] leading-snug text-muted">{FIELD_BLURBS[hovered]}</p>
+        <p className="text-label font-semibold text-ink">{info?.label}</p>
+        <p className="text-label leading-snug text-muted">{FIELD_BLURBS[hovered]}</p>
         <p className="mt-1 text-micro text-muted">Drag onto the form, or click to add below the selected field.</p>
       </div>
     </>
@@ -701,12 +707,12 @@ function FieldCard({
         <GripVertical className="h-4 w-4" />
       </div>
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
-        <span className="rounded bg-subtle2 px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.03em] text-muted">{typeInfo(f.type)?.label ?? f.type}</span>
-        <code className="text-[11px] text-muted">{f.id}</code>
-        {f.conditional && <span className="inline-flex items-center gap-0.5 rounded bg-status-violetBg px-1.5 py-0.5 text-[10.5px] font-semibold text-status-violetText"><GitBranch className="h-3 w-3" /> {f.conditional.action} if…</span>}
-        {f.adminOnly && <span className="inline-flex items-center gap-0.5 rounded bg-status-amberBg px-1.5 py-0.5 text-[10.5px] font-semibold text-status-amberText"><EyeOff className="h-3 w-3" /> admin only</span>}
-        {f.readOnly && <span className="inline-flex items-center gap-0.5 rounded bg-subtle2 px-1.5 py-0.5 text-[10.5px] font-semibold text-muted"><Lock className="h-3 w-3" /> read-only</span>}
-        {f.width && f.width !== "full" && <span className="rounded bg-subtle2 px-1.5 py-0.5 text-[10.5px] font-semibold text-muted">{f.width}</span>}
+        <span className="rounded bg-subtle2 px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.03em] text-muted">{typeInfo(f.type)?.label ?? f.type}</span>
+        <code className="text-micro text-muted">{f.id}</code>
+        {f.conditional && <span className="inline-flex items-center gap-0.5 rounded bg-status-violetBg px-1.5 py-0.5 text-micro font-semibold text-status-violetText"><GitBranch className="h-3 w-3" /> {f.conditional.action} if…</span>}
+        {f.adminOnly && <span className="inline-flex items-center gap-0.5 rounded bg-status-amberBg px-1.5 py-0.5 text-micro font-semibold text-status-amberText"><EyeOff className="h-3 w-3" /> admin only</span>}
+        {f.readOnly && <span className="inline-flex items-center gap-0.5 rounded bg-subtle2 px-1.5 py-0.5 text-micro font-semibold text-muted"><Lock className="h-3 w-3" /> read-only</span>}
+        {f.width && f.width !== "full" && <span className="rounded bg-subtle2 px-1.5 py-0.5 text-micro font-semibold text-muted">{f.width}</span>}
         <div className={cn("ml-auto flex gap-0.5", selected ? "flex" : "hidden group-hover:flex")}>
           <IconBtn label="Move up" disabled={index === 0} onClick={() => onMove(-1)}><ArrowUp className="h-3.5 w-3.5" /></IconBtn>
           <IconBtn label="Move down" disabled={index === count - 1} onClick={() => onMove(1)}><ArrowDown className="h-3.5 w-3.5" /></IconBtn>
@@ -715,9 +721,9 @@ function FieldCard({
         </div>
       </div>
       {f.type === "page" ? (
-        <p className="py-1 text-center text-[13px] font-semibold text-ink">— Page break · {f.label || "Next page"} —</p>
+        <p className="py-1 text-center text-label font-semibold text-ink">— Page break · {f.label || "Next page"} —</p>
       ) : f.type === "hidden" ? (
-        <p className="text-[13px] text-muted">Hidden field “{f.label}”{typeof f.defaultValue === "string" && f.defaultValue ? ` = ${f.defaultValue}` : ""}</p>
+        <p className="text-label text-muted">Hidden field “{f.label}”{typeof f.defaultValue === "string" && f.defaultValue ? ` = ${f.defaultValue}` : ""}</p>
       ) : (
         // A live picture of the field, inert: clicks select the card instead.
         <div className={cn("pointer-events-none select-none", f.width === "half" && "md:max-w-[50%]", f.width === "third" && "md:max-w-[33%]")} aria-hidden>
@@ -885,7 +891,7 @@ function CodeTab({ doc, commit, compact = false }: { doc: FormDoc; commit: (d: F
     <div className={cn("grid h-full min-h-0 grid-cols-1", !compact && "lg:grid-cols-[1fr_320px]")}>
       <div className="min-h-0 overflow-y-auto p-3 scroll-thin md:p-4">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className={cn("text-[12.5px] font-semibold", state === "synced" ? "text-status-greenText" : state === "checking" ? "text-muted" : "text-status-redText")}>
+          <span className={cn("text-label font-semibold", state === "synced" ? "text-status-greenText" : state === "checking" ? "text-muted" : "text-status-redText")}>
             {state === "synced" ? "✓ In sync with the builder" : state === "checking" ? "Checking…" : "Not applied — fix the problems below"}
           </span>
           <div className="flex-1" />
@@ -901,8 +907,8 @@ function CodeTab({ doc, commit, compact = false }: { doc: FormDoc; commit: (d: F
           </p>
         )}
       </div>
-      <aside className={cn("hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 text-[12.5px] text-muted scroll-thin", !compact && "lg:block")}>
-        <p className="font-heading text-[14px] font-extrabold text-ink">Form as code</p>
+      <aside className={cn("hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 text-label text-muted scroll-thin", !compact && "lg:block")}>
+        <p className="font-heading text-body font-extrabold text-ink">Form as code</p>
         <p className="mt-1">This is the whole form — the builder, exports, the CLI and AI assistants all read and write exactly this. Valid edits apply to the builder as you type; Save when you're done.</p>
         <p className="mt-3 font-semibold text-ink">Field types</p>
         <ul className="mt-1 space-y-0.5">
@@ -969,12 +975,12 @@ function PreviewPane({ doc, slug, side = false }: { doc: FormDoc; slug: string; 
 
   const answers = (
     <>
-      <p className="font-heading text-[14px] font-extrabold text-ink">{result ? "What would be saved" : "Answers so far"}</p>
+      <p className="font-heading text-body font-extrabold text-ink">{result ? "What would be saved" : "Answers so far"}</p>
       <p className="mb-2 text-micro text-muted">{result ? "Nothing is saved from Preview." : "Live, with calculations, from whichever device you're filling in. Hidden fields' answers are dropped on submit."}</p>
       {result && Object.keys(result.errors).length > 0 && (
         <p className="mb-2 rounded-input bg-status-amberBg px-2 py-1.5 text-micro text-status-amberText">{Object.keys(result.errors).length} answer(s) would be refused: {Object.keys(result.errors).join(", ")}</p>
       )}
-      <pre className="whitespace-pre-wrap break-all rounded-input bg-subtle p-2 font-mono text-[11px] text-ink">{JSON.stringify(result ? result.values : live, null, 2)}</pre>
+      <pre className="whitespace-pre-wrap break-all rounded-input bg-subtle p-2 font-mono text-micro text-ink">{JSON.stringify(result ? result.values : live, null, 2)}</pre>
     </>
   );
 
@@ -996,7 +1002,7 @@ function PreviewPane({ doc, slug, side = false }: { doc: FormDoc; slug: string; 
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1">
-          <DevicePreview src={`/f/${slug}/preview`} toolbarExtra={toolbar} />
+          <DevicePreview src={`/f/${encodeURIComponent(slug)}/preview`} toolbarExtra={toolbar} />
         </div>
         {showAnswers && <div className="h-[34%] min-h-[160px] flex-none overflow-y-auto border-t border-hairline bg-surface p-3 scroll-thin">{answers}</div>}
         <p className="flex-none border-t border-hairline bg-surface px-3 py-1 text-micro text-muted">Live preview of your unsaved edits, in the app on each device. Nothing is submitted.</p>
@@ -1006,7 +1012,7 @@ function PreviewPane({ doc, slug, side = false }: { doc: FormDoc; slug: string; 
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_300px]">
-      <DevicePreview src={`/f/${slug}/preview`} toolbarExtra={toolbar} />
+      <DevicePreview src={`/f/${encodeURIComponent(slug)}/preview`} toolbarExtra={toolbar} />
       <aside className="hidden min-h-0 overflow-y-auto border-l border-hairline bg-surface p-4 scroll-thin lg:block">{answers}</aside>
     </div>
   );
@@ -1021,16 +1027,16 @@ function VersionsTab({ form, dirty, onRestored }: { form: BuiltFormDetail; dirty
   return (
     <div className="h-full overflow-y-auto p-4 scroll-thin md:p-6">
       <div className="mx-auto max-w-[720px]">
-        <p className="mb-3 text-[13px] text-muted">Every publish is kept. Entries always show with the labels and choices of the version they were filled in on. Restoring copies a version into the draft; publish to make it live.</p>
+        <p className="mb-3 text-label text-muted">Every publish is kept. Entries always show with the labels and choices of the version they were filled in on. Restoring copies a version into the draft; publish to make it live.</p>
         {isLoading ? <LoadingState /> : !versions?.length ? (
-          <div className="rounded-card border border-dashed border-hairline p-8 text-center text-[13.5px] text-muted">Not published yet.</div>
+          <div className="rounded-card border border-dashed border-hairline p-8 text-center text-body text-muted">Not published yet.</div>
         ) : (
           <ul className="rounded-card border border-hairline bg-surface">
             {versions.map((v) => (
               <li key={v.version} className="flex flex-wrap items-center gap-3 border-b border-hairline px-4 py-3 last:border-0">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-navsel text-[12px] font-bold text-accent">v{v.version}</span>
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-navsel text-caption font-bold text-accent">v{v.version}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-semibold text-ink">{v.note || (v.version === form.liveVersion ? "Current live version" : `Version ${v.version}`)}</p>
+                  <p className="text-body font-semibold text-ink">{v.note || (v.version === form.liveVersion ? "Current live version" : `Version ${v.version}`)}</p>
                   <p className="text-micro text-muted">{v.publishedByName} · {formatDateTime(v.createdAt)}{v.version === form.liveVersion ? " · live" : ""}</p>
                 </div>
                 <Button variant="secondary" size="sm" onClick={async () => setViewing({ version: v.version, doc: await builderApi.versionDoc(form.id, v.version) })}>View</Button>
@@ -1085,7 +1091,7 @@ function PublishDialog({ open, onClose, form, dirty, save, onDone }: { open: boo
       <DialogContent aria-describedby={undefined}>
         <DialogHeader title={form.liveVersion ? `Publish version ${form.liveVersion + 1}` : "Publish this form"} subtitle={form.liveVersion ? "People filling it in get the new version from their next visit. Entries already made keep the version they were made on." : "It starts taking entries straight away."} />
         <DialogBody>
-          <label className="mb-1 block text-[12px] font-semibold text-muted">What changed? (optional, for the version history)</label>
+          <label className="mb-1 block text-caption font-semibold text-muted">What changed? (optional, for the version history)</label>
           <Input autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Added a question about pets" onKeyDown={(e) => e.key === "Enter" && void go()} />
           {dirty && <p className="mt-2 text-micro text-muted">Your unsaved changes are saved first.</p>}
         </DialogBody>

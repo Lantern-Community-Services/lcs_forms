@@ -59,7 +59,7 @@ export function SendSiteToReview({ site, onRoster }: { site: { code: string; nam
           </>
         }
       >
-        <p className="text-[13px] text-muted">
+        <p className="text-label text-muted">
           All {onRoster.toLocaleString()} people on the {site.name} roster will show as Needs review. Each one stays there,
           even if they come up on a form, until someone confirms they're still here (Keep) or removes them.
         </p>

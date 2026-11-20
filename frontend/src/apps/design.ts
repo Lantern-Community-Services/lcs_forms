@@ -55,15 +55,15 @@ const KIT_SCRIPT = String.raw`
     return h("section", { className: "mb-6 rounded-card border border-hairline bg-surface p-5", id: props.id },
       h("div", { className: "mb-4" },
         h("p", { className: "text-micro font-bold uppercase tracking-[0.04em] text-muted" }, props.group),
-        h("h2", { className: "font-heading text-[19px] font-extrabold text-ink" }, props.title),
-        props.note ? h("p", { className: "mt-0.5 text-[13px] text-muted" }, props.note) : null),
+        h("h2", { className: "font-heading text-title-sm font-extrabold text-ink" }, props.title),
+        props.note ? h("p", { className: "mt-0.5 text-label text-muted" }, props.note) : null),
       props.children);
   }
   function Swatch(p) {
     return h("div", { className: "w-[132px]" },
       h("div", { className: "h-12 rounded-input border border-hairline", style: { background: "rgb(var(" + p.v + "))" } }),
-      h("p", { className: "mt-1 text-[12px] font-semibold text-ink" }, p.name),
-      h("p", { className: "font-mono text-[10.5px] text-muted" }, p.cls));
+      h("p", { className: "mt-1 text-caption font-semibold text-ink" }, p.name),
+      h("p", { className: "font-mono text-micro text-muted" }, p.cls));
   }
   var surfaces = [["App background", "--c-appbg", "bg-appbg"], ["Surface", "--c-surface", "bg-surface"], ["Side panel", "--c-sidebar", "bg-sidebar"], ["Subtle", "--c-subtle", "bg-subtle"], ["Subtle 2", "--c-subtle2", "bg-subtle2"], ["Selected", "--c-navsel", "bg-navsel"], ["Hairline", "--c-hairline", "border-hairline"], ["Strong line", "--c-strongline", "border-strongline"], ["Ink", "--c-ink", "text-ink"], ["Muted", "--c-muted", "text-muted"], ["Accent", "--c-accent", "text-accent"], ["Brand", "--c-brand", "bg-navy"]];
   var tones = ["amber", "blue", "green", "red", "violet"];
@@ -78,8 +78,8 @@ const KIT_SCRIPT = String.raw`
   function ToggleDemo() {
     var a = useState(true), b = useState(false), c = useState(true);
     return h("div", { className: "flex flex-wrap items-center gap-5" },
-      h("label", { className: "flex items-center gap-2 text-[14px] text-ink" }, h(ui.Checkbox, { checked: a[0], onCheckedChange: a[1] }), "Checkbox"),
-      h("label", { className: "flex items-center gap-2 text-[14px] text-ink" }, h(ui.Switch, { checked: b[0], onCheckedChange: b[1] }), "Switch"),
+      h("label", { className: "flex items-center gap-2 text-body text-ink" }, h(ui.Checkbox, { checked: a[0], onCheckedChange: a[1] }), "Checkbox"),
+      h("label", { className: "flex items-center gap-2 text-body text-ink" }, h(ui.Switch, { checked: b[0], onCheckedChange: b[1] }), "Switch"),
       h(ui.Chip, { active: c[0], onClick: function () { c[1](!c[0]); } }, "Chip (filter)"),
       h(ui.Chip, { active: false, onClick: function () {} }, "Chip off"));
   }
@@ -92,21 +92,21 @@ const KIT_SCRIPT = String.raw`
     return h("ol", { className: "flex gap-2" }, steps.map(function (s, i) {
       var done = s[2] === "done", cur = s[2] === "current";
       return h("li", { key: i, className: "min-w-0 flex-1" }, h("div", { className: "flex min-h-[64px] items-center gap-3 rounded-card border-[1.5px] px-3 py-2 " + (cur ? "border-navy bg-surface dark:border-white" : done ? "border-hairline" : "border-transparent") },
-        h("span", { className: "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border-2 text-[15px] font-extrabold " + (done ? "border-status-greenDot bg-status-greenDot text-white" : cur ? "border-navy bg-navy text-white dark:border-white dark:bg-white dark:text-[#111]" : "border-strongline bg-surface text-muted") }, done ? h(I.Check, { className: "h-4 w-4", strokeWidth: 3.4 }) : i + 1),
-        h("span", { className: "min-w-0" }, h("span", { className: "block text-[12px] font-bold uppercase tracking-wide text-muted" }, s[0]), h("span", { className: "block truncate text-[15px] font-bold " + (done || cur ? "text-ink" : "text-muted") }, s[1]))));
+        h("span", { className: "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border-2 text-body-lg font-extrabold " + (done ? "border-status-greenDot bg-status-greenDot text-white" : cur ? "border-navy bg-navy text-white dark:border-white dark:bg-white dark:text-[#111]" : "border-strongline bg-surface text-muted") }, done ? h(I.Check, { className: "h-4 w-4", strokeWidth: 3.4 }) : i + 1),
+        h("span", { className: "min-w-0" }, h("span", { className: "block text-caption font-bold uppercase tracking-wide text-muted" }, s[0]), h("span", { className: "block truncate text-body-lg font-bold " + (done || cur ? "text-ink" : "text-muted") }, s[1]))));
     }));
   }
   function PersonRow(p) {
     return h("div", { className: "flex min-h-[84px] items-center gap-3 rounded-card border-[1.5px] px-3.5 py-2 " + (p.served ? "border-status-greenDot/30 bg-status-greenBg/40" : "border-hairline") },
-      h("span", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[14px] font-bold text-white " + (p.served ? "bg-muted" : ""), style: p.served ? undefined : { background: ui.tintFor(p.name) } }, ui.initials(p.name)),
-      h("span", { className: "min-w-0 flex-1" }, h("span", { className: "block truncate text-[16.5px] font-semibold " + (p.served ? "text-muted" : "text-ink") }, p.name), h("span", { className: "block text-[13px] text-muted" }, "Room " + p.room + " · " + p.note)),
-      p.served ? h("span", { className: "rounded-pill px-2.5 py-1 text-[12px] font-bold " + (p.warn ? "bg-status-amberBg text-status-amberText" : "bg-status-greenBg text-status-greenText") }, p.served) : null);
+      h("span", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-body font-bold text-white " + (p.served ? "bg-muted" : ""), style: p.served ? undefined : { background: ui.tintFor(p.name) } }, ui.initials(p.name)),
+      h("span", { className: "min-w-0 flex-1" }, h("span", { className: "block truncate text-[16.5px] font-semibold " + (p.served ? "text-muted" : "text-ink") }, p.name), h("span", { className: "block text-label text-muted" }, "Room " + p.room + " · " + p.note)),
+      p.served ? h("span", { className: "rounded-pill px-2.5 py-1 text-caption font-bold " + (p.warn ? "bg-status-amberBg text-status-amberText" : "bg-status-greenBg text-status-greenText") }, p.served) : null);
   }
   function Pills() {
     return h("div", { className: "flex flex-wrap gap-2" },
-      h("span", { className: "flex min-h-[36px] items-center gap-1.5 rounded-pill bg-status-greenBg px-3 text-[12.5px] font-bold text-status-greenText" }, h(I.CheckCircle2, { className: "h-4 w-4" }), "All uploaded"),
-      h("span", { className: "flex min-h-[36px] items-center gap-1.5 rounded-pill bg-status-amberBg px-3 text-[12.5px] font-bold text-status-amberText" }, h(I.UploadCloud, { className: "h-4 w-4" }), "3 uploading"),
-      h("span", { className: "flex min-h-[36px] items-center gap-1.5 rounded-pill bg-status-redBg px-3 text-[12.5px] font-bold text-status-redText" }, h(I.AlertTriangle, { className: "h-4 w-4" }), "1 needs attention"));
+      h("span", { className: "flex min-h-[36px] items-center gap-1.5 rounded-pill bg-status-greenBg px-3 text-label font-bold text-status-greenText" }, h(I.CheckCircle2, { className: "h-4 w-4" }), "All uploaded"),
+      h("span", { className: "flex min-h-[36px] items-center gap-1.5 rounded-pill bg-status-amberBg px-3 text-label font-bold text-status-amberText" }, h(I.UploadCloud, { className: "h-4 w-4" }), "3 uploading"),
+      h("span", { className: "flex min-h-[36px] items-center gap-1.5 rounded-pill bg-status-redBg px-3 text-label font-bold text-status-redText" }, h(I.AlertTriangle, { className: "h-4 w-4" }), "1 needs attention"));
   }
 
   function Kit() {
@@ -114,24 +114,24 @@ const KIT_SCRIPT = String.raw`
     React.useEffect(function () { document.documentElement.classList.toggle("dark", dark[0]); }, [dark[0]]);
     return h("div", { className: "mx-auto max-w-[1100px] px-6 py-8" },
       h("div", { className: "mb-6 flex flex-wrap items-end justify-between gap-3" },
-        h("div", null, h("h1", { className: "font-heading text-[30px] font-extrabold text-ink" }, "Lantern Forms — design kit"), h("p", { className: "mt-1 text-[14px] text-muted" }, "The app's real components and tokens. Every screen is built from these; the brief at the bottom has the rules.")),
+        h("div", null, h("h1", { className: "font-heading text-[30px] font-extrabold text-ink" }, "Lantern Forms — design kit"), h("p", { className: "mt-1 text-body text-muted" }, "The app's real components and tokens. Every screen is built from these; the brief at the bottom has the rules.")),
         h(ui.Button, { variant: "secondary", onClick: function () { dark[1](!dark[0]); } }, dark[0] ? "Light mode" : "Dark mode")),
       h(Card, { id: "colors", group: "Foundations", title: "Colors", note: "Every token has a light and a dark value — toggle dark mode to see both. Never hard-code hex." },
         h("div", { className: "flex flex-wrap gap-4" }, surfaces.map(function (s) { return h(Swatch, { key: s[1], name: s[0], v: s[1], cls: s[2] }); })),
         h("div", { className: "mt-5 flex flex-wrap gap-4" }, tones.map(function (t) {
-          return h("div", { key: t, className: "w-[132px]" }, h("div", { className: "flex h-12 items-center justify-center rounded-input text-[13px] font-bold", style: { background: "rgb(var(--st-" + t + "-bg))", color: "rgb(var(--st-" + t + "-text))" } }, t), h("p", { className: "mt-1 font-mono text-[10.5px] text-muted" }, "status-" + t + "Bg / Text / Dot"));
+          return h("div", { key: t, className: "w-[132px]" }, h("div", { className: "flex h-12 items-center justify-center rounded-input text-label font-bold", style: { background: "rgb(var(--st-" + t + "-bg))", color: "rgb(var(--st-" + t + "-text))" } }, t), h("p", { className: "mt-1 font-mono text-micro text-muted" }, "status-" + t + "Bg / Text / Dot"));
         })),
-        h("div", { className: "mt-5 flex flex-wrap gap-2" }, [0, 1, 2, 3, 4, 5, 6, 7, null].map(function (s, i) { return h("div", { key: i, className: "flex items-center gap-1.5 text-[12px] text-muted" }, h("span", { className: "h-4 w-4 rounded-[4px]", style: { background: ch.slotColor(s) } }), s === null ? "Other" : "Chart " + (s + 1)); }))),
+        h("div", { className: "mt-5 flex flex-wrap gap-2" }, [0, 1, 2, 3, 4, 5, 6, 7, null].map(function (s, i) { return h("div", { key: i, className: "flex items-center gap-1.5 text-caption text-muted" }, h("span", { className: "h-4 w-4 rounded-[4px]", style: { background: ch.slotColor(s) } }), s === null ? "Other" : "Chart " + (s + 1)); }))),
       h(Card, { id: "type", group: "Foundations", title: "Type", note: "Archivo. Titles are font-heading font-extrabold." },
         h("p", { className: "font-heading text-[32px] font-extrabold text-ink" }, "Saved"),
-        h("p", { className: "font-heading text-[24px] font-extrabold text-ink" }, "What are you serving this shift?"),
-        h("p", { className: "font-heading text-[17px] font-extrabold text-ink" }, "Section heading"),
-        h("p", { className: "text-[15px] text-ink" }, "Body text 15px — one clear instruction per screen."),
-        h("p", { className: "text-[13px] text-muted" }, "Secondary text 13px, text-muted."),
+        h("p", { className: "font-heading text-title font-extrabold text-ink" }, "What are you serving this shift?"),
+        h("p", { className: "font-heading text-lead font-extrabold text-ink" }, "Section heading"),
+        h("p", { className: "text-body-lg text-ink" }, "Body text 15px — one clear instruction per screen."),
+        h("p", { className: "text-label text-muted" }, "Secondary text 13px, text-muted."),
         h("p", { className: "text-micro font-bold uppercase tracking-[0.04em] text-muted" }, "Small caps label")),
       h(Card, { id: "buttons", group: "Components", title: "Buttons", note: "Button — variant × size. Main iPad actions are size lg with min-h-[58px]." },
         h("div", { className: "flex flex-wrap items-center gap-2" }, ["primary", "secondary", "ghost", "success", "outlineDanger", "danger"].map(function (v) { return h(ui.Button, { key: v, variant: v }, v); })),
-        h("div", { className: "mt-3 flex flex-wrap items-center gap-2" }, h(ui.Button, { size: "sm" }, "Small"), h(ui.Button, null, "Medium"), h(ui.Button, { size: "lg" }, "Large"), h(ui.Button, { size: "icon", variant: "secondary", "aria-label": "Add" }, h(I.Plus, { className: "h-4 w-4" })), h(ui.Button, { className: "min-h-[58px] px-8 text-[17px] font-extrabold" }, "Start serving Individual Meals"))),
+        h("div", { className: "mt-3 flex flex-wrap items-center gap-2" }, h(ui.Button, { size: "sm" }, "Small"), h(ui.Button, null, "Medium"), h(ui.Button, { size: "lg" }, "Large"), h(ui.Button, { size: "icon", variant: "secondary", "aria-label": "Add" }, h(I.Plus, { className: "h-4 w-4" })), h(ui.Button, { className: "min-h-[58px] px-8 text-lead font-extrabold" }, "Start serving Individual Meals"))),
       h(Card, { id: "inputs", group: "Components", title: "Inputs" },
         h("div", { className: "grid gap-4 md:grid-cols-2" },
           h(ui.Field, { label: "Name", hint: "Help text sits under the control." }, h(ui.Input, { placeholder: "Inez Ortiz" })),
@@ -157,7 +157,7 @@ const KIT_SCRIPT = String.raw`
       h(Card, { id: "patterns", group: "Patterns (iPad)", title: "Guided steps, resident rows, upload state", note: "From the Hot Foods Record screen: steps across the top in portrait, a side panel in landscape." },
         h(StepRail),
         h("div", { className: "mt-4 grid gap-3 md:grid-cols-2" }, h(PersonRow, { name: "Inez Ortiz", room: "4B", note: "12 in 30 days" }), h(PersonRow, { name: "Marcus Bell", room: "2A", note: "9 in 30 days", served: "1 of 1", warn: true }), h(PersonRow, { name: "Ana Lima", room: "7C", note: "New here" }), h(PersonRow, { name: "Tom Reyes", room: "3F", note: "4 in 30 days", served: "Served" }))),
-      h(Card, { id: "brief", group: "Rules", title: "Design brief" }, h("pre", { className: "whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-ink" }, window.__BRIEF__)));
+      h(Card, { id: "brief", group: "Rules", title: "Design brief" }, h("pre", { className: "whitespace-pre-wrap font-mono text-caption leading-relaxed text-ink" }, window.__BRIEF__)));
   }
   M["react-dom/client"].createRoot(document.getElementById("root")).render(h(Kit));
 })();

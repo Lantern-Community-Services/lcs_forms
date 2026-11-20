@@ -109,20 +109,16 @@ export function CalendarPage() {
   const [scopeFor, setScopeFor] = useState<{ action: "edit" | "delete"; occ: CalendarOccurrence } | null>(null);
   const [showCategories, setShowCategories] = useState(false);
   const [requestFor, setRequestFor] = useState<RequestSlot | null>(null);
-  // "Add to my Outlook": asked once, the first time someone opens the calendar.
+  // "Add to my Outlook": offered in a line above the calendar until it's answered, rather
+  // than a dialog over the calendar on someone's first visit.
   const { data: outlook } = useOutlookPrefs();
   const [showOutlook, setShowOutlook] = useState(false);
-  const [askedOutlook, setAskedOutlook] = useState(false);
-  // Not in the middle of the welcome tour: it asks once the tour is over.
+  const [notNow, setNotNow] = useState(false);
+  // Not in the middle of the welcome tour.
   const touring = Boolean(useTour().active);
-  useEffect(() => {
-    if (outlook && !outlook.answered && !askedOutlook && !touring) {
-      setAskedOutlook(true);
-      setShowOutlook(true);
-    }
-  }, [outlook, askedOutlook, touring]);
+  const offerOutlook = Boolean(outlook && !outlook.answered && !notNow && !touring);
   const outlookButton = (
-    <Button data-tour="calendar-outlook" variant="secondary" size={phone ? "icon" : "md"} onClick={() => setShowOutlook(true)} aria-label="Add to my Outlook" title="Add to my Outlook" className={phone ? "h-9 w-9" : undefined}>
+    <Button data-tour="calendar-outlook" variant="secondary" size={phone ? "icon" : "md"} onClick={() => setShowOutlook(true)} aria-label="Add to my Outlook" title="Add to my Outlook" className={phone ? "h-9 w-9 touch:h-11 touch:w-11" : undefined}>
       <Mail className="h-4 w-4" />
       {!phone && "Outlook"}
     </Button>
@@ -209,16 +205,16 @@ export function CalendarPage() {
   const title = phone && view === "day" ? shortDay(anchor) : viewTitle(view, anchor, today);
   const arrows = (
     <div className="flex items-center">
-      <button type="button" onClick={() => go({ date: step(view, anchor, -1) })} aria-label="Earlier" className="flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-navsel/60">
+      <button type="button" onClick={() => go({ date: step(view, anchor, -1) })} aria-label="Earlier" className="flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-navsel/60 touch:h-11 touch:w-11">
         <ChevronLeft className="h-5 w-5" />
       </button>
-      <button type="button" onClick={() => go({ date: step(view, anchor, 1) })} aria-label="Later" className="flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-navsel/60">
+      <button type="button" onClick={() => go({ date: step(view, anchor, 1) })} aria-label="Later" className="flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-navsel/60 touch:h-11 touch:w-11">
         <ChevronRight className="h-5 w-5" />
       </button>
     </div>
   );
   const viewSwitch = (
-    <div role="tablist" aria-label="View" data-tour="calendar-views" className="flex rounded-input border border-hairline bg-surface p-0.5">
+    <div role="tablist" aria-label="View" data-tour="calendar-views" className="flex shrink-0 rounded-input bg-navsel/60 p-0.5">
       {(Object.keys(VIEWS) as CalendarView[])
         .filter((v) => !(phone && v === "week"))
         .map((v) => (
@@ -229,8 +225,8 @@ export function CalendarPage() {
             aria-selected={view === v}
             onClick={() => go({ view: v })}
             className={cn(
-              "min-h-[34px] rounded-[5px] px-3 text-[13px] font-semibold transition-colors md:min-h-[30px]",
-              view === v ? "bg-navy text-navy-fg dark:bg-navsel" : "text-muted hover:text-ink"
+              "min-h-[34px] rounded-[5px] px-3 text-label font-semibold transition-colors md:min-h-[30px] touch:min-h-11",
+              view === v ? "bg-surface text-ink shadow-sm dark:bg-strongline" : "text-muted hover:text-ink"
             )}
           >
             {VIEWS[v]}
@@ -293,56 +289,67 @@ export function CalendarPage() {
       {phone ? (
         <div data-tour="calendar-header" className="flex-none border-b border-hairline bg-sidebar px-4 pb-2.5 pt-safe-top">
           <div className="flex items-center gap-2">
-            <h1 className="text-[23px] font-heading font-extrabold text-ink">Calendar</h1>
+            <h1 className="text-title font-heading font-extrabold text-ink">Calendar</h1>
             <PageHelp article="calendar">Events for every site and for yours. Admins, and anyone they let edit the calendar, add them.</PageHelp>
             <span className="flex-1" />
             {isFetching && <Spinner className="h-4 w-4" />}
             {outlookButton}
-            <Button variant="secondary" size="sm" onClick={() => go({ date: today })} className="h-9">Today</Button>
             {canStart && (
-              <Button data-tour="calendar-new" size="icon" onClick={newEvent} aria-label="New event" className="h-9 w-9">
-                <Plus className="h-5 w-5" />
+              <Button data-tour="calendar-new" size="sm" onClick={newEvent} aria-label="New event">
+                <Plus className="h-4 w-4" /> New
               </Button>
             )}
           </div>
-          <div className="mt-2 flex items-center gap-1">
+          <div className="mt-1 flex items-center gap-1">
             {arrows}
-            <h2 className="min-w-0 flex-1 truncate text-[15px] font-bold text-ink">{title}</h2>
-            {viewSwitch}
+            {/* The whole month and year: the view switch has its own row below, so nothing cuts it short. */}
+            <h2 className="min-w-0 flex-1 truncate text-body-lg font-bold text-ink">{title}</h2>
+            <Button variant="secondary" size="sm" onClick={() => go({ date: today })}>Today</Button>
           </div>
-          <div className="mt-2 flex items-center gap-2">
-            <SitePicker codes={codes} onChange={setCodes} counts={false} office className="flex-1" />
+          <div className="mt-1.5 flex items-center gap-2">
+            <SitePicker codes={codes} onChange={setCodes} counts={false} office className="min-w-0 flex-1" />
+            {viewSwitch}
             <PhoneCategoryFilter options={filterOptions} hidden={hidden} onToggle={toggle} onShowAll={() => setHidden(new Set())} />
           </div>
         </div>
       ) : (
         <div data-tour="calendar-header" className="flex-none border-b border-hairline px-4 pb-3 pt-safe-top md:px-7 md:pt-6">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className="text-[24px] font-heading font-extrabold text-ink">Calendar</h1>
+            <h1 className="text-title font-heading font-extrabold text-ink">Calendar</h1>
             <PageHelp article="calendar">Events for every site and for yours. Admins, and anyone they let edit the calendar, add them.</PageHelp>
             <div className="flex items-center gap-1">
-              <Button variant="secondary" size="sm" onClick={() => go({ date: today })} title={device === "desktop" ? "Today (T)" : undefined}>Today</Button>
+              <Button variant="secondary" onClick={() => go({ date: today })} title={device === "desktop" ? "Today (T)" : undefined}>Today</Button>
               {arrows}
             </div>
-            <h2 className="min-w-0 text-[17px] font-bold text-ink">{title}</h2>
+            <h2 className="min-w-0 text-lead font-bold text-ink">{title}</h2>
             {isFetching && <Spinner className="h-4 w-4" />}
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <SitePicker codes={codes} onChange={setCodes} counts={false} office className="w-[220px]" />
-              <CategoryFilterMenu options={filterOptions} hidden={hidden} onChange={setHidden} />
-              {outlookButton}
-              {viewSwitch}
-              {manage && (
-                <Button variant="secondary" size="icon" onClick={() => setShowCategories(true)} title="Event categories" aria-label="Event categories">
-                  <Tags className="h-4 w-4" />
-                </Button>
-              )}
-              {canStart && (
-                <Button data-tour="calendar-new" onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined}>
-                  <Plus className="h-4 w-4" /> New event
-                </Button>
-              )}
-            </div>
+            {canStart && (
+              <Button data-tour="calendar-new" onClick={newEvent} title={device === "desktop" ? "New event (N)" : undefined} className="ml-auto">
+                <Plus className="h-4 w-4" /> New event
+              </Button>
+            )}
           </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <SitePicker codes={codes} onChange={setCodes} counts={false} office className="w-[220px]" />
+            <CategoryFilterMenu options={filterOptions} hidden={hidden} onChange={setHidden} />
+            {manage && (
+              <Button variant="secondary" onClick={() => setShowCategories(true)} title="Event categories">
+                <Tags className="h-4 w-4" /> Edit categories
+              </Button>
+            )}
+            {outlookButton}
+            <span className="flex-1" />
+            {viewSwitch}
+          </div>
+        </div>
+      )}
+
+      {offerOutlook && (
+        <div className="flex flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-hairline bg-status-blueBg px-4 py-2.5 text-label text-status-blueText md:px-7">
+          <Mail className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">Want these events in your Outlook calendar too?</span>
+          <Button size="sm" variant="secondary" onClick={() => setShowOutlook(true)}>Set up</Button>
+          <Button size="sm" variant="ghost" onClick={() => setNotNow(true)}>Not now</Button>
         </div>
       )}
 
@@ -397,8 +404,8 @@ function RequestPrompt({ slot, formUrl, onClose }: { slot: RequestSlot | null; f
         </>
       }
     >
-      <p className="rounded-input bg-subtle px-3 py-2.5 text-[14px] font-bold text-ink">{when}</p>
-      <p className="mt-3 text-[13.5px] text-muted">
+      <p className="rounded-input bg-subtle px-3 py-2.5 text-body font-bold text-ink">{when}</p>
+      <p className="mt-3 text-body text-muted">
         Events go on the calendar through Event Requests. The form opens on this day and time; once it's sent, the event shows here marked Needs approval until it's approved.
       </p>
     </ResponsiveDialog>
@@ -468,7 +475,7 @@ function CategoryFilterMenu({ options, hidden, onChange }: { options: FilterOpti
             only(keys);
           }}
           aria-label={`Show only ${label}`}
-          className="shrink-0 px-2 text-[12px] font-semibold text-accent opacity-0 focus:opacity-100 group-hover:opacity-100 dark:text-white [@media(hover:none)]:opacity-100"
+          className="shrink-0 px-2 text-caption font-semibold text-accent opacity-0 focus:opacity-100 group-hover:opacity-100 dark:text-white [@media(hover:none)]:opacity-100"
         >
           Only
         </DropdownMenuItem>
@@ -486,7 +493,7 @@ function CategoryFilterMenu({ options, hidden, onChange }: { options: FilterOpti
         >
           <Filter className="h-4 w-4" /> Categories
           {off > 0 && (
-            <span className="rounded-pill bg-navy px-1.5 text-[11.5px] font-bold tabular-nums text-navy-fg dark:bg-white dark:text-navy">
+            <span className="rounded-pill bg-navy px-1.5 text-caption font-bold tabular-nums text-navy-fg dark:bg-white dark:text-navy">
               {options.length - off}/{options.length}
             </span>
           )}
@@ -537,18 +544,19 @@ function PhoneCategoryFilter({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-input border px-3 text-[13.5px] font-semibold",
-          off ? "border-navy bg-navsel text-accent dark:text-white" : "border-hairline bg-surface text-ink"
+          "flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-input border px-3 text-body font-semibold",
+          off ? "border-navy bg-navsel text-accent dark:text-white" : "border-strongline bg-surface text-ink"
         )}
       >
-        <Filter className="h-4 w-4" /> {off ? `${options.length - off} of ${options.length}` : "Categories"}
+        <Filter className="h-4 w-4" />
+        {off ? `${options.length - off} of ${options.length}` : <span className="sr-only">Categories</span>}
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent aria-describedby={undefined}>
           <SheetHeader title="Show categories" />
           <SheetBody className="px-2">
             {options.map((o) => (
-              <button key={o.key} type="button" onClick={() => onToggle(o.key)} aria-pressed={!hidden.has(o.key)} className="flex min-h-[48px] w-full items-center gap-3 rounded-input px-2 text-left text-[15px] font-semibold text-ink active:bg-rowhover">
+              <button key={o.key} type="button" onClick={() => onToggle(o.key)} aria-pressed={!hidden.has(o.key)} className="flex min-h-[48px] w-full items-center gap-3 rounded-input px-2 text-left text-body-lg font-semibold text-ink active:bg-rowhover">
                 <span className="h-3.5 w-3.5 rounded-full" style={{ background: hidden.has(o.key) ? "transparent" : o.color, boxShadow: `inset 0 0 0 2px ${o.color}` }} />
                 <span className={cn("flex-1", hidden.has(o.key) && "text-muted line-through")}>{o.name}</span>
               </button>

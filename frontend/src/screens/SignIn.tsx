@@ -134,13 +134,13 @@ export function SignInPage() {
             className="mx-auto hidden h-[140px] w-auto dark:block md:h-48"
           />
 
-          <h1 className="mt-[26px] text-center text-[23px] font-heading font-extrabold text-ink md:mt-6">
+          <h1 className="mt-[26px] text-center text-title font-heading font-extrabold text-ink md:mt-6">
             Sign in to Lantern Forms
           </h1>
           {/* There is no Lantern Forms password to have forgotten. Google
               Workspace partners come through the same button: Entra federates
               their address to Google. */}
-          <p className="mt-2 text-center text-[13px] text-muted">
+          <p className="mt-2 text-center text-label text-muted">
             Use your work account. Partner staff on Google Workspace: enter your work email and
             Microsoft will send you on to Google.
           </p>
@@ -149,8 +149,8 @@ export function SignInPage() {
             <div
               className={
                 message.tone === "error"
-                  ? "mt-6 rounded-card border border-status-redDot/30 bg-status-redBg px-3.5 py-3 text-[13px] text-status-redText"
-                  : "mt-6 rounded-card border border-status-blueDot/30 bg-status-blueBg px-3.5 py-3 text-[13px] text-status-blueText"
+                  ? "mt-6 rounded-card border border-status-redDot/30 bg-status-redBg px-3.5 py-3 text-label text-status-redText"
+                  : "mt-6 rounded-card border border-status-blueDot/30 bg-status-blueBg px-3.5 py-3 text-label text-status-blueText"
               }
             >
               {message.text}
@@ -158,7 +158,7 @@ export function SignInPage() {
           ) : null}
 
           {config?.testSite && (
-            <div role="note" className="mt-6 rounded-card border border-status-amberDot/40 bg-status-amberBg px-3.5 py-3 text-[13px] text-status-amberText">
+            <div role="note" className="mt-6 rounded-card border border-status-amberDot/40 bg-status-amberBg px-3.5 py-3 text-label text-status-amberText">
               <strong className="font-semibold">This is a test site.</strong> The residents on it are made up. Use the live site for real work.
             </div>
           )}
@@ -168,7 +168,7 @@ export function SignInPage() {
             onClick={() => void start()}
             disabled={redirecting || config?.microsoft === false}
             title={config?.microsoft === false ? "Microsoft sign-in isn't configured on this server yet" : undefined}
-            className={`mt-7 inline-flex h-[52px] w-full items-center justify-center gap-[9px] rounded-input font-heading text-[15.5px] font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 disabled:pointer-events-none disabled:opacity-45 md:h-11 md:gap-2 md:text-[15px] ${BRAND_NAVY}`}
+            className={`mt-7 inline-flex h-[52px] w-full items-center justify-center gap-[9px] rounded-input font-heading text-body-lg font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 disabled:pointer-events-none disabled:opacity-45 md:h-11 md:gap-2 md:text-body-lg ${BRAND_NAVY}`}
           >
             <MicrosoftLogo /> {redirecting ? "Redirecting to Microsoft…" : "Continue with Microsoft"}
           </button>
@@ -189,7 +189,7 @@ export function SignInPage() {
                   >
                     <Avatar name={u.name} color={u.avatarColor} size={28} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold text-ink">{u.name}</span>
+                      <span className="block truncate text-label font-semibold text-ink">{u.name}</span>
                       <span className="block truncate text-micro text-muted">{u.roleName} · {u.email}</span>
                     </span>
                   </button>
@@ -197,7 +197,7 @@ export function SignInPage() {
                 <button
                   type="button"
                   onClick={() => void api.post("/auth/dev-newcomer").then(() => window.location.assign("/welcome")).catch((e) => setMessage({ text: String(e?.message ?? e), tone: "error" }))}
-                  className="flex min-h-[44px] items-center gap-2.5 rounded-input px-2 text-left text-[13px] text-muted hover:bg-rowhover"
+                  className="flex min-h-[44px] items-center gap-2.5 rounded-input px-2 text-left text-label text-muted hover:bg-rowhover"
                 >
                   Someone new (no account yet)
                 </button>
@@ -217,7 +217,7 @@ export function SignInPage() {
             >
               {staySignedIn && <Check className="h-3.5 w-3.5 text-white dark:text-[#232a3a]" strokeWidth={3.2} />}
             </span>
-            <span className="text-[13.5px] text-ink">
+            <span className="text-body text-ink">
               Stay signed in on this phone <span className="text-muted">· unlock with Face ID</span>
             </span>
           </label>
@@ -227,7 +227,7 @@ export function SignInPage() {
             type="button"
             onClick={() => void start(true)}
             disabled={redirecting}
-            className="mt-2.5 min-h-[44px] w-full text-center text-[13.5px] font-semibold text-[#2c3453] hover:underline disabled:opacity-50 dark:text-[#bccfff] md:mt-3 md:min-h-0 md:text-[13px]"
+            className="mt-2.5 min-h-[44px] w-full text-center text-body font-semibold text-[#2c3453] hover:underline disabled:opacity-50 dark:text-[#bccfff] md:mt-3 md:min-h-0 md:text-label"
           >
             Use a different account
           </button>

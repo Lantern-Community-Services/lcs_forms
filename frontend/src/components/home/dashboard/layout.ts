@@ -27,6 +27,7 @@ export type WidgetId =
   | "attention"
   | "activity"
   | "pinned"
+  | "start_forms"
   | "recent_forms"
   | "calendar"
   | "notifications"
@@ -122,19 +123,30 @@ const L = (id: WidgetId, size: WidgetSize): LayoutItem => ({ id, size });
 
 /**
  * The default: a simple, focused page for someone's daily work, so a first-
- * timer doesn't start by arranging widgets. On a desktop: three counts, then
- * what needs them beside what's coming up, then recent activity beside their
- * notifications. A tablet leaves the counts out.
+ * timer doesn't start by arranging widgets. What needs them comes first, then
+ * the forms they're most likely to start, then what's coming up, recent
+ * activity and notifications. No count tiles: each count is already at the top
+ * of its own list (the counts stay in the palette for anyone who wants them).
  */
 export function defaultLayout(desktop: boolean, _roster: boolean): LayoutItem[] {
-  return [
-    ...(desktop ? [L("stat_attention", "small"), L("stat_today", "small"), L("stat_unread", "small")] : []),
-    L("form_stats", "full"),
-    L("attention", "medium"),
-    L("calendar", "medium"),
-    L("activity", "medium"),
-    L("notifications", "medium"),
-  ];
+  return desktop
+    ? [
+        // Every row splits two-thirds / one-third, so the columns line up down the page.
+        L("attention", "large"),
+        L("calendar", "small"),
+        L("start_forms", "large"),
+        L("notifications", "small"),
+        L("activity", "large"),
+        L("form_stats", "small"),
+      ]
+    : [
+        L("attention", "large"),
+        L("start_forms", "large"),
+        L("calendar", "medium"),
+        L("notifications", "medium"),
+        L("form_stats", "medium"),
+        L("activity", "medium"),
+      ];
 }
 
 export function presets(desktop: boolean, roster: boolean): Preset[] {

@@ -341,6 +341,8 @@ export interface HomeAttentionItem {
   tone: "warn" | "info";
   title: string;
   detail: string;
+  /** A shorter pair for a phone's list ("Hunterfly Trace" / "6 residents need a check-in"). */
+  short?: { title: string; detail: string };
   action: string;
   href: string;
 }

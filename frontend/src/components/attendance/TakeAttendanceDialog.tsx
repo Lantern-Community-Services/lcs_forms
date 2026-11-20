@@ -103,7 +103,7 @@ export function TakeAttendanceDialog({
           </Field>
           <Field label="Site *">
             {started ? (
-              <p className="flex min-h-[44px] items-center text-[14px] font-semibold text-ink">{site?.name}</p>
+              <p className="flex min-h-[44px] items-center text-body font-semibold text-ink">{site?.name}</p>
             ) : (
               <Select value={effectiveCode} onChange={(event) => setSiteCode(event.target.value)} options={(sites ?? []).map((item) => ({ value: item.code, label: item.name }))} placeholder="Choose a site" className="min-h-[44px] font-semibold" />
             )}
@@ -114,12 +114,12 @@ export function TakeAttendanceDialog({
         </Field>
         <label className="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 rounded-input border border-hairline px-3 py-2">
           <span className="min-w-0">
-            <span className="block text-[14px] font-semibold text-ink">Collect signatures</span>
-            <span className="block text-[12px] text-muted">Open the signature pad each time someone is marked here.</span>
+            <span className="block text-body font-semibold text-ink">Collect signatures</span>
+            <span className="block text-caption text-muted">Open the signature pad each time someone is marked here.</span>
           </span>
           <Switch checked={collectSignatures} onCheckedChange={setCollectSignatures} />
         </label>
-        <p className="text-[12px] text-muted">Date and time: {localTime} (your local time)</p>
+        <p className="text-caption text-muted">Date and time: {localTime} (your local time)</p>
         {started ? (
           <Button variant="secondary" onClick={() => setEditingDetails(false)}>
             Done editing
@@ -134,8 +134,8 @@ export function TakeAttendanceDialog({
       <>
         <div className="mb-2 flex flex-none items-start gap-2 rounded-[16px] border border-hairline bg-subtle2/60 px-3 py-2 md:mb-3 md:py-2.5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[14px] font-bold text-ink">{title}</p>
-            <p className="truncate text-[11px] text-muted">
+            <p className="truncate text-body font-bold text-ink">{title}</p>
+            <p className="truncate text-micro text-muted">
               {site?.name} · {localTime}
             </p>
           </div>

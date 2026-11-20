@@ -209,7 +209,7 @@ export function CatalogCardPage() {
 
       {opens && desktop && (
         <Card className="mb-4 flex flex-wrap items-center gap-3 p-4">
-          <p className="min-w-0 flex-1 text-[13px] text-muted">
+          <p className="min-w-0 flex-1 text-label text-muted">
             This card opens <b className="text-ink">{opens.title}</b>, made in {opens.kind === "code" ? "Code forms" : "Form builder"}. Its questions, notifications and who sees entries are in its editor.
           </p>
           <Link to={builtEditorPath(opens)}><Button variant="secondary" size="sm"><PencilRuler className="h-4 w-4" /> Open its editor</Button></Link>
@@ -292,7 +292,7 @@ export function CatalogCardPage() {
         <Card className="space-y-6 p-5">
           <FormSection title="Who can see it">
             {limit && (
-              <p className="rounded-input bg-navsel px-3 py-2 text-[12.5px] leading-snug text-ink">
+              <p className="rounded-input bg-navsel px-3 py-2 text-label leading-snug text-ink">
                 <span className="font-semibold">{cat!.name}</span> is only for {limit}, so this form is too. Below, you can narrow it further.
               </p>
             )}
@@ -301,7 +301,7 @@ export function CatalogCardPage() {
               options={[["everyone", limit ? `Everyone who can see ${cat!.name}` : "Everyone"], ["limited", "Only some people"]]}
               onChange={(v) => setForm({ ...form, limited: v === "limited" })}
             />
-            <p className="text-[12.5px] leading-snug text-muted">
+            <p className="text-label leading-snug text-muted">
               {form.limited
                 ? `Only the groups, positions, sites and people you pick see it, open it or read its entries${limit ? `, and they also need to be able to see ${cat!.name}` : ""}. Roles narrow it further. Admins always see every form.`
                 : limit
@@ -314,7 +314,7 @@ export function CatalogCardPage() {
                   {groups?.length ? (
                     <GroupChecklist groups={groups} titles={jobTitles ?? []} value={form.groupIds} onChange={(groupIds) => setForm({ ...form, groupIds })} />
                   ) : (
-                    <p className="rounded-input bg-subtle px-3 py-2 text-[12.5px] text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
+                    <p className="rounded-input bg-subtle px-3 py-2 text-label text-muted">No groups yet. Add them in People &amp; roles → Groups.</p>
                   )}
                 </Field>
                 <Field label="Positions">
@@ -336,7 +336,7 @@ export function CatalogCardPage() {
       </form>
 
       <div className="sticky bottom-0 z-10 -mx-4 mt-5 flex flex-wrap items-center gap-2 border-t border-hairline bg-surface px-4 py-3 md:-mx-7 md:px-7">
-        <label className="mr-auto flex items-center gap-2.5 text-[13.5px] text-ink">
+        <label className="mr-auto flex items-center gap-2.5 text-body text-ink">
           <Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active })} />
           Visible to staff
         </label>

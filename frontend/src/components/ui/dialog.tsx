@@ -38,8 +38,8 @@ DialogContent.displayName = "DialogContent";
 export function DialogHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="shrink-0 border-b border-hairline px-6 py-4">
-      <DialogPrimitive.Title className="text-[19px] font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
-      {subtitle && <DialogPrimitive.Description className="mt-0.5 text-[13px] text-muted">{subtitle}</DialogPrimitive.Description>}
+      <DialogPrimitive.Title className="text-title-sm font-heading font-extrabold text-ink">{title}</DialogPrimitive.Title>
+      {subtitle && <DialogPrimitive.Description className="mt-0.5 text-label text-muted">{subtitle}</DialogPrimitive.Description>}
     </div>
   );
 }
