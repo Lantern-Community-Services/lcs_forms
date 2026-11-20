@@ -120,8 +120,9 @@ export async function addDocument(input: NewDocument): Promise<DocumentView> {
   if (!kind) throw badRequest(`Pick what kind of document it is: ${DOCUMENT_KINDS.map((k) => k.label).join(", ")}.`);
   const label = typeof input.label === "string" && input.label.trim() ? input.label.trim().slice(0, 200) : null;
   const name = cleanName(input.name);
-  const data = input.data;
-  if (!Buffer.isBuffer(data) || data.length === 0) throw badRequest("That file is empty.");
+  // A copy of the checked bytes: what's measured and kept is certainly a Buffer, whatever the request sent.
+  const data = Buffer.isBuffer(input.data) ? Buffer.from(input.data) : Buffer.alloc(0);
+  if (data.length === 0) throw badRequest("That file is empty.");
   if (data.length > MAX_DOCUMENT_BYTES) throw new HttpError(413, `Documents can be at most ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB.`);
   const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? "";
   const type = FILE_TYPES[ext];

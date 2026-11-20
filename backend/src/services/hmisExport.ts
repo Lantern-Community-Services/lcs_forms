@@ -446,8 +446,8 @@ function money(v: unknown): string | null {
 /** Text cut to the spec's length for the column. */
 const text = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 /** Ids are at most 32 characters in the spec; ours are cuids (25), but just in case. */
-const id32 = (raw: string) => (raw.length <= 32 ? raw : crypto.createHash("sha1").update(raw).digest("hex").slice(0, 32));
-const shortHash = (s: string) => crypto.createHash("sha1").update(s).digest("hex").slice(0, 12).toUpperCase();
+const id32 = (raw: string) => (raw.length <= 32 ? raw : crypto.createHash("sha256").update(raw).digest("hex").slice(0, 32));
+const shortHash = (s: string) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 12).toUpperCase();
 /** "Amber Hall - HASA-CoC Single Adults (85)" and "Amber Hall - HASA/CoC Single Adults" compare equal. */
 const programKey = (s: string) => s.replace(/\s*\(\d+\)\s*$/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
