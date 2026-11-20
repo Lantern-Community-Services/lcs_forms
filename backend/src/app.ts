@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./auth/csrf.js";
 import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env.js";
@@ -131,6 +132,8 @@ export function createApp() {
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   app.use(compressJson);
   app.use(cookieParser());
+  // Changes made with a sign-in cookie must come from this app's own pages (auth/csrf.ts).
+  app.use(csrfProtection);
   app.use(loadUser);
   // Someone viewing the site as another person only reads, unless acting as them (auth/middleware.ts).
   app.use(viewAsLimits);
