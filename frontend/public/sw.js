@@ -76,7 +76,9 @@ function bypassApi(url) {
     p === "/api/tenants/sync" ||
     // Downloads and stored files: big, and only useful online.
     /export/.test(p) ||
-    /\/files\//.test(p)
+    /\/files\//.test(p) ||
+    // A resident's documents (an ID, a lease): never kept on the device.
+    /^\/api\/tenants\/[^/]+\/documents\//.test(p)
   );
 }
 

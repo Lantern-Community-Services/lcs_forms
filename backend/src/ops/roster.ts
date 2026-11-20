@@ -5,6 +5,7 @@ import { attendanceRouter } from "../routes/attendance.js";
 import { activityRouter } from "../routes/activity.js";
 import { residencyRouter } from "../routes/residency.js";
 import { caseloadRouter } from "../routes/caseload.js";
+import { clientRecordRouter } from "../routes/clientRecord.js";
 import { decodeCsv, importTenants, MAX_IMPORT_ROWS, readRows } from "../services/tenantImport.js";
 import { defineOp, int, flag } from "./registry.js";
 
@@ -426,6 +427,29 @@ export const rosterOps = [
     shape: { id: residentId },
     annotations: { readOnlyHint: true },
     run: (ctx, a) => ctx.route(residencyRouter, { method: "GET", path: `/tenants/${id(a.id)}` }),
+  }),
+
+  defineOp({
+    name: "get_timeline",
+    description:
+      "A resident's whole record, newest first: the form entries about them that the key's maker could open (form, when, who filed it, site, follow-up and sign-off state, note count, link), with their moves in and out, transfers, time away, checklist items done and documents added. Paged: pass `next` back as before. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/timeline" },
+    shape: { id: residentId, before: z.string().max(20_000).optional().describe("Paging: the `next` value from the last page"), limit: int(1, 100).optional() },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(clientRecordRouter, { method: "GET", path: `/${id(a.id)}/timeline`, query: { before: a.before, limit: a.limit?.toString() } }),
+  }),
+
+  defineOp({
+    name: "list_client_documents",
+    description: "The documents on a resident's record (ID, lease, consent / release, benefits, income, medical, other): kind, label, file name, type, size, who added it and when. The files themselves aren't sent. Case management only.",
+    scope: "clients:read",
+    as: "creator",
+    http: { method: "GET", path: "/residents/:id/documents" },
+    shape: { id: residentId },
+    annotations: { readOnlyHint: true },
+    run: (ctx, a) => ctx.route(clientRecordRouter, { method: "GET", path: `/${id(a.id)}/documents` }),
   }),
 
   defineOp({
