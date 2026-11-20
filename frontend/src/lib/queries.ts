@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { loadTenants } from "./rosterStore";
+import { rememberSites } from "./siteNames";
 import { useTourSample } from "./tour/store";
 import { isSample, sampleCatalog, sampleHome, sampleRoster } from "./tour/sampleData";
 import type {
@@ -44,7 +45,8 @@ const siteQs = (site: string | undefined) => (site ? `site=${encodeURIComponent(
  */
 export function useSites(all = false, enabled = true, form?: string, office = false) {
   const qs = [all ? "all=1" : "", form ? `form=${encodeURIComponent(form)}` : "", office ? "office=1" : ""].filter(Boolean).join("&");
-  return useQuery({ queryKey: qk.sites(all, form, office), queryFn: () => api.get<Site[]>(`/sites${qs ? `?${qs}` : ""}`), enabled });
+  // Their names also show for Site answers on forms and entries (lib/siteNames.ts).
+  return useQuery({ queryKey: qk.sites(all, form, office), queryFn: () => api.get<Site[]>(`/sites${qs ? `?${qs}` : ""}`).then((list) => (rememberSites(list), list)), enabled });
 }
 
 /** `site`: comma list of site codes, or undefined for all of my sites. */
