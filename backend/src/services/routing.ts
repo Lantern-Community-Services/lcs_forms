@@ -154,8 +154,9 @@ const BUILT_IN_EMAIL_FIELDS: EmailField[] = [
 
 /**
  * The answers a route, rule or report may put in an email. A basic form
- * offers its fields of the types in EMAIL_FIELD_TYPES, and staff names marked
- * inEmails (never a resident, another name, contact details, a signature, a file or a paragraph); a code form
+ * offers its fields of the types in EMAIL_FIELD_TYPES, and staff names and email
+ * addresses marked inEmails (never a resident, another name or address, a phone
+ * number, a signature, a file or a paragraph); a code form
  * offers the values its entry.created event declares with a fixed list of
  * choices, since free values there could hold anything.
  */
