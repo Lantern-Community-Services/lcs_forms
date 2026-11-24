@@ -218,6 +218,8 @@ declare module "@lcs/sdk" {
     lastActivityAt: string | null;
     /** Quiet past their site's check-in window (the roster's Review queue). */
     needsAttention: boolean;
+    /** Flagged High Acuity on their roster page (the CSH High Acuity Pilot). */
+    highAcuity: boolean;
   }
 
   /** One resident in full, with their recent activity (needs roster access, like their roster page). */
@@ -740,6 +742,8 @@ declare module "@lcs/server" {
     status: string;
     moveInDate: string | null;
     lastActivityAt: string | null;
+    /** Flagged High Acuity on their roster page (the CSH High Acuity Pilot). */
+    highAcuity: boolean;
   }
 
   /** ctx.roster.clientInfo(id): a resident's client information. */
