@@ -4,8 +4,8 @@ import { prisma } from "../prisma.js";
 import { badRequest, forbidden } from "../http.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { ENTRY_CREATED, recipientSchema, type Route } from "../forms/routingSchema.js";
-import { aboutValues, checkRoutes, planRoutes } from "./routing.js";
-import type { Values } from "../forms/engine.js";
+import { aboutValues, basicFields, checkRoutes, planRoutes } from "./routing.js";
+import { timeLabel, type Field, type Values } from "../forms/engine.js";
 import { notify, type TypeRule } from "./notifications.js";
 import { FOLLOW_UP_DONE_TEMPLATE, REMINDER_TEMPLATE, messageTags, messageWording, templateByKey } from "./emailTemplates.js";
 import { audit, type Actor } from "./audit.js";
@@ -379,11 +379,16 @@ export function fillReply(template: string, tags: Record<string, string>) {
   return template.replace(/\{([a-z][a-z0-9_]{0,39}(?:\.[a-z][a-z0-9_]{0,19})?)\}/gi, (_, k: string) => tags[k] ?? tags[k.toLowerCase()] ?? "");
 }
 
-/** An entry's answers as {tags}: each answer in words, and each part of one made of parts ({employee_name.first}). */
-export function answerTags(answers: Record<string, unknown>): Record<string, string> {
+/**
+ * An entry's answers as {tags}: each answer in words, and each part of one made
+ * of parts ({employee_name.first}). Given the form's fields, a time reads as
+ * people say it ("12:00 PM", not "12:00").
+ */
+export function answerTags(answers: Record<string, unknown>, fields: Pick<Field, "id" | "type">[] = []): Record<string, string> {
+  const times = new Set(fields.filter((f) => f.type === "time").map((f) => f.id));
   const tags: Record<string, string> = {};
   for (const [k, v] of Object.entries(answers)) {
-    tags[k] = answerText(v);
+    tags[k] = times.has(k) ? timeLabel(v) : answerText(v);
     if (v && typeof v === "object" && !Array.isArray(v)) {
       for (const [part, pv] of Object.entries(v as Record<string, unknown>)) if (/^[a-z][a-z0-9_]{0,19}$/i.test(part)) tags[`${k}.${part}`] = answerText(pv);
     }
@@ -396,9 +401,13 @@ export function answerTags(answers: Record<string, unknown>): Record<string, str
  * (prefill), worked out from its defaultValue and the entry's answers. An
  * email is made lower-case with no spaces ("Mary Ann" → maryann).
  */
-export function doneFieldsFor(s: Pick<FollowUpSettings, "doneFields">, entry: Pick<FormEntry, "data">): (DoneField & { prefill?: string })[] {
+export function doneFieldsFor(
+  s: Pick<FollowUpSettings, "doneFields">,
+  entry: Pick<FormEntry, "data">,
+  fields: Pick<Field, "id" | "type">[] = []
+): (DoneField & { prefill?: string })[] {
   if (!s.doneFields.some((f) => f.defaultValue)) return s.doneFields;
-  const tags = answerTags(JSON.parse(entry.data) as Record<string, unknown>);
+  const tags = answerTags(JSON.parse(entry.data) as Record<string, unknown>, fields);
   return s.doneFields.map((f) => {
     if (!f.defaultValue) return f;
     let v = fillReply(f.defaultValue, tags).trim();
@@ -487,7 +496,7 @@ export async function setFollowUp(
   const base: Record<string, string> = {};
   if (input.done) {
     const answers = JSON.parse(entry.data) as Record<string, unknown>;
-    Object.assign(base, answerTags(answers));
+    Object.assign(base, answerTags(answers, basicFields(form)));
     Object.assign(base, { done_by: actor.name, filed_by: entry.createdByName, form: form.title, site: site?.name ?? "", note: note ?? "" });
     for (const v of done.kept) if (v.value) base[v.id] = v.value;
   }
