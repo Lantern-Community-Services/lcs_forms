@@ -357,6 +357,7 @@ export function AppFrame({
         return res.items.filter((t) => t.movedIn !== false).map((t) => ({
           id: t.id, siteId: t.siteId, name: t.displayName, firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit,
           moveInDate: t.moveInDate?.slice(0, 10) ?? null, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
+          highAcuity: Boolean(t.highAcuity),
         }));
       },
       "roster.resident": async (id: string) => {
@@ -364,7 +365,7 @@ export function AppFrame({
         return {
           id: t.id, siteId: t.siteId, site: t.site ? { code: t.site.code, name: t.site.name } : null, name: t.displayName, firstName: t.firstName, lastName: t.lastName,
           preferredName: t.preferredName, unit: t.unit, status: t.status, moveInDate: t.moveInDate?.slice(0, 10) ?? null, moveOutDate: t.moveOutDate?.slice(0, 10) ?? null,
-          notes: t.notes, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention,
+          notes: t.notes, lastActivityAt: t.lastActivityAt, needsAttention: t.needsAttention, highAcuity: Boolean(t.highAcuity),
           activities: (t.activities ?? []).map((a) => ({ source: a.source, label: a.label, occurredAt: a.occurredAt, recordedBy: a.recordedBy })),
         };
       },

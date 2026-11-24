@@ -216,8 +216,8 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   return (
     <>
       <BuiltFormHeader slug={slug} actions={<>{helpButton}{!locked && <LockFormButton base={`/f/${slug}`} title={doc.title} />}</>} />
-      {/* The form keeps a readable width, left-aligned under the title and tabs. */}
-      <Page className={BUILT_FORM_HEADER_WIDTH}><div className="max-w-[820px]">{content}</div></Page>
+      {/* The form keeps a readable width, centered under the title and tabs (as a code form's narrower page is). */}
+      <Page className={BUILT_FORM_HEADER_WIDTH}><div className="mx-auto w-full max-w-[820px]">{content}</div></Page>
     </>
   );
 }
@@ -261,7 +261,7 @@ function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }
 }
 
 function InAppShell({ children }: { children: React.ReactNode }) {
-  return <Page className={BUILT_FORM_HEADER_WIDTH}><div className="max-w-[820px]">{children}</div></Page>;
+  return <Page className={BUILT_FORM_HEADER_WIDTH}><div className="mx-auto w-full max-w-[820px]">{children}</div></Page>;
 }
 
 /** Public forms: no sidebar, no sign-in — just the Lantern logo and the form. */
