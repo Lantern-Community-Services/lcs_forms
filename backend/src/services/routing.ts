@@ -4,7 +4,7 @@ import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { badRequest, notFound } from "../http.js";
-import { canEmailField, conditionPasses, formatValue, isInputField, type FormDoc, type Values } from "../forms/engine.js";
+import { canEmailField, conditionPasses, formatValue, isInputField, timeLabel, type Field, type FormDoc, type Values } from "../forms/engine.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { checkTemplateKeys, messageTags, messageWording, templateByKey, type Wording } from "./emailTemplates.js";
 import { ENTRY_CREATED, routeSchema, type Recipient, type Route, type RoutingEvent } from "../forms/routingSchema.js";
@@ -77,6 +77,11 @@ const known = (form: BuiltForm, m: Known) => (m === undefined ? manifestOf(form)
 
 function basicDoc(form: BuiltForm): FormDoc {
   return JSON.parse(form.liveSchema ?? form.draftSchema) as FormDoc;
+}
+
+/** A basic form's fields (none for a code form): to read its answers by type. */
+export function basicFields(form: BuiltForm): Field[] {
+  return form.kind === "code" ? [] : basicDoc(form).fields;
 }
 
 /**
@@ -206,7 +211,7 @@ export function emailValues(
     else if (id === "_followup") value = ctx.followUp === "done" ? "Done" : ctx.followUp === "open" ? "Pending" : "";
     else if (doc) {
       const f = doc.fields.find((x) => x.id === id);
-      value = f ? formatValue(f, ctx.data[id]) : "";
+      value = !f ? "" : f.type === "time" ? timeLabel(ctx.data[id]) : formatValue(f, ctx.data[id]);
     } else {
       const v = ctx.data[id];
       value = Array.isArray(v) ? v.map(String).join(", ") : v == null ? "" : String(v);

@@ -1023,6 +1023,15 @@ export function setSiteNameLookup(lookup: (code: string) => string | undefined) 
 }
 
 /** One answer as a person reads it — used by entries, exports, emails and merge tags. */
+/** A time answer ("13:05") as people read it in an email ("1:05 PM"). Anything else is left as it is. */
+export function timeLabel(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(text);
+  if (!m) return value == null ? "" : String(value);
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
 export function formatValue(f: Field, value: unknown): string {
   if (isEmptyValue(value)) return "";
   switch (f.type) {
