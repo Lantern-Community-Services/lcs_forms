@@ -907,6 +907,7 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
   const residentOut = (t: Tenant) => ({
     id: t.id, siteId: t.siteId, name: displayName(t), firstName: t.firstName, lastName: t.lastName, preferredName: t.preferredName, unit: t.unit, status: t.status,
     moveInDate: t.moveInDate?.toISOString().slice(0, 10) ?? null, lastActivityAt: t.lastActivityAt?.toISOString() ?? null,
+    highAcuity: t.highAcuity,
   });
 
   async function otherForm(slug: string) {
