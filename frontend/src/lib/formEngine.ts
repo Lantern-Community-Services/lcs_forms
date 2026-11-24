@@ -112,7 +112,7 @@ export interface Field {
   allowOther?: boolean;
   /** A text box that offers a list as people type, and still takes anything else: "job_titles" (every job title in the system). */
   suggest?: "job_titles";
-  /** name: a staff member's name (not a resident's) may go in emails to Lantern addresses, like other answers. */
+  /** name / email: a staff member's name or address (not a resident's) may go in emails, like other answers. */
   inEmails?: boolean;
   /** radio / checkbox: lay choices out in columns. */
   columns?: 1 | 2 | 3;
@@ -456,14 +456,19 @@ export interface FieldTypeInfo {
  */
 export const EMAIL_FIELD_TYPES: FieldType[] = ["text", "number", "date", "time", "select", "radio", "checkbox", "multiselect", "consent", "rating", "slider", "calculation", "site"];
 
-/** May this field's answer go in an email? Its type allows it, or it's a staff name marked inEmails. */
-export const canEmailField = (f: Pick<Field, "type" | "inEmails">) => EMAIL_FIELD_TYPES.includes(f.type) || (f.type === "name" && f.inEmails === true);
+/**
+ * May this field's answer go in an email? Its type allows it, or it's a staff
+ * name or an email address marked inEmails (e.g. a new hire's personal email
+ * for the IT vendor). Phone numbers, residents and files never do.
+ */
+export const canEmailField = (f: Pick<Field, "type" | "inEmails">) =>
+  EMAIL_FIELD_TYPES.includes(f.type) || ((f.type === "name" || f.type === "email") && f.inEmails === true);
 
 export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: "text", label: "Single line", group: "Standard", input: true, value: "string", description: "One line of text. minLength, maxLength, pattern. suggest \"job_titles\": offers every job title in the system as they type; a new one can still be typed." },
   { type: "textarea", label: "Paragraph", group: "Standard", input: true, value: "string", description: "Several lines of text. rows, maxLength." },
   { type: "number", label: "Number", group: "Standard", input: true, value: "number", description: "A number. min, max, step, prefix, suffix." },
-  { type: "email", label: "Email", group: "Standard", input: true, value: "string", description: "An email address, checked for shape. suffix \"@domain\" (e.g. \"@lanterncommunity.org\"): people type the name, the whole address is kept." },
+  { type: "email", label: "Email", group: "Standard", input: true, value: "string", description: "An email address, checked for shape. suffix \"@domain\" (e.g. \"@lanterncommunity.org\"): people type the name, the whole address is kept. inEmails: true lets a staff member's address (never a resident's) be picked as a route's answer in the email, like a name." },
   { type: "phone", label: "Phone", group: "Standard", input: true, value: "string", description: "A phone number (10+ digits)." },
   { type: "url", label: "Website", group: "Standard", input: true, value: "string", description: "An http(s) link." },
   { type: "date", label: "Date", group: "Standard", input: true, value: "string YYYY-MM-DD", description: "A calendar date. minDate / maxDate accept YYYY-MM-DD or 'today'." },
@@ -1024,6 +1029,15 @@ export function setSiteNameLookup(lookup: (code: string) => string | undefined) 
 }
 
 /** One answer as a person reads it — used by entries, exports, emails and merge tags. */
+/** A time answer ("13:05") as people read it in an email ("1:05 PM"). Anything else is left as it is. */
+export function timeLabel(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(text);
+  if (!m) return value == null ? "" : String(value);
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
 export function formatValue(f: Field, value: unknown): string {
   if (isEmptyValue(value)) return "";
   switch (f.type) {

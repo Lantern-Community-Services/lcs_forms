@@ -286,7 +286,7 @@ fillRouter.get(
       // Whether this person can mark the entry's follow-up done (or reopen it).
       canFollowUp: await canFollowUp(form, req.user, entry),
       // What they fill in when they mark it done.
-      followUpFields: follow ? doneFieldsFor(follow, entry) : [],
+      followUpFields: follow ? doneFieldsFor(follow, entry, doc?.fields ?? []) : [],
       // The things to tick off one by one, as they stand on this entry.
       followUpChecklist: follow ? checklistFor(follow, entry) : [],
       // Marked done before and opened again: marking it done again tells nobody unless they ask to.

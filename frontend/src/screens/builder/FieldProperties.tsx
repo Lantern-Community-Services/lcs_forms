@@ -181,6 +181,9 @@ function General({ field: f, set, siblings, nested }: { field: Field; set: (p: P
           <Toggle label="A staff member's name: may go in emails to Lantern addresses (never a resident's)" checked={Boolean(f.inEmails)} onChange={(v) => set({ inEmails: v || undefined })} />
         </>
       )}
+      {f.type === "email" && (
+        <Toggle label="A staff member's address: may go in emails to Lantern addresses and trusted outside ones (never a resident's)" checked={Boolean(f.inEmails)} onChange={(v) => set({ inEmails: v || undefined })} />
+      )}
       {f.type === "address" && (
         <PartsPicker label="Parts" all={ADDRESS_PARTS} value={f.addressParts ?? ["line1", "line2", "city", "state", "zip"]} onChange={(v) => set({ addressParts: v as Field["addressParts"] })} />
       )}

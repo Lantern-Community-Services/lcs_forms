@@ -4,7 +4,7 @@ import type { BuiltForm } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { appBaseUrl } from "../env.js";
 import { badRequest, notFound } from "../http.js";
-import { canEmailField, conditionPasses, formatValue, isInputField, type FormDoc, type Values } from "../forms/engine.js";
+import { canEmailField, conditionPasses, formatValue, isInputField, timeLabel, type Field, type FormDoc, type Values } from "../forms/engine.js";
 import { brandedEmail, isInternalAddress } from "./emailTemplate.js";
 import { checkTemplateKeys, messageTags, messageWording, templateByKey, type Wording } from "./emailTemplates.js";
 import { ENTRY_CREATED, routeSchema, type Recipient, type Route, type RoutingEvent } from "../forms/routingSchema.js";
@@ -79,6 +79,11 @@ function basicDoc(form: BuiltForm): FormDoc {
   return JSON.parse(form.liveSchema ?? form.draftSchema) as FormDoc;
 }
 
+/** A basic form's fields (none for a code form): to read its answers by type. */
+export function basicFields(form: BuiltForm): Field[] {
+  return form.kind === "code" ? [] : basicDoc(form).fields;
+}
+
 /**
  * The events a form's routes can answer, with the values they can test and the
  * people they name. entry.created comes first; a code form may describe it more
@@ -149,8 +154,9 @@ const BUILT_IN_EMAIL_FIELDS: EmailField[] = [
 
 /**
  * The answers a route, rule or report may put in an email. A basic form
- * offers its fields of the types in EMAIL_FIELD_TYPES, and staff names marked
- * inEmails (never a resident, another name, contact details, a signature, a file or a paragraph); a code form
+ * offers its fields of the types in EMAIL_FIELD_TYPES, and staff names and email
+ * addresses marked inEmails (never a resident, another name or address, a phone
+ * number, a signature, a file or a paragraph); a code form
  * offers the values its entry.created event declares with a fixed list of
  * choices, since free values there could hold anything.
  */
@@ -206,7 +212,7 @@ export function emailValues(
     else if (id === "_followup") value = ctx.followUp === "done" ? "Done" : ctx.followUp === "open" ? "Pending" : "";
     else if (doc) {
       const f = doc.fields.find((x) => x.id === id);
-      value = f ? formatValue(f, ctx.data[id]) : "";
+      value = !f ? "" : f.type === "time" ? timeLabel(ctx.data[id]) : formatValue(f, ctx.data[id]);
     } else {
       const v = ctx.data[id];
       value = Array.isArray(v) ? v.map(String).join(", ") : v == null ? "" : String(v);
