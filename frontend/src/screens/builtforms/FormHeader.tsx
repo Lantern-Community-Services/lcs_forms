@@ -9,7 +9,7 @@ import { useDeviceKind } from "@/lib/device";
 
 /**
  * Every basic-form tab lines up at this width, whichever tab is open: the same as Page's own
- * default, so the title, the tabs, the form card (left-aligned, narrower) and Entries share one edge.
+ * default, so the title, the tabs and Entries share one edge; the narrower form card sits centered under them.
  */
 export const BUILT_FORM_HEADER_WIDTH = "max-w-[1240px]";
 
