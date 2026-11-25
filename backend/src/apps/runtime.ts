@@ -8,7 +8,7 @@ import { displayName, recordActivity } from "../services/roster.js";
 import { profileView } from "../services/clientProfile.js";
 import { completeForForm } from "../services/checklist.js";
 import { clientInfoEnabled } from "../services/settings.js";
-import { canReadEntries as canReadBasicEntries, isDuplicateClientId } from "../forms/entries.js";
+import { isDuplicateClientId, readsEntriesFor } from "../forms/entries.js";
 import { readDoc } from "../forms/service.js";
 import { buildProject, type Build } from "./compile.js";
 import { runInSandbox, type SandboxResult } from "./sandbox.js";
@@ -27,6 +27,7 @@ import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
 import { canUseBuiltForm, entryReach } from "../services/staffGroups.js";
 import { fillMeta } from "../forms/fillMeta.js";
+import { caseloadApplicants, caseloadLeads, caseloadResidents, caseloadSignOffs } from "./caseload.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -736,10 +737,13 @@ async function serverUpdate(app: LoadedApp, user: CurrentUser | null, args: { id
   return serverEntry((await prisma.formEntry.findUnique({ where: { id: e.id } }))!);
 }
 
-/** onlySites: another form's entries read for a person — only their sites' (and site-less) ones; null = no limit. */
-async function queryForServer(formId: string, q: ServerQuery, includePreview: boolean, mode: "find" | "count", onlySites: string[] | null = null) {
+/**
+ * onlySites: another form's entries read for a person — only their sites' ones; null = no limit.
+ * siteless: site-less entries too (someone who reads every entry); not for someone who reads their sites' entries.
+ */
+async function queryForServer(formId: string, q: ServerQuery, includePreview: boolean, mode: "find" | "count", onlySites: string[] | null = null, siteless = true) {
   const where: Prisma.FormEntryWhereInput = { formId };
-  if (onlySites) where.AND = [{ OR: [{ siteId: null }, { siteId: { in: onlySites } }] }];
+  if (onlySites) where.AND = [siteless ? { OR: [{ siteId: null }, { siteId: { in: onlySites } }] } : { siteId: { in: onlySites } }];
   if (!includePreview) where.source = { not: "preview" };
   if (q.siteId) where.siteId = q.siteId;
   if (q.tenantId) where.tenantId = q.tenantId;
@@ -886,7 +890,7 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
  * duplicate check, who'll be told) and tell people, but never hands out residents or acts as a person.
  */
 const GUEST_BLOCKED = new Set([
-  "roster.resident", "roster.residents", "roster.clientInfo", "roster.logActivity", "calendar.create", "calendar.form.create", "calendar.form.update",
+  "roster.resident", "roster.residents", "roster.clientInfo", "roster.logActivity", "caseload.residents", "caseload.leads", "caseload.applicants", "caseload.signOffs", "calendar.create", "calendar.form.create", "calendar.form.update",
   "calendar.form.remove", "calendar.form.setPending", "entries.update", "entries.create", "jobs.retry", "collections.put", "collections.remove",
 ]);
 
@@ -917,15 +921,19 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     const loaded = other.kind === "code" ? await loadApp(other, false).catch(() => null) : null;
     // A code form that shares with this one ("share": { "forms": [...] }) is readable whoever is asking:
     // this form's server code decides what of it to show (e.g. only the person's own sites).
-    if (loaded?.manifest.share?.forms?.includes(app.form.slug)) return { id: other.id, onlySites: null };
+    if (loaded?.manifest.share?.forms?.includes(app.form.slug)) return { id: other.id, onlySites: null, siteless: true };
     if (!user) throw new Error("Reading other forms needs a signed-in person.");
-    let allowed = false;
+    let reach: "all" | "site" | null = null;
     if (other.kind === "code") {
-      allowed = Boolean(loaded && access(loaded, user).canOpen && access(loaded, user).readAll);
-    } else allowed = canReadBasicEntries(other, readDoc(other.liveSchema ?? other.draftSchema), user) && canUseBuiltForm(user, other.id);
-    if (!allowed) throw new Error(`${user.name} can't read the entries of "${slug}".`);
-    // Reading everyone's entries is still only at their own sites (access().readAll, listEntries).
-    return { id: other.id, onlySites: user.siteIds };
+      reach = loaded && access(loaded, user).canOpen && access(loaded, user).readAll ? "all" : null;
+    } else if (canUseBuiltForm(user, other.id)) {
+      // A basic form: everyone's entries ("all"), or everyone's at their own sites ("site", its "Who sees entries").
+      reach = readsEntriesFor(other, readDoc(other.liveSchema ?? other.draftSchema), user);
+    }
+    if (!reach) throw new Error(`${user.name} can't read the entries of "${slug}".`);
+    // Reading everyone's entries is still only at their own sites (access().readAll, listEntries); someone who
+    // reads their sites' entries doesn't get the site-less ones either (forms/entries.ts visibleWhere).
+    return { id: other.id, onlySites: user.siteIds, siteless: reach === "all" };
   }
 
   /** Another form's collections, read-only: only a code form that shares with this one. */
@@ -947,13 +955,13 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
     switch (name) {
       case "entries.find":
       case "entries.count": {
-        const t = args.form ? await otherForm(args.form) : { id: app.form.id, onlySites: null };
-        return queryForServer(t.id, args.q ?? {}, app.draft, name === "entries.count" ? "count" : "find", t.onlySites);
+        const t = args.form ? await otherForm(args.form) : { id: app.form.id, onlySites: null, siteless: true };
+        return queryForServer(t.id, args.q ?? {}, app.draft, name === "entries.count" ? "count" : "find", t.onlySites, t.siteless);
       }
       case "entries.get": {
-        const t = args.form ? await otherForm(args.form) : { id: app.form.id, onlySites: null };
+        const t = args.form ? await otherForm(args.form) : { id: app.form.id, onlySites: null, siteless: true };
         const e = await prisma.formEntry.findFirst({ where: { id: String(args.id), formId: t.id } });
-        if (e && t.onlySites && e.siteId && !t.onlySites.includes(e.siteId)) return null;
+        if (e && t.onlySites && (e.siteId ? !t.onlySites.includes(e.siteId) : !t.siteless)) return null;
         return e ? serverEntry(e) : null;
       }
       case "collections.list":
@@ -1004,6 +1012,15 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         const { profile, ...tenant } = t;
         return profileView(tenant, profile);
       }
+      // Case management (apps/caseload.ts): what Caseload, the Checklist and Applicants show, read only.
+      case "caseload.residents":
+        return caseloadResidents(user, args ?? {});
+      case "caseload.leads":
+        return caseloadLeads(user, args ?? {});
+      case "caseload.applicants":
+        return caseloadApplicants(user, args ?? {});
+      case "caseload.signOffs":
+        return caseloadSignOffs(user);
       case "roster.logActivity": {
         // Counts as the resident being seen (resets their review clock), like an entry about them does.
         const t = await prisma.tenant.findUnique({ where: { id: String(args.tenantId) } });

@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
-import { CheckCircle2, CircleHelp, CloudOff, Lock } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleHelp, CloudOff, Lock } from "lucide-react";
 import { basicFormTour, useFormTutorial } from "@/lib/tour/formTours";
 import { useAuth, useCaseManagement } from "@/lib/auth";
 import { enqueueFill, hasLocalFiles, startFillQueue } from "@/lib/fillQueue";
@@ -16,10 +16,13 @@ import { BUILT_FORM_HEADER_WIDTH, BuiltFormHeader } from "./FormHeader";
 import { LockFormButton, useLocked } from "@/components/shell/FormLock";
 import { useToast } from "@/components/ui/toast";
 import { FormRenderer, AnswerList, type SubmitExtra } from "@/components/formkit/FormRenderer";
-import { DraftChooser, useDraftPick } from "@/components/formkit/serverDrafts";
+import { DraftChooser, readLocalDraft, useDraftPick } from "@/components/formkit/serverDrafts";
 import { FillShareContext, fillApi, submitErrors, useFillForm } from "@/lib/builder";
 import { ApiError, api } from "@/lib/api";
-import { renderTemplate, type Errors, type Values } from "@/lib/formEngine";
+import { renderTemplate, type Errors, type FormDoc, type Values } from "@/lib/formEngine";
+import { useTenant } from "@/lib/queries";
+import { backFrom } from "@/lib/backLink";
+import type { TenantDetail } from "@/lib/types";
 import { entryDeviceKind } from "@/lib/device";
 import { cn, errorMessage } from "@/lib/utils";
 import { lazyScreen } from "@/lib/lazyScreen";
@@ -28,6 +31,24 @@ import { lazyScreen } from "@/lib/lazyScreen";
 const SharedAppPage = lazyScreen(() => import("@/apps/SharedAppPage"), "SharedAppPage");
 
 const newClientId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+/** The first resident question (never inside a repeater). */
+const residentField = (doc: FormDoc) => doc.fields.find((f) => f.type === "resident");
+
+/**
+ * A form opened for one resident (?tenant=<id>, e.g. from a case manager's board): their resident question
+ * answered, with its site question, and the form's own site when it asks for one.
+ */
+function prefillFor(doc: FormDoc, t: TenantDetail): { values: Values; siteCode: string | null } {
+  const siteCode = t.site?.code ?? null;
+  const values: Values = {};
+  const rf = residentField(doc);
+  if (rf) {
+    values[rf.id] = { id: t.id, name: t.displayName, unit: t.unit ?? undefined };
+    if (rf.siteField && siteCode) values[rf.siteField] = siteCode;
+  }
+  return { values, siteCode: doc.settings.requireSite ? siteCode : null };
+}
 
 /**
  * Filling in a built form: /f/<slug> inside the app, /p/<slug> for public
@@ -45,6 +66,12 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   /** queued: kept on this device to upload later — there's no entry id yet. */
   const [done, setDone] = useState<{ id: string | null; values: Values; queued?: boolean } | null>(null);
   const { user } = useAuth();
+  const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const back = publicView || shareToken ? null : backFrom(search);
+  // Opened for one resident: filled in for them until "Fill in another".
+  const [prefillOff, setPrefillOff] = useState(false);
+  const tenantId = publicView || shareToken || prefillOff ? null : search.get("tenant");
+  const tenant = useTenant(tenantId ?? undefined);
   // Handed to a resident (lib/formLock.ts): only the form itself, none of the staff links.
   const locked = Boolean(useLocked()) && !publicView;
   // Uploads run from AppShell when signed in; a public form has no shell.
@@ -81,7 +108,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
 
   const Shell = publicView ? PublicShell : InAppShell;
 
-  if (isLoading) return <Shell><LoadingState /></Shell>;
+  if (isLoading || (tenantId && tenant.isLoading)) return <Shell><LoadingState /></Shell>;
   if (error || !data) {
     if (error instanceof ApiError && error.status === 401 && !publicView) {
       return <Navigate to={`/signin?returnTo=${encodeURIComponent(location.pathname)}`} replace />;
@@ -98,6 +125,15 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   }
 
   const { doc, form } = data;
+  const prefill = tenantId && tenant.data ? prefillFor(doc, tenant.data) : null;
+  // A form opened for a resident never opens with this device's unfinished answers about someone else.
+  let start = drafts.state.phase === "ready" ? drafts.state.start : undefined;
+  if (prefill && start === undefined && draftKey) {
+    const local = readLocalDraft(draftKey);
+    const rf = residentField(doc);
+    const theirs = rf ? (local?.values[rf.id] as { id?: string } | undefined)?.id : undefined;
+    if (local && theirs !== tenantId) start = null;
+  }
 
   const clearDraft = () => {
     if (!draftKey) return;
@@ -151,6 +187,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   }
 
   function another() {
+    setPrefillOff(true);
     setDone(null);
     setClientId(newClientId());
     setRound((r) => r + 1);
@@ -164,6 +201,14 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   const content = (
     <>
       {publicView && helpButton && <div className="mb-3 flex justify-end">{helpButton}</div>}
+      {back && !locked && !done && (
+        <Link to={back.to} className="mb-3 inline-flex min-h-[40px] items-center gap-1.5 text-label font-semibold text-accent hover:underline">
+          <ArrowLeft className="h-4 w-4" /> {back.label}
+        </Link>
+      )}
+      {tenantId && tenant.isError && !done && (
+        <p className="mb-3 rounded-input border border-status-amberDot/40 bg-status-amberBg px-3 py-2 text-label text-ink">Couldn't fill in the resident. Pick them below.</p>
+      )}
 
       <Card className="p-5 md:p-8">
         <div data-tour="form-title">
@@ -172,7 +217,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
         </div>
         <div className="mt-6">
           {done ? (
-            <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} locked={locked} />
+            <Confirmation data={data} values={done.values} entryId={done.id} queued={done.queued} onAnother={another} slug={slug} locked={locked} back={back} />
           ) : data.closed ? (
             <div className="rounded-input border border-hairline bg-subtle px-4 py-6 text-center text-body text-ink">{data.closed}</div>
           ) : drafts.state.phase === "checking" ? (
@@ -197,12 +242,14 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
                 user={data.user}
                 draftKey={draftKey}
                 draftAccount={inAccount ? { slug, formVersion: form.version } : null}
-                startDraft={drafts.state.start}
+                startDraft={start}
                 resumedDraft={drafts.state.resumed}
                 onSubmit={submit}
                 submitting={submitting}
                 serverErrors={serverErrors}
                 onValuesChange={(v) => (values.current = v)}
+                initial={prefill?.values}
+                initialSiteCode={prefill?.siteCode}
               />
             </FillShareContext.Provider>
           )}
@@ -222,7 +269,7 @@ export function FillPage({ publicView = false, slug: slugProp, shareToken }: { p
   );
 }
 
-function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }: { data: NonNullable<ReturnType<typeof useFillForm>["data"]>; values: Values; entryId: string | null; queued?: boolean; onAnother: () => void; slug: string; locked: boolean }) {
+function Confirmation({ data, values, entryId, queued, onAnother, slug, locked, back }: { data: NonNullable<ReturnType<typeof useFillForm>["data"]>; values: Values; entryId: string | null; queued?: boolean; onAnother: () => void; slug: string; locked: boolean; back: { to: string; label: string } | null }) {
   const conf = data.doc.settings.confirmation;
   const html = useMemo(
     () => renderTemplate(conf?.message || "<p>Thanks — your response has been saved.</p>", { values, doc: data.doc, user: data.user, entry: { id: entryId ?? "" }, html: true }),
@@ -253,6 +300,7 @@ function Confirmation({ data, values, entryId, queued, onAnother, slug, locked }
         </div>
       )}
       <div className="mt-6 flex flex-wrap gap-2">
+        {back && !locked && <Link to={back.to}><Button><ArrowLeft className="h-4 w-4" /> {back.label}</Button></Link>}
         <Button variant="secondary" onClick={onAnother}>Fill in another</Button>
         {data.canReadEntries && entryId && !locked && <Link to={`/f/${slug}/entries/${entryId}`}><Button variant="ghost">View this entry</Button></Link>}
       </div>
