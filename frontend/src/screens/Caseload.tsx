@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { ClipboardList, UserRoundCheck, Users } from "lucide-react";
 import { Page, PageHeader } from "@/components/shell/AppShell";
 import { SectionTabsLayout } from "@/components/shell/SectionTabs";
@@ -14,6 +14,7 @@ import { TaskLine } from "@/components/residency/ResidencyCards";
 import { useAuth } from "@/lib/auth";
 import {
   caseloadApi,
+  useCaseManagementNav,
   useCaseload,
   useCaseloadLeads,
   useCaseloadTasks,
@@ -38,9 +39,16 @@ import { cn, errorMessage, formatDate } from "@/lib/utils";
 export function CaseloadSection() {
   const { can } = useAuth();
   const show = useShowCaseload();
+  const caseNav = useCaseManagementNav();
+  const location = useLocation();
   const [lead] = useSearchParam("lead");
-  const { data } = useCaseload(lead, show);
+  // With a Case Management board, it is the one place: old Caseload links land there.
+  const { data } = useCaseload(lead, show && !caseNav.board);
   if (!show) return <Navigate to="/" replace />;
+  if (caseNav.board) {
+    const to = location.pathname.startsWith("/caseload/unassigned") ? `${caseNav.to}/leads` : `${caseNav.to}${lead ? `?${new URLSearchParams({ lead })}` : ""}`;
+    return <Navigate to={to} replace />;
+  }
   const qs = lead ? `?${new URLSearchParams({ lead })}` : "";
   return (
     <SectionTabsLayout

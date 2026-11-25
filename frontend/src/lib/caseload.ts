@@ -72,6 +72,18 @@ export function useShowCaseload(): boolean {
   return useCaseManagement() && can("roster.view") && (can("clients.view") || can("roster.archive"));
 }
 
+/**
+ * The one Case Management item in the sidebar, dock, launcher and search: the
+ * Case Management board when the site has one (a published code form, backend
+ * services/caseManagementHome.ts), otherwise this Caseload screen. Old Caseload
+ * links go to the board then too (CaseloadSection).
+ */
+export function useCaseManagementNav(): { to: string; label: string; board: boolean } {
+  const home = useAuth().user?.features?.caseManagementHome;
+  const board = typeof home === "string" && home.startsWith("/apps/");
+  return { to: board ? home : "/caseload", label: board ? "Case Management" : "Caseload", board };
+}
+
 const leadQs = (lead: string | null | undefined) => (lead ? `?${new URLSearchParams({ lead })}` : "");
 
 export function useCaseload(lead: string | null | undefined, enabled = true) {

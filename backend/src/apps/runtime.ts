@@ -27,7 +27,7 @@ import { roleFor } from "../services/permissions.js";
 import { enqueueJob, jobsFor, retryJob } from "./jobs.js";
 import { canUseBuiltForm, entryReach } from "../services/staffGroups.js";
 import { fillMeta } from "../forms/fillMeta.js";
-import { caseloadApplicants, caseloadLeads, caseloadResidents, caseloadSignOffs } from "./caseload.js";
+import { caseloadApplicants, caseloadAssignLead, caseloadLeadChoices, caseloadLeads, caseloadResidents, caseloadSettleTask, caseloadSignOffs, caseloadUnassigned } from "./caseload.js";
 
 /**
  * A code form at runtime: who can do what (from form.json), entries,
@@ -890,7 +890,7 @@ async function directory(q: { search?: unknown; roles?: unknown; site?: unknown;
  * duplicate check, who'll be told) and tell people, but never hands out residents or acts as a person.
  */
 const GUEST_BLOCKED = new Set([
-  "roster.resident", "roster.residents", "roster.clientInfo", "roster.logActivity", "caseload.residents", "caseload.leads", "caseload.applicants", "caseload.signOffs", "calendar.create", "calendar.form.create", "calendar.form.update",
+  "roster.resident", "roster.residents", "roster.clientInfo", "roster.logActivity", "caseload.residents", "caseload.leads", "caseload.applicants", "caseload.signOffs", "caseload.settleTask", "caseload.assignLead", "caseload.unassigned", "caseload.leadChoices", "calendar.create", "calendar.form.create", "calendar.form.update",
   "calendar.form.remove", "calendar.form.setPending", "entries.update", "entries.create", "jobs.retry", "collections.put", "collections.remove",
 ]);
 
@@ -900,7 +900,7 @@ const GUEST_BLOCKED = new Set([
  * would for them. Acting as them, it all runs.
  */
 const VIEW_AS_BLOCKED = new Set([
-  "collections.put", "collections.remove", "roster.logActivity", "email.send", "notify.send", "notify.route", "calendar.create",
+  "collections.put", "collections.remove", "roster.logActivity", "email.send", "notify.send", "notify.route", "calendar.create", "caseload.settleTask", "caseload.assignLead",
   "entries.update", "entries.create", "jobs.retry", "calendar.form.create", "calendar.form.update", "calendar.form.remove", "calendar.form.setPending",
 ]);
 
@@ -1021,6 +1021,15 @@ function hostFor(app: LoadedApp, user: CurrentUser | null) {
         return caseloadApplicants(user, args ?? {});
       case "caseload.signOffs":
         return caseloadSignOffs(user);
+      case "caseload.settleTask":
+      case "caseload.assignLead":
+        // Real changes to residents' records: never from the draft (the preview), like the calendar.
+        if (app.draft) throw Object.assign(new Error("The draft (preview) doesn't change the checklist or case leads. Publish to try it for real."), { userError: true });
+        return name === "caseload.settleTask" ? caseloadSettleTask(user, args ?? {}) : caseloadAssignLead(user, args ?? {});
+      case "caseload.unassigned":
+        return caseloadUnassigned(user, args ?? {});
+      case "caseload.leadChoices":
+        return caseloadLeadChoices(user, args ?? {});
       case "roster.logActivity": {
         // Counts as the resident being seen (resets their review clock), like an entry about them does.
         const t = await prisma.tenant.findUnique({ where: { id: String(args.tenantId) } });

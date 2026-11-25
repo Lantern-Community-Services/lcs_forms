@@ -4,6 +4,7 @@ import { badRequest } from "../http.js";
 import { displayName } from "./roster.js";
 import { caseManagementEnabled } from "./settings.js";
 import { notifyQuietly } from "./notifications.js";
+import { caseManagementLink } from "./caseManagementHome.js";
 
 /**
  * The move-in checklist: the paperwork each resident is owed, with a due date —
@@ -307,6 +308,8 @@ export async function runDailyReminders(now = new Date()): Promise<{ ran: boolea
     }
     if (t.dueOn < weekAgo) lateBySite.set(t.siteId, (lateBySite.get(t.siteId) ?? 0) + 1);
   }
+  // To the Case Management board when the site has one, else the Checklist tab.
+  const leadLink = await caseManagementLink({ lead: "me" }, "/roster/checklist?mine=1");
   for (const [lead, c] of byLead) {
     const parts = [c.overdue ? `${c.overdue} overdue` : null, c.due ? `${c.due} due this week` : null].filter(Boolean);
     notifyQuietly({
@@ -314,7 +317,7 @@ export async function runDailyReminders(now = new Date()): Promise<{ ran: boolea
       type: "residents.moves",
       title: `Checklist: ${parts.join(", ")}`,
       body: "Paperwork for the residents you're case lead for.",
-      link: "/roster/checklist?mine=1",
+      link: leadLink,
       source: "residency",
       sourceLabel: "Checklist",
     });
@@ -326,7 +329,7 @@ export async function runDailyReminders(now = new Date()): Promise<{ ran: boolea
       to: { roles: ["site_manager"], sites: [s.id] },
       type: "residents.moves",
       title: `${n} checklist ${n === 1 ? "item is" : "items are"} more than a week overdue at ${s.name}`,
-      link: `/roster/checklist?site=${encodeURIComponent(s.code)}&view=overdue`,
+      link: await caseManagementLink({ lead: "all", site: s.code, status: "late" }, `/roster/checklist?site=${encodeURIComponent(s.code)}&view=overdue`),
       source: "residency",
       sourceLabel: "Checklist",
       onlySiteId: s.id,

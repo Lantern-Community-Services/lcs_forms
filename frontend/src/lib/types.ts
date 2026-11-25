@@ -101,7 +101,8 @@ export interface User {
    * management rework (replacing PlanStreet) is on for this site; screens of the rework show
    * only then, and the roster stays as it was otherwise (useCaseManagement in lib/auth.tsx).
    */
-  features?: { caseManagement?: boolean };
+  /** caseManagementHome: where the one Case Management item goes (the board form when published, else /caseload). */
+  features?: { caseManagement?: boolean; caseManagementHome?: string };
 }
 
 export interface Site extends SiteRef {
