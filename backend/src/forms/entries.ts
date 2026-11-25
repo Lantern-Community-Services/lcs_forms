@@ -163,6 +163,17 @@ export function canReadEntries(form: BuiltForm, doc: FormDoc, user: Viewer): boo
 }
 
 /**
+ * How much of a form's entries another form's server code may read for this person
+ * (apps/runtime.ts ctx.db.form): "all" (every entry), "site" (everyone's at their own
+ * sites, the form's "Who sees entries"), or null. Either way only at their sites.
+ */
+export function readsEntriesFor(form: BuiltForm, doc: FormDoc, user: Viewer): "all" | "site" | null {
+  if (clinicalBlocked(form, user)) return null;
+  const reach = entryReachOf(form, doc, user);
+  return reach === "all" || reach === "site" ? reach : null;
+}
+
+/**
  * Whether this person may archive entries (put dealt-with ones away) and bring
  * them back: Admins, people who can void, and anyone who sees every entry of
  * the form (HR and IT on the HR forms).

@@ -761,6 +761,56 @@ declare module "@lcs/server" {
     updatedBy: string | null;
   }
 
+  /** ctx.caseload.residents(): one resident on a caseload, with what they owe. */
+  export interface CaseloadResident {
+    id: string;
+    name: string;
+    unit: string | null;
+    site: { id: string; code: string; name: string };
+    caseLead: { id: string; name: string } | null;
+    /** The day they moved into the unit they live in ("YYYY-MM-DD"). */
+    movedInOn: string | null;
+    /** Set for someone who has left and still owes their exit assessment (living false). */
+    movedOutOn: string | null;
+    living: boolean;
+    away: { since: string; reason: string | null } | null;
+    highAcuity: boolean;
+    /** Their open move-in checklist, soonest first. forms: the slugs whose entry for them does it. */
+    tasks: { id: string; key: string; label: string; forms: string[]; dueOn: string }[];
+    /** Their newest Contact Form entry. */
+    lastContact: { at: string; byName: string; entryId: string } | null;
+  }
+
+  /** ctx.caseload.applicants(): someone referred for a unit, not moved in yet. */
+  export interface CaseloadApplicant {
+    id: string;
+    name: string;
+    site: { id: string; code: string; name: string };
+    program: string | null;
+    /** referred, eligibility_review, eligible, viewing_scheduled or accepted. */
+    stage: string;
+    stageLabel: string;
+    stageDate: string;
+    daysInStage: number;
+    viewingDate: string | null;
+    referralDate: string | null;
+    residentId: string | null;
+  }
+
+  /** ctx.caseload.signOffs(): an entry waiting for this person's signature. */
+  export interface CaseloadSignOff {
+    entryId: string;
+    form: { slug: string; title: string };
+    /** The sign-off questions open now. */
+    signOffs: string[];
+    filedAt: string;
+    filedByName: string;
+    resident: { id: string; name: string; unit: string | null } | null;
+    site: { id: string; code: string; name: string } | null;
+    /** The entry page ("/f/<slug>/entries/<id>"), where they sign: app.openApp(link). */
+    link: string;
+  }
+
   export interface ServerEntry<T = Record<string, unknown>> {
     id: string;
     data: T;
@@ -936,6 +986,26 @@ declare module "@lcs/server" {
        * use this for anything else. Skipped in the draft.
        */
       logActivity(tenantId: string, opts?: { label?: string; occurredAt?: string }): { logged: boolean; reason?: string };
+    };
+    /**
+     * Case management, read only: what Caseload, the Checklist tab and Applicants show. Only while case management
+     * is on (Admin → Settings) and for a signed-in person (never a share-link guest); otherwise each throws a
+     * UserError saying why. Supportive sites only, and only the person's own. sites: codes or ids (all of theirs when
+     * left out).
+     */
+    caseload: {
+      /**
+       * Everyone living at the sites (and people who just left, while their exit assessment is open), with case
+       * lead, move-in, away, their open checklist and last Contact Form. lead: "me", a staff id, or left out for
+       * everyone. For people with client information or who manage a site's roster (like Caseload).
+       */
+      residents(q?: { sites?: string[]; lead?: string }): { today: string; sites: { id: string; code: string; name: string }[]; residents: CaseloadResident[]; truncated: boolean };
+      /** Who leads someone at the sites, with how many (me: it's this person). Same people as residents. */
+      leads(q?: { sites?: string[] }): { id: string; name: string; title: string | null; active: boolean; residents: number; me: boolean }[];
+      /** The open applicant pipeline at the sites. For people with client information or who edit the roster. */
+      applicants(q?: { sites?: string[] }): { items: CaseloadApplicant[]; truncated: boolean };
+      /** Entries waiting for this person's signature (they're asked to sign, or are its backup now), oldest first. */
+      signOffs(): CaseloadSignOff[];
     };
     /**
      * Email from the app's mailbox. Link-only: the email is your subject, a line naming this form, and a link to

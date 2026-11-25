@@ -151,6 +151,12 @@ globalThis.__makeCtx = (base) => ({
     clientInfo: (id) => __h("roster.clientInfo", { id }),
     logActivity: (tenantId, opts) => __h("roster.logActivity", { tenantId, label: opts && opts.label, occurredAt: opts && opts.occurredAt }),
   },
+  caseload: {
+    residents: (q) => __h("caseload.residents", q || {}),
+    leads: (q) => __h("caseload.leads", q || {}),
+    applicants: (q) => __h("caseload.applicants", q || {}),
+    signOffs: () => __h("caseload.signOffs", {}),
+  },
   email: {
     send: (m) => __h("email.send", m || {}),
   },
