@@ -766,7 +766,8 @@ declare module "@lcs/server" {
     id: string;
     name: string;
     unit: string | null;
-    site: { id: string; code: string; name: string };
+    /** The site's code (the result's sites have the names). */
+    site: string;
     caseLead: { id: string; name: string } | null;
     /** The day they moved into the unit they live in ("YYYY-MM-DD"). */
     movedInOn: string | null;
@@ -775,8 +776,8 @@ declare module "@lcs/server" {
     living: boolean;
     away: { since: string; reason: string | null } | null;
     highAcuity: boolean;
-    /** Their open move-in checklist, soonest first. forms: the slugs whose entry for them does it. */
-    tasks: { id: string; key: string; label: string; forms: string[]; dueOn: string }[];
+    /** Their open move-in checklist, soonest first. Which forms do each: the result's taskForms[key]. */
+    tasks: { key: string; label: string; dueOn: string }[];
     /** Their newest Contact Form entry. */
     lastContact: { at: string; byName: string; entryId: string } | null;
   }
@@ -999,7 +1000,14 @@ declare module "@lcs/server" {
        * lead, move-in, away, their open checklist and last Contact Form. lead: "me", a staff id, or left out for
        * everyone. For people with client information or who manage a site's roster (like Caseload).
        */
-      residents(q?: { sites?: string[]; lead?: string }): { today: string; sites: { id: string; code: string; name: string }[]; residents: CaseloadResident[]; truncated: boolean };
+      residents(q?: { sites?: string[]; lead?: string }): {
+        today: string;
+        sites: { id: string; code: string; name: string }[];
+        residents: CaseloadResident[];
+        /** The forms (slugs) whose entry for a resident does each kind of task, by task key. */
+        taskForms: Record<string, string[]>;
+        truncated: boolean;
+      };
       /** Who leads someone at the sites, with how many (me: it's this person). Same people as residents. */
       leads(q?: { sites?: string[] }): { id: string; name: string; title: string | null; active: boolean; residents: number; me: boolean }[];
       /** The open applicant pipeline at the sites. For people with client information or who edit the roster. */

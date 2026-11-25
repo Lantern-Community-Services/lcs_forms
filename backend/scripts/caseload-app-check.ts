@@ -157,7 +157,8 @@ try {
   check(names(mine) === "Arden,Dell", `Casey's own caseload is Arden and Dell (who left): ${names(mine)}`);
   check(mine.sites.length === 1 && mine.sites[0].id === siteA.id, "only Casey's own supportive site");
   const arden = mine.residents.find((x) => x.id === r1.id)!;
-  check(arden.tasks.length === 2 && arden.tasks[0].key === "housing_assessment" && arden.tasks[0].forms.includes("housing-assessment"), "Arden's open tasks, soonest first, with the form that does each (the done one left out)");
+  check(arden.tasks.length === 2 && arden.tasks[0].key === "housing_assessment" && mine.taskForms.housing_assessment?.includes("housing-assessment"), "Arden's open tasks, soonest first, with the form that does each (the done one left out)");
+  check(arden.site === siteA.code, "a resident's site is its code");
   check(arden.away?.reason === "Hospital" && arden.living && arden.movedOutOn === null, "Arden is living there and away");
   check(arden.lastContact?.byName === cmA.name, "Arden's last contact is Casey's note");
   check(arden.caseLead?.id === cmA.id && arden.caseLead.name === cmA.name, "Arden's case lead is named");

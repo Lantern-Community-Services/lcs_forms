@@ -6,7 +6,7 @@ import { displayName } from "../services/roster.js";
 import { SCHEDULE, todayNY, ymd } from "../services/checklist.js";
 import { lastContacts } from "../services/caseload.js";
 import { listApplicants } from "../services/applicants.js";
-import { isSignerOn, parseSigned, signableSignOffs } from "../services/signOff.js";
+import { isSignerOn, parseSigned, signableSignOffs, type SignerCache } from "../services/signOff.js";
 import { readDoc } from "../forms/service.js";
 import type { FormDoc, Values } from "../forms/engine.js";
 
@@ -27,8 +27,8 @@ import type { FormDoc, Values } from "../forms/engine.js";
  *   are its backup now). Anyone signed in; only what they'd be asked to sign.
  */
 
-/** Most residents one call returns: every supportive site Lantern has is about 1,200. */
-const RESIDENT_CAP = 3000;
+/** Most residents one call returns: about twice every supportive site Lantern has (tested to fit a code form at this size). */
+const RESIDENT_CAP = 2500;
 /** Most waiting entries looked at for one person's sign-offs (oldest first). */
 const SIGN_OFF_SCAN = 400;
 
@@ -84,7 +84,7 @@ export async function caseloadResidents(user0: CurrentUser | null, args: { sites
   requireCaseload(user);
   const today = todayNY();
   const sites = await sitesFor(user, args?.sites);
-  if (!sites.length) return { today, sites: [], residents: [], truncated: false };
+  if (!sites.length) return { today, sites: [], residents: [], taskForms: {}, truncated: false };
   const siteIds = sites.map((s) => s.id);
   const leadId = leadFilter(user, args?.lead);
   const byLead: Prisma.TenantWhereInput = leadId ? { profile: { is: { caseLeadId: leadId } } } : {};
@@ -127,13 +127,17 @@ export async function caseloadResidents(user0: CurrentUser | null, args: { sites
     leadIds.length ? prisma.user.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
   ]);
   const leadName = new Map(leads.map((l) => [l.id, l.name]));
-  const tasksBy = new Map<string, { id: string; key: string; label: string; forms: string[]; dueOn: string }[]>();
+  // Lean, since an Admin's is every supportive site (thousands of tasks): which forms do each kind of task is
+  // said once (taskForms), and each resident's site is its code (sites has the names).
+  const tasksBy = new Map<string, { key: string; label: string; dueOn: string }[]>();
+  const taskForms: Record<string, string[]> = {};
   for (const t of tasks) {
     const list = tasksBy.get(t.tenantId) ?? [];
-    list.push({ id: t.id, key: t.key, label: t.label, forms: FORMS_BY_KEY.get(t.key) ?? [], dueOn: ymd(t.dueOn) });
+    list.push({ key: t.key, label: t.label, dueOn: ymd(t.dueOn) });
     tasksBy.set(t.tenantId, list);
+    taskForms[t.key] ??= FORMS_BY_KEY.get(t.key) ?? [];
   }
-  const siteOf = new Map(sites.map((s) => [s.id, s]));
+  const codeOf = new Map(sites.map((s) => [s.id, s.code]));
 
   const residents = everyone.map((t) => {
     const living = t.status === "active" && t.movedIn;
@@ -144,7 +148,7 @@ export async function caseloadResidents(user0: CurrentUser | null, args: { sites
       id: t.id,
       name: displayName(t),
       unit: t.unit,
-      site: siteOf.get(t.siteId) ?? { id: t.siteId, code: "", name: "" },
+      site: codeOf.get(t.siteId) ?? "",
       caseLead: lead ? { id: lead, name: leadName.get(lead) ?? "" } : null,
       movedInOn: movedInOn ? ymd(movedInOn) : null,
       /** They've left; only their exit assessment keeps them here. */
@@ -157,7 +161,7 @@ export async function caseloadResidents(user0: CurrentUser | null, args: { sites
     };
   });
   residents.sort((a, b) => a.name.localeCompare(b.name));
-  return { today, sites, residents, truncated };
+  return { today, sites, residents, taskForms, truncated };
 }
 
 /** Who leads someone at these sites now, with how many: the choices for a "Case lead" filter. */
@@ -227,10 +231,12 @@ export async function caseloadSignOffs(user0: CurrentUser | null) {
   const forms = await prisma.builtForm.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.formId))] } } });
   const formOf = new Map<string, { form: BuiltForm; doc: FormDoc }>(forms.map((f) => [f.id, { form: f, doc: readDoc(f.liveSchema ?? f.draftSchema) }]));
   const now = new Date();
+  // Who each sign-off names is worked out once per form and site, not once per entry.
+  const cache: SignerCache = new Map();
   const mine: FormEntry[] = [];
   for (const e of rows) {
     const f = formOf.get(e.formId);
-    if (f && (await isSignerOn(f.form, f.doc, e, user.userId, now))) mine.push(e);
+    if (f && (await isSignerOn(f.form, f.doc, e, user.userId, now, cache))) mine.push(e);
   }
   const tenantIds = [...new Set(mine.map((e) => e.tenantId).filter((x): x is string => Boolean(x)))];
   const siteIds = [...new Set(mine.map((e) => e.siteId).filter((x): x is string => Boolean(x)))];
