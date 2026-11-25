@@ -57,6 +57,7 @@ export function FormRenderer({
   disabled,
   submitLabel,
   onValuesChange,
+  initialSiteCode,
 }: {
   doc: FormDoc;
   /** Needed for file uploads; without it (builder preview) uploads are simulated. */
@@ -81,6 +82,8 @@ export function FormRenderer({
   disabled?: boolean;
   submitLabel?: string;
   onValuesChange?: (values: Values) => void;
+  /** The form's own site (settings.requireSite) to start with, when the form is opened for a resident (FillPage ?tenant=). */
+  initialSiteCode?: string | null;
 }) {
   const saveDrafts = mode === "fill" && doc.settings.saveDrafts !== false && Boolean(draftKey);
   const fresh = () => ({ ...initialValues(doc, { user }), ...(initial ?? {}) });
@@ -101,7 +104,7 @@ export function FormRenderer({
   // Restored on its own (not picked from the list of saved drafts): say so, with a way out.
   const [restored, setRestored] = useState(() => Boolean(opened) && startDraft === undefined);
   const keeper = useDraftKeeper({ draftKey: saveDrafts ? draftKey : undefined, account: saveDrafts ? draftAccount ?? null : null, doc, start: opened, resumed: Boolean(resumedDraft) });
-  const [siteCode, setSiteCode] = useState<string | null>(opened?.siteCode ?? null);
+  const [siteCode, setSiteCode] = useState<string | null>(opened?.siteCode ?? initialSiteCode ?? null);
   const [errors, setErrors] = useState<Errors>({});
   const [codeErrors, setCodeErrors] = useState<Record<string, string>>({});
   // Back on the page they stopped at; the site question is on the first, so that's where to start without one.

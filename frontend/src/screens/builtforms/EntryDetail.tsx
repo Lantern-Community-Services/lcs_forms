@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, MinusCircle, Pencil, PenLine, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleDashed, MinusCircle, Pencil, PenLine, Printer, RotateCcw, Star, Trash2 } from "lucide-react";
 import { SignaturePad, type SignaturePadHandle } from "@/components/attendance/SignaturePad";
 import { Page, DesktopBackLink } from "@/components/shell/AppShell";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { AnswerList, FormRenderer } from "@/components/formkit/FormRenderer";
 import { fillApi, submitErrors, useEntry, type CheckState, type DoneField, type EntryDetail, type SignOffState } from "@/lib/builder";
 import type { Errors, Values } from "@/lib/formEngine";
 import { cn, errorMessage, formatDateTime } from "@/lib/utils";
+import { backFrom } from "@/lib/backLink";
 import { deviceLabel, fillTimeText } from "@/lib/fillMeta";
 
 const SOURCES: Record<string, string> = { app: "In the app", public: "Public link", share: "Share link", api: "API", mcp: "AI assistant (MCP)", import: "Imported" };
@@ -33,6 +34,14 @@ export function BuiltFormEntryPage() {
   const [saving, setSaving] = useState(false);
   const [editErrors, setEditErrors] = useState<Errors | undefined>();
   const [note, setNote] = useState("");
+  // Opened from another screen (a case manager's board): a way back there, and ?sign=1 goes straight to the sign-off.
+  const location = useLocation();
+  const back = backFrom(location.search);
+  const toSign = new URLSearchParams(location.search).get("sign") === "1";
+  const hasSignOffs = Boolean(data?.signOffs?.length);
+  useEffect(() => {
+    if (toSign && hasSignOffs) document.getElementById("sign-off")?.scrollIntoView({ block: "start" });
+  }, [toSign, hasSignOffs]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["fill", slug] });
 
@@ -72,7 +81,13 @@ export function BuiltFormEntryPage() {
 
   return (
     <Page className="max-w-[900px]">
-      <DesktopBackLink to={`/f/${slug}/entries`}>{data.form.title}: entries</DesktopBackLink>
+      {back ? (
+        <Link to={back.to} className="mb-2 inline-flex min-h-[40px] items-center gap-1.5 text-label font-semibold text-accent hover:underline print:hidden">
+          <ArrowLeft className="h-4 w-4" /> {back.label}
+        </Link>
+      ) : (
+        <DesktopBackLink to={`/f/${slug}/entries`}>{data.form.title}: entries</DesktopBackLink>
+      )}
       <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
         <h1 className="mr-auto font-heading text-title font-extrabold text-ink">{data.form.title}</h1>
         <Button variant="secondary" size="icon" disabled={!data.newerId} onClick={() => navigate(`/f/${slug}/entries/${data.newerId}`)} aria-label="Newer entry"><ChevronLeft className="h-4 w-4" /></Button>
@@ -192,7 +207,7 @@ export function BuiltFormEntryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <p className="mt-4 text-center text-micro text-muted"><Link to={`/f/${slug}/entries`} className="font-semibold text-accent">Back to all entries</Link></p>
+      <p className="mt-4 text-center text-micro text-muted"><Link to={back?.to ?? `/f/${slug}/entries`} className="font-semibold text-accent">{back?.label ?? "Back to all entries"}</Link></p>
     </Page>
   );
 }
@@ -414,7 +429,7 @@ function SignOffPanel({ slug, id, signOffs, onSigned }: { slug: string; id: stri
   const [signing, setSigning] = useState<SignOffState | null>(null);
   const waiting = signOffs.filter((s) => s.state === "waiting");
   return (
-    <Card className={cn("mb-4 p-5 print:hidden", waiting.length ? "border-status-amberText/40" : "")}>
+    <Card id="sign-off" className={cn("mb-4 scroll-mt-4 p-5 print:hidden", waiting.length ? "border-status-amberText/40" : "")}>
       <div className="mb-3 flex items-center gap-2">
         {waiting.length ? <CircleDashed className="h-5 w-5 text-status-amberText" /> : <CheckCircle2 className="h-5 w-5 text-status-greenText" />}
         <p className="font-heading text-body-lg font-extrabold text-ink">{waiting.length ? `Sign-off: waiting for ${waiting.length === 1 ? "a signature" : `${waiting.length} signatures`}` : "Signed off"}</p>

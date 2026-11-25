@@ -203,22 +203,44 @@ export const signersOf = (form: BuiltForm, field: Field, entry: SignEntry) => pe
 export const backupsOf = (form: BuiltForm, field: Field, entry: SignEntry) => peopleFor(form, (field.signOff?.backup?.by ?? []) as Recipient[], entry);
 
 /**
+ * Who sign-offs name, kept while one check runs over many entries (apps/caseload.ts, the
+ * sign-offs waiting for someone): worked out once per form, sign-off and site, unless
+ * they name people by the entry itself (an answer, whoever filed or shared it).
+ */
+export type SignerCache = Map<string, Promise<{ id: string }[]>>;
+
+const namesByEntry = (by: Recipient[]) => by.some((r) => r.kind === "field" || r.kind === "submitter" || r.kind === "sharer");
+
+function peopleCached(form: BuiltForm, by: Recipient[], entry: SignEntry, cache: SignerCache | undefined, key: string) {
+  if (!cache || namesByEntry(by)) return peopleFor(form, by, entry);
+  const k = `${form.id}:${key}:${entry.siteId ?? ""}`;
+  let found = cache.get(k);
+  if (!found) {
+    found = peopleFor(form, by, { ...entry, createdById: null });
+    cache.set(k, found);
+  }
+  // Whoever filed it never signs it (peopleFor leaves them out; the cached list is for anyone's entry).
+  return found.then((people) => people.filter((p) => p.id !== entry.createdById));
+}
+
+/**
  * Whether this person is asked to sign a sign-off the entry can be signed on
  * now (as one of its people, or as its backup once that's open), so they may
  * open it to sign. People of a sign-off still waiting for an earlier one aren't
- * asked yet.
+ * asked yet. `cache`: when checking many entries at once.
  */
 export async function isSignerOn(
   form: BuiltForm,
   doc: FormDoc,
   entry: SignEntry & Pick<FormEntry, "signOffs"> & Partial<Pick<FormEntry, "createdAt">>,
   userId: string,
-  now = new Date()
+  now = new Date(),
+  cache?: SignerCache
 ): Promise<boolean> {
   const rec = parseSignOffs(entry.signOffs);
   for (const f of signableSignOffs(doc, JSON.parse(entry.data) as Values, signedIn(rec))) {
-    if ((await signersOf(form, f, entry)).some((p) => p.id === userId)) return true;
-    if (backupOpen(f, rec, entry.createdAt ?? now, now) && (await backupsOf(form, f, entry)).some((p) => p.id === userId)) return true;
+    if ((await peopleCached(form, (f.signOff?.by ?? []) as Recipient[], entry, cache, `by:${f.id}`)).some((p) => p.id === userId)) return true;
+    if (backupOpen(f, rec, entry.createdAt ?? now, now) && (await peopleCached(form, (f.signOff?.backup?.by ?? []) as Recipient[], entry, cache, `backup:${f.id}`)).some((p) => p.id === userId)) return true;
   }
   return false;
 }

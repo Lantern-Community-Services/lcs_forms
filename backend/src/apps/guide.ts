@@ -93,6 +93,11 @@ Admins pass every role check.
 - Roster: roster.sites(), roster.residents(siteCode) (instant, offline), roster.resident(id) (full record and recent
   activity), roster.open(id). Server: ctx.roster.*, and ctx.roster.logActivity(tenantId) to reset a resident's review clock.
   ctx.roster.clientInfo(id): their client information (DOB/age, demographics, program, case lead, household…; SSN last four only), null when it's off or the person can't see it.
+- Case management (server, read only, while it's on): ctx.caseload.residents({ sites, lead: "me" }) gives each resident with case
+  lead, move-in, away, their open move-in checklist (label, dueOn, forms that do it) and last Contact Form; ctx.caseload.leads(),
+  ctx.caseload.applicants() and ctx.caseload.signOffs() (entries waiting for this person's signature, with the entry page's link).
+  Open a basic form for a resident with app.openApp(\`/f/<slug>?tenant=<id>&back=/apps/<this slug>&backLabel=<title>\`): the resident
+  (and site) are filled in, and after filing a button goes back.
 - Calendar: calendar.events({ from, to }), categories(), create / update / remove with the person's own calendar rights
   (the preview won't write). Server: ctx.calendar.events / categories / create (e.g. from afterCreate).
 - The form's own calendar events: form.json "calendar": { "ownEvents": true } lets server code use ctx.calendar.form
