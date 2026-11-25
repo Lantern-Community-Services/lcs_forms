@@ -156,6 +156,10 @@ globalThis.__makeCtx = (base) => ({
     leads: (q) => __h("caseload.leads", q || {}),
     applicants: (q) => __h("caseload.applicants", q || {}),
     signOffs: () => __h("caseload.signOffs", {}),
+    settleTask: (t) => __h("caseload.settleTask", t || {}),
+    assignLead: (a) => __h("caseload.assignLead", a || {}),
+    unassigned: (q) => __h("caseload.unassigned", q || {}),
+    leadChoices: (q) => __h("caseload.leadChoices", q || {}),
   },
   email: {
     send: (m) => __h("email.send", m || {}),

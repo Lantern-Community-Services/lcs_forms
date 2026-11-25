@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { CalendarDays, ChevronRight, ClipboardList, ExternalLink, Home, LayoutGrid, LogOut, Contact, Pin, X } from "lucide-react";
-import { useShowCaseload } from "@/lib/caseload";
+import { useCaseManagementNav, useShowCaseload } from "@/lib/caseload";
 import { cn } from "@/lib/utils";
 import { isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/avatar";
@@ -65,10 +65,11 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
   // many pins as its width allows, up to MAX_NAV_PINS.
   // A tablet also has Caseload beside the Roster; a phone finds it in the launcher.
   const caseload = useShowCaseload() && !phone;
+  const caseNav = useCaseManagementNav();
   const fixed = (roster ? 5 : 4) + (caseload ? 1 : 0); // Home, Roster, (Caseload,) Calendar, All forms, the account slot
   const tabletPins = Math.min(MAX_NAV_PINS, Math.max(2, Math.floor((width - TABLET_CHROME) / TABLET_SLOT) - fixed));
   const pins = pinned.slice(0, phone ? 5 - fixed : tabletPins);
-  const inForms = pathname === "/forms" || pathname.startsWith("/f/") || pathname.startsWith("/apps/");
+  const inForms = (pathname === "/forms" || pathname.startsWith("/f/") || pathname.startsWith("/apps/")) && !(caseNav.board && lit(caseNav.to));
   const pinLit = pins.some((p) => isInternalForm(p.form.url) && lit(p.form.url));
 
   const home = <DockLink key="home" tour="dock-home" to="/home" end label="Home" Icon={Home} active={!launcherOpen && pathname === "/home"} phone={phone} onClick={onCloseLauncher} />;
@@ -76,7 +77,7 @@ export function Dock({ device, launcherOpen, onToggleLauncher, onCloseLauncher }
     <DockLink key="roster" tour="dock-roster" to={ROSTER_URL} label="Roster" Icon={Contact} active={!launcherOpen && lit(ROSTER_URL)} count={reviewCount} phone={phone} onClick={onCloseLauncher} />
   );
   const caseloadItem = caseload && (
-    <DockLink key="caseload" to="/caseload" label="Caseload" Icon={ClipboardList} active={!launcherOpen && pathname.startsWith("/caseload")} phone={phone} onClick={onCloseLauncher} />
+    <DockLink key="caseload" to={caseNav.to} label={caseNav.board ? "Cases" : "Caseload"} Icon={ClipboardList} active={!launcherOpen && lit(caseNav.to)} phone={phone} onClick={onCloseLauncher} />
   );
   const calendarItem = (
     <DockLink key="calendar" tour="dock-calendar" to="/calendar" label="Calendar" Icon={CalendarDays} active={!launcherOpen && pathname.startsWith("/calendar")} phone={phone} onClick={onCloseLauncher} />
@@ -319,6 +320,8 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
   const listRef = useRef<HTMLDivElement>(null);
   const phone = device === "phone";
   const showCaseload = useShowCaseload();
+  const caseNav = useCaseManagementNav();
+  const caseTile: FormLink = { ...CASELOAD_TILE, title: caseNav.label, url: caseNav.to };
   const swipe = useSwipeDown(dialogRef, listRef, onClose);
 
   // Focus moves into the sheet (not the search: on a phone that would throw
@@ -430,9 +433,9 @@ function LauncherPanel({ device, open, onClose }: { device: "phone" | "tablet"; 
               {phone && showCaseload && (
                 <Group title="Case management" Icon={ClipboardList}>
                   <AppTile
-                    form={CASELOAD_TILE}
+                    form={caseTile}
                     Icon={ClipboardList}
-                    lit={lit(CASELOAD_TILE.url)}
+                    lit={lit(caseTile.url)}
                     count={0}
                     onPick={onClose}
                     editing={false}

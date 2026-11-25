@@ -96,6 +96,9 @@ Admins pass every role check.
 - Case management (server, read only, while it's on): ctx.caseload.residents({ sites, lead: "me" }) gives each resident with case
   lead, move-in, away, their open move-in checklist (label, dueOn, forms that do it) and last Contact Form; ctx.caseload.leads(),
   ctx.caseload.applicants() and ctx.caseload.signOffs() (entries waiting for this person's signature, with the entry page's link).
+  Changes, as the person and audited: ctx.caseload.settleTask (tick an item off by hand) and ctx.caseload.assignLead (with
+  unassigned() and leadChoices({ site }) to pick from). A published form with the slug "case-management" becomes the site's
+  one Case Management item in the sidebar (Caseload's links land there).
   Open a basic form for a resident with app.openApp(\`/f/<slug>?tenant=<id>&back=/apps/<this slug>&backLabel=<title>\`): the resident
   (and site) are filled in, and after filing a button goes back.
 - Calendar: calendar.events({ from, to }), categories(), create / update / remove with the person's own calendar rights

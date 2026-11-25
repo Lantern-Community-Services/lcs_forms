@@ -25,7 +25,8 @@ if (db !== throwaway) {
   process.exit(1);
 }
 const { currentUserById } = await import("../src/auth/middleware.js");
-const { caseloadResidents, caseloadLeads, caseloadApplicants, caseloadSignOffs } = await import("../src/apps/caseload.js");
+const { caseloadResidents, caseloadLeads, caseloadApplicants, caseloadSignOffs, caseloadSettleTask, caseloadAssignLead, caseloadUnassigned, caseloadLeadChoices } = await import("../src/apps/caseload.js");
+const { caseManagementHome, caseManagementLink, BOARD_SLUG } = await import("../src/services/caseManagementHome.js");
 const { todayNY, addDays, day } = await import("../src/services/checklist.js");
 const { createForm, publishForm } = await import("../src/forms/service.js");
 const { openSignOffs } = await import("../src/services/signOff.js");
@@ -196,6 +197,44 @@ try {
   check((await caseloadSignOffs(await as(cmA))).length === 0, "Casey filed it, so it isn't waiting on her");
   check((await caseloadSignOffs(await as(admin))).every((s) => s.entryId !== filed.id), "an Admin could sign it but isn't asked to, so it isn't on theirs");
 
+  // ── Ticking items off by hand ──
+  await refuses(caseloadSettleTask(await as(staffA), { tenantId: r1.id, key: "housing_assessment", dueOn: addDays(today, -5), status: "done" }), /edit the roster or client information/, "staff who edit neither the roster nor client information can't tick items off");
+  await refuses(caseloadSettleTask(await as(cmA), { tenantId: r1.id, key: "housing_assessment", dueOn: addDays(today, -5), status: "skipped" }), /Say why/, "Not needed needs a reason");
+  await refuses(caseloadSettleTask(await as(cmA), { tenantId: r1.id, key: "housing_assessment", dueOn: addDays(today, -5), status: "done", doneOn: addDays(today, 1) }), /future/, "done on can't be in the future");
+  await refuses(caseloadSettleTask(await as(cmA), { tenantId: r6.id, key: "housing_assessment", dueOn: addDays(today, 1), status: "done" }), /isn't open any more/, "an item at another site can't be ticked off");
+  const ticked = await caseloadSettleTask(await as(cmA), { tenantId: r1.id, key: "housing_assessment", dueOn: addDays(today, -5), status: "done", note: "Visited, all fine" });
+  check(ticked.status === "done" && ticked.next?.key === "housing_assessment", `Casey ticks Arden's housing assessment off and the next month's is made (${ticked.next?.dueOn})`);
+  const tickedRow = await prisma.tenantTask.findFirst({ where: { tenantId: r1.id, key: "housing_assessment", dueOn: day(addDays(today, -5)) } });
+  check(tickedRow?.status === "done" && tickedRow.doneByName === cmA.name && tickedRow.note === "Visited, all fine", "the item is done, by Casey, with her note");
+  check((await prisma.auditEvent.count({ where: { tenantId: r1.id, action: "tenant.task" } })) === 1, "and it's in the audit log");
+  await refuses(caseloadSettleTask(await as(cmA), { tenantId: r1.id, key: "housing_assessment", dueOn: addDays(today, -5), status: "done" }), /isn't open any more/, "ticking the same item twice is refused");
+  const skippedTask = await caseloadSettleTask(await as(managerA), { tenantId: r1.id, key: "face_sheet_annual", dueOn: addDays(today, 20), status: "skipped", note: "Done in PlanStreet" });
+  check(skippedTask.status === "skipped", "Mona marks Arden's annual face sheet not needed, with the reason");
+
+  // ── Case leads ──
+  await refuses(caseloadUnassigned(await as(cmA), {}), /Only site managers/, "a case manager doesn't get the list of residents without a case lead");
+  const open = await caseloadUnassigned(await as(managerA), {});
+  check(open.length === 1 && open[0].code === siteA.code && open[0].residents.some((r) => r.id === r3.id) && open[0].leads.some((l) => l.id === cmA.id), "Mona sees Corin without a case lead at her site, and who can lead there");
+  const choices = await caseloadLeadChoices(await as(cmA), { site: siteA.code });
+  check(choices.some((c) => c.id === cmA.id) && choices.some((c) => c.id === managerA.id), "who can lead at site A");
+  await refuses(caseloadLeadChoices(await as(cmA), { site: siteB.code }), /your supportive sites/, "not at a site that isn't hers");
+  await refuses(caseloadAssignLead(await as(staffA), { tenantIds: [r3.id], leadId: cmA.id }), /assigned by site managers/, "staff without client information can't assign case leads");
+  const gave = await caseloadAssignLead(await as(managerA), { tenantIds: [r3.id, r6.id], leadId: cmA.id });
+  check(gave.assigned.length === 1 && gave.assigned[0].tenantId === r3.id && gave.skipped.length === 1 && gave.skipped[0].tenantId === r6.id, "Mona makes Casey Corin's case lead; Fenn, at another site, is skipped");
+  check((await prisma.tenantProfile.findUnique({ where: { tenantId: r3.id } }))?.caseLeadId === cmA.id, "Corin's client information names Casey");
+  const again = await caseloadAssignLead(await as(managerA), { tenantIds: [r3.id], leadId: cmA.id });
+  check(again.assigned.length === 0 && /already their case lead/.test(again.skipped[0]?.reason ?? ""), "the same lead again is skipped with the reason");
+  const moved = await caseloadAssignLead(await as(cmA), { tenantIds: [r3.id], leadId: managerA.id });
+  check(moved.assigned.length === 1, "Casey (client information) hands Corin to Mona");
+  const cleared = await caseloadAssignLead(await as(managerA), { tenantIds: [r3.id], leadId: null });
+  check(cleared.assigned.length === 1 && !(await prisma.tenantProfile.findUnique({ where: { tenantId: r3.id } }))?.caseLeadId, "and Mona clears it");
+  check((await prisma.auditEvent.count({ where: { tenantId: r3.id, action: "tenant.profile_updated" } })) === 3, "each change is in the audit log");
+
+  // ── Where case management starts ──
+  const hadBoard = await prisma.builtForm.findUnique({ where: { slug: BOARD_SLUG }, select: { status: true } });
+  check((await caseManagementHome()) === (hadBoard?.status === "published" ? "/apps/case-management" : "/caseload"), `the Case Management item goes to ${await caseManagementHome()}`);
+  check((await caseManagementLink({ lead: "me" }, "/roster/checklist?mine=1")) === (hadBoard?.status === "published" ? "/apps/case-management?lead=me" : "/roster/checklist?mine=1"), "and the reminders link there too");
+
   // A form whose "Who sees entries" is everyone's at their own sites: one entry at each site, one with no site.
   const { setEntryAccess } = await import("../src/services/staffGroups.js");
   const plans = await publishForm(
@@ -221,6 +260,9 @@ export default defineServer({
       const r = ctx.caseload.residents({ lead: args && args.lead });
       return { n: r.residents.length, names: r.residents.map((x) => x.name), leads: ctx.caseload.leads().length, applicants: ctx.caseload.applicants().items.length, signOffs: ctx.caseload.signOffs().length };
     },
+    tick(args, ctx) {
+      return ctx.caseload.settleTask(args);
+    },
     plans(_args, ctx) {
       const f = ctx.db.form(${JSON.stringify(plans.slug)});
       return { n: f.entries.find({}).length, siteless: f.entries.get(${JSON.stringify(siteless.id)}) !== null };
@@ -242,6 +284,11 @@ export default defineServer({
   check(adminPlans.ok && (adminPlans.value as { n: number }).n === 3 && (adminPlans.value as { siteless: boolean }).siteless === true, "an Admin reads all three");
   const staffPlans = await runAction(app, await as(staffA), "plans", {});
   check(staffPlans.ok && (staffPlans.value as { n: number }).n === 1, "site staff see their site's entries there too (the form's setting), so the form may read them for them");
+  const viaTick = await runAction(app, await as(cmA), "tick", { tenantId: r2.id, key: "housing_assessment", dueOn: addDays(today, 3), status: "done" });
+  check(viaTick.ok && (viaTick.value as { status: string }).status === "done", "a code form ticks an item off in the sandbox");
+  const draftApp = await loadApp(code, true);
+  const viaDraft = await runAction(draftApp, await as(cmA), "tick", { tenantId: r6.id, key: "housing_assessment", dueOn: addDays(today, 1), status: "done" });
+  check(!viaDraft.ok && /draft/.test(viaDraft.error ?? ""), "but never from the draft");
   const guest = await runAction(app, guestFor((await as(cmA))!), "board", {}).catch((e: Error) => ({ ok: false, error: e.message }) as const);
   check(!guest.ok, `a share-link guest can't read it: ${"error" in guest ? guest.error : ""}`);
   await setSwitch(false);

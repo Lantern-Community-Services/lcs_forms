@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Settings, Home, Contact, CalendarDays, Bell, CircleHelp, ExternalLink, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Search, ClipboardList,
 } from "lucide-react";
-import { useShowCaseload } from "@/lib/caseload";
+import { useCaseManagementNav, useShowCaseload } from "@/lib/caseload";
 import { cn } from "@/lib/utils";
 import { ADMIN_AREA, isSiteSettingsOnly, useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
@@ -238,10 +238,11 @@ export function Sidebar() {
   // A Site Manager's admin is just their sites' people: "Site settings".
   const siteSettingsOnly = isSiteSettingsOnly(can);
   const showCaseload = useShowCaseload();
+  const caseNav = useCaseManagementNav();
 
   const countFor = (form: FormLink) => (form.url === ROSTER_URL ? reviewCount : 0);
   // The Forms page stays lit inside any form it lists, so you can see where you came from.
-  const formsLit = pathname === "/forms" || (isFormPath(pathname) && !lit(ROSTER_URL) && !pinned.some((p) => lit(p.form.url)));
+  const formsLit = pathname === "/forms" || (isFormPath(pathname) && !lit(ROSTER_URL) && !(caseNav.board && lit(caseNav.to)) && !pinned.some((p) => lit(p.form.url)));
 
   // Picking a result (or going anywhere) ends the search.
   useEffect(() => setQ(""), [pathname]);
@@ -387,7 +388,7 @@ export function Sidebar() {
           <>
             <NavItem to="/home" label="Home" Icon={Home} collapsed={collapsed} end tour="nav-home" />
             {can("roster.view") && <NavItem to={ROSTER_URL} label="Roster" Icon={Contact} collapsed={collapsed} lit={lit(ROSTER_URL)} count={reviewCount} tour="nav-roster" />}
-            {showCaseload && <NavItem to="/caseload" label="Caseload" Icon={ClipboardList} collapsed={collapsed} tour="nav-caseload" />}
+            {showCaseload && <NavItem to={caseNav.to} label={caseNav.label} Icon={ClipboardList} collapsed={collapsed} lit={lit(caseNav.to)} tour="nav-caseload" />}
             <NavItem to="/calendar" label="Calendar" Icon={CalendarDays} collapsed={collapsed} tour="nav-calendar" />
 
             {/* The forms: the whole catalog, then your pins under it. */}
