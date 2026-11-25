@@ -3,8 +3,11 @@ import { prisma } from "../prisma.js";
 import type { CurrentUser } from "../auth/middleware.js";
 import { caseManagementEnabled } from "../services/settings.js";
 import { displayName } from "../services/roster.js";
-import { SCHEDULE, todayNY, ymd } from "../services/checklist.js";
-import { lastContacts } from "../services/caseload.js";
+import { SCHEDULE, day, settleTask, todayNY, ymd } from "../services/checklist.js";
+import { lastContacts, unassigned } from "../services/caseload.js";
+import { caseLeadChoices, fieldWords, saveProfile } from "../services/clientProfile.js";
+import { audit, type Actor } from "../services/audit.js";
+import { HttpError } from "../http.js";
 import { listApplicants } from "../services/applicants.js";
 import { isSignerOn, parseSigned, signableSignOffs, type SignerCache } from "../services/signOff.js";
 import { readDoc } from "../forms/service.js";
@@ -25,6 +28,13 @@ import type { FormDoc, Values } from "../forms/engine.js";
  * - applicants: the open pipeline. Like Applicants: roster.edit or clients.view.
  * - signOffs: entries waiting for this person's signature (they're asked, or
  *   are its backup now). Anyone signed in; only what they'd be asked to sign.
+ *
+ * And the two changes Caseload made, so the board can replace it:
+ * - settleTask: tick a checklist item off by hand (Done, or Not needed with a
+ *   reason), like the Checklist tab: roster.edit or clients.edit.
+ * - assignLead / unassigned / leadChoices: give residents a case lead (or
+ *   change or clear it), like Caseload → Unassigned and client information:
+ *   roster.archive (site managers) or clients.edit. Audited like those screens.
  */
 
 /** Most residents one call returns: about twice every supportive site Lantern has (tested to fit a code form at this size). */
@@ -263,4 +273,123 @@ export async function caseloadSignOffs(user0: CurrentUser | null) {
       link: `/f/${form.slug}/entries/${e.id}`,
     };
   });
+}
+
+// ── Changes ──────────────────────────────────────────────────────────────
+
+/** Who did it, for the audit log: the person, or "Admin (acting as them)". */
+const actorFor = (u: CurrentUser): Actor => (u.viewAs ? { id: u.viewAs.userId, name: `${u.viewAs.name} (acting as ${u.name})` } : { id: u.userId, name: u.name });
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Tick an open checklist item off by hand: done (on a day, default today) or not
+ * needed (with the reason). The item is named by resident, kind and due date, as
+ * the board shows it. A monthly or yearly one makes its next, which is returned.
+ */
+export async function caseloadSettleTask(user0: CurrentUser | null, args: { tenantId?: unknown; key?: unknown; dueOn?: unknown; status?: unknown; doneOn?: unknown; note?: unknown }) {
+  const user = await requireCaseManagement(user0, "Ticking off the checklist");
+  if (!has(user, "roster.edit") && !has(user, "clients.edit")) throw new CaseloadError("Ticking off the checklist is for people who edit the roster or client information.");
+  const status = args?.status === "done" || args?.status === "skipped" ? args.status : null;
+  if (!status) throw new CaseloadError('status is "done" or "skipped".');
+  const today = todayNY();
+  const doneOn = typeof args.doneOn === "string" && YMD.test(args.doneOn) ? args.doneOn : today;
+  if (doneOn > today) throw new CaseloadError("Done on can't be in the future.");
+  const note = typeof args.note === "string" ? args.note.trim().slice(0, 2000) : "";
+  if (status === "skipped" && !note) throw new CaseloadError("Say why it isn't needed.");
+  const dueOn = typeof args.dueOn === "string" && YMD.test(args.dueOn) ? args.dueOn : null;
+  const task = dueOn
+    ? await prisma.tenantTask.findFirst({
+        where: { tenantId: String(args.tenantId ?? ""), key: String(args.key ?? ""), dueOn: day(dueOn), status: "open" },
+        include: { tenant: { select: { id: true, firstName: true, lastName: true, preferredName: true, siteId: true } } },
+      })
+    : null;
+  if (!task || (user.siteIds && !user.siteIds.includes(task.siteId))) throw new CaseloadError("That checklist item isn't open any more. Reload the board.");
+  const result = await settleTask(task, { status, doneOn, note: note || null, byName: user.name });
+  await audit({
+    actor: actorFor(user),
+    action: "tenant.task",
+    tenantId: task.tenantId,
+    siteId: task.siteId,
+    summary: `${status === "done" ? "Done" : "Not needed"}: ${task.label} for ${displayName(task.tenant)}`,
+    changes: note ? { note } : undefined,
+  });
+  return { status, doneOn, next: result.next ? { key: result.next.key, label: result.next.label, dueOn: ymd(result.next.dueOn) } : null };
+}
+
+/**
+ * Make someone case lead for residents (or, leadId null, clear it): saved as a
+ * client information change and audited like one. Site managers, and people who
+ * edit client information. One that can't be saved (the lead doesn't work at
+ * that site, someone changed it meanwhile) is skipped with the reason.
+ */
+export async function caseloadAssignLead(user0: CurrentUser | null, args: { tenantIds?: unknown; leadId?: unknown }) {
+  const user = await requireCaseManagement(user0, "Assigning case leads");
+  if (!has(user, "roster.archive") && !has(user, "clients.edit")) throw new CaseloadError("Case leads are assigned by site managers and by people who edit client information.");
+  const ids = [...new Set((Array.isArray(args?.tenantIds) ? args.tenantIds : []).map(String).filter(Boolean))].slice(0, 200);
+  if (!ids.length) throw new CaseloadError("Pick at least one resident.");
+  const leadId = args.leadId === null || args.leadId === "" || args.leadId === undefined ? null : String(args.leadId);
+  const lead = leadId ? await prisma.user.findUnique({ where: { id: leadId }, select: { id: true, name: true } }) : null;
+  if (leadId && !lead) throw new CaseloadError("Pick a case lead.");
+  const tenants = new Map(
+    (await prisma.tenant.findMany({ where: { id: { in: ids } }, include: { site: { select: { id: true, code: true, name: true } }, profile: true } })).map((t) => [t.id, t])
+  );
+  const assigned: { tenantId: string; name: string }[] = [];
+  const skipped: { tenantId: string; name: string | null; reason: string }[] = [];
+  for (const id of ids) {
+    const t = tenants.get(id);
+    if (!t || (user.siteIds && !user.siteIds.includes(t.siteId))) {
+      skipped.push({ tenantId: id, name: null, reason: "Resident not found." });
+      continue;
+    }
+    const name = displayName(t);
+    if (t.status !== "active") {
+      skipped.push({ tenantId: id, name, reason: "No longer on the roster." });
+      continue;
+    }
+    if ((t.profile?.caseLeadId ?? null) === leadId) {
+      skipped.push({ tenantId: id, name, reason: lead ? `${lead.name} is already their case lead.` : "They have no case lead." });
+      continue;
+    }
+    try {
+      const saved = await saveProfile({ tenant: t, before: t.profile, version: t.profile?.version ?? 0, changes: { caseLead: leadId }, userId: user.userId });
+      if (!saved) continue;
+      await audit({
+        actor: actorFor(user),
+        action: "tenant.profile_updated",
+        tenantId: t.id,
+        siteId: t.siteId,
+        summary: `Updated client information for ${name} (${fieldWords(saved.changed)})`,
+        changes: saved.diff,
+      });
+      assigned.push({ tenantId: t.id, name });
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+      skipped.push({ tenantId: id, name, reason: e.message });
+    }
+  }
+  return { lead, assigned, skipped };
+}
+
+/** Residents at the person's supportive sites nobody leads yet, with who can lead at each site. Site managers and admins. */
+export async function caseloadUnassigned(user0: CurrentUser | null, args: { sites?: unknown }) {
+  const user = await requireCaseManagement(user0, "Assigning case leads");
+  if (!has(user, "roster.archive")) throw new CaseloadError("Only site managers and admins see who has no case lead.");
+  const sites = await sitesFor(user, args?.sites);
+  const list = await unassigned(sites.map((s) => ({ ...s, siteType: "supportive" })));
+  return list.map((s) => ({
+    code: s.code,
+    name: s.name,
+    leads: s.leads.map((l) => ({ id: l.id, name: l.name, title: l.title })),
+    residents: s.residents.map((r) => ({ id: r.id, name: r.displayName, unit: r.unit, movedInOn: r.movedInOn, away: r.away })),
+  }));
+}
+
+/** Who can be case lead at one of the person's supportive sites (staff approved there). */
+export async function caseloadLeadChoices(user0: CurrentUser | null, args: { site?: unknown }) {
+  const user = await requireCaseManagement(user0, "Assigning case leads");
+  if (!has(user, "roster.archive") && !has(user, "clients.edit")) throw new CaseloadError("Case leads are assigned by site managers and by people who edit client information.");
+  const wanted = typeof args?.site === "string" ? args.site : "";
+  const [site] = wanted ? await sitesFor(user, [wanted]) : [];
+  if (!site) throw new CaseloadError("Pick one of your supportive sites.");
+  return (await caseLeadChoices(site.id)).map((u) => ({ id: u.id, name: u.name, title: u.title }));
 }

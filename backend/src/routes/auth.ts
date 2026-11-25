@@ -7,6 +7,7 @@ import { OIDC_TX_COOKIE, beginSignIn, completeSignIn, isAllowedDomain, safeRetur
 import { canViewAs, currentUserById, mayViewAs, requireAuth } from "../auth/middleware.js";
 import { appBaseUrl, devAuthEnabled, env, isProd, ssoConfigured, testSite } from "../env.js";
 import { caseManagementEnabled, guestDomains } from "../services/settings.js";
+import { caseManagementHome } from "../services/caseManagementHome.js";
 import { audit, fromRequest } from "../services/audit.js";
 import { locate } from "../services/geoip.js";
 import { notifyQuietly } from "../services/notifications.js";
@@ -273,7 +274,8 @@ authRouter.get(
         : null,
       canViewAs: canViewAs(req.user!) || Boolean(req.user!.viewAs),
       // Org switches the app's screens follow (Admin → Settings).
-      features: { caseManagement: await caseManagementEnabled() },
+      // caseManagementHome: where the one "Case Management" item goes (the board when published, else Caseload).
+      features: { caseManagement: await caseManagementEnabled(), caseManagementHome: await caseManagementHome() },
     });
   })
 );

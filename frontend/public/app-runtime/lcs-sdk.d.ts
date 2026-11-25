@@ -1014,6 +1014,23 @@ declare module "@lcs/server" {
       applicants(q?: { sites?: string[] }): { items: CaseloadApplicant[]; truncated: boolean };
       /** Entries waiting for this person's signature (they're asked to sign, or are its backup now), oldest first. */
       signOffs(): CaseloadSignOff[];
+      /**
+       * Tick an open checklist item off by hand, named as residents() gives it (tenantId, key, dueOn): "done" on
+       * doneOn (default today, never later), or "skipped" (not needed) with the reason in note. A monthly or yearly
+       * item makes its next one, returned as next. For people who edit the roster or client information; audited.
+       * Never from the draft (the preview).
+       */
+      settleTask(t: { tenantId: string; key: string; dueOn: string; status: "done" | "skipped"; doneOn?: string; note?: string }): { status: "done" | "skipped"; doneOn: string; next: { key: string; label: string; dueOn: string } | null };
+      /**
+       * Make leadId case lead for residents (leadId null clears it), saved as a client information change and
+       * audited. Site managers and people who edit client information; the lead must work at the resident's site.
+       * One that can't be changed is in skipped with the reason. Never from the draft (the preview).
+       */
+      assignLead(a: { tenantIds: string[]; leadId: string | null }): { lead: { id: string; name: string } | null; assigned: { tenantId: string; name: string }[]; skipped: { tenantId: string; name: string | null; reason: string }[] };
+      /** Residents nobody leads yet at the sites, and who can lead at each. Site managers and admins. */
+      unassigned(q?: { sites?: string[] }): { code: string; name: string; leads: { id: string; name: string; title: string | null }[]; residents: { id: string; name: string; unit: string | null; movedInOn: string | null; away: boolean }[] }[];
+      /** Who can be case lead at one of the person's supportive sites. */
+      leadChoices(q: { site: string }): { id: string; name: string; title: string | null }[];
     };
     /**
      * Email from the app's mailbox. Link-only: the email is your subject, a line naming this form, and a link to
